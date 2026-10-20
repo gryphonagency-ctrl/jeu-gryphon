@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101126">
+    <title>Le Pendu — Défi TikTok</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: #101126;
+            color: #f5f3ff;
+            font-synthesis: none;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px;
+            overflow-x: hidden;
+            background:
+                radial-gradient(ellipse at 14% 10%, rgba(129, 68, 255, .26), transparent 38%),
+                radial-gradient(ellipse at 88% 84%, rgba(22, 207, 214, .16), transparent 38%),
+                #101126;
+        }
+        body::before {
+            position: fixed;
+            z-index: -1;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,.38) .7px, transparent .7px);
+            background-size: 35px 35px;
+            content: "";
+            opacity: .2;
+            pointer-events: none;
+        }
+        button { font: inherit; }
+        .app { width: min(1120px, 100%); margin: 0 auto; }
+        .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 23px; }
+        .brand { display: flex; align-items: center; gap: 12px; }
+        .brand-icon {
+            display: grid;
+            width: 48px;
+            height: 48px;
+            place-items: center;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 15px;
+            background: linear-gradient(145deg, #a855f7, #ec4899);
+            box-shadow: 0 8px 30px rgba(168,85,247,.35);
+            font-size: 25px;
+        }
+        h1 { margin: 0; font-size: clamp(22px, 4vw, 32px); letter-spacing: -.04em; }
+        .subtitle { margin: 3px 0 0; color: #aaa9c4; font-size: 13px; }
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 13px;
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 999px;
+            background: rgba(255,255,255,.05);
+            color: #c7c6d8;
+            font-size: 12px;
+        }
+        .connection-dot { width: 9px; height: 9px; border-radius: 50%; background: #f87171; box-shadow: 0 0 10px currentColor; }
+        .connection.connected .connection-dot { background: #4ade80; }
+        .layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(275px, .8fr); gap: 18px; }
+        .card {
+            border: 1px solid rgba(255,255,255,.11);
+            border-radius: 22px;
+            background: linear-gradient(145deg, rgba(31,31,60,.91), rgba(22,23,46,.92));
+            box-shadow: 0 22px 65px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.04);
+        }
+        .play-card { padding: clamp(18px, 4vw, 32px); }
+        .round-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+        .round-number { color: #aaa9c4; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+        .round-number strong { color: #fff; }
+        .badge { padding: 7px 11px; border: 1px solid rgba(192,132,252,.35); border-radius: 999px; background: rgba(168,85,247,.13); color: #d8b4fe; font-size: 12px; font-weight: 800; }
+        .stage {
+            display: grid;
+            min-height: 270px;
+            place-items: center;
+            margin: 18px 0 20px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 18px;
+            background:
+                radial-gradient(ellipse at 50% 100%, rgba(108,66,194,.22), transparent 62%),
+                linear-gradient(180deg, rgba(12,14,34,.65), rgba(26,24,54,.74));
+        }
+        .stage svg { width: min(300px, 76%); height: 250px; overflow: visible; }
+        .gallows { fill: none; stroke: #a5a4c3; stroke-linecap: round; stroke-linejoin: round; stroke-width: 7; }
+        .person { fill: none; stroke: #fb7185; stroke-linecap: round; stroke-linejoin: round; stroke-width: 6; filter: drop-shadow(0 0 7px rgba(251,113,133,.35)); }
+        .person .head { fill: rgba(251,113,133,.1); }
+        .person [data-part] { opacity: 0; stroke-dashoffset: 300; transition: stroke-dashoffset .45s ease, opacity .2s ease; }
+        .person circle[data-part] { stroke-dasharray: 113.1; stroke-dashoffset: 113.1; }
+        .person path[data-part] { stroke-dasharray: 300; }
+        .person [data-part].is-visible { opacity: 1; stroke-dashoffset: 0; }
+        .clue-label { margin: 0 0 9px; color: #9c9ab5; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-align: center; text-transform: uppercase; }
+        .clue { min-height: 28px; margin: 0 0 20px; color: #e9d5ff; font-size: clamp(17px, 3vw, 21px); font-weight: 700; text-align: center; }
+        .word { display: flex; min-height: 48px; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 0 0 19px; }
+        .letter-slot { display: grid; width: clamp(27px, 5vw, 42px); height: 46px; place-items: center; border-bottom: 3px solid #8b5cf6; color: #fff; font-size: clamp(20px, 4vw, 29px); font-weight: 900; text-transform: uppercase; }
+        .letter-slot.space { width: 16px; border: 0; }
+        .letter-slot.punctuation { border: 0; color: #c4b5fd; }
+        .feedback { min-height: 25px; margin: 0 0 13px; color: #c4c3d7; font-size: 14px; font-weight: 650; text-align: center; }
+        .feedback.good { color: #86efac; }
+        .feedback.bad { color: #fda4af; }
+        .keyboard { display: grid; grid-template-columns: repeat(9, minmax(28px, 1fr)); gap: 6px; }
+        .key {
+            min-height: 39px;
+            padding: 5px 0;
+            border: 1px solid rgba(255,255,255,.13);
+            border-radius: 9px;
+            background: rgba(255,255,255,.07);
+            color: #f2efff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 800;
+            transition: transform .12s, background .12s, border-color .12s;
+        }
+        .key:hover:not(:disabled) { transform: translateY(-2px); border-color: #c084fc; background: rgba(168,85,247,.25); }
+        .key:disabled { cursor: default; opacity: .34; }
+        .key:focus-visible, button:focus-visible { outline: 3px solid #67e8f9; outline-offset: 2px; }
+        .side-card { display: flex; flex-direction: column; gap: 17px; padding: 22px; }
+        .section-title { margin: 0 0 11px; color: #a8a6c1; font-size: 11px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+        .difficulty-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+        .mode-button, .action-button {
+            min-height: 40px;
+            padding: 8px 10px;
+            border: 1px solid rgba(255,255,255,.13);
+            border-radius: 10px;
+            background: rgba(255,255,255,.055);
+            color: #dedced;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 750;
+        }
+        .mode-button[aria-pressed="true"] { border-color: #c084fc; background: rgba(168,85,247,.2); color: #f3e8ff; }
+        .action-button { width: 100%; border-color: #8b5cf6; background: linear-gradient(110deg, #7c3aed, #a855f7); color: #fff; font-size: 14px; box-shadow: 0 8px 22px rgba(124,58,237,.25); }
+        .action-button:hover:not(:disabled) { filter: brightness(1.12); }
+        .action-button:disabled { cursor: default; opacity: .48; }
+        .rose-card {
+            padding: 15px;
+            border: 1px solid rgba(244,114,182,.22);
+            border-radius: 15px;
+            background: linear-gradient(135deg, rgba(190,24,93,.15), rgba(124,58,237,.13));
+        }
+        .rose-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .rose-title { margin: 0; color: #f9a8d4; font-size: 14px; font-weight: 850; }
+        .rose-count { color: #fff; font-size: 24px; font-weight: 900; }
+        .rose-help { margin: 6px 0 0; color: #c7bed1; font-size: 12px; line-height: 1.5; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat { padding: 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.035); }
+        .stat-value { display: block; color: #fff; font-size: 20px; font-weight: 900; }
+        .stat-label { color: #9997b1; font-size: 11px; }
+        .chat-tip { margin: 0; color: #9c9ab5; font-size: 12px; line-height: 1.55; }
+        .chat-tip strong { color: #dedced; }
+        .connection-settings { display: flex; gap: 7px; }
+        .connection-settings input { min-width: 0; flex: 1; padding: 9px; border: 1px solid rgba(255,255,255,.13); border-radius: 9px; background: rgba(0,0,0,.18); color: #e9e7f5; font-size: 11px; }
+        .connection-settings button { padding: 8px 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.08); color: #eee; cursor: pointer; font-size: 11px; font-weight: 750; }
+        .notice { min-height: 20px; color: #aaa9c4; font-size: 11px; }
+        .footer { margin: 16px 0 0; color: #77758f; font-size: 11px; text-align: center; }
+        .winners-panel {
+            position: fixed;
+            z-index: 8;
+            top: 92px;
+            left: 16px;
+            width: min(285px, calc(100vw - 32px));
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 15px;
+            background: rgba(25,25,49,.97);
+            box-shadow: 0 16px 42px rgba(0,0,0,.4);
+            backdrop-filter: blur(12px);
+        }
+        .winners-panel[data-side="right"] { right: 16px; left: auto; }
+        .winners-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 11px;
+            border-bottom: 1px solid rgba(255,255,255,.1);
+            background: rgba(255,255,255,.035);
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        .winners-header:active { cursor: grabbing; }
+        .winners-title { margin: 0; color: #fcd34d; font-size: 13px; font-weight: 850; }
+        .winners-controls { display: flex; gap: 4px; }
+        .winners-controls button, .winners-restore {
+            display: grid;
+            min-width: 29px;
+            min-height: 29px;
+            place-items: center;
+            padding: 4px 7px;
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 8px;
+            background: rgba(255,255,255,.07);
+            color: #eeeaff;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .winners-controls button[aria-pressed="true"] { border-color: #facc15; background: rgba(250,204,21,.17); }
+        .winners-body { max-height: 250px; overflow: auto; padding: 8px 10px 10px; }
+        .winners-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+        .winners-table th { padding: 5px 4px 8px; color: #9997b1; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+        .winners-table td { max-width: 150px; overflow: hidden; padding: 7px 4px; border-top: 1px solid rgba(255,255,255,.07); color: #eceaf7; text-overflow: ellipsis; white-space: nowrap; }
+        .winners-table td:first-child, .winners-table td:last-child { color: #c4b5fd; }
+        .winners-empty { margin: 2px 0; color: #aaa9c4; font-size: 11px; line-height: 1.5; }
+        .winners-panel.is-stowed .winners-body { display: none; }
+        .winners-panel.is-stowed .winners-header { border-bottom: 0; }
+        .winners-restore { position: fixed; z-index: 8; top: 92px; left: 16px; min-height: 38px; padding: 7px 11px; border-color: #facc15; background: #252342; box-shadow: 0 10px 28px rgba(0,0,0,.35); }
+        .winners-restore[hidden] { display: none; }
+        .winners-restore[data-side="right"] { right: 16px; left: auto; }
+        @media (max-width: 760px) {
+            body { padding: 16px; }
+            .layout { grid-template-columns: 1fr; }
+            .side-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .difficulty-section, .rose-card, .connection-section { grid-column: 1 / -1; }
+            .stage { min-height: 230px; }
+            .stage svg { height: 215px; }
+            .winners-panel, .winners-restore { top: 76px; }
+            .winners-body { max-height: 180px; }
+        }
+        @media (max-width: 440px) {
+            body { padding: 12px; }
+            .topbar { align-items: flex-start; }
+            .brand-icon { width: 40px; height: 40px; }
+            .connection { padding: 8px; font-size: 0; }
+            .connection-dot { flex: 0 0 9px; }
+            .play-card { padding: 16px 12px; }
+            .keyboard { grid-template-columns: repeat(7, minmax(27px, 1fr)); }
+            .key { min-height: 37px; }
+            .side-card { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="app">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon" aria-hidden="true">🎯</div>
+                <div>
+                    <h1>Le Pendu du live</h1>
+                    <p class="subtitle">Le chat joue, les roses donnent des indices.</p>
+                </div>
+            </div>
+            <div id="connection" class="connection" role="status">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span id="connection-label">Connexion au connecteur…</span>
+            </div>
+        </header>
+
+        <aside id="winners-panel" class="winners-panel" aria-label="Derniers gagnants TikTok"
+               data-side="left">
+            <header id="winners-drag-handle" class="winners-header">
+                <h2 class="winners-title">🏆 Derniers gagnants</h2>
+                <div class="winners-controls" aria-label="Commandes du tableau">
+                    <button id="winners-left" type="button" aria-label="Déplacer le tableau à gauche"
+                            title="Déplacer à gauche">◀</button>
+                    <button id="winners-right" type="button" aria-label="Déplacer le tableau à droite"
+                            title="Déplacer à droite">▶</button>
+                    <button id="winners-pin" type="button" aria-label="Épingler le tableau"
+                            aria-pressed="false" title="Épingler le tableau">📌</button>
+                    <button id="winners-stow" type="button" aria-label="Ranger le tableau"
+                            title="Ranger / afficher">🖊️</button>
+                </div>
+            </header>
+            <div class="winners-body">
+                <table class="winners-table">
+                    <thead><tr><th>#</th><th>Pseudo TikTok</th><th>Round</th></tr></thead>
+                    <tbody id="winners-list"></tbody>
+                </table>
+                <p id="winners-empty" class="winners-empty">Les gagnants du chat apparaîtront ici.</p>
+            </div>
+        </aside>
+        <button id="winners-restore" class="winners-restore" type="button"
+                aria-label="Remettre le tableau des gagnants en place" title="Afficher le tableau" hidden>🖊️ Gagnants</button>
+
+        <div class="layout">
+            <section class="card play-card" aria-label="Partie de pendu">
+                <div class="round-top">
+                    <div class="round-number">Manche <strong id="round-number">0 / 100</strong></div>
+                    <div id="difficulty-badge" class="badge">Mode progressif</div>
+                </div>
+                <div class="stage">
+                    <svg viewBox="0 0 240 220" role="img" aria-label="Dessin du pendu">
+                        <path class="gallows" d="M38 202h166M66 202V24h102v27m0-27h-28" />
+                        <g class="person">
+                            <circle class="head" data-part="0" cx="168" cy="70" r="18" />
+                            <path data-part="1" d="M168 88v48" />
+                            <path data-part="2" d="M168 101l-24 24" />
+                            <path data-part="3" d="M168 101l24 24" />
+                            <path data-part="4" d="M168 136l-23 31" />
+                            <path data-part="5" d="M168 136l23 31" />
+                        </g>
+                    </svg>
+                </div>
+                <p class="clue-label">Indice</p>
+                <p id="clue" class="clue">Lancez la première manche pour découvrir l'indice.</p>
+                <div id="word" class="word" aria-label="Lettres du mot secret"></div>
+                <p id="feedback" class="feedback" role="status" aria-live="polite">
+                    Choisissez une difficulté ou démarrez en mode progressif.
+                </p>
+                <div id="keyboard" class="keyboard" aria-label="Clavier de lettres"></div>
+            </section>
+
+            <aside class="card side-card" aria-label="Réglages et progression">
+                <section class="difficulty-section">
+                    <h2 class="section-title">Difficulté</h2>
+                    <div class="difficulty-options" role="group" aria-label="Choisir la difficulté">
+                        <button class="mode-button" type="button" data-mode="auto" aria-pressed="true">Progressive</button>
+                        <button class="mode-button" type="button" data-mode="facile" aria-pressed="false">Facile</button>
+                        <button class="mode-button" type="button" data-mode="moyen" aria-pressed="false">Moyen</button>
+                        <button class="mode-button" type="button" data-mode="difficile" aria-pressed="false">Difficile</button>
+                    </div>
+                    <p class="chat-tip" style="margin-top:9px">En mode progressif, la difficulté augmente aux rounds 35 et 68. Vous pouvez la changer à tout moment.</p>
+                </section>
+
+                <section class="rose-card" aria-label="Indices offerts par les roses">
+                    <div class="rose-top">
+                        <h2 class="rose-title">🌹 Indices en réserve</h2>
+                        <span id="rose-count" class="rose-count">0</span>
+                    </div>
+                    <p class="rose-help">Chaque rose reçue révèle une lettre encore cachée. Les indices inutilisés sont gardés pour la prochaine manche.</p>
+                </section>
+
+                <div class="stats" aria-label="Statistiques">
+                    <div class="stat"><span id="mistakes" class="stat-value">0 / 6</span><span class="stat-label">Erreurs</span></div>
+                    <div class="stat"><span id="solved" class="stat-value">0</span><span class="stat-label">Manches gagnées</span></div>
+                </div>
+
+                <button id="next-round" class="action-button" type="button">Lancer le round 1</button>
+
+                <section class="connection-section">
+                    <h2 class="section-title">Connexion TikTok</h2>
+                    <div class="connection-settings">
+                        <input id="connector-url" type="url" aria-label="Adresse WebSocket"
+                               value="ws://127.0.0.1:3000">
+                        <button id="connect-button" type="button">Connecter</button>
+                    </div>
+                    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+                </section>
+
+                <p class="chat-tip"><strong>Pour le chat :</strong> envoyez une lettre dans les commentaires pour la proposer. Envoyez le mot entier pour tenter de résoudre l'énigme.</p>
+            </aside>
+        </div>
+        <p class="footer">100 énigmes · Les erreurs complètent le dessin · Les roses révèlent des lettres</p>
+    </main>
+
+    <script>
+        'use strict';
+
+        const puzzles = {
+            facile: [
+                ['TOMATE', 'Un fruit rouge qu’on met souvent dans la salade.'],
+                ['SOLEIL', 'Cette étoile nous éclaire pendant la journée.'],
+                ['BANANE', 'Fruit jaune que l’on épluche avant de le manger.'],
+                ['GUITARE', 'Instrument à cordes que l’on gratte ou pince.'],
+                ['PIZZA', 'Spécialité italienne ronde, souvent garnie de fromage.'],
+                ['JARDIN', 'On y cultive des fleurs et des légumes.'],
+                ['NUAGE', 'Cette masse blanche ou grise flotte dans le ciel.'],
+                ['PAPILLON', 'Insecte coloré qui vole de fleur en fleur.'],
+                ['CHOCOLAT', 'Douceur préparée avec du cacao.'],
+                ['ELEPHANT', 'Grand animal à trompe qui vit en Afrique et en Asie.'],
+                ['LUNETTES', 'On les porte pour mieux voir ou se protéger du soleil.'],
+                ['FROMAGE', 'Produit laitier souvent servi après le repas.'],
+                ['BOUGIE', 'On l’allume pour faire une petite flamme.'],
+                ['GIRAFE', 'Animal de la savane reconnaissable à son long cou.'],
+                ['TORTUE', 'Reptile qui porte une carapace sur son dos.'],
+                ['MONTAGNE', 'Grande élévation naturelle du terrain.'],
+                ['PIRATE', 'Aventurier des mers souvent représenté avec un crochet.'],
+                ['CITRON', 'Agrume jaune au goût très acide.'],
+                ['AVION', 'Moyen de transport qui vole dans le ciel.'],
+                ['CHAUSSETTE', 'Vêtement que l’on porte dans ses chaussures.'],
+                ['POMME', 'Fruit croquant qui peut être rouge, vert ou jaune.'],
+                ['MIROIR', 'Objet dans lequel on peut voir son reflet.'],
+                ['CROCODILE', 'Grand reptile aux mâchoires puissantes.'],
+                ['BONBON', 'Petite confiserie sucrée souvent colorée.'],
+                ['BOUSSOLE', 'Elle indique le nord pour aider à s’orienter.'],
+                ['FRAISE', 'Petit fruit rouge souvent associé à la crème.'],
+                ['PARAPLUIE', 'On l’ouvre quand il pleut pour rester au sec.'],
+                ['DAUPHIN', 'Mammifère marin intelligent qui nage et bondit.'],
+                ['CRAYON', 'Objet en bois qui sert à écrire ou dessiner.'],
+                ['ARCENCIEL', 'Arc coloré qui apparaît parfois après la pluie.'],
+                ['PANDA', 'Ours noir et blanc qui adore le bambou.'],
+                ['CARAMEL', 'Sucrerie dorée préparée avec du sucre fondu.'],
+                ['BIBLIOTHEQUE', 'Lieu où l’on emprunte des livres.'],
+                ['PASTÈQUE', 'Gros fruit vert à chair rouge et très juteuse.']
+            ],
+            moyen: [
+                ['VOLCAN', 'Montagne qui peut rejeter de la lave et des cendres.'],
+                ['Pyramide', 'Monument ancien à base carrée, célèbre en Égypte.'],
+                ['Mercure', 'Planète la plus proche du Soleil et nom d’un métal liquide.'],
+                ['Orchestre', 'Groupe de musiciens qui joue ensemble.'],
+                ['Astronaute', 'Personne entraînée pour voyager dans l’espace.'],
+                ['Caméléon', 'Lézard capable de changer de couleur.'],
+                ['Parfumerie', 'Boutique spécialisée dans les fragrances et les cosmétiques.'],
+                ['Télescope', 'Instrument qui permet d’observer les astres lointains.'],
+                ['Moustique', 'Petit insecte volant dont la femelle pique.'],
+                ['Émeraude', 'Pierre précieuse verte très recherchée.'],
+                ['Montgolfière', 'Ballon qui s’élève grâce à l’air chaud.'],
+                ['Parachute', 'Équipement qui ralentit une chute depuis le ciel.'],
+                ['Hippopotame', 'Grand mammifère qui passe beaucoup de temps dans l’eau.'],
+                ['Baleine', 'Géant des océans qui respire à la surface.'],
+                ['Photographie', 'Image capturée avec un appareil photo.'],
+                ['Météorite', 'Fragment venu de l’espace qui atteint le sol.'],
+                ['Chrysalide', 'Enveloppe dans laquelle une chenille se transforme.'],
+                ['Mangouste', 'Petit mammifère agile connu pour chasser les serpents.'],
+                ['Microscope', 'Instrument qui grossit les choses invisibles à l’œil nu.'],
+                ['Squelette', 'Ensemble des os qui soutiennent le corps.'],
+                ['Avalanche', 'Grande masse de neige qui dévale une pente.'],
+                ['Geyser', 'Source qui projette périodiquement de l’eau chaude.'],
+                ['Mangrove', 'Forêt côtière tropicale qui pousse dans l’eau salée.'],
+                ['Origami', 'Art japonais qui transforme le papier par pliage.'],
+                ['Carrousel', 'Manège circulaire avec des chevaux de bois.'],
+                ['Harmonica', 'Petit instrument à vent que l’on tient entre les mains.'],
+                ['Brouillard', 'Nuage près du sol qui réduit la visibilité.'],
+                ['Quotidien', 'Journal publié chaque jour.'],
+                ['Pamplemousse', 'Gros agrume acidulé souvent dégusté au petit-déjeuner.'],
+                ['Astéroïde', 'Petit corps rocheux qui tourne autour du Soleil.'],
+                ['Coccinelle', 'Petit coléoptère rouge reconnaissable à ses points noirs.'],
+                ['Éclipse', 'Phénomène où un astre en cache temporairement un autre.'],
+                ['Écureuil', 'Petit rongeur qui cache des noisettes pour l’hiver.']
+            ],
+            difficile: [
+                ['ARCHIPEL', 'Ensemble de plusieurs îles proches les unes des autres.'],
+                ['PHÉNIX', 'Oiseau légendaire qui renaît de ses cendres.'],
+                ['KILIMANDJARO', 'Plus haut sommet du continent africain.'],
+                ['CONSTELLATION', 'Groupe d’étoiles auquel on a donné un nom.'],
+                ['MÉTAMORPHOSE', 'Transformation importante, comme celle de la chenille.'],
+                ['BIODIVERSITÉ', 'Variété des êtres vivants dans un milieu donné.'],
+                ['DÉSOXYRIBONUCLÉIQUE', 'Adjectif désignant la molécule qui porte l’information génétique.'],
+                ['PARADOXE', 'Idée qui semble contradictoire mais invite à réfléchir.'],
+                ['ANTARCTIQUE', 'Continent glacé situé autour du pôle Sud.'],
+                ['HÉMISPHÈRE', 'Moitié de la Terre séparée par l’équateur ou un méridien.'],
+                ['SYMPHONIE', 'Œuvre musicale importante composée pour un orchestre.'],
+                ['ARCHÉOLOGIE', 'Étude des civilisations anciennes à partir de leurs vestiges.'],
+                ['PHOTOVOLTAÏQUE', 'Technologie qui transforme la lumière en électricité.'],
+                ['STALACTITE', 'Formation rocheuse qui pend au plafond d’une grotte.'],
+                ['MAGNÉTOSPHÈRE', 'Région autour d’une planète dominée par son champ magnétique.'],
+                ['THERMOMÈTRE', 'Instrument utilisé pour mesurer la température.'],
+                ['CHORÉGRAPHIE', 'Art de composer et d’organiser les mouvements d’une danse.'],
+                ['ÉCOSYSTÈME', 'Ensemble des êtres vivants et de leur environnement.'],
+                ['KANGOUROU', 'Marsupial australien qui se déplace par grands bonds.'],
+                ['CATHÉDRALE', 'Grande église, souvent remarquable par son architecture.'],
+                ['ASTRONOMIE', 'Science qui étudie les astres et l’Univers.'],
+                ['TÉLÉSCOPIQUE', 'Qui peut s’allonger ou se rétracter en plusieurs sections.'],
+                ['INVISIBLE', 'Que l’on ne peut pas percevoir avec les yeux.'],
+                ['LABORATOIRE', 'Lieu équipé pour mener des expériences scientifiques.'],
+                ['CHRONOMÈTRE', 'Instrument de précision qui mesure une durée.'],
+                ['VOLCANOLOGIE', 'Science consacrée aux volcans et à leurs phénomènes.'],
+                ['SÉMAPHORE', 'Système de signalisation visuelle avec des bras articulés.'],
+                ['ACOUSTIQUE', 'Science du son et de sa propagation.'],
+                ['ÉPHÉMÈRE', 'Qui ne dure que très peu de temps.'],
+                ['NÉBULEUSE', 'Nuage de gaz et de poussières dans l’espace.'],
+                ['PÉNINSULE', 'Étendue de terre entourée d’eau sur presque tous ses côtés.'],
+                ['RHINOCÉROS', 'Grand mammifère à peau épaisse portant une ou deux cornes.'],
+                ['TURQUOISE', 'Pierre ornementale d’un bleu tirant sur le vert.']
+            ]
+        };
+
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const parts = [...document.querySelectorAll('[data-part]')];
+        const keyboard = document.getElementById('keyboard');
+        const wordDisplay = document.getElementById('word');
+        const clueDisplay = document.getElementById('clue');
+        const feedback = document.getElementById('feedback');
+        const nextButton = document.getElementById('next-round');
+        const modeButtons = [...document.querySelectorAll('[data-mode]')];
+        const winnersPanel = document.getElementById('winners-panel');
+        const winnersRestoreButton = document.getElementById('winners-restore');
+        const winnersList = document.getElementById('winners-list');
+        const WINNERS_STORAGE_KEY = 'hangman-tiktok-winners';
+        const WINNERS_LAYOUT_KEY = 'hangman-tiktok-winners-layout';
+        const usedPuzzles = new Set();
+        let winnerHistory = loadWinnerHistory();
+        let winnerLayout = loadWinnerLayout();
+        let round = 0;
+        let mode = 'auto';
+        let puzzle = null;
+        let normalizedAnswer = '';
+        let guessed = new Set();
+        let mistakes = 0;
+        let solved = 0;
+        let pendingHints = 0;
+        let gameOver = true;
+        let socket = null;
+        let reconnectTimer = null;
+
+        function loadWinnerHistory() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(WINNERS_STORAGE_KEY) || '[]');
+                return Array.isArray(saved)
+                    ? saved.filter(entry =>
+                        entry && typeof entry.username === 'string' &&
+                        Number.isSafeInteger(entry.round) && entry.round > 0
+                    ).slice(0, 20)
+                    : [];
+            } catch (error) {
+                console.warn('Le classement des gagnants ne peut pas être chargé.', error);
+                return [];
+            }
+        }
+
+        function loadWinnerLayout() {
+            const defaults = { side: 'left', pinned: false, stowed: false, top: 92, x: null };
+            try {
+                const saved = JSON.parse(localStorage.getItem(WINNERS_LAYOUT_KEY) || '{}');
+                return {
+                    side: saved.side === 'right' ? 'right' : 'left',
+                    pinned: saved.pinned === true,
+                    stowed: saved.stowed === true,
+                    top: Number.isFinite(saved.top) ? saved.top : defaults.top,
+                    x: Number.isFinite(saved.x) ? saved.x : null
+                };
+            } catch (error) {
+                console.warn('La disposition du classement ne peut pas être chargée.', error);
+                return defaults;
+            }
+        }
+
+        function saveWinnerLayout() {
+            try {
+                localStorage.setItem(WINNERS_LAYOUT_KEY, JSON.stringify(winnerLayout));
+            } catch (error) {
+                console.warn('La disposition du classement ne peut pas être enregistrée.', error);
+            }
+        }
+
+        function applyWinnerLayout() {
+            winnersPanel.dataset.side = winnerLayout.side;
+            winnersRestoreButton.dataset.side = winnerLayout.side;
+            winnersPanel.style.top = `${winnerLayout.top}px`;
+            winnersRestoreButton.style.top = `${winnerLayout.top}px`;
+            if (winnerLayout.x === null) {
+                winnersPanel.style.left = '';
+                winnersPanel.style.right = '';
+                winnersRestoreButton.style.left = '';
+                winnersRestoreButton.style.right = '';
+            } else {
+                const maxLeft = Math.max(8, window.innerWidth - winnersPanel.offsetWidth - 8);
+                winnerLayout.x = Math.min(Math.max(8, winnerLayout.x), maxLeft);
+                winnersPanel.style.left = `${winnerLayout.x}px`;
+                winnersPanel.style.right = 'auto';
+                winnersRestoreButton.style.left = `${winnerLayout.x}px`;
+                winnersRestoreButton.style.right = 'auto';
+            }
+            document.getElementById('winners-pin').setAttribute(
+                'aria-pressed',
+                String(winnerLayout.pinned)
+            );
+            document.getElementById('winners-pin').title =
+                winnerLayout.pinned ? 'Désépingler pour déplacer' : 'Épingler le tableau';
+            winnersPanel.hidden = winnerLayout.stowed;
+            winnersRestoreButton.hidden = !winnerLayout.stowed;
+        }
+
+        function renderWinnerHistory() {
+            winnersList.replaceChildren();
+            document.getElementById('winners-empty').hidden = winnerHistory.length > 0;
+            winnerHistory.forEach((winner, index) => {
+                const row = document.createElement('tr');
+                const rank = document.createElement('td');
+                const username = document.createElement('td');
+                const wonRound = document.createElement('td');
+                rank.textContent = String(index + 1);
+                username.textContent = winner.username;
+                username.title = winner.username;
+                wonRound.textContent = String(winner.round);
+                row.append(rank, username, wonRound);
+                winnersList.append(row);
+            });
+        }
+
+        function recordWinner(username) {
+            winnerHistory.unshift({ username, round });
+            winnerHistory = winnerHistory.slice(0, 20);
+            try {
+                localStorage.setItem(WINNERS_STORAGE_KEY, JSON.stringify(winnerHistory));
+            } catch (error) {
+                console.warn('Le gagnant ne peut pas être enregistré sur cet appareil.', error);
+            }
+            renderWinnerHistory();
+        }
+
+        function normalize(value) {
+            return String(value).normalize('NFD').replace(/\p{Diacritic}/gu, '')
+                .toLocaleUpperCase('fr-FR').replace(/[^A-Z]/g, '');
+        }
+
+        function currentDifficulty() {
+            if (mode !== 'auto') return mode;
+            return round <= 34 ? 'facile' : round <= 67 ? 'moyen' : 'difficile';
+        }
+
+        function setFeedback(message, tone = '') {
+            feedback.textContent = message;
+            feedback.className = `feedback${tone ? ` ${tone}` : ''}`;
+        }
+
+        function renderWord() {
+            wordDisplay.replaceChildren();
+            if (!puzzle) return;
+            for (const character of puzzle.answer) {
+                const slot = document.createElement('span');
+                if (/\p{L}/u.test(character)) {
+                    slot.className = 'letter-slot';
+                    slot.textContent = guessed.has(normalize(character)) ? character : '';
+                    slot.setAttribute('aria-label', guessed.has(normalize(character)) ? character : 'lettre cachée');
+                } else if (/\s/u.test(character)) {
+                    slot.className = 'letter-slot space';
+                    slot.setAttribute('aria-hidden', 'true');
+                } else {
+                    slot.className = 'letter-slot punctuation';
+                    slot.textContent = character;
+                    slot.setAttribute('aria-hidden', 'true');
+                }
+                wordDisplay.append(slot);
+            }
+        }
+
+        function renderKeyboard() {
+            keyboard.replaceChildren();
+            for (const letter of alphabet) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'key';
+                button.textContent = letter;
+                button.disabled = !puzzle || gameOver || guessed.has(letter);
+                button.setAttribute('aria-label', `Proposer la lettre ${letter}`);
+                button.addEventListener('click', () => guess(letter));
+                keyboard.append(button);
+            }
+        }
+
+        function updateDisplay() {
+            document.getElementById('round-number').textContent = `${round} / 100`;
+            const difficulty = puzzle?.difficulty || (round ? currentDifficulty() : 'facile');
+            const names = { facile: 'Facile', moyen: 'Moyen', difficile: 'Difficile' };
+            document.getElementById('difficulty-badge').textContent =
+                mode === 'auto' ? `Progressif · ${names[difficulty]}` : names[difficulty];
+            document.getElementById('mistakes').textContent = `${mistakes} / 6`;
+            document.getElementById('solved').textContent = String(solved);
+            document.getElementById('rose-count').textContent = String(pendingHints);
+            parts.forEach((part, index) =>
+                part.classList.toggle('is-visible', index < mistakes));
+            document.querySelector('.stage svg').setAttribute(
+                'aria-label',
+                `Dessin du pendu : ${mistakes} erreur${mistakes > 1 ? 's' : ''} sur 6`
+            );
+            renderWord();
+            renderKeyboard();
+            modeButtons.forEach(button =>
+                button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+        }
+
+        function revealAnswer() {
+            for (const letter of normalizedAnswer) {
+                if (/[A-Z]/.test(letter)) guessed.add(letter);
+            }
+            renderWord();
+        }
+
+        function finishRound(won, winnerName = '') {
+            if (gameOver) return;
+            gameOver = true;
+            if (won) {
+                solved += 1;
+                recordWinner(winnerName || 'Joueur (clavier)');
+                setFeedback('Bravo, le chat a trouvé la réponse ! 🎉', 'good');
+            } else {
+                revealAnswer();
+                setFeedback(`Plus de tentatives ! La réponse était : ${puzzle.answer}.`, 'bad');
+            }
+            nextButton.disabled = round >= 100;
+            nextButton.textContent = round >= 100 ? 'Les 100 rounds sont terminés !' : 'Round suivant →';
+            updateDisplay();
+        }
+
+        function guess(rawValue, username = '') {
+            if (!puzzle || gameOver) return;
+            const value = normalize(rawValue);
+            if (!value) return;
+            const prefix = username ? `@${username} propose ` : '';
+            if (value.length === 1 && /^[A-Z]$/.test(value)) {
+                if (guessed.has(value)) {
+                    setFeedback(`${prefix}${value} — cette lettre a déjà été proposée.`);
+                    return;
+                }
+                guessed.add(value);
+                if (normalizedAnswer.includes(value)) {
+                    setFeedback(`${prefix}${value} : bonne lettre !`, 'good');
+                    if ([...normalizedAnswer].filter(letter => /[A-Z]/.test(letter))
+                        .every(letter => guessed.has(letter))) {
+                        finishRound(true, username || 'Joueur (clavier)');
+                    }
+                } else {
+                    mistakes += 1;
+                    setFeedback(`${prefix}${value} : raté !`, 'bad');
+                    if (mistakes >= 6) finishRound(false);
+                }
+                updateDisplay();
+                return;
+            }
+            if (value.length > 1) {
+                if (value === normalizedAnswer) {
+                    revealAnswer();
+                    finishRound(true, username || 'Joueur (clavier)');
+                } else {
+                    mistakes += 1;
+                    setFeedback(`${prefix}mauvaise réponse !`, 'bad');
+                    if (mistakes >= 6) finishRound(false);
+                    updateDisplay();
+                }
+            }
+        }
+
+        function useRoseHints() {
+            while (pendingHints > 0 && puzzle && !gameOver) {
+                const choices = [...new Set([...normalizedAnswer]
+                    .filter(letter => /^[A-Z]$/.test(letter) && !guessed.has(letter)))];
+                if (!choices.length) break;
+                const letter = choices[Math.floor(Math.random() * choices.length)];
+                guessed.add(letter);
+                pendingHints -= 1;
+                setFeedback(`🌹 Une rose révèle la lettre ${letter} !`, 'good');
+                if ([...normalizedAnswer].filter(character => /[A-Z]/.test(character))
+                    .every(character => guessed.has(character))) {
+                    finishRound(true, 'Le chat (indice rose)');
+                }
+            }
+            updateDisplay();
+        }
+
+        function startNextRound() {
+            if (round >= 100) return;
+            round += 1;
+            const difficulty = currentDifficulty();
+            let available = puzzles[difficulty]
+                .map((entry, index) => ({ entry, id: `${difficulty}-${index}` }))
+                .filter(item => !usedPuzzles.has(item.id));
+            if (!available.length) {
+                puzzles[difficulty].forEach((_, index) =>
+                    usedPuzzles.delete(`${difficulty}-${index}`));
+                available = puzzles[difficulty]
+                    .map((entry, index) => ({ entry, id: `${difficulty}-${index}` }));
+            }
+            const selected = available[Math.floor(Math.random() * available.length)];
+            usedPuzzles.add(selected.id);
+            puzzle = { answer: selected.entry[0], clue: selected.entry[1], difficulty };
+            normalizedAnswer = normalize(puzzle.answer);
+            guessed = new Set();
+            mistakes = 0;
+            gameOver = false;
+            clueDisplay.textContent = puzzle.clue;
+            setFeedback('À vous de jouer : choisissez une lettre ou répondez dans le chat.');
+            nextButton.disabled = true;
+            nextButton.textContent = round === 100 ? 'Dernier round en cours' : 'Manche en cours…';
+            updateDisplay();
+            useRoseHints();
+        }
+
+        function handleGift(gift = {}) {
+            const giftName = String(gift.giftName ?? gift.gift?.name ?? '')
+                .normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLocaleLowerCase('fr-FR');
+            if (giftName !== 'rose') return;
+            const count = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
+            pendingHints += count;
+            document.getElementById('notice').textContent =
+                `🌹 ${gift.nickname || gift.username || 'Le chat'} offre ${count} rose${count > 1 ? 's' : ''} : ${count} indice${count > 1 ? 's' : ''} !`;
+            useRoseHints();
+        }
+
+        function handleComment(data = {}) {
+            const comment = String(data.comment ?? data.text ?? '').trim();
+            const command = /^(?:!pendu\s+)?([\p{L}]+)$/iu.exec(comment);
+            if (!command) return;
+            guess(command[1], String(data.username ?? data.nickname ?? '').replace(/^@/, ''));
+        }
+
+        function setConnection(connected, message) {
+            document.getElementById('connection').classList.toggle('connected', connected);
+            document.getElementById('connection-label').textContent = message;
+        }
+
+        function connect() {
+            const url = document.getElementById('connector-url').value.trim();
+            if (!url) {
+                document.getElementById('notice').textContent = 'Saisissez une adresse WebSocket.';
+                return;
+            }
+            clearTimeout(reconnectTimer);
+            if (socket) {
+                socket.onclose = null;
+                socket.close();
+            }
+            try {
+                socket = new WebSocket(url);
+            } catch (error) {
+                setConnection(false, 'Adresse WebSocket invalide');
+                document.getElementById('notice').textContent = error.message;
+                return;
+            }
+            const activeSocket = socket;
+            setConnection(false, 'Connexion au connecteur…');
+            activeSocket.addEventListener('open', () => {
+                setConnection(true, 'Connecté au live');
+                document.getElementById('notice').textContent =
+                    'Les commentaires et les roses du live sont activés.';
+            });
+            activeSocket.addEventListener('message', event => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+                        handleGift(data.gift ?? data);
+                    } else if (data.type === 'comment' || data.type === 'tiktok-comment') {
+                        handleComment(data.commentData ?? data);
+                    }
+                } catch (error) {
+                    console.error('Message du connecteur TikTok invalide :', error);
+                }
+            });
+            activeSocket.addEventListener('error', () =>
+                setConnection(false, 'Connexion impossible'));
+            activeSocket.addEventListener('close', () => {
+                if (socket !== activeSocket) return;
+                setConnection(false, 'Reconnexion au connecteur…');
+                reconnectTimer = setTimeout(connect, 3000);
+            });
+        }
+
+        modeButtons.forEach(button => button.addEventListener('click', () => {
+            mode = button.dataset.mode;
+            updateDisplay();
+            const names = { auto: 'progressif', facile: 'facile', moyen: 'moyen', difficile: 'difficile' };
+            document.getElementById('notice').textContent =
+                `Mode ${names[mode]} sélectionné pour le prochain round.`;
+        }));
+        document.getElementById('winners-left').addEventListener('click', () => {
+            winnerLayout.side = 'left';
+            winnerLayout.x = null;
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+        document.getElementById('winners-right').addEventListener('click', () => {
+            winnerLayout.side = 'right';
+            winnerLayout.x = null;
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+        document.getElementById('winners-pin').addEventListener('click', () => {
+            winnerLayout.pinned = !winnerLayout.pinned;
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+        document.getElementById('winners-stow').addEventListener('click', () => {
+            winnerLayout.stowed = true;
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+        winnersRestoreButton.addEventListener('click', () => {
+            winnerLayout.stowed = false;
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+
+        const winnersDragHandle = document.getElementById('winners-drag-handle');
+        let dragState = null;
+        winnersDragHandle.addEventListener('pointerdown', event => {
+            if (winnerLayout.pinned || event.target.closest('button')) return;
+            const rect = winnersPanel.getBoundingClientRect();
+            dragState = {
+                pointerId: event.pointerId,
+                offsetX: event.clientX - rect.left,
+                offsetY: event.clientY - rect.top
+            };
+            winnersDragHandle.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+        winnersDragHandle.addEventListener('pointermove', event => {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            const maxLeft = Math.max(8, window.innerWidth - winnersPanel.offsetWidth - 8);
+            const maxTop = Math.max(8, window.innerHeight - winnersDragHandle.offsetHeight - 8);
+            winnerLayout.x = Math.min(
+                Math.max(8, event.clientX - dragState.offsetX),
+                maxLeft
+            );
+            winnerLayout.top = Math.min(
+                Math.max(8, event.clientY - dragState.offsetY),
+                maxTop
+            );
+            applyWinnerLayout();
+        });
+        const finishWinnerDrag = event => {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            dragState = null;
+            saveWinnerLayout();
+        };
+        winnersDragHandle.addEventListener('pointerup', finishWinnerDrag);
+        winnersDragHandle.addEventListener('pointercancel', finishWinnerDrag);
+        window.addEventListener('resize', () => {
+            applyWinnerLayout();
+            saveWinnerLayout();
+        });
+        nextButton.addEventListener('click', startNextRound);
+        document.getElementById('connect-button').addEventListener('click', connect);
+        document.addEventListener('keydown', event => {
+            if (event.altKey || event.ctrlKey || event.metaKey || event.target instanceof HTMLInputElement) return;
+            if (/^[a-z]$/i.test(event.key)) guess(event.key);
+        });
+
+        renderWinnerHistory();
+        applyWinnerLayout();
+        updateDisplay();
+        connect();
+    </script>
+</body>
+</html>
