@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101526">
+    <title>Les Coffres du Live — TikTok</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: #f8fafc;
+            background: #101526;
+            font-synthesis: none;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px;
+            background:
+                radial-gradient(ellipse at 48% 0%, rgba(234, 160, 50, .18), transparent 44%),
+                radial-gradient(ellipse at 92% 88%, rgba(34, 211, 238, .12), transparent 36%),
+                #101526;
+            background-size: cover;
+            background-attachment: fixed;
+        }
+        body::before {
+            position: fixed;
+            z-index: -1;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,.4) .7px, transparent .7px);
+            background-size: 34px 34px;
+            content: "";
+            opacity: .16;
+            pointer-events: none;
+        }
+        body.has-custom-background { background-color: #101526; }
+        button, input, select { font: inherit; }
+        button { color: inherit; }
+        .app { width: min(1180px, 100%); margin: 0 auto; }
+        .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+        .brand { display: flex; align-items: center; gap: 13px; }
+        .brand-icon {
+            display: grid;
+            width: 50px;
+            height: 50px;
+            place-items: center;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 15px;
+            background: linear-gradient(140deg, #fbbf24, #c2410c);
+            box-shadow: 0 8px 28px rgba(245,158,11,.25);
+            font-size: 26px;
+        }
+        h1 { margin: 0; font-size: clamp(22px, 4vw, 32px); letter-spacing: -.04em; }
+        .subtitle { margin: 4px 0 0; color: #aeb5c8; font-size: 13px; }
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 13px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 999px;
+            background: rgba(255,255,255,.05);
+            color: #c9cfdd;
+            font-size: 12px;
+        }
+        .connection-dot { width: 9px; height: 9px; border-radius: 50%; background: #f87171; }
+        .connection.connected .connection-dot { background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+        .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(285px, .75fr); gap: 18px; }
+        .card {
+            border: 1px solid rgba(255,255,255,.11);
+            border-radius: 21px;
+            background: linear-gradient(145deg, rgba(31,38,58,.95), rgba(21,27,44,.96));
+            box-shadow: 0 22px 60px rgba(0,0,0,.25), inset 0 1px rgba(255,255,255,.035);
+        }
+        .arena { padding: clamp(16px, 3vw, 26px); }
+        .arena-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .arena-heading h2 { margin: 0; font-size: 16px; }
+        .active-indicator { color: #fcd34d; font-size: 12px; font-weight: 800; }
+        .chests {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: stretch;
+            gap: 11px;
+            margin-top: 18px;
+        }
+        .chest {
+            position: relative;
+            display: flex;
+            min-width: 0;
+            min-height: 276px;
+            flex-direction: column;
+            align-items: center;
+            padding: 13px 10px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.11);
+            border-radius: 17px;
+            background: rgba(5,10,23,.4);
+            color: #eef1f7;
+            text-align: center;
+            transition: transform .15s, border-color .18s, background .18s, box-shadow .18s;
+        }
+        .chest.is-selected {
+            border-color: #fbbf24;
+            background: linear-gradient(180deg, rgba(180,111,20,.2), rgba(9,15,28,.7));
+            box-shadow: 0 0 0 1px rgba(251,191,36,.28), 0 9px 28px rgba(180,111,20,.17);
+        }
+        button:focus-visible, input:focus-visible {
+            outline: 3px solid #67e8f9;
+            outline-offset: 2px;
+        }
+        .chest-number { align-self: flex-start; color: #9ba6bb; font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+        .chest-art {
+            display: grid;
+            width: 104px;
+            height: 105px;
+            flex: 0 0 auto;
+            place-items: center;
+            color: #fbbf24;
+            font-size: 70px;
+            filter: drop-shadow(0 12px 13px rgba(0,0,0,.35));
+            transition: filter .2s;
+        }
+        .chest[aria-pressed="true"] .chest-art { filter: drop-shadow(0 0 16px rgba(251,191,36,.42)); }
+        .chest.is-danger .chest-art {
+            filter: sepia(.7) saturate(4) hue-rotate(305deg) drop-shadow(0 0 16px rgba(255,35,60,.75));
+            animation: chest-heartbeat var(--beat-duration, .9s) ease-in-out infinite;
+        }
+        .chest.is-danger[aria-pressed="true"] .chest-art {
+            filter: sepia(.75) saturate(4.5) hue-rotate(305deg) drop-shadow(0 0 20px rgba(255,35,60,.9));
+        }
+        .chest.is-hit .chest-art { animation: chest-strike .34s ease-out; }
+        .chest.is-broken .chest-art { filter: grayscale(.85) brightness(.7); }
+        .chest-name { margin: 2px 0 4px; font-size: 15px; font-weight: 900; }
+        .chest-prize { margin: 0; color: #fcd34d; font-size: 12px; font-weight: 800; }
+        .arena-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+        .progress-copy { margin: 0; color: #aeb5c8; font-size: 12px; }
+        .progress-copy strong { color: #fff; }
+        .test-hit { flex: 0 0 auto; }
+        .status-message { min-height: 20px; margin: 12px 0 0; color: #cbd5e1; font-size: 12px; text-align: center; }
+        .sidebar { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+        .side-section + .side-section { padding-top: 14px; border-top: 1px solid rgba(255,255,255,.09); }
+        .section-title { margin: 0 0 10px; color: #aeb5c8; font-size: 10px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+        .controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+        .control {
+            display: flex;
+            min-width: 0;
+            min-height: 39px;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 9px;
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 10px;
+            background: rgba(255,255,255,.055);
+            color: #e4e8f0;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 750;
+        }
+        .control:hover { background: rgba(255,255,255,.1); }
+        .control.primary { border-color: rgba(251,191,36,.35); background: rgba(161,98,7,.2); color: #fde68a; }
+        .control.danger { border-color: rgba(248,113,113,.25); color: #fca5a5; }
+        .full { grid-column: 1 / -1; }
+        .setting-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; margin-top: 12px; color: #c1c8d5; font-size: 11px; }
+        .setting-row input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: #fbbf24; }
+        .setting-value { color: #fcd34d; font-weight: 850; }
+        .setting-help { margin: 5px 0 0; color: #7f899e; font-size: 10px; line-height: 1.5; }
+        .background-presets { display: flex; gap: 8px; }
+        .swatch { width: 30px; height: 30px; padding: 0; border: 2px solid rgba(255,255,255,.25); border-radius: 50%; cursor: pointer; }
+        .swatch[data-color="night"] { background: linear-gradient(135deg,#101526,#373163); }
+        .swatch[data-color="forest"] { background: linear-gradient(135deg,#10261e,#1d6654); }
+        .swatch[data-color="sunset"] { background: linear-gradient(135deg,#27152a,#9c3d37); }
+        .swatch[data-color="ocean"] { background: linear-gradient(135deg,#101d38,#12617a); }
+        .status-line { min-height: 18px; margin: 9px 0 0; color: #9da8bb; font-size: 10px; }
+        .chat-tip { margin: 0; color: #939cb0; font-size: 11px; line-height: 1.55; }
+        .chat-tip strong { color: #e2e8f0; }
+        .connection-settings { display: flex; gap: 7px; }
+        .connection-settings input { min-width: 0; flex: 1; padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: rgba(0,0,0,.2); color: #edf0f7; font-size: 11px; }
+        .reward-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+        .reward-field { display: grid; gap: 4px; color: #aeb5c8; font-size: 10px; }
+        .reward-field input { width: 100%; min-width: 0; padding: 7px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: rgba(0,0,0,.2); color: #edf0f7; font-size: 11px; }
+        .leaderboard {
+            position: fixed;
+            z-index: 10;
+            top: 100px;
+            left: 16px;
+            width: min(290px, calc(100vw - 32px));
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.16);
+            border-radius: 14px;
+            background: rgba(20,27,44,.97);
+            box-shadow: 0 16px 42px rgba(0,0,0,.4);
+            backdrop-filter: blur(12px);
+        }
+        .leaderboard-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 9px 10px;
+            border-bottom: 1px solid rgba(255,255,255,.1);
+            background: rgba(255,255,255,.04);
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        .leaderboard-header:active { cursor: grabbing; }
+        .leaderboard-title { margin: 0; color: #fcd34d; font-size: 12px; font-weight: 850; white-space: nowrap; }
+        .leaderboard-controls { display: flex; gap: 4px; }
+        .leaderboard-controls button, .leaderboard-restore {
+            display: grid;
+            min-width: 28px;
+            min-height: 28px;
+            place-items: center;
+            padding: 4px 6px;
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 8px;
+            background: rgba(255,255,255,.07);
+            color: #edf0f7;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .leaderboard-controls button[aria-pressed="true"] { border-color: #facc15; background: rgba(250,204,21,.17); }
+        .leaderboard-body { max-height: 260px; overflow: auto; padding: 8px 10px 10px; }
+        .leaderboard-table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }
+        .leaderboard-table th { padding: 5px 4px 7px; color: #939cb0; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+        .leaderboard-table td { max-width: 140px; overflow: hidden; padding: 7px 4px; border-top: 1px solid rgba(255,255,255,.07); color: #e8eaf0; text-overflow: ellipsis; white-space: nowrap; }
+        .leaderboard-table td:first-child, .leaderboard-table td:last-child { color: #fde68a; }
+        .leaderboard-empty { margin: 2px 0; color: #9da8bb; font-size: 10px; line-height: 1.5; }
+        .leaderboard.is-stowed .leaderboard-body { display: none; }
+        .leaderboard.is-stowed .leaderboard-header { border-bottom: 0; }
+        .leaderboard-restore {
+            position: fixed;
+            z-index: 10;
+            top: 100px;
+            left: 16px;
+            min-height: 36px;
+            padding: 6px 10px;
+            border-color: #facc15;
+            background: #202942;
+            box-shadow: 0 10px 28px rgba(0,0,0,.35);
+        }
+        .leaderboard-restore[hidden] { display: none; }
+        .leaderboard[data-edge="right"] { right: 16px; left: auto; }
+        .leaderboard-restore[data-edge="right"] { right: 16px; left: auto; }
+        .banner {
+            position: fixed;
+            z-index: 15;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            overflow: hidden;
+            background: rgba(8,12,25,.6);
+            backdrop-filter: blur(3px);
+        }
+        .banner[hidden] { display: none; }
+        .banner-card { position: relative; z-index: 2; width: min(700px, 96vw); padding: 26px 22px; border: 2px solid #fcd34d; border-radius: 25px; background: linear-gradient(145deg, rgba(41,29,43,.97), rgba(18,28,42,.97)); box-shadow: 0 0 40px rgba(251,191,36,.3); text-align: center; animation: banner-in .32s ease-out; }
+        .banner-kicker { margin: 0 0 8px; color: #fcd34d; font-size: clamp(13px,3vw,19px); font-weight: 900; letter-spacing: .15em; }
+        .banner-winner { max-width: 100%; margin: 0 auto 10px; overflow-wrap: anywhere; color: white; font-size: clamp(32px,8vw,68px); font-weight: 1000; line-height: 1.04; text-shadow: 0 0 25px rgba(251,191,36,.6); }
+        .banner-prize { margin: 0; color: #fde68a; font-size: clamp(18px,4vw,28px); font-weight: 850; }
+        .balance-banner { position: fixed; z-index: 12; top: 18px; left: 50%; width: min(560px, calc(100vw - 30px)); padding: 15px 20px; border: 1px solid rgba(250,204,21,.55); border-radius: 15px; background: rgba(20,27,44,.96); box-shadow: 0 12px 40px rgba(0,0,0,.45), 0 0 25px rgba(250,204,21,.16); color: #fef3c7; font-size: clamp(16px,3vw,23px); font-weight: 900; text-align: center; transform: translateX(-50%); }
+        .balance-banner[hidden] { display: none; }
+        .confetti-layer { position: absolute; inset: -20px 0; overflow: hidden; pointer-events: none; }
+        .confetti { position: absolute; top: -25px; width: 9px; height: 15px; border-radius: 2px; animation: fall var(--duration) linear var(--delay) forwards; }
+        @keyframes fall { to { transform: translate3d(var(--drift), 112vh, 0) rotate(860deg); } }
+        @keyframes banner-in { from { opacity: 0; transform: translateY(12px) scale(.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes chest-heartbeat {
+            0%, 100% { transform: scale(1); }
+            13% { transform: scale(var(--beat-scale, 1.14)); }
+            25% { transform: scale(1); }
+            38% { transform: scale(var(--beat-scale, 1.14)); }
+            53% { transform: scale(1); }
+        }
+        @keyframes chest-strike {
+            0%, 100% { transform: scale(1); }
+            35% { transform: scale(1.24) rotate(-4deg); }
+            70% { transform: scale(.92) rotate(3deg); }
+        }
+        @keyframes chest-hit {
+            0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+            30% { box-shadow: 0 0 30px rgba(255,255,255,.45), inset 0 0 18px rgba(255,255,255,.14); }
+        }
+        @keyframes warning-flash {
+            from { border-color: #fb334b; box-shadow: 0 0 8px rgba(251,51,75,.25); }
+            to { border-color: #ffb7c1; box-shadow: 0 0 35px rgba(255,35,60,.85), inset 0 0 22px rgba(255,35,60,.3); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+        }
+        .hidden-input { display: none; }
+        .footer { margin: 15px 0 0; color: #717b90; font-size: 10px; text-align: center; }
+        @media (max-width: 800px) {
+            body { padding: 16px; }
+            .layout { grid-template-columns: 1fr; }
+            .sidebar { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+            .side-section { min-width: 0; }
+            .arena { min-height: 420px; }
+        }
+        @media (max-width: 540px) {
+            body { padding: 11px; }
+            .topbar { align-items: flex-start; }
+            .brand-icon { width: 42px; height: 42px; font-size: 22px; }
+            .connection { padding: 8px; font-size: 0; }
+            .connection-dot { flex: 0 0 9px; }
+            .chests { gap: 6px; }
+            .chest { min-height: 238px; padding: 10px 6px; }
+            .chest-art { width: 74px; height: 82px; font-size: 55px; }
+            .chest-name { font-size: 12px; }
+            .chest-prize { min-height: 29px; font-size: 10px; }
+            .sidebar { padding: 14px; gap: 12px; }
+            .arena-footer { align-items: flex-start; flex-direction: column; }
+            .leaderboard { top: 76px; }
+            .leaderboard-body { max-height: 190px; }
+        }
+    </style>
+</head>
+<body>
+    <aside id="leaderboard" class="leaderboard" aria-label="Classement des étoiles TikTok"
+           data-edge="left">
+        <header id="leaderboard-drag-handle" class="leaderboard-header">
+            <h2 class="leaderboard-title">🏆 Classement des étoiles</h2>
+            <div class="leaderboard-controls" aria-label="Commandes du classement">
+                <button id="leaderboard-left" type="button" aria-label="Ancrer à gauche"
+                        title="À gauche">◀</button>
+                <button id="leaderboard-right" type="button" aria-label="Ancrer à droite"
+                        title="À droite">▶</button>
+                <button id="leaderboard-bottom" type="button" aria-label="Ancrer en bas"
+                        title="En bas">▼</button>
+                <button id="leaderboard-pin" type="button" aria-label="Épingler le classement"
+                        aria-pressed="false" title="Épingler">📌</button>
+                <button id="leaderboard-stow" type="button" aria-label="Ranger le classement"
+                        title="Ranger / afficher">🖊️</button>
+            </div>
+        </header>
+        <div class="leaderboard-body">
+            <table class="leaderboard-table">
+                <thead><tr><th>#</th><th>Pseudo TikTok</th><th>Étoiles</th></tr></thead>
+                <tbody id="leaderboard-list"></tbody>
+            </table>
+            <p id="leaderboard-empty" class="leaderboard-empty">Les soldes apparaîtront ici après les premières victoires.</p>
+        </div>
+    </aside>
+    <button id="leaderboard-restore" class="leaderboard-restore" type="button"
+            aria-label="Réafficher le classement" title="Afficher le classement" hidden>🖊️ Classement</button>
+
+    <main class="app">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon" aria-hidden="true">🗝️</div>
+                <div>
+                    <h1>Les Coffres du Live</h1>
+                    <p class="subtitle">Le chat casse le coffre et remporte des étoiles !</p>
+                </div>
+            </div>
+            <div id="connection" class="connection" role="status">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span id="connection-label">Connexion au connecteur…</span>
+            </div>
+        </header>
+
+        <div class="layout">
+            <section class="card arena" aria-label="Les trois coffres">
+                <div class="arena-heading">
+                    <h2>Choisissez le coffre à ouvrir</h2>
+                    <span id="active-indicator" class="active-indicator">Coffre actif : 1</span>
+                </div>
+                <div id="chests" class="chests"></div>
+                <div class="arena-footer">
+                    <p id="progress-copy" class="progress-copy">En attente de cadeaux…</p>
+                    <div class="controls-grid">
+                        <button id="test-hit" class="control primary test-hit" type="button">Test : frapper (-500)</button>
+                        <button id="reset-chest" class="control danger" type="button">Réinitialiser le coffre</button>
+                    </div>
+                </div>
+                <p id="game-status" class="status-message" role="status" aria-live="polite">
+                    Sélectionnez un coffre. Les cadeaux du live réduisent sa résistance.
+                </p>
+            </section>
+
+            <aside class="card sidebar" aria-label="Tableau de bord">
+                <section class="side-section">
+                    <h2 class="section-title">Réglages des coffres</h2>
+                    <label class="setting-row" for="resistance">
+                        <span>Résistance</span>
+                        <span id="resistance-value" class="setting-value">100 %</span>
+                        <input id="resistance" type="range" min="50" max="200" step="10" value="100">
+                    </label>
+                    <p class="setting-help">Plus la résistance est élevée, plus il faudra de cadeaux pour briser chaque coffre.</p>
+                    <label class="setting-row" for="zoom">
+                        <span>Zoom des coffres</span>
+                        <span id="zoom-value" class="setting-value">100 %</span>
+                        <input id="zoom" type="range" min="75" max="125" step="5" value="100">
+                    </label>
+                </section>
+
+                <section class="side-section">
+                    <h2 class="section-title">Arrière-plan</h2>
+                    <div class="background-presets" role="group" aria-label="Choisir un arrière-plan">
+                        <button class="swatch" type="button" data-color="night" aria-label="Fond nuit" title="Nuit"></button>
+                        <button class="swatch" type="button" data-color="forest" aria-label="Fond forêt" title="Forêt"></button>
+                        <button class="swatch" type="button" data-color="sunset" aria-label="Fond coucher de soleil" title="Coucher de soleil"></button>
+                        <button class="swatch" type="button" data-color="ocean" aria-label="Fond océan" title="Océan"></button>
+                    </div>
+                    <div class="controls-grid" style="margin-top:9px">
+                        <button id="background-upload" class="control" type="button">Importer une image</button>
+                        <button id="background-clear" class="control" type="button">Fond par défaut</button>
+                    </div>
+                    <input id="background-file" class="hidden-input" type="file" accept="image/*">
+                </section>
+
+                <section class="side-section">
+                    <h2 class="section-title">Données</h2>
+                    <div class="controls-grid">
+                        <button id="export-data" class="control primary" type="button">Exporter les données</button>
+                        <button id="import-data" class="control" type="button">Importer les données</button>
+                    </div>
+                    <input id="import-file" class="hidden-input" type="file" accept="application/json,.json">
+                    <p id="data-status" class="status-line" role="status" aria-live="polite"></p>
+                    <div id="health-overview" class="health-overview" aria-label="Santé des trois coffres">
+                        <h3 class="health-overview-title">Santé des coffres</h3>
+                    </div>
+                </section>
+
+                <section class="side-section">
+                    <h2 class="section-title">Connexion TikTok</h2>
+                    <div class="connection-settings">
+                        <input id="connector-url" type="url" aria-label="Adresse WebSocket"
+                               value="wss://jeu6boite.onrender.com">
+                        <button id="connect-button" class="control" type="button">Connecter</button>
+                    </div>
+                    <p class="status-line">Commentaires : <strong>étoile</strong> ou <strong>!etoile</strong> pour consulter son solde.</p>
+                    <p class="chat-tip"><strong>Récompenses en étoiles de jeu</strong> : coffre 1, 1 000 ; coffre 2, 5 000 ; coffre 3, 40 000. Ce sont des points virtuels, pas des pièces TikTok.</p>
+                </section>
+            </aside>
+        </div>
+        <p class="footer">Le cadeau qui porte le coup final gagne la récompense du coffre actif.</p>
+    </main>
+
+    <section id="winner-banner" class="banner" role="alert" aria-live="assertive" hidden>
+        <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
+        <div class="banner-card">
+            <p class="banner-kicker">🎉 COFFRE BRISÉ ! 🎉</p>
+            <p id="banner-winner" class="banner-winner"></p>
+            <p id="banner-prize" class="banner-prize"></p>
+        </div>
+    </section>
+    <div id="balance-banner" class="balance-banner" role="status" aria-live="polite" hidden></div>
+
+    <script>
+        'use strict';
+
+        const chestDefinitions = [
+            { id: 1, name: 'Coffre de bronze', health: 5000, reward: 1000, icon: '🧰' },
+            { id: 2, name: 'Coffre d’argent', health: 30000, reward: 5000, icon: '🗃️' },
+            { id: 3, name: 'Coffre légendaire', health: 100000, reward: 40000, icon: '🛡️' }
+        ];
+        const STATE_KEY = 'tiktok-chests-state-v1';
+        const CONFIG_KEY = 'tiktok-chests-config-v1';
+        const LEADERBOARD_LAYOUT_KEY = 'tiktok-chests-leaderboard-layout-v1';
+        const BACKGROUND_MAX_BYTES = 2 * 1024 * 1024;
+        const chestsElement = document.getElementById('chests');
+        const gameStatus = document.getElementById('game-status');
+        const banner = document.getElementById('winner-banner');
+        const leaderboard = document.getElementById('leaderboard');
+        const leaderboardRestore = document.getElementById('leaderboard-restore');
+        const backgroundThemes = {
+            night: 'radial-gradient(ellipse at 48% 0%, rgba(234,160,50,.18), transparent 44%), radial-gradient(ellipse at 92% 88%, rgba(34,211,238,.12), transparent 36%), #101526',
+            forest: 'radial-gradient(ellipse at 48% 0%, rgba(52,211,153,.24), transparent 44%), radial-gradient(ellipse at 92% 88%, rgba(132,204,22,.12), transparent 36%), #10261e',
+            sunset: 'radial-gradient(ellipse at 48% 0%, rgba(251,146,60,.25), transparent 44%), radial-gradient(ellipse at 92% 88%, rgba(244,63,94,.16), transparent 36%), #27152a',
+            ocean: 'radial-gradient(ellipse at 48% 0%, rgba(56,189,248,.24), transparent 44%), radial-gradient(ellipse at 92% 88%, rgba(34,211,238,.16), transparent 36%), #101d38'
+        };
+
+        function loadJson(key, fallback) {
+            try {
+                const value = localStorage.getItem(key);
+                return value ? JSON.parse(value) : fallback;
+            } catch (error) {
+                console.warn(`Impossible de lire ${key}.`, error);
+                return fallback;
+            }
+        }
+
+        function newState() {
+            return {
+                activeChest: 1,
+                damage: { 1: 0, 2: 0, 3: 0 },
+                balances: {},
+                winners: [],
+                resistance: 100,
+                zoom: 100,
+                theme: 'night',
+                backgroundImage: ''
+            };
+        }
+
+        function validateState(value) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                throw new Error('Le fichier ne contient pas un état de jeu valide.');
+            }
+            const state = newState();
+            state.activeChest = chestDefinitions.some(chest => chest.id === Number(value.activeChest))
+                ? Number(value.activeChest)
+                : 1;
+            for (const chest of chestDefinitions) {
+                const damage = Number(value.damage?.[chest.id]);
+                state.damage[chest.id] = Number.isFinite(damage)
+                    ? Math.min(chest.health * 2, Math.max(0, Math.floor(damage)))
+                    : 0;
+            }
+            if (value.balances && typeof value.balances === 'object' && !Array.isArray(value.balances)) {
+                for (const [name, balance] of Object.entries(value.balances)) {
+                    const amount = Number(balance);
+                    if (name.trim() && Number.isSafeInteger(amount) && amount >= 0) {
+                        state.balances[name] = amount;
+                    }
+                }
+            }
+            if (Array.isArray(value.winners)) {
+                state.winners = value.winners
+                    .filter(entry => entry && typeof entry.username === 'string' &&
+                        Number.isSafeInteger(entry.reward) && entry.reward >= 0 &&
+                        Number.isSafeInteger(entry.chest) && Number.isInteger(entry.chest) &&
+                        typeof entry.wonAt === 'string' && Number.isFinite(Date.parse(entry.wonAt)))
+                    .slice(0, 100);
+            }
+            const resistance = Number(value.resistance);
+            if (Number.isFinite(resistance)) {
+                state.resistance = Math.min(200, Math.max(50, resistance));
+            }
+            const zoom = Number(value.zoom);
+            if (Number.isFinite(zoom)) state.zoom = Math.min(125, Math.max(75, zoom));
+            if (typeof value.theme === 'string' && Object.hasOwn(backgroundThemes, value.theme)) {
+                state.theme = value.theme;
+            }
+            if (typeof value.backgroundImage === 'string' &&
+                /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(value.backgroundImage) &&
+                value.backgroundImage.length <= BACKGROUND_MAX_BYTES * 1.5) {
+                state.backgroundImage = value.backgroundImage;
+            }
+            return state;
+        }
+
+        let state = validateState(loadJson(STATE_KEY, newState()));
+        let socket = null;
+        let reconnectTimer = null;
+        let bannerTimer = null;
+        let balanceBannerTimer = null;
+        let leaderboardLayout = loadLeaderboardLayout();
+        let leaderboardDrag = null;
+        const warningUntil = new Map();
+        const warningTimers = new Map();
+        const hitTimers = new Map();
+        const processedGifts = new Set();
+        const damageMilestones = [0.5, 0.6, 0.7, 0.8, 0.9];
+
+        function loadLeaderboardLayout() {
+            const defaults = { edge: 'left', pinned: false, stowed: false, x: null, y: null };
+            const saved = loadJson(LEADERBOARD_LAYOUT_KEY, defaults);
+            return {
+                edge: ['left', 'right', 'bottom', 'free'].includes(saved?.edge)
+                    ? saved.edge
+                    : 'left',
+                pinned: saved?.pinned === true,
+                stowed: saved?.stowed === true,
+                x: Number.isFinite(saved?.x) ? saved.x : null,
+                y: Number.isFinite(saved?.y) ? saved.y : null
+            };
+        }
+
+        function saveLeaderboardLayout() {
+            try {
+                localStorage.setItem(LEADERBOARD_LAYOUT_KEY, JSON.stringify(leaderboardLayout));
+            } catch (error) {
+                console.warn('La position du classement ne peut pas être enregistrée.', error);
+            }
+        }
+
+        function applyLeaderboardLayout() {
+            leaderboard.dataset.edge = leaderboardLayout.edge === 'right' ? 'right' : 'left';
+            leaderboardRestore.dataset.edge =
+                leaderboardLayout.edge === 'right' ? 'right' : 'left';
+            leaderboard.style.transform = 'none';
+            leaderboardRestore.style.transform = 'none';
+            leaderboard.style.top = '';
+            leaderboard.style.bottom = '';
+            leaderboard.style.left = '';
+            leaderboard.style.right = '';
+            leaderboardRestore.style.top = '';
+            leaderboardRestore.style.bottom = '';
+            leaderboardRestore.style.left = '';
+            leaderboardRestore.style.right = '';
+
+            if (leaderboardLayout.edge === 'bottom') {
+                leaderboard.style.top = 'auto';
+                leaderboard.style.bottom = '16px';
+                leaderboard.style.left = '50%';
+                leaderboard.style.right = 'auto';
+                leaderboard.style.transform = 'translateX(-50%)';
+                leaderboardRestore.style.top = 'auto';
+                leaderboardRestore.style.bottom = '16px';
+                leaderboardRestore.style.left = '50%';
+                leaderboardRestore.style.right = 'auto';
+                leaderboardRestore.style.transform = 'translateX(-50%)';
+            } else if (leaderboardLayout.edge === 'free' &&
+                       Number.isFinite(leaderboardLayout.x) &&
+                       Number.isFinite(leaderboardLayout.y)) {
+                const maxLeft = Math.max(8, window.innerWidth - leaderboard.offsetWidth - 8);
+                const maxTop = Math.max(8, window.innerHeight - 50);
+                leaderboardLayout.x = Math.min(Math.max(8, leaderboardLayout.x), maxLeft);
+                leaderboardLayout.y = Math.min(Math.max(8, leaderboardLayout.y), maxTop);
+                leaderboard.style.left = `${leaderboardLayout.x}px`;
+                leaderboard.style.right = 'auto';
+                leaderboard.style.top = `${leaderboardLayout.y}px`;
+                leaderboardRestore.style.left = `${leaderboardLayout.x}px`;
+                leaderboardRestore.style.right = 'auto';
+                leaderboardRestore.style.top = `${leaderboardLayout.y}px`;
+            } else if (leaderboardLayout.edge === 'free') {
+                leaderboardLayout.edge = 'left';
+            }
+
+            document.getElementById('leaderboard-pin').setAttribute(
+                'aria-pressed',
+                String(leaderboardLayout.pinned)
+            );
+            document.getElementById('leaderboard-pin').title =
+                leaderboardLayout.pinned ? 'Désépingler pour déplacer' : 'Épingler le classement';
+            leaderboard.hidden = leaderboardLayout.stowed;
+            leaderboardRestore.hidden = !leaderboardLayout.stowed;
+            leaderboard.classList.toggle('is-stowed', leaderboardLayout.stowed);
+        }
+
+        function renderLeaderboard() {
+            const displayNames = new Map();
+            const winCounts = new Map();
+            for (const entry of state.winners) {
+                const key = normalizeName(entry.username);
+                if (!displayNames.has(key)) displayNames.set(key, entry.username);
+                winCounts.set(key, (winCounts.get(key) || 0) + 1);
+            }
+
+            const entries = Object.entries(state.balances)
+                .filter(([, balance]) => Number.isSafeInteger(balance) && balance > 0)
+                .map(([key, balance]) => ({
+                    key,
+                    balance,
+                    username: displayNames.get(key) || key
+                }))
+                .sort((first, second) =>
+                    second.balance - first.balance ||
+                    first.username.localeCompare(second.username, 'fr')
+                )
+                .slice(0, 20);
+            const list = document.getElementById('leaderboard-list');
+            list.replaceChildren();
+            document.getElementById('leaderboard-empty').hidden = entries.length > 0;
+            entries.forEach((entry, index) => {
+                const row = document.createElement('tr');
+                const rank = document.createElement('td');
+                const username = document.createElement('td');
+                const score = document.createElement('td');
+                rank.textContent = String(index + 1);
+                username.textContent = entry.username;
+                username.title = `${entry.username} · ${winCounts.get(entry.key) || 0} victoire(s)`;
+                score.textContent = `${entry.balance.toLocaleString('fr-FR')} ⭐`;
+                row.append(rank, username, score);
+                list.append(row);
+            });
+        }
+
+        function renderHealthOverview() {
+            const overview = document.getElementById('health-overview');
+            overview.replaceChildren();
+            const heading = document.createElement('h3');
+            heading.className = 'health-overview-title';
+            heading.textContent = 'Santé des coffres';
+            overview.append(heading);
+
+            for (const chest of chestDefinitions) {
+                const threshold = chestThreshold(chest);
+                const remaining = Math.max(0, threshold - Math.min(state.damage[chest.id], threshold));
+                const ratio = threshold ? remaining / threshold : 0;
+                const row = document.createElement('div');
+                row.className = 'health-row';
+                row.classList.toggle('is-targeted', chest.id === state.activeChest);
+                const label = document.createElement('span');
+                label.textContent = `Coffre ${chest.id}${chest.id === state.activeChest ? ' · visé' : ''}`;
+                const meter = document.createElement('span');
+                meter.className = 'health-meter';
+                meter.setAttribute('role', 'progressbar');
+                meter.setAttribute('aria-label', `Santé du coffre ${chest.id}`);
+                meter.setAttribute('aria-valuemin', '0');
+                meter.setAttribute('aria-valuemax', String(threshold));
+                meter.setAttribute('aria-valuenow', String(remaining));
+                const fill = document.createElement('span');
+                fill.className = 'health-meter-fill';
+                fill.style.width = `${ratio * 100}%`;
+                meter.append(fill);
+                const value = document.createElement('span');
+                value.className = 'health-value';
+                value.textContent = `${Math.round(ratio * 100)} %`;
+                row.append(label, meter, value);
+                overview.append(row);
+            }
+        }
+
+        function moveLeaderboard(edge) {
+            leaderboardLayout.edge = edge;
+            leaderboardLayout.x = null;
+            leaderboardLayout.y = null;
+            applyLeaderboardLayout();
+            saveLeaderboardLayout();
+        }
+
+        function persistState() {
+            try {
+                localStorage.setItem(STATE_KEY, JSON.stringify(state));
+            } catch (error) {
+                document.getElementById('data-status').textContent =
+                    'Sauvegarde impossible : exportez vos données avant de continuer.';
+                console.error('Échec de sauvegarde de l’état des coffres.', error);
+            }
+        }
+
+        function persistConfig() {
+            try {
+                localStorage.setItem(CONFIG_KEY, JSON.stringify({
+                    resistance: state.resistance,
+                    zoom: state.zoom,
+                    theme: state.theme
+                }));
+            } catch (error) {
+                console.warn('Les réglages visuels ne peuvent pas être sauvegardés.', error);
+            }
+        }
+
+        function chestThreshold(chest) {
+            return Math.round(chest.health * state.resistance / 100);
+        }
+
+        function renderChests() {
+            chestsElement.replaceChildren();
+            for (const chest of chestDefinitions) {
+                const threshold = chestThreshold(chest);
+                const damage = Math.min(state.damage[chest.id], threshold);
+                const damageRatio = threshold ? damage / threshold : 0;
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'chest';
+                button.dataset.chestId = String(chest.id);
+                button.setAttribute('aria-pressed', String(state.activeChest === chest.id));
+                button.setAttribute('aria-label',
+                    `${chest.name}, récompense ${chest.reward.toLocaleString('fr-FR')} étoiles${state.activeChest === chest.id ? ', coffre actif' : ''}`);
+                if (damage >= threshold) button.classList.add('is-broken');
+                const milestone = damageMilestones.filter(level => damageRatio >= level).length;
+                if (milestone > 0 && damage < threshold) {
+                    const beatDurations = ['.95s', '.85s', '.75s', '.65s', '.52s'];
+                    const beatScales = ['1.11', '1.14', '1.18', '1.23', '1.3'];
+                    button.classList.add('is-danger', `heartbeat-level-${milestone}`);
+                    button.style.setProperty('--beat-duration', beatDurations[milestone - 1]);
+                    button.style.setProperty('--beat-scale', beatScales[milestone - 1]);
+                }
+                if ((warningUntil.get(chest.id) || 0) > Date.now()) {
+                    button.classList.add('is-warning-flash');
+                }
+                button.style.zoom = String(state.zoom / 100);
+
+                const number = document.createElement('span');
+                number.className = 'chest-number';
+                number.textContent = `COFFRE ${chest.id}`;
+                const art = document.createElement('span');
+                art.className = 'chest-art';
+                art.setAttribute('aria-hidden', 'true');
+                art.textContent = chest.icon;
+                const name = document.createElement('span');
+                name.className = 'chest-name';
+                name.textContent = chest.name;
+                const prize = document.createElement('span');
+                prize.className = 'chest-prize';
+                prize.textContent = `⭐ ${chest.reward.toLocaleString('fr-FR')} étoiles`;
+                button.append(number, art, name, prize);
+                button.addEventListener('click', () => selectChest(chest.id));
+                chestsElement.append(button);
+            }
+            document.getElementById('active-indicator').textContent =
+                `Coffre actif : ${state.activeChest}`;
+            const active = chestDefinitions.find(chest => chest.id === state.activeChest);
+            document.getElementById('progress-copy').textContent =
+                `Coffre ${active.id} prêt à recevoir des cadeaux · ${active.reward.toLocaleString('fr-FR')} étoiles à gagner`;
+            renderHealthOverview();
+        }
+
+        function saveState() {
+            persistState();
+            renderChests();
+            renderLeaderboard();
+        }
+
+        function selectChest(id) {
+            const definition = chestDefinitions.find(chest => chest.id === id);
+            if (!definition) return;
+            if (state.damage[id] >= chestThreshold(definition)) {
+                state.damage[id] = 0;
+                warningUntil.delete(id);
+                clearTimeout(warningTimers.get(id));
+                warningTimers.delete(id);
+                gameStatus.textContent = `${definition.name} réarmé. Les cadeaux contribuent maintenant à ce coffre.`;
+            } else {
+                gameStatus.textContent = `${definition.name} sélectionné : les prochains cadeaux le feront grandir et vibrer.`;
+            }
+            state.activeChest = id;
+            saveState();
+        }
+
+        function flashChest(chestId) {
+            warningUntil.set(chestId, Date.now() + 3000);
+            clearTimeout(warningTimers.get(chestId));
+            const chestElement = chestsElement.querySelector(`[data-chest-id="${chestId}"]`);
+            chestElement?.classList.add('is-warning-flash');
+            warningTimers.set(chestId, setTimeout(() => {
+                warningUntil.delete(chestId);
+                chestsElement.querySelector(`[data-chest-id="${chestId}"]`)
+                    ?.classList.remove('is-warning-flash');
+                warningTimers.delete(chestId);
+            }, 3000));
+        }
+
+        function animateHit(chestId) {
+            const chestElement = chestsElement.querySelector(`[data-chest-id="${chestId}"]`);
+            if (!chestElement) return;
+            chestElement.classList.remove('is-hit');
+            void chestElement.offsetWidth;
+            chestElement.classList.add('is-hit');
+            clearTimeout(hitTimers.get(chestId));
+            hitTimers.set(chestId, setTimeout(() => {
+                chestsElement.querySelector(`[data-chest-id="${chestId}"]`)
+                    ?.classList.remove('is-hit');
+                hitTimers.delete(chestId);
+            }, 400));
+        }
+
+        function showConfetti() {
+            const layer = document.getElementById('confetti-layer');
+            layer.replaceChildren();
+            const colors = ['#fbbf24', '#fb7185', '#34d399', '#60a5fa', '#c084fc', '#f97316', '#f8fafc'];
+            for (let index = 0; index < 110; index += 1) {
+                const piece = document.createElement('span');
+                piece.className = 'confetti';
+                piece.style.left = `${Math.random() * 100}%`;
+                piece.style.backgroundColor = colors[index % colors.length];
+                piece.style.setProperty('--duration', `${2.2 + Math.random() * 2.5}s`);
+                piece.style.setProperty('--delay', `${Math.random() * 1.2}s`);
+                piece.style.setProperty('--drift', `${Math.random() * 220 - 110}px`);
+                layer.append(piece);
+            }
+        }
+
+        function announceWinner(username, chest) {
+            document.getElementById('banner-winner').textContent = username;
+            document.getElementById('banner-prize').textContent =
+                `Coffre ${chest.id} · +${chest.reward.toLocaleString('fr-FR')} étoiles`;
+            banner.hidden = false;
+            showConfetti();
+            clearTimeout(bannerTimer);
+            bannerTimer = setTimeout(() => { banner.hidden = true; }, 8000);
+        }
+
+        function recordWinner(username, chest) {
+            const name = String(username || 'Spectateur').trim().replace(/^@/, '').slice(0, 64);
+            const key = name.toLocaleLowerCase('fr-FR');
+            state.balances[key] = (Number(state.balances[key]) || 0) + chest.reward;
+            state.winners.unshift({
+                username: name,
+                balance: state.balances[key],
+                chest: chest.id,
+                reward: chest.reward,
+                wonAt: new Date().toISOString()
+            });
+            state.winners = state.winners.slice(0, 100);
+            announceWinner(name, chest);
+            gameStatus.textContent =
+                `🏆 ${name} brise le coffre ${chest.id} et gagne ${chest.reward.toLocaleString('fr-FR')} étoiles !`;
+        }
+
+        function applyHit(count, username) {
+            if (!Number.isSafeInteger(count) || count < 1) {
+                console.warn('Frappe ignorée : nombre de pièces invalide.', count);
+                return false;
+            }
+            const chest = chestDefinitions.find(item => item.id === state.activeChest);
+            const threshold = chestThreshold(chest);
+            if (state.damage[chest.id] >= threshold) {
+                gameStatus.textContent = `${chest.name} est brisé. Sélectionnez-le pour le réarmer avant le prochain cadeau.`;
+                return false;
+            }
+
+            const previousRatio = state.damage[chest.id] / threshold;
+            state.damage[chest.id] = Math.min(threshold, state.damage[chest.id] + count);
+            const currentRatio = state.damage[chest.id] / threshold;
+            if (damageMilestones.some(level => previousRatio < level && currentRatio >= level)) {
+                flashChest(chest.id);
+            }
+            if (state.damage[chest.id] >= threshold) {
+                recordWinner(username, chest);
+                state.damage[chest.id] = threshold;
+            } else {
+                gameStatus.textContent = `🎁 ${username} frappe le coffre ${chest.id} : il vacille sous les coups !`;
+            }
+            saveState();
+            animateHit(chest.id);
+            return true;
+        }
+
+        function handleGift(gift = {}) {
+            const messageId = String(gift.messageId ?? '');
+            if (messageId && processedGifts.has(messageId)) return;
+            if (messageId) {
+                processedGifts.add(messageId);
+                if (processedGifts.size > 5000) processedGifts.delete(processedGifts.values().next().value);
+            }
+            const count = Number(gift.coinCount);
+            if (!Number.isSafeInteger(count) || count < 1) {
+                console.warn('Cadeau ignoré : valeur en pièces invalide.', gift);
+                return;
+            }
+            applyHit(count, gift.username || gift.nickname || 'Spectateur');
+        }
+
+        function normalizeName(value) {
+            return String(value).trim().replace(/^@/, '').toLocaleLowerCase('fr-FR');
+        }
+
+        function handleComment(data = {}) {
+            const comment = String(data.comment ?? data.text ?? '').trim();
+            const username = String(data.username ?? data.nickname ?? 'Spectateur').trim().replace(/^@/, '');
+            if (/^(?:!?\s*(?:étoile|etoile)s?)$/iu.test(comment)) {
+                const balance = state.balances[normalizeName(username)] || 0;
+                const message = balance
+                    ? `⭐ @${username}, tu as ${balance.toLocaleString('fr-FR')} étoiles de jeu.`
+                    : `⭐ @${username}, tu n'as pas encore gagné d'étoiles. Aide le chat à ouvrir un coffre !`;
+                gameStatus.textContent = message;
+                document.getElementById('connection-label').textContent =
+                    `Solde affiché pour @${username} : ${balance.toLocaleString('fr-FR')} étoiles`;
+                const balanceBanner = document.getElementById('balance-banner');
+                balanceBanner.textContent = message;
+                balanceBanner.hidden = false;
+                clearTimeout(balanceBannerTimer);
+                balanceBannerTimer = setTimeout(() => { balanceBanner.hidden = true; }, 6000);
+            }
+        }
+
+        function applyTheme(theme, backgroundImage = state.backgroundImage) {
+            state.theme = Object.hasOwn(backgroundThemes, theme) ? theme : 'night';
+            state.backgroundImage = backgroundImage;
+            document.body.style.backgroundImage = backgroundImage
+                ? `linear-gradient(rgba(8,13,25,.65), rgba(8,13,25,.72)), url("${backgroundImage}")`
+                : backgroundThemes[state.theme];
+            persistState();
+            persistConfig();
+        }
+
+        function resetCurrentChest() {
+            state.damage[state.activeChest] = 0;
+            warningUntil.delete(state.activeChest);
+            clearTimeout(warningTimers.get(state.activeChest));
+            warningTimers.delete(state.activeChest);
+            gameStatus.textContent = `Coffre ${state.activeChest} réinitialisé.`;
+            saveState();
+        }
+
+        function exportData() {
+            const payload = {
+                format: 'tiktok-live-chests',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                state
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `coffres-tiktok-${new Date().toISOString().slice(0, 10)}.json`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            document.getElementById('data-status').textContent = 'Export téléchargé.';
+        }
+
+        async function importData(file) {
+            if (!file) return;
+            if (file.size > 6 * 1024 * 1024) {
+                document.getElementById('data-status').textContent = 'Fichier trop volumineux (maximum 6 Mo).';
+                return;
+            }
+            try {
+                const payload = JSON.parse(await file.text());
+                if (payload.format !== 'tiktok-live-chests' || payload.version !== 1) {
+                    throw new Error('Format ou version de fichier non pris en charge.');
+                }
+                if (payload.state?.backgroundImage &&
+                    !/^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(
+                        payload.state.backgroundImage
+                    )) {
+                    throw new Error('L’image d’arrière-plan du fichier n’est pas valide.');
+                }
+                state = validateState(payload.state);
+                document.getElementById('resistance').value = String(state.resistance);
+                document.getElementById('zoom').value = String(state.zoom);
+                document.getElementById('resistance-value').textContent = `${state.resistance} %`;
+                document.getElementById('zoom-value').textContent = `${state.zoom} %`;
+                applyTheme(state.theme, state.backgroundImage);
+                saveState();
+                document.getElementById('data-status').textContent = 'Données importées.';
+                gameStatus.textContent = 'Sauvegarde des coffres, récompenses et réglages importée.';
+            } catch (error) {
+                document.getElementById('data-status').textContent = `Import impossible : ${error.message}`;
+            }
+        }
+
+        function connect() {
+            const url = document.getElementById('connector-url').value.trim();
+            if (!url) {
+                gameStatus.textContent = 'Saisissez une adresse WebSocket.';
+                return;
+            }
+            clearTimeout(reconnectTimer);
+            if (socket) {
+                socket.onclose = null;
+                socket.close();
+            }
+            try {
+                socket = new WebSocket(url);
+            } catch (error) {
+                setConnection(false, 'Adresse WebSocket invalide');
+                gameStatus.textContent = error.message;
+                return;
+            }
+            const activeSocket = socket;
+            setConnection(false, 'Connexion au connecteur…');
+            activeSocket.addEventListener('open', () =>
+                setConnection(true, 'Connecté au live TikTok'));
+            activeSocket.addEventListener('message', event => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+                        handleGift(data.gift ?? data);
+                    } else if (data.type === 'comment' || data.type === 'tiktok-comment') {
+                        handleComment(data.commentData ?? data);
+                    }
+                } catch (error) {
+                    console.error('Message TikTok invalide :', error);
+                }
+            });
+            activeSocket.addEventListener('error', () =>
+                setConnection(false, 'Connexion impossible'));
+            activeSocket.addEventListener('close', () => {
+                if (socket !== activeSocket) return;
+                setConnection(false, 'Reconnexion…');
+                reconnectTimer = setTimeout(connect, 3000);
+            });
+        }
+
+        function setConnection(connected, message) {
+            document.getElementById('connection').classList.toggle('connected', connected);
+            document.getElementById('connection-label').textContent = message;
+        }
+
+        document.getElementById('resistance').addEventListener('input', event => {
+            const previousThresholds = new Map(chestDefinitions.map(chest =>
+                [chest.id, chestThreshold(chest)]));
+            state.resistance = Number(event.target.value);
+            document.getElementById('resistance-value').textContent = `${state.resistance} %`;
+            for (const chest of chestDefinitions) {
+                const previousThreshold = previousThresholds.get(chest.id);
+                const wasBroken = state.damage[chest.id] >= previousThreshold;
+                const progress = previousThreshold
+                    ? state.damage[chest.id] / previousThreshold
+                    : 0;
+                const nextThreshold = chestThreshold(chest);
+                state.damage[chest.id] = wasBroken
+                    ? nextThreshold
+                    : Math.min(nextThreshold - 1, Math.round(progress * nextThreshold));
+            }
+            persistConfig();
+            saveState();
+        });
+
+        document.getElementById('zoom').addEventListener('input', event => {
+            state.zoom = Number(event.target.value);
+            document.getElementById('zoom-value').textContent = `${state.zoom} %`;
+            persistConfig();
+            renderChests();
+            persistState();
+        });
+
+        document.querySelectorAll('[data-color]').forEach(button =>
+            button.addEventListener('click', () => applyTheme(button.dataset.color, '')));
+        document.getElementById('background-clear').addEventListener('click', () =>
+            applyTheme('night', ''));
+        document.getElementById('background-upload').addEventListener('click', () =>
+            document.getElementById('background-file').click());
+        document.getElementById('background-file').addEventListener('change', async event => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) ||
+                file.size > BACKGROUND_MAX_BYTES) {
+                document.getElementById('data-status').textContent =
+                    'Choisissez une image de 2 Mo maximum.';
+                event.target.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.addEventListener('load', () => {
+                if (typeof reader.result !== 'string') {
+                    document.getElementById('data-status').textContent = 'Lecture de l’image impossible.';
+                    return;
+                }
+                applyTheme(state.theme, reader.result);
+                document.getElementById('data-status').textContent = 'Arrière-plan personnalisé appliqué.';
+            });
+            reader.addEventListener('error', () => {
+                document.getElementById('data-status').textContent = 'Lecture de l’image impossible.';
+            });
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        });
+
+        document.getElementById('reset-chest').addEventListener('click', resetCurrentChest);
+        document.getElementById('test-hit').addEventListener('click', () => {
+            applyHit(500, 'Test');
+        });
+        document.getElementById('export-data').addEventListener('click', exportData);
+        document.getElementById('import-data').addEventListener('click', () =>
+            document.getElementById('import-file').click());
+        document.getElementById('import-file').addEventListener('change', event => {
+            importData(event.target.files?.[0]);
+            event.target.value = '';
+        });
+        document.getElementById('connect-button').addEventListener('click', connect);
+
+        document.getElementById('leaderboard-left').addEventListener('click', () =>
+            moveLeaderboard('left'));
+        document.getElementById('leaderboard-right').addEventListener('click', () =>
+            moveLeaderboard('right'));
+        document.getElementById('leaderboard-bottom').addEventListener('click', () =>
+            moveLeaderboard('bottom'));
+        document.getElementById('leaderboard-pin').addEventListener('click', () => {
+            leaderboardLayout.pinned = !leaderboardLayout.pinned;
+            applyLeaderboardLayout();
+            saveLeaderboardLayout();
+        });
+        document.getElementById('leaderboard-stow').addEventListener('click', () => {
+            leaderboardLayout.stowed = true;
+            applyLeaderboardLayout();
+            saveLeaderboardLayout();
+        });
+        leaderboardRestore.addEventListener('click', () => {
+            leaderboardLayout.stowed = false;
+            applyLeaderboardLayout();
+            saveLeaderboardLayout();
+        });
+
+        const leaderboardDragHandle = document.getElementById('leaderboard-drag-handle');
+        leaderboardDragHandle.addEventListener('pointerdown', event => {
+            if (leaderboardLayout.pinned || event.target.closest('button')) return;
+            const rect = leaderboard.getBoundingClientRect();
+            leaderboardDrag = {
+                pointerId: event.pointerId,
+                offsetX: event.clientX - rect.left,
+                offsetY: event.clientY - rect.top
+            };
+            leaderboardDragHandle.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+        leaderboardDragHandle.addEventListener('pointermove', event => {
+            if (!leaderboardDrag || event.pointerId !== leaderboardDrag.pointerId) return;
+            leaderboardLayout.edge = 'free';
+            leaderboardLayout.x = Math.min(
+                Math.max(8, event.clientX - leaderboardDrag.offsetX),
+                Math.max(8, window.innerWidth - leaderboard.offsetWidth - 8)
+            );
+            leaderboardLayout.y = Math.min(
+                Math.max(8, event.clientY - leaderboardDrag.offsetY),
+                Math.max(8, window.innerHeight - leaderboard.offsetHeight - 8)
+            );
+            applyLeaderboardLayout();
+        });
+        const finishLeaderboardDrag = event => {
+            if (!leaderboardDrag || event.pointerId !== leaderboardDrag.pointerId) return;
+            leaderboardDrag = null;
+            saveLeaderboardLayout();
+        };
+        leaderboardDragHandle.addEventListener('pointerup', finishLeaderboardDrag);
+        leaderboardDragHandle.addEventListener('pointercancel', finishLeaderboardDrag);
+        window.addEventListener('resize', () => {
+            applyLeaderboardLayout();
+            saveLeaderboardLayout();
+        });
+
+        const savedConfig = loadJson(CONFIG_KEY, null);
+        if (savedConfig && typeof savedConfig === 'object') {
+            state = validateState({ ...state, ...savedConfig });
+        }
+        document.getElementById('resistance').value = String(state.resistance);
+        document.getElementById('resistance-value').textContent = `${state.resistance} %`;
+        document.getElementById('zoom').value = String(state.zoom);
+        document.getElementById('zoom-value').textContent = `${state.zoom} %`;
+        applyTheme(state.theme, state.backgroundImage);
+        renderChests();
+        renderLeaderboard();
+        applyLeaderboardLayout();
+        connect();
+        setInterval(() => {
+            for (const chest of chestDefinitions) {
+                const threshold = chestThreshold(chest);
+                const lostRatio = state.damage[chest.id] / threshold;
+                if (lostRatio >= 0.5 && lostRatio < 1) flashChest(chest.id);
+            }
+        }, 120000);
+    </script>
+</body>
+</html>
