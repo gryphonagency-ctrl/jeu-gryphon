@@ -337,8 +337,10 @@
                 <section class="connection-section">
                     <h2 class="section-title">Connexion TikTok</h2>
                     <div class="connection-settings">
+                        <input id="tiktok-username" type="text" maxlength="32"
+                               aria-label="Pseudo TikTok du streamer" placeholder="Votre pseudo TikTok">
                         <input id="connector-url" type="url" aria-label="Adresse WebSocket"
-                               value="ws://127.0.0.1:3000">
+                               value="wss://jeu6boite.onrender.com">
                         <button id="connect-button" type="button">Connecter</button>
                     </div>
                     <p id="notice" class="notice" role="status" aria-live="polite"></p>
@@ -788,6 +790,12 @@
 
         function connect() {
             const url = document.getElementById('connector-url').value.trim();
+            const username = document.getElementById('tiktok-username').value.trim().replace(/^@/, '');
+            if (!username) {
+                document.getElementById('notice').textContent = 'Saisissez votre pseudo TikTok.';
+                document.getElementById('tiktok-username').focus();
+                return;
+            }
             if (!url) {
                 document.getElementById('notice').textContent = 'Saisissez une adresse WebSocket.';
                 return;
@@ -805,16 +813,21 @@
                 return;
             }
             const activeSocket = socket;
-            setConnection(false, 'Connexion au connecteur…');
+            setConnection(false, `Connexion au live de @${username}…`);
             activeSocket.addEventListener('open', () => {
-                setConnection(true, 'Connecté au live');
-                document.getElementById('notice').textContent =
-                    'Les commentaires et les roses du live sont activés.';
+                activeSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
             });
             activeSocket.addEventListener('message', event => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+                    if (data.type === 'STATUS') {
+                        const connected = /direct tiktok connecté/i.test(data.message || '');
+                        setConnection(connected, data.message || 'Statut TikTok reçu');
+                        if (connected) {
+                            document.getElementById('notice').textContent =
+                                'Les commentaires et les roses du live sont activés.';
+                        }
+                    } else if (data.type === 'gift' || data.type === 'tiktok-gift') {
                         handleGift(data.gift ?? data);
                     } else if (data.type === 'comment' || data.type === 'tiktok-comment') {
                         handleComment(data.commentData ?? data);
@@ -915,7 +928,6 @@
         renderWinnerHistory();
         applyWinnerLayout();
         updateDisplay();
-        connect();
     </script>
 </body>
 </html>

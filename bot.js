@@ -2,7 +2,7 @@ const { TikTokLiveConnection } = require('tiktok-live-connector');
 const WebSocket = require('ws');
 
 const tiktokUsername = (process.env.TIKTOK_USERNAME || 'gryphon.agency').trim().replace(/^@/, '');
-const wsUrl = process.env.WS_URL || 'ws://127.0.0.1:3000';
+const wsUrl = process.env.WS_URL || 'wss://jeu6boite.onrender.com';
 const tiktokLiveConnection = new TikTokLiveConnection(tiktokUsername, {});
 let ws;
 let reconnectTimer;

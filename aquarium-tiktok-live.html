@@ -121,6 +121,17 @@
       animation: bannerSlide 3.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
 
+    .animate-star-banner {
+      animation: starBannerSlide 3.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes starBannerSlide {
+      0% { transform: translateY(-120%) scale(calc(var(--star-banner-scale, 4) * .8)); opacity: 0; }
+      15% { transform: translateY(0) scale(calc(var(--star-banner-scale, 4) * 1.04)); opacity: 1; }
+      25%, 85% { transform: translateY(0) scale(var(--star-banner-scale, 4)); opacity: 1; }
+      100% { transform: translateY(-120%) scale(calc(var(--star-banner-scale, 4) * .8)); opacity: 0; }
+    }
+
     .victory-banner {
       width: clamp(320px, 28vw, 560px);
       max-width: 88vw;
@@ -399,10 +410,10 @@
       <div data-movable-panel="liveConnection" data-panel-title="Connexion au live TikTok" class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 mb-4">
         <label for="tiktokUsername" class="block text-sm font-bold text-slate-200 uppercase tracking-wider mb-2">Connexion au live TikTok</label>
         <div class="flex gap-2">
-          <input id="tiktokUsername" type="text" placeholder="Pseudo TikTok (ex. gryphon.agency)" autocomplete="off" class="min-w-0 flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-cyan-400">
+          <input id="tiktokUsername" type="text" maxlength="32" placeholder="Pseudo TikTok du streamer" autocomplete="off" class="min-w-0 flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-cyan-400">
           <button id="connectTikTokButton" type="button" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm px-3 py-2 rounded-lg transition">Connecter</button>
         </div>
-        <p id="liveConnectionStatus" class="mt-2 text-xs text-slate-300" role="status" aria-live="polite">Connexion au relais local en cours…</p>
+        <p id="liveConnectionStatus" class="mt-2 text-xs text-slate-300" role="status" aria-live="polite">Saisis le pseudo TikTok du live pour te connecter.</p>
       </div>
 
       <!-- LECTURE VOCALE (TTS) TOGGLE -->
@@ -1475,14 +1486,11 @@
         }
       }
       shootTarget() {
-        const targetKraken = kraken.active && (activeBalls.length === 0 || Math.random() < 0.5);
-        const target = targetKraken
-          ? { type: 'kraken', entity: kraken }
-          : activeBalls.length > 0
-            ? { type: 'pokeball', entity: activeBalls[Math.floor(Math.random() * activeBalls.length)] }
-            : kraken.active
-              ? { type: 'kraken', entity: kraken }
-              : null;
+        const target = activeBalls.length > 0
+          ? { type: 'pokeball', entity: activeBalls[Math.floor(Math.random() * activeBalls.length)] }
+          : kraken.active
+            ? { type: 'kraken', entity: kraken }
+            : null;
         if (!target) return;
         lasers.push(new Laser(this.x, this.y, target, this.username, this.avatarUrl, this.isSuper));
       }
@@ -1815,13 +1823,12 @@
 
     function connectRelay() {
       if (relaySocket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(relaySocket.readyState)) return;
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      relaySocket = new WebSocket(`${protocol}//${location.host}`);
+      relaySocket = new WebSocket('wss://jeu6boite.onrender.com');
       relaySocket.addEventListener('open', () => {
         if (requestedTikTokUsername) {
           relaySocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: requestedTikTokUsername }));
         } else {
-          setLiveConnection('Relais local prêt · saisis le pseudo configuré dans le bot TikTok.');
+          setLiveConnection('Connecteur prêt · saisis le pseudo TikTok du live.');
         }
       });
       relaySocket.addEventListener('message', event => {
@@ -1834,7 +1841,7 @@
         }
       });
       relaySocket.addEventListener('error', () => {
-        setLiveConnection('Relais inaccessible · démarre le serveur local avec npm start.', false, true);
+        setLiveConnection('Connecteur inaccessible · réessaie plus tard.', false, true);
       });
       relaySocket.addEventListener('close', () => {
         setLiveConnection('Relais déconnecté · nouvelle tentative dans 3 secondes.');
@@ -1846,7 +1853,7 @@
     function requestTikTokConnection() {
       const username = document.getElementById('tiktokUsername').value.trim().replace(/^@/, '');
       if (!username) {
-        setLiveConnection('Saisis le pseudo configuré dans le bot TikTok Live Connector.', false, true);
+        setLiveConnection('Saisis le pseudo TikTok du live.', false, true);
         document.getElementById('tiktokUsername').focus();
         return;
       }
@@ -1855,7 +1862,7 @@
         relaySocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
         setLiveConnection(`Demande envoyée pour @${username} · vérification du bot…`);
       } else {
-        setLiveConnection('Connexion au relais local…');
+        setLiveConnection('Connexion au connecteur…');
         connectRelay();
       }
     }
@@ -1903,14 +1910,15 @@
           return;
         }
         if (!playersData[username]) playersData[username] = { stars: 0, avatarUrl, giftCoins: 0, gifts: 0 };
+        const previousGiftCoins = Math.max(0, Math.floor(Number(playersData[username].giftCoins) || 0));
         playersData[username].avatarUrl = avatarUrl;
-        playersData[username].giftCoins = (playersData[username].giftCoins || 0) + coinCount;
+        playersData[username].giftCoins = previousGiftCoins + coinCount;
         playersData[username].gifts = (playersData[username].gifts || 0) + 1;
         viewerAvatars.set(username, avatarUrl);
         setPlayerActive(username, avatarUrl);
         const spectator = activeSpectators.get(username);
         if (spectator) spectator.gifts += 1;
-        const wheelTurns = Math.floor(coinCount / 100);
+        const wheelTurns = Math.floor(playersData[username].giftCoins / 100) - Math.floor(previousGiftCoins / 100);
         if (wheelTurns) enqueueWheelTurns(username, avatarUrl, wheelTurns);
         addOrMergePlayerAvatar(username, avatarUrl, shotsCount, shotsCount >= 100);
         showToast(`🎁 Merci ${username} · ${coinCount} pièce${coinCount === 1 ? '' : 's'} · ${shotsCount} tir${shotsCount === 1 ? '' : 's'}${wheelTurns ? ` · ${wheelTurns} tour${wheelTurns > 1 ? 's' : ''} de roue` : ''}`);
@@ -1974,11 +1982,36 @@
       banner.classList.toggle('balance-overlay', balanceBanner);
       banner.classList.remove('hidden');
       const inner = banner.firstElementChild;
+      const starWinBanner = !balanceBanner && !krakenVictory && amount > 0;
+      inner.classList.toggle('star-win-banner', starWinBanner);
       inner.classList.toggle('balance-banner', balanceBanner);
-      inner.classList.remove('animate-banner', 'animate-kraken-victory', 'animate-balance-banner');
+      inner.classList.remove('animate-banner', 'animate-kraken-victory', 'animate-balance-banner', 'animate-star-banner');
       if (balanceBanner) applyBalanceBannerTextScale();
+      if (starWinBanner) {
+        inner.style.setProperty('--star-banner-scale', '1');
+        void inner.offsetWidth;
+        const bounds = inner.getBoundingClientRect();
+        const availableWidth = canvas.parentElement.clientWidth * .92;
+        const availableHeight = canvas.parentElement.clientHeight * .78;
+        const scale = Math.max(1, Math.min(
+          4,
+          availableWidth / bounds.width,
+          availableHeight / bounds.height
+        ));
+        inner.style.setProperty('--star-banner-scale', String(scale));
+      } else {
+        inner.style.removeProperty('--star-banner-scale');
+      }
       void inner.offsetWidth;
-      inner.classList.add(balanceBanner ? 'animate-balance-banner' : krakenVictory ? 'animate-kraken-victory' : 'animate-banner');
+      inner.classList.add(
+        balanceBanner
+          ? 'animate-balance-banner'
+          : krakenVictory
+            ? 'animate-kraken-victory'
+            : starWinBanner
+              ? 'animate-star-banner'
+              : 'animate-banner'
+      );
 
       if ([50, 60, 100].includes(amount)) createVictoryConfetti();
 
@@ -1988,7 +2021,8 @@
       bannerTimeout = setTimeout(() => {
         banner.classList.add('hidden');
         banner.classList.remove('balance-overlay');
-        inner.classList.remove('balance-banner', 'animate-balance-banner');
+        inner.classList.remove('balance-banner', 'animate-balance-banner', 'star-win-banner', 'animate-star-banner');
+        inner.style.removeProperty('--star-banner-scale');
       }, balanceBanner ? 10000 : krakenVictory ? 4500 : 3500);
     }
 
