@@ -2,8 +2,12 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const { createTikTokSession } = require('./tiktok-session');
 
-const port = 3000;
+const port = Number(process.env.PORT) || 3000;
+const configuredMaxTikTokSessions = Number(process.env.MAX_TIKTOK_SESSIONS);
+const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
+    configuredMaxTikTokSessions > 0 ? configuredMaxTikTokSessions : 25;
 const gameFile = path.join(__dirname, 'pousoire.html');
 const hangmanFile = path.join(__dirname, 'pendu.html');
 const chestsFile = path.join(__dirname, 'coffres.html');
@@ -12,7 +16,9 @@ const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
+const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
+const plinkoFile = path.join(__dirname, 'plinko.html');
 const gryphonImage = path.join(__dirname, 'griffon-gauche.jpg');
 const gryphonSwordImage = path.join(__dirname, 'epee-fanfan-detouree.png');
 const matterFile = path.join(__dirname, 'node_modules', 'matter-js', 'build', 'matter.min.js');
@@ -27,10 +33,13 @@ const server = http.createServer((req, res) => {
         ['/coffres', [chestsFile, 'text/html; charset=utf-8']],
         ['/coffres.html', [chestsFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok.html', [footballFile, 'text/html; charset=utf-8']],
+        ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
+        ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
+        ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
         ['/aquarium-fish-boss.png', [aquariumFishBossImage, 'image/png']],
@@ -61,18 +70,91 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocket.Server({ server });
+const sessions = new Map();
+const clientSessions = new Map();
+
+function detachClient(socket) {
+    const sessionKey = clientSessions.get(socket);
+    if (!sessionKey) return;
+    clientSessions.delete(socket);
+    const session = sessions.get(sessionKey);
+    if (!session) return;
+    session.clients.delete(socket);
+    if (!session.clients.size) {
+        sessions.delete(sessionKey);
+        void session.disconnect();
+    }
+}
 
 wss.on('connection', socket => {
-    console.log('Client connecté au jeu.');
     socket.on('message', message => {
-        for (const client of wss.clients) {
-            if (client !== socket && client.readyState === WebSocket.OPEN) {
-                client.send(message.toString());
-            }
+        let request;
+        try {
+            request = JSON.parse(message.toString());
+        } catch (error) {
+            console.warn('Message reçu du jeu invalide :', error.message);
+            return;
         }
+        if (request.action !== 'CONNECT_TIKTOK') return;
+
+        const username = String(request.username || '').trim().replace(/^@/, '');
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Pseudo TikTok invalide : saisis un pseudo de 1 à 32 caractères.'
+            }));
+            return;
+        }
+
+        const sessionKey = username.toLocaleLowerCase();
+        const currentSessionKey = clientSessions.get(socket);
+        if (currentSessionKey === sessionKey) {
+            const currentSession = sessions.get(sessionKey);
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: currentSession.statusMessage ||
+                    `Connexion TikTok en cours · @${currentSession.username}`
+            }));
+            return;
+        }
+        const currentSession = sessions.get(currentSessionKey);
+        const freesCurrentSlot = currentSession?.clients.size === 1;
+        if (!sessions.has(sessionKey) && sessions.size >= maxTikTokSessions && !freesCurrentSlot) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Le nombre de lives simultanés est momentanément atteint.'
+            }));
+            return;
+        }
+
+        detachClient(socket);
+        let session = sessions.get(sessionKey);
+        if (!session) {
+            session = { username, clients: new Set(), disconnect: null, statusMessage: '' };
+            session.disconnect = createTikTokSession(messageData => {
+                if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+                const encoded = JSON.stringify(messageData);
+                for (const client of session.clients) {
+                    if (client.readyState === WebSocket.OPEN) client.send(encoded);
+                }
+            }, username);
+            sessions.set(sessionKey, session);
+        }
+        session.clients.add(socket);
+        clientSessions.set(socket, sessionKey);
+        socket.send(JSON.stringify({
+            type: 'STATUS',
+            message: session.statusMessage || `Connexion TikTok en cours · @${username}`
+        }));
+    });
+    socket.on('close', () => {
+        detachClient(socket);
+    });
+    socket.on('error', error => {
+        console.warn('Erreur WebSocket client :', error.message);
     });
 });
 
-server.listen(port, '127.0.0.1', () => {
-    console.log(`Serveur lancé : http://127.0.0.1:${port}`);
+server.listen(port, '0.0.0.0', () => {
+    console.log(`Serveur lancé sur le port ${port}`);
 });

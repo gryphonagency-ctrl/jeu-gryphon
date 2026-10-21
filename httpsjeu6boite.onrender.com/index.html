@@ -426,6 +426,8 @@
                 <section class="side-section">
                     <h2 class="section-title">Connexion TikTok</h2>
                     <div class="connection-settings">
+                        <input id="tiktok-username" type="text" maxlength="32"
+                               aria-label="Pseudo TikTok du streamer" placeholder="Votre pseudo TikTok">
                         <input id="connector-url" type="url" aria-label="Adresse WebSocket"
                                value="wss://jeu6boite.onrender.com">
                         <button id="connect-button" class="control" type="button">Connecter</button>
@@ -1019,6 +1021,12 @@
 
         function connect() {
             const url = document.getElementById('connector-url').value.trim();
+            const username = document.getElementById('tiktok-username').value.trim().replace(/^@/, '');
+            if (!username) {
+                gameStatus.textContent = 'Saisissez votre pseudo TikTok.';
+                document.getElementById('tiktok-username').focus();
+                return;
+            }
             if (!url) {
                 gameStatus.textContent = 'Saisissez une adresse WebSocket.';
                 return;
@@ -1036,13 +1044,17 @@
                 return;
             }
             const activeSocket = socket;
-            setConnection(false, 'Connexion au connecteur…');
-            activeSocket.addEventListener('open', () =>
-                setConnection(true, 'Connecté au live TikTok'));
+            setConnection(false, `Connexion au live de @${username}…`);
+            activeSocket.addEventListener('open', () => {
+                activeSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+            });
             activeSocket.addEventListener('message', event => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+                    if (data.type === 'STATUS') {
+                        const connected = /direct tiktok connecté/i.test(data.message || '');
+                        setConnection(connected, data.message || 'Statut TikTok reçu');
+                    } else if (data.type === 'gift' || data.type === 'tiktok-gift') {
                         handleGift(data.gift ?? data);
                     } else if (data.type === 'comment' || data.type === 'tiktok-comment') {
                         handleComment(data.commentData ?? data);

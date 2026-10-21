@@ -1004,6 +1004,9 @@
 
                 <section class="control-section">
                     <h3>Connexion TikTok</h3>
+                    <label for="tiktok-username">Pseudo TikTok du streamer</label>
+                    <input id="tiktok-username" class="small-input" type="text" maxlength="32"
+                           placeholder="Votre pseudo TikTok" autocomplete="off">
                     <p>Adresse WebSocket du connecteur :</p>
                     <input id="connector-url" class="small-input" type="url"
                            value="wss://jeu6boite.onrender.com"
@@ -3247,6 +3250,12 @@
 
         document.getElementById('connect-tiktok').addEventListener('click', () => {
             const url = document.getElementById('connector-url').value.trim();
+            const username = document.getElementById('tiktok-username').value.trim().replace(/^@/, '');
+            if (!username) {
+                connectionStatus.textContent = 'Saisissez votre pseudo TikTok.';
+                document.getElementById('tiktok-username').focus();
+                return;
+            }
             if (!url) {
                 connectionStatus.textContent = 'Saisissez une adresse WebSocket.';
                 return;
@@ -3262,8 +3271,10 @@
             }
 
             connectionStatus.textContent = 'Connexion en cours…';
-            socket.addEventListener('open', () =>
-                connectionStatus.textContent = 'Connecté au connecteur.');
+            socket.addEventListener('open', () => {
+                socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                connectionStatus.textContent = `Connexion au live de @${username}…`;
+            });
             socket.addEventListener('close', () =>
                 connectionStatus.textContent = 'Connexion fermée.');
             socket.addEventListener('error', () =>
@@ -3271,7 +3282,9 @@
             socket.addEventListener('message', event => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+                    if (data.type === 'STATUS') {
+                        connectionStatus.textContent = data.message || 'Statut TikTok reçu.';
+                    } else if (data.type === 'gift' || data.type === 'tiktok-gift') {
                         window.handleTikTokGift(data.gift ?? data);
                     } else if (data.type === 'comment' ||
                                data.type === 'tiktok-comment') {
@@ -3284,6 +3297,9 @@
                     console.error('Message du connecteur invalide :', error);
                 }
             });
+        });
+        document.getElementById('tiktok-username').addEventListener('keydown', event => {
+            if (event.key === 'Enter') document.getElementById('connect-tiktok').click();
         });
 
         document.getElementById('pusher-speed').addEventListener('input', event => {
