@@ -193,6 +193,8 @@
 
     .overlay { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 18px; background: #02080de8; backdrop-filter: blur(4px); }
     .overlay[hidden] { display: none; }
+    #wheelModal { background: rgba(2, 8, 13, .08); backdrop-filter: none; pointer-events: none; }
+    #wheelModal .modal-card { border-color: #e3bb5f99; background: rgba(11, 23, 33, .58); box-shadow: 0 0 22px #dba83a1c; }
     .modal-card { width: min(100%, 360px); padding: 18px 15px 15px; border: 1px solid #e3bb5f; background: radial-gradient(ellipse at 50% 0, #1c3940, #0b1721 70%); box-shadow: 0 0 30px #dba83a24; text-align: center; }
     .modal-kicker { margin: 0 0 5px; color: var(--aqua); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; }
     .modal-card h2 { margin: 0; color: var(--gold-bright); font: 600 18px Georgia, serif; }
@@ -315,7 +317,7 @@
       <h3>RTP par manche</h3>
       <div class="shortcut-label"><span>Part du gagnant</span><output id="rtpValue">20 %</output></div>
       <button id="rtpToggle" type="button" aria-expanded="true">Calcul du RTP</button>
-      <p id="rtpHint" class="shortcut-hint">20 % des cadeaux reçus pendant les 3 minutes sont attribués au gagnant. Le calcul repart à zéro à chaque manche.</p>
+      <p id="rtpHint" class="shortcut-hint">20 % des pièces reçues en cadeaux pendant les 3 minutes sont attribuées au meilleur joueur. Un cadeau d’au moins 100 pièces déclenche un seul tour de roue.</p>
     </section>
     <section class="shortcut-group" aria-label="Vidéo de fond">
       <h3>Fond du plateau</h3>
@@ -391,13 +393,12 @@
     "use strict";
 
     const ROUND_LENGTH = 180;
-    const BALL_COST = 10;
     const INITIAL_BALLS = 0;
     const MAX_SESSION_ROUNDS = 30;
     const ROUND_PAYOUT_RATE = 0.2;
+    const WHEEL_GIFT_MINIMUM_COINS = 100;
     const MAX_ACTIVE_BALLS = 240;
     const GIFT_DROPS_PER_FRAME = 8;
-    const WHEEL_TRIGGER_CHANCE = 1 / 18;
     const POCKETS = [
       { label: "5", points: 5, color: "#38576a" },
       { label: "30", points: 30, color: "#28617a" },
@@ -430,6 +431,7 @@
     const wheelCanvas = document.getElementById("wheelCanvas");
     const wheelContext = wheelCanvas.getContext("2d");
     const players = new Map();
+    const playerAliases = new Map();
     let balls = [];
     let pins = [];
     let traps = [];
@@ -759,7 +761,6 @@
 
     function landInPocket(ball, pocket) {
       addPoints(ball.owner, pocket.points);
-      if (pocket.points === 100) triggerWheelForBall(ball, true);
     }
 
     function addPoints(owner, points) {
@@ -772,10 +773,33 @@
 
     function getPlayer(name) {
       const normalizedName = name.trim().slice(0, 18) || "Joueur";
+      const normalizedKey = normalizedName.toLocaleLowerCase("fr-FR");
+      const existingPlayer = playerAliases.get(normalizedKey) ||
+        [...players.values()].find(player =>
+          player.name.toLocaleLowerCase("fr-FR") === normalizedKey);
+      if (existingPlayer) return existingPlayer;
       if (!players.has(normalizedName)) {
         players.set(normalizedName, { name: normalizedName, score: 0, stars: 0, redeemedStars: 0, balls: INITIAL_BALLS, rewardBalls: 0, avatarSrc: "", avatarImage: null });
       }
-      return players.get(normalizedName);
+      const player = players.get(normalizedName);
+      playerAliases.set(normalizedKey, player);
+      return player;
+    }
+
+    function getTikTokPlayer(username, nickname) {
+      const names = [username, nickname]
+        .filter(name => typeof name === "string")
+        .map(name => name.trim().replace(/^@/, "").slice(0, 18))
+        .filter(Boolean);
+      const player = names
+        .map(name => playerAliases.get(name.toLocaleLowerCase("fr-FR")) ||
+          [...players.values()].find(existing =>
+            existing.name.toLocaleLowerCase("fr-FR") === name.toLocaleLowerCase("fr-FR")))
+        .find(Boolean) || getPlayer(names[0] || "Invité");
+      for (const name of names) {
+        playerAliases.set(name.toLocaleLowerCase("fr-FR"), player);
+      }
+      return player;
     }
 
     function boundedInteger(value, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
@@ -847,6 +871,7 @@
       }
       const session = data.session && typeof data.session === "object" ? data.session : {};
       players.clear();
+      playerAliases.clear();
       for (const imported of data.players.slice(0, 2000)) {
         if (typeof imported.name !== "string" || !imported.name.trim()) continue;
         const player = getPlayer(imported.name);
@@ -1039,15 +1064,23 @@
     }
 
     function handleTikTokGift(gift) {
-      const owner = String(gift.nickname || gift.username || "Invité").trim().slice(0, 18) || "Invité";
+      const owner = String(gift.username || gift.nickname || "Invité").trim().replace(/^@/, "").slice(0, 18) || "Invité";
       const coinCount = Math.floor(Number(gift.coinCount));
       if (!Number.isSafeInteger(coinCount) || coinCount < 1) return;
-      const player = getPlayer(owner);
+      if (roundEnded || remainingTime <= 0) {
+        document.getElementById("roundStatus").textContent = "Cadeau reçu après la manche : il ne compte pas dans cette cagnotte.";
+        return;
+      }
+      const player = getTikTokPlayer(gift.username, gift.nickname);
       setPlayerAvatar(player, gift.avatarDataUri || gift.avatarUrls?.[0]);
-      coinsPool += coinCount;
+      coinsPool = Math.min(Number.MAX_SAFE_INTEGER, coinsPool + coinCount);
       liveStats.giftEvents++;
       liveStats.giftBalls += coinCount;
-      pendingGiftBatches.push({ owner, remaining: coinCount, wheelChecked: false, canTriggerWheel: true });
+      pendingGiftBatches.push({ owner, remaining: coinCount, wheelChecked: true, canTriggerWheel: false });
+      if (coinCount >= WHEEL_GIFT_MINIMUM_COINS) {
+        wheelQueue.push(owner);
+        startNextWheel();
+      }
       document.getElementById("roundStatus").textContent = `${owner} · ${coinCount.toLocaleString("fr-FR")} billes`;
       updateStats();
       updateLeaderboard();
@@ -1067,11 +1100,7 @@
       let spawned = 0;
       while (spawned < GIFT_DROPS_PER_FRAME && balls.length < MAX_ACTIVE_BALLS && pendingGiftBatches.length) {
         const batch = pendingGiftBatches[0];
-        const ball = spawnBallFromMouth(batch.owner, batch.canTriggerWheel !== false);
-        if (!batch.wheelChecked) {
-          batch.wheelChecked = true;
-          triggerWheelForBall(ball);
-        }
+        spawnBallFromMouth(batch.owner, false);
         batch.remaining--;
         spawned++;
         if (batch.remaining <= 0) pendingGiftBatches.shift();
@@ -1442,7 +1471,7 @@
       const targetAngle = targetBase + Math.ceil((wheelAngle + Math.PI * 12 - targetBase) / (Math.PI * 2)) * Math.PI * 2;
       const initialAngle = wheelAngle;
       const startedAt = performance.now();
-      const duration = 4800;
+      const duration = 3200;
 
       function animate(now) {
         const progress = Math.min(1, (now - startedAt) / duration);
@@ -1467,15 +1496,9 @@
           wheelSpinning = false;
           startNextWheel();
           maybeFinishRound();
-        }, 1600);
+        }, 900);
       }
       requestAnimationFrame(animate);
-    }
-
-    function triggerWheelForBall(ball, guaranteed = false) {
-      if (!ball.canTriggerWheel || (!guaranteed && Math.random() >= WHEEL_TRIGGER_CHANCE)) return;
-      wheelQueue.push(ball.owner);
-      startNextWheel();
     }
 
     function runRewardBalls() {
@@ -1497,7 +1520,7 @@
     function updateRtpControls() {
       document.getElementById("rtpValue").textContent = `${Math.round(ROUND_PAYOUT_RATE * 100)} %`;
       document.getElementById("rtpToggle").setAttribute("aria-expanded", "true");
-      document.getElementById("rtpHint").textContent = `20 % des cadeaux reçus pendant les 3 minutes sont attribués au gagnant. La cagnotte est réinitialisée à chaque manche, pendant 30 manches.`;
+      document.getElementById("rtpHint").textContent = `20 % des pièces reçues en cadeaux pendant les 3 minutes sont attribuées au meilleur joueur. Un cadeau d’au moins 100 pièces déclenche un seul tour de roue. La cagnotte repart à zéro à chaque manche.`;
     }
 
     function togglePause() {
@@ -1643,9 +1666,7 @@
       const isRewardBall = player.rewardBalls > 0;
       player.balls--;
       if (isRewardBall) player.rewardBalls--;
-      else coinsPool += BALL_COST;
       const ball = spawnBallFromMouth(owner, !isRewardBall);
-      triggerWheelForBall(ball);
       document.getElementById("roundStatus").textContent = "Manche en cours";
       updateStats();
       updateLeaderboard();
@@ -1658,9 +1679,19 @@
       document.getElementById("roundStatus").textContent = "Manche terminée";
       document.getElementById("resetBtn").hidden = false;
       updateStats();
-      const winner = [...players.values()].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"))[0];
+      const winner = [...players.values()]
+        .filter(player => player.score > 0)
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"))[0];
       const winnerPrize = Math.floor(coinsPool * ROUND_PAYOUT_RATE);
-      if (winner) winner.stars += winnerPrize;
+      if (winner && winnerPrize > 0) {
+        winner.stars = Math.min(Number.MAX_SAFE_INTEGER, winner.stars + winnerPrize);
+        rewardTransactions.push({
+          name: winner.name,
+          amount: winnerPrize,
+          at: new Date().toISOString()
+        });
+        rewardTransactions = rewardTransactions.slice(-5000);
+      }
       roundHistory.push({
         roundNumber,
         coinsPool,
@@ -1672,8 +1703,8 @@
       roundHistory = roundHistory.slice(-500);
       updateLeaderboard();
       document.getElementById("roundResult").innerHTML = winner
-        ? `<strong>${escapeHtml(winner.name)}</strong> remporte la manche avec <strong>${winner.score.toLocaleString("fr-FR")} points</strong>.<br>Gain attribué : <strong>${winnerPrize.toLocaleString("fr-FR")} étoiles</strong>.`
-        : `Aucun joueur n'a marqué de points.<br>Cagnotte : <strong>${coinsPool.toLocaleString("fr-FR")} étoiles</strong>.`;
+        ? `<strong>${escapeHtml(winner.name)}</strong> remporte la manche avec <strong>${winner.score.toLocaleString("fr-FR")} points</strong>.<br>Cadeaux reçus : <strong>${coinsPool.toLocaleString("fr-FR")} pièces</strong> · part de 20 % : <strong>${winnerPrize.toLocaleString("fr-FR")} étoiles</strong>${winnerPrize > 0 ? " attribuées et enregistrées." : " (part inférieure à une étoile)."}`
+        : `Aucun joueur n'a marqué de points : aucun gagnant ne peut recevoir la cagnotte.<br>Cadeaux reçus : <strong>${coinsPool.toLocaleString("fr-FR")} pièces</strong> · part de 20 % : <strong>${winnerPrize.toLocaleString("fr-FR")} étoiles</strong>.`;
       const nextButton = document.getElementById("nextRoundBtn");
       const resetButton = document.getElementById("resetBtn");
       if (roundNumber < MAX_SESSION_ROUNDS) {
@@ -1743,6 +1774,7 @@
         }
         balls = balls.filter(ball => ball.active);
         spawnGiftBalls();
+        startNextWheel();
       }
       drawBoard();
       maybeFinishRound();
