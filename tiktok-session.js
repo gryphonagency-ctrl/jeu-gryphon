@@ -167,7 +167,10 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
             if (!active) return;
             onRoomState({ connected: false, roomId: null });
             console.error(`Erreur de connexion TikTok @${username} :`, error);
-            send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username}` });
+            const detail = error instanceof Error
+                ? error.message.replace(/https?:\/\/\S+/gi, '[adresse masquée]').slice(0, 180)
+                : 'Cause inconnue.';
+            send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username} : ${detail || 'Cause inconnue.'}` });
         });
 
     return async () => {

@@ -457,6 +457,8 @@
     let wheelAngle = 0;
     let liveSocket = null;
     let reconnectTimer = 0;
+    let tiktokRetryTimer = 0;
+    let tiktokRetryDelay = 10000;
     let mouthSequence = 0;
     let lastFrame = 0;
     let accumulator = 0;
@@ -1108,6 +1110,39 @@
       status.classList.toggle("online", online);
     }
 
+    function handleTikTokStatus(message) {
+      const detail = String(message || "Statut TikTok reçu.");
+      const connected = /direct tiktok connecté/i.test(detail);
+      const connecting = /connexion tiktok en cours/i.test(detail);
+      if (connected) {
+      window.clearTimeout(tiktokRetryTimer);
+      tiktokRetryTimer = 0;
+      tiktokRetryDelay = 10000;
+      setConnectionStatus("LIVE CONNECTÉ", true);
+      document.getElementById("liveHint").textContent = detail;
+      return;
+      }
+      if (connecting) {
+      setConnectionStatus("CONNEXION…", false);
+      document.getElementById("liveHint").textContent = detail;
+      return;
+      }
+      setConnectionStatus("LIVE INDISPONIBLE", false);
+      document.getElementById("liveHint").textContent = detail;
+      if (requestedTikTokUsername &&
+        /erreur de connexion tiktok|connexion tiktok interrompue/i.test(detail) &&
+        !tiktokRetryTimer) {
+      const retryDelay = tiktokRetryDelay;
+      tiktokRetryDelay = Math.min(tiktokRetryDelay * 2, 60000);
+      document.getElementById("liveHint").textContent =
+        `${detail} Nouvelle tentative dans ${Math.round(retryDelay / 1000)} s.`;
+      tiktokRetryTimer = window.setTimeout(() => {
+        tiktokRetryTimer = 0;
+        sendTikTokConnectRequest();
+      }, retryDelay);
+      }
+    }
+
     function connectToLiveServer() {
       if (liveSocket && (liveSocket.readyState === WebSocket.OPEN || liveSocket.readyState === WebSocket.CONNECTING)) return;
       try {
@@ -1130,9 +1165,7 @@
           setPlayerAvatar(getPlayer(viewer.username || "Spectateur"), viewer.avatarDataUri);
         }
         if (message.type === "STATUS") {
-          const connected = /direct tiktok connecté/i.test(message.message || "");
-          const connecting = /connexion tiktok en cours/i.test(message.message || "");
-          setConnectionStatus(connected ? "LIVE CONNECTÉ" : connecting ? "CONNEXION…" : "LIVE INDISPONIBLE", connected);
+          handleTikTokStatus(message.message);
         }
       });
       liveSocket.addEventListener("close", () => {
@@ -1148,6 +1181,9 @@
         connectToLiveServer();
         return;
       }
+      window.clearTimeout(tiktokRetryTimer);
+      tiktokRetryTimer = 0;
+      tiktokRetryDelay = 10000;
       liveSocket.send(JSON.stringify({ action: "CONNECT_TIKTOK", username: requestedTikTokUsername }));
       document.getElementById("liveHint").textContent = `Demande envoyée pour @${requestedTikTokUsername}.`;
     }

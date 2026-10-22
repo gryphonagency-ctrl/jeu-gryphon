@@ -856,6 +856,22 @@ function disconnectLiveSession(sessionKey) {
     return true;
 }
 
+function startTikTokSession(session) {
+    session.statusMessage = '';
+    session.roomId = null;
+    session.isLive = false;
+    session.disconnect = createTikTokSession(messageData => {
+        if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+        const encoded = JSON.stringify(messageData);
+        for (const client of session.clients) {
+            if (client.readyState === WebSocket.OPEN) client.send(encoded);
+        }
+    }, session.username, ({ connected, roomId }) => {
+        session.isLive = connected;
+        session.roomId = roomId;
+    });
+}
+
 wss.on('connection', socket => {
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
     if (liveTtsUsername) {
@@ -893,6 +909,11 @@ wss.on('connection', socket => {
         const currentSessionKey = clientSessions.get(socket);
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
+            if (currentSession && !currentSession.isLive &&
+                /erreur de connexion tiktok|connexion tiktok interrompue/i.test(currentSession.statusMessage)) {
+                void currentSession.disconnect();
+                startTikTokSession(currentSession);
+            }
             socket.send(JSON.stringify({
                 type: 'STATUS',
                 message: currentSession.statusMessage ||
@@ -914,17 +935,8 @@ wss.on('connection', socket => {
         let session = sessions.get(sessionKey);
         if (!session) {
             session = { username, clients: new Set(), disconnect: null, statusMessage: '', roomId: null, isLive: false };
-            session.disconnect = createTikTokSession(messageData => {
-                if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
-                const encoded = JSON.stringify(messageData);
-                for (const client of session.clients) {
-                    if (client.readyState === WebSocket.OPEN) client.send(encoded);
-                }
-            }, username, ({ connected, roomId }) => {
-                session.isLive = connected;
-                session.roomId = roomId;
-            });
             sessions.set(sessionKey, session);
+            startTikTokSession(session);
         }
         session.clients.add(socket);
         clientSessions.set(socket, sessionKey);
