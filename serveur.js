@@ -28,6 +28,7 @@ const gryphonImage = path.join(__dirname, 'griffon-gauche.jpg');
 const gryphonSwordImage = path.join(__dirname, 'epee-fanfan-detouree.png');
 const matterFile = path.join(__dirname, 'node_modules', 'matter-js', 'build', 'matter.min.js');
 const homepageFile = path.join(__dirname, 'accueil.html');
+const liveTtsFile = path.join(__dirname, 'live-tts.html');
 const protectedRoutes = new Set([
     '/pousoire.html',
     '/pendu',
@@ -71,6 +72,17 @@ function invalidAdminInput(message) {
     const error = new Error(message);
     error.statusCode = 400;
     return error;
+}
+
+function getLiveTtsSource(token) {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
+    const source = store.getLiveTtsSource();
+    if (!source) return null;
+    const providedHash = crypto.createHash('sha256').update(token).digest();
+    const storedHash = Buffer.from(source.tokenHash, 'hex');
+    if (storedHash.length !== providedHash.length ||
+        !crypto.timingSafeEqual(storedHash, providedHash)) return null;
+    return source;
 }
 
 function cloudinaryConfigurationError() {
@@ -366,6 +378,73 @@ const server = http.createServer((req, res) => {
         }));
         return;
     }
+    if (pathname === '/api/admin/live-tts' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                if (body.action === 'revoke') {
+                    store.saveLiveTtsSource(null);
+                    closeLiveTtsSockets();
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, revoked: true }));
+                    return;
+                }
+                if (body.action !== 'create') throw invalidAdminInput('Action de source audio inconnue.');
+                const username = typeof body.username === 'string' ? body.username.trim().replace(/^@/, '') : '';
+                if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                    throw invalidAdminInput('Saisis un pseudo TikTok valide de 1 à 32 caractères.');
+                }
+                const token = crypto.randomBytes(32).toString('hex');
+                const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+                store.saveLiveTtsSource({ username, tokenHash });
+                closeLiveTtsSockets();
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, username, url: `/live-tts/${token}` }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de configuration de la source TTS :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible de configurer la source TTS. Vérifie le stockage persistant.'
+                        : error.message
+                }));
+            }
+        });
+        return;
+    }
+    if (pathname.startsWith('/live-tts/') && req.method === 'GET') {
+        const token = pathname.slice('/live-tts/'.length);
+        if (!getLiveTtsSource(token)) {
+            res.writeHead(404, {
+                'Cache-Control': 'no-store',
+                'Referrer-Policy': 'no-referrer',
+                'Content-Type': 'text/plain; charset=utf-8'
+            });
+            res.end('Source audio introuvable ou révoquée.');
+            return;
+        }
+        fs.readFile(liveTtsFile, (error, content) => {
+            if (error) {
+                console.error('Fichier de source TTS introuvable :', error.message);
+                res.writeHead(500, { 'Cache-Control': 'no-store' });
+                res.end('Source audio indisponible.');
+                return;
+            }
+            res.writeHead(200, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'text/html; charset=utf-8',
+                'Referrer-Policy': 'no-referrer',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            res.end(content);
+        });
+        return;
+    }
     if (pathname === '/api/admin/games' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -650,13 +729,26 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
 }
 
 const wss = new WebSocket.Server({ noServer: true });
+const liveTtsClientUsernames = new WeakMap();
+const liveTtsSockets = new Set();
+function closeLiveTtsSockets() {
+    for (const socket of liveTtsSockets) socket.terminate();
+}
+
 server.on('upgrade', (req, socket, head) => {
-    if (!access.isAuthenticated(req)) {
+    const requestUrl = new URL(req.url, 'http://localhost');
+    const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
+    const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
+    if (!access.isAuthenticated(req) && !ttsSource) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
     }
     wss.handleUpgrade(req, socket, head, webSocket => {
+        if (ttsSource) {
+            liveTtsClientUsernames.set(webSocket, ttsSource.username);
+            liveTtsSockets.add(webSocket);
+        }
         wss.emit('connection', webSocket, req);
     });
 });
@@ -677,6 +769,10 @@ function detachClient(socket) {
 }
 
 wss.on('connection', socket => {
+    const liveTtsUsername = liveTtsClientUsernames.get(socket);
+    if (liveTtsUsername) {
+        socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
+    }
     socket.on('message', message => {
         let request;
         try {
@@ -687,7 +783,16 @@ wss.on('connection', socket => {
         }
         if (request.action !== 'CONNECT_TIKTOK') return;
 
-        const username = String(request.username || '').trim().replace(/^@/, '');
+        const requestedUsername = String(request.username || '').trim().replace(/^@/, '');
+        if (liveTtsUsername &&
+            requestedUsername.toLocaleLowerCase() !== liveTtsUsername.toLocaleLowerCase()) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Le pseudo demandé ne correspond pas à cette source audio privée.'
+            }));
+            return;
+        }
+        const username = liveTtsUsername || requestedUsername;
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
             socket.send(JSON.stringify({
                 type: 'STATUS',
@@ -738,6 +843,7 @@ wss.on('connection', socket => {
         }));
     });
     socket.on('close', () => {
+        liveTtsSockets.delete(socket);
         detachClient(socket);
     });
     socket.on('error', error => {

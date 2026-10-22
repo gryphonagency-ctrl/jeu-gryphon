@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Source audio TTS · GRYPHON ARCADE</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: #071022;
+            color: #f5f8ff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            display: grid;
+            min-width: 300px;
+            min-height: 100vh;
+            place-items: center;
+            margin: 0;
+            padding: 24px;
+            background: radial-gradient(ellipse at 50% 0, #173c70, transparent 58%), #071022;
+        }
+        main {
+            width: min(100%, 460px);
+            padding: 30px;
+            border: 1px solid rgba(143, 190, 255, .24);
+            border-radius: 22px;
+            background: rgba(9, 20, 42, .92);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, .4);
+        }
+        .eyebrow { margin: 0 0 10px; color: #79e7ff; font-size: 10px; font-weight: 900; letter-spacing: .18em; text-transform: uppercase; }
+        h1 { margin: 0; font-size: clamp(24px, 7vw, 34px); letter-spacing: -.05em; }
+        .description { margin: 12px 0 22px; color: #b7c5dc; font-size: 13px; line-height: 1.7; }
+        .status { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 16px; padding: 12px 14px; border: 1px solid rgba(143, 190, 255, .18); border-radius: 12px; background: rgba(255, 255, 255, .035); color: #c5d3e9; font-size: 12px; }
+        .status::before { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #f6bd4b; content: ""; box-shadow: 0 0 12px currentColor; }
+        .status[data-state="connected"]::before { background: #52e6a4; }
+        .status[data-state="error"]::before { background: #ff6681; }
+        .button { width: 100%; min-height: 48px; border: 0; border-radius: 12px; background: linear-gradient(115deg, #40d8ff, #5977ff); color: #061021; cursor: pointer; font: inherit; font-size: 13px; font-weight: 900; }
+        .button:disabled { cursor: not-allowed; opacity: .65; }
+        .details { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 18px; padding-top: 17px; border-top: 1px solid rgba(143, 190, 255, .15); color: #90a3c0; font-size: 11px; }
+        .details strong { color: #f5f8ff; }
+        .hint { margin: 18px 0 0; color: #7f90aa; font-size: 11px; line-height: 1.65; }
+        @media (max-width: 420px) { main { padding: 23px; } }
+    </style>
+</head>
+<body>
+    <main>
+        <p class="eyebrow">Source audio · TikTok Live</p>
+        <h1>Lecture vocale du chat</h1>
+        <p class="description">Cette source se connecte directement au live configuré et lit les commentaires en français. Elle fonctionne indépendamment des jeux.</p>
+        <div id="status" class="status" role="status" aria-live="polite">Connexion au relais TikTok…</div>
+        <button id="toggle-voice" class="button" type="button">Activer la voix et tester</button>
+        <div class="details">
+            <span>Direct TikTok</span><strong id="live-username">En attente</strong>
+            <span>Commentaires en file</span><strong id="queue-count">0</strong>
+        </div>
+        <p class="hint">Clique sur le bouton une fois pour autoriser le son. Dans TikTok Live Studio, ajoute cette page en source navigateur et active sa sortie audio.</p>
+    </main>
+    <script>
+        (() => {
+            const status = document.getElementById('status');
+            const toggleVoice = document.getElementById('toggle-voice');
+            const liveUsername = document.getElementById('live-username');
+            const queueCount = document.getElementById('queue-count');
+            const token = window.location.pathname.split('/').pop();
+            const queue = [];
+            const MAX_QUEUE_LENGTH = 12;
+            const EMOJI_PATTERN = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\uFE0E\uFE0F\u200D\u20E3]/gu;
+            let socket;
+            let reconnectTimer;
+            let reconnectDelay = 3000;
+            let username = '';
+            let voiceEnabled = false;
+            let isSpeaking = false;
+            let droppedMessages = 0;
+
+            function setStatus(message, state = '') {
+                status.textContent = message;
+                status.dataset.state = state;
+            }
+
+            function updateQueueCount() {
+                queueCount.textContent = String(queue.length + (isSpeaking ? 1 : 0));
+            }
+
+            function speakNext() {
+                if (!voiceEnabled || isSpeaking || !queue.length) {
+                    updateQueueCount();
+                    return;
+                }
+                const message = queue.shift();
+                isSpeaking = true;
+                updateQueueCount();
+                const utterance = new SpeechSynthesisUtterance(message);
+                utterance.lang = 'fr-FR';
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                utterance.onend = () => {
+                    isSpeaking = false;
+                    speakNext();
+                };
+                utterance.onerror = event => {
+                    isSpeaking = false;
+                    console.error('Erreur de synthèse vocale :', event.error);
+                    setStatus('La voix du navigateur a rencontré une erreur.', 'error');
+                    speakNext();
+                };
+                window.speechSynthesis.speak(utterance);
+            }
+
+            function speakComment(comment) {
+                if (!voiceEnabled) return;
+                const text = String(comment.comment || comment.content || '')
+                    .replace(/[#*0-9]\uFE0F?\u20E3/gu, ' ')
+                    .replace(EMOJI_PATTERN, ' ')
+                    .trim().replace(/\s+/g, ' ').slice(0, 180);
+                if (!text) return;
+                if (queue.length >= MAX_QUEUE_LENGTH) {
+                    droppedMessages += 1;
+                    queue.shift();
+                    setStatus(`Chat très actif : ${droppedMessages} commentaire(s) ignoré(s) pour limiter le retard audio.`, 'connected');
+                }
+                queue.push(text);
+                updateQueueCount();
+                speakNext();
+            }
+
+            function connect() {
+                if (!/^[a-f0-9]{64}$/.test(token)) {
+                    setStatus('Lien source audio invalide ou incomplet.', 'error');
+                    return;
+                }
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                socket = new WebSocket(`${protocol}//${window.location.host}/live-tts-relay?token=${encodeURIComponent(token)}`);
+                socket.addEventListener('open', () => {
+                    reconnectDelay = 3000;
+                    setStatus('Source audio connectée. En attente du live TikTok…', 'connected');
+                });
+                socket.addEventListener('message', event => {
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                    } catch (error) {
+                        console.error('Message reçu du relais illisible :', error);
+                        setStatus('Message reçu du relais illisible.', 'error');
+                        return;
+                    }
+                    if (data.type === 'TTS_CONFIG') {
+                        username = String(data.username || '');
+                        liveUsername.textContent = username ? `@${username}` : 'En attente';
+                        socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                    } else if (data.type === 'STATUS') {
+                        const failed = /erreur|invalide|interrompue/i.test(data.message || '');
+                        setStatus(data.message || 'Statut du direct mis à jour.', failed ? 'error' : 'connected');
+                    } else if (data.type === 'comment' || data.type === 'chat') {
+                        speakComment(data.commentData || data);
+                    }
+                });
+                socket.addEventListener('error', () => setStatus('Relais inaccessible. Vérifie le lien source.', 'error'));
+                socket.addEventListener('close', () => {
+                    setStatus('Relais déconnecté. Nouvelle tentative…');
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(connect, reconnectDelay);
+                    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+                });
+            }
+
+            toggleVoice.addEventListener('click', () => {
+                if (!('speechSynthesis' in window)) {
+                    setStatus('La synthèse vocale n’est pas prise en charge par ce navigateur.', 'error');
+                    return;
+                }
+                voiceEnabled = !voiceEnabled;
+                if (voiceEnabled) {
+                    toggleVoice.textContent = 'Désactiver la voix';
+                    setStatus('Voix française activée. En attente des commentaires…', 'connected');
+                    queue.push('La lecture vocale française est activée.');
+                    speakNext();
+                } else {
+                    queue.length = 0;
+                    window.speechSynthesis.cancel();
+                    isSpeaking = false;
+                    toggleVoice.textContent = 'Activer la voix et tester';
+                    setStatus('Voix désactivée. Le relais reste connecté.', 'connected');
+                    updateQueueCount();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                clearTimeout(reconnectTimer);
+                window.speechSynthesis?.cancel();
+                socket?.close();
+            });
+
+            connect();
+        })();
+    </script>
+</body>
+</html>

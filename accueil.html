@@ -1,4 +1,4 @@
-<!doctype html>
+donne <!doctype html>
 <html lang="fr">
 <head>
     <meta charset="utf-8">
@@ -388,6 +388,18 @@
                         <button class="button button-primary" type="submit">Enregistrer le message</button>
                         <p class="checkout-status" data-admin-status="homepage-notice" role="status" aria-live="polite"></p>
                     </form>
+                    <form id="live-tts-form" class="admin-card">
+                        <h3>Source audio TTS pour TikTok Live Studio</h3>
+                        <p>Crée un lien privé pour lire à voix haute les commentaires de ton live, sans ouvrir un jeu. Si tu perds le lien, génère-en un nouveau pour désactiver l’ancien.</p>
+                        <label class="field"><span class="field-label">Pseudo TikTok du live</span><input id="live-tts-username" name="username" required maxlength="32" pattern="[A-Za-z0-9._]+" value="gryphon.agency" placeholder="Ex. gryphon.agency" autocomplete="off"></label>
+                        <button class="button button-primary" type="submit">Générer le lien audio privé</button>
+                        <div id="live-tts-link-panel" hidden>
+                            <label class="field"><span class="field-label">Lien privé à ajouter comme source navigateur</span><input id="live-tts-url" type="url" readonly></label>
+                            <button id="live-tts-copy" class="button button-secondary" type="button">Copier le lien</button>
+                        </div>
+                        <button id="live-tts-revoke" class="button button-danger" type="button" hidden>Révoquer le lien audio</button>
+                        <p class="checkout-status" data-admin-status="live-tts" role="status" aria-live="polite"></p>
+                    </form>
                     <form id="game-image-form" class="admin-card">
                         <h3>Personnaliser une image</h3>
                         <p>Choisis une image puis clique sur « Enregistrer l’image » : elle sera envoyée à Cloudinary et réutilisée dans la vitrine.</p>
@@ -539,6 +551,12 @@
         const homepageNoticeHeroAnchor = document.querySelector('.hero');
         const homepageNoticeGamesBeforeAnchor = document.getElementById('homepage-notice-games-before');
         const homepageNoticeGamesAfterAnchor = document.getElementById('homepage-notice-games-after');
+        const liveTtsForm = document.getElementById('live-tts-form');
+        const liveTtsUsername = document.getElementById('live-tts-username');
+        const liveTtsLinkPanel = document.getElementById('live-tts-link-panel');
+        const liveTtsUrl = document.getElementById('live-tts-url');
+        const liveTtsCopy = document.getElementById('live-tts-copy');
+        const liveTtsRevoke = document.getElementById('live-tts-revoke');
         const adminSection = document.getElementById('administration');
         const adminNav = document.getElementById('admin-nav');
         const gameImageSelect = document.getElementById('game-image-select');
@@ -626,6 +644,73 @@
             if (!response.ok) throw new Error(result.message || 'Enregistrement impossible.');
             return result;
         }
+
+        async function submitLiveTtsAction(action, username) {
+            const response = await fetch('/api/admin/live-tts', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, username })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Impossible de configurer la source audio.');
+            return result;
+        }
+
+        liveTtsForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = liveTtsForm.querySelector('button[type="submit"]');
+            const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
+            button.disabled = true;
+            status.className = 'checkout-status';
+            status.textContent = 'Génération du lien privé…';
+            try {
+                const result = await submitLiveTtsAction('create', liveTtsUsername.value.trim());
+                liveTtsUrl.value = new URL(result.url, window.location.origin).href;
+                liveTtsLinkPanel.hidden = false;
+                liveTtsRevoke.hidden = false;
+                liveTtsUsername.value = result.username;
+                status.className = 'checkout-status success';
+                status.textContent = 'Lien prêt. Garde-le privé : toute personne qui le possède peut écouter ce live.';
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = error.message || 'Une erreur est survenue.';
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        liveTtsCopy.addEventListener('click', async () => {
+            const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
+            try {
+                await navigator.clipboard.writeText(liveTtsUrl.value);
+                status.className = 'checkout-status success';
+                status.textContent = 'Lien privé copié.';
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = 'Copie impossible : sélectionne et copie le lien manuellement.';
+            }
+        });
+
+        liveTtsRevoke.addEventListener('click', async () => {
+            liveTtsRevoke.disabled = true;
+            const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
+            status.className = 'checkout-status';
+            status.textContent = 'Révocation du lien audio…';
+            try {
+                await submitLiveTtsAction('revoke');
+                liveTtsUrl.value = '';
+                liveTtsLinkPanel.hidden = true;
+                liveTtsRevoke.hidden = true;
+                status.className = 'checkout-status success';
+                status.textContent = 'Lien révoqué. La source audio ne peut plus se connecter.';
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = error.message || 'Une erreur est survenue.';
+            } finally {
+                liveTtsRevoke.disabled = false;
+            }
+        });
 
         function applyHomepageNoticeSettings(settings) {
             homepageNoticeLabel.textContent = settings.label;

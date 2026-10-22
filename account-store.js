@@ -16,6 +16,7 @@ function readStore() {
         parsed.games ||= {};
         parsed.hiddenGames ||= {};
         parsed.homepageNotice ??= null;
+        parsed.liveTtsSource ??= null;
         if (parsed.homepageNotice) {
             if (parsed.homepageNotice.widthPercent === undefined) parsed.homepageNotice.widthPercent = 100;
             if (parsed.homepageNotice.text ===
@@ -29,6 +30,13 @@ function readStore() {
             typeof parsed.plans !== 'object' || Array.isArray(parsed.plans) ||
             typeof parsed.games !== 'object' || Array.isArray(parsed.games) ||
             typeof parsed.hiddenGames !== 'object' || Array.isArray(parsed.hiddenGames) ||
+            (parsed.liveTtsSource !== null &&
+                (typeof parsed.liveTtsSource !== 'object' ||
+                    Array.isArray(parsed.liveTtsSource) ||
+                    typeof parsed.liveTtsSource.username !== 'string' ||
+                    !/^[a-zA-Z0-9._]{1,32}$/.test(parsed.liveTtsSource.username) ||
+                    typeof parsed.liveTtsSource.tokenHash !== 'string' ||
+                    !/^[a-f0-9]{64}$/.test(parsed.liveTtsSource.tokenHash))) ||
             (parsed.homepageNotice !== null &&
                 (typeof parsed.homepageNotice !== 'object' ||
                     Array.isArray(parsed.homepageNotice) ||
@@ -55,7 +63,8 @@ function readStore() {
             plans: {},
             games: {},
             hiddenGames: {},
-            homepageNotice: null
+            homepageNotice: null,
+            liveTtsSource: null
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -166,6 +175,16 @@ function saveHomepageNotice(settings) {
     });
 }
 
+function getLiveTtsSource() {
+    return readStore().liveTtsSource;
+}
+
+function saveLiveTtsSource(source) {
+    updateStore(store => {
+        store.liveTtsSource = source;
+    });
+}
+
 function deleteGame(gameId) {
     return updateStore(store => {
         const game = store.games[gameId];
@@ -238,6 +257,7 @@ module.exports = {
     getGameImage,
     getHiddenGames,
     getHomepageNotice,
+    getLiveTtsSource,
     listGames,
     getPlans,
     hasAccounts,
@@ -246,6 +266,7 @@ module.exports = {
     saveCloudinaryGameImage,
     saveGameMetadata,
     saveHomepageNotice,
+    saveLiveTtsSource,
     setGameHidden,
     saveAccount,
     reserveCheckout,
