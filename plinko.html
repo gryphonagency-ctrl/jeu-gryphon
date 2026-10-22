@@ -476,6 +476,7 @@
     let height = 0;
     let pixelRatio = 1;
     let remainingTime = ROUND_LENGTH;
+    let roundDeadlineAt = Date.now() + ROUND_LENGTH * 1000;
     let roundNumber = 1;
     let coinsPool = 0;
     let roundPayoutPercent = DEFAULT_ROUND_PAYOUT_PERCENT;
@@ -947,6 +948,10 @@
       }
       roundNumber = boundedInteger(session.roundNumber, 1) || 1;
       remainingTime = boundedInteger(session.remainingTime, 0, ROUND_LENGTH);
+      const savedAt = Date.parse(data.savedAt);
+      if (!session.isPaused && session.roundEnded !== true && Number.isFinite(savedAt)) {
+        remainingTime = Math.max(0, remainingTime - Math.floor(Math.max(0, Date.now() - savedAt) / 1000));
+      }
       coinsPool = boundedInteger(session.coinsPool);
       const savedPayoutPercent = session.rtpPercent;
       roundPayoutPercent = Number.isSafeInteger(savedPayoutPercent) && savedPayoutPercent >= 0 && savedPayoutPercent <= 100
@@ -957,6 +962,7 @@
         : Date.now() + DAILY_SCORE_WINDOW_MS;
       roundEnded = session.roundEnded === true;
       isPaused = session.isPaused === true;
+      roundDeadlineAt = isPaused || roundEnded ? 0 : Date.now() + remainingTime * 1000;
       liveStats = {
         giftEvents: boundedInteger(data.stats?.giftEvents),
         giftBalls: boundedInteger(data.stats?.giftBalls),
@@ -1281,10 +1287,18 @@
 
     function connectToLiveServer() {
       if (liveSocket && (liveSocket.readyState === WebSocket.OPEN || liveSocket.readyState === WebSocket.CONNECTING)) return;
+      if (!["http:", "https:"].includes(location.protocol)) {
+        setConnectionStatus("SITE REQUIS", false);
+        document.getElementById("liveHint").textContent =
+          "Les cadeaux TikTok nécessitent le site hébergé et une session connectée. Ouvre Plinko depuis le site, pas ce fichier local.";
+        return;
+      }
       try {
-      liveSocket = new WebSocket("wss://jeu6boite.onrender.com");
+      const socketProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+      liveSocket = new WebSocket(`${socketProtocol}//${location.host}`);
       } catch {
         setConnectionStatus("HORS LIGNE", false);
+        document.getElementById("liveHint").textContent = "Impossible d’ouvrir la connexion au serveur live.";
         return;
       }
       liveSocket.addEventListener("open", () => {
@@ -1306,10 +1320,16 @@
       });
       liveSocket.addEventListener("close", () => {
         setConnectionStatus("HORS LIGNE", false);
+        document.getElementById("liveHint").textContent =
+          "Connexion au serveur live interrompue. Vérifie ta connexion au site, puis réessaie.";
         window.clearTimeout(reconnectTimer);
         reconnectTimer = window.setTimeout(connectToLiveServer, 3000);
       });
-      liveSocket.addEventListener("error", () => setConnectionStatus("HORS LIGNE", false));
+      liveSocket.addEventListener("error", () => {
+        setConnectionStatus("HORS LIGNE", false);
+        document.getElementById("liveHint").textContent =
+          "Connexion refusée ou indisponible. Connecte-toi au site hébergé, puis recharge Plinko.";
+      });
     }
 
     function sendTikTokConnectRequest() {
@@ -1638,6 +1658,7 @@
 
     function togglePause() {
       isPaused = !isPaused;
+      roundDeadlineAt = isPaused ? 0 : Date.now() + remainingTime * 1000;
       const button = document.getElementById("pauseButton");
       button.textContent = isPaused ? "Reprendre" : "Mettre en pause";
       button.setAttribute("aria-pressed", String(isPaused));
@@ -1846,6 +1867,7 @@
       }
       window.clearTimeout(nextRoundTimer);
       remainingTime = ROUND_LENGTH;
+      roundDeadlineAt = Date.now() + ROUND_LENGTH * 1000;
       coinsPool = 0;
       roundEnded = false;
       isPaused = false;
@@ -1888,6 +1910,26 @@
       drawBoard();
       maybeFinishRound();
       requestAnimationFrame(frame);
+    }
+
+    function updateRoundCountdown() {
+      if (roundEnded || isPaused) return;
+      if (remainingTime <= 0) {
+        maybeFinishRound();
+        return;
+      }
+      const updatedTime = Math.max(0, Math.ceil((roundDeadlineAt - Date.now()) / 1000));
+      if (updatedTime === remainingTime) return;
+      remainingTime = updatedTime;
+      const minutes = String(Math.floor(remainingTime / 60)).padStart(2, "0");
+      const seconds = String(remainingTime % 60).padStart(2, "0");
+      document.getElementById("timer").textContent = `${minutes}:${seconds}`;
+      if (remainingTime % 5 === 0) scheduleGameSave();
+      if (remainingTime === 0) {
+        document.getElementById("roundStatus").textContent = "Dernières billes…";
+        updateStats();
+        maybeFinishRound();
+      }
     }
 
     document.getElementById("dropBtn").addEventListener("click", launchBall);
@@ -2003,18 +2045,9 @@
     window.setInterval(() => {
       if (ensureDailyScoreWindow()) updateLeaderboard();
       updateDailyScoreCountdown();
-      if (remainingTime <= 0 || roundEnded || isPaused) return;
-      remainingTime--;
-      const minutes = String(Math.floor(remainingTime / 60)).padStart(2, "0");
-      const seconds = String(remainingTime % 60).padStart(2, "0");
-      document.getElementById("timer").textContent = `${minutes}:${seconds}`;
-      if (remainingTime % 5 === 0) scheduleGameSave();
-      if (remainingTime === 0) {
-        document.getElementById("roundStatus").textContent = "Dernières billes…";
-        updateStats();
-        maybeFinishRound();
-      }
+      updateRoundCountdown();
     }, 1000);
+    document.addEventListener("visibilitychange", updateRoundCountdown);
 
     resizeCanvas();
     loadSavedGame();
