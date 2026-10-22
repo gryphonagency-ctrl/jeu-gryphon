@@ -111,6 +111,8 @@
     }
     .panel-title { margin: 0; padding-bottom: 5px; border-bottom: 1px solid #bd96454f; color: var(--gold-bright); font: 600 10px Georgia, serif; letter-spacing: .6px; text-align: center; }
     .leaderboard { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #997d40 #09151d; }
+    .leaderboard-reset { margin: -4px 0 0; color: var(--muted); font-size: 7px; text-align: center; }
+    .leaderboard-reset strong { color: var(--aqua); font-variant-numeric: tabular-nums; }
     .leader-item { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 1px 3px; width: 100%; padding: 5px 4px; border: 1px solid #638a873b; background: linear-gradient(120deg, #112833, #0a1922); color: inherit; cursor: pointer; font: inherit; font-size: 9px; text-align: left; }
     .leader-item:hover { border-color: var(--gold); background: #173441; }
     .leader-rank { grid-row: span 2; align-self: center; color: var(--gold); font-weight: 700; }
@@ -241,9 +243,9 @@
       <div class="brand-row"><img class="brand-head" src="griffon-gauche.jpg" alt=""><div class="scroll-banner"><h1>GRYPHON PLINKO</h1></div><img class="brand-head right" src="griffon-gauche.jpg" alt=""></div>
       <p class="subtitle">TikTok Live <span id="connectionStatus" class="connection-state">HORS LIGNE</span></p>
       <div class="top-info">
-        <div class="stat"><span id="roundLabel" class="stat-label">MANCHE 01 / 30</span><strong id="timer">03:00</strong></div>
+        <div class="stat"><span id="roundLabel" class="stat-label">MANCHE 01</span><strong id="timer">03:00</strong></div>
         <div class="stat"><span class="stat-label">ÉTOILES EN JEU</span><strong><span id="totalCoins">0</span> <span class="star-mark">★</span></strong></div>
-        <div class="stat"><span class="stat-label">GAIN · 20 %</span><strong><span id="winnerPrize">0</span> <span class="star-mark">★</span></strong></div>
+        <div class="stat"><span id="winnerPrizeLabel" class="stat-label">GAIN · 20 %</span><strong><span id="winnerPrize">0</span> <span class="star-mark">★</span></strong></div>
       </div>
     </header>
 
@@ -257,9 +259,10 @@
         </div>
       </div>
       <aside class="sidebar">
-        <h2 class="panel-title">TOP ÉTOILES</h2>
+        <h2 class="panel-title">TOP POINTS · 24H</h2>
+        <p class="leaderboard-reset">Remise à zéro dans <strong id="dailyScoreCountdown">24:00:00</strong></p>
         <div class="leaderboard" id="leaderboard" aria-live="polite"></div>
-        <div class="jackpot-card"><span>PART DU VAINQUEUR<br>20 % DE LA CAGNOTTE</span><strong><span id="sidePrize">0</span> <span class="star-mark">★</span></strong></div>
+        <div class="jackpot-card"><span id="sidePrizeLabel">PART DU VAINQUEUR<br>20 % DE LA CAGNOTTE</span><strong><span id="sidePrize">0</span> <span class="star-mark">★</span></strong></div>
         <div class="winner-box"><span>EN TÊTE</span><strong id="leaderName">En attente</strong></div>
       </aside>
     </section>
@@ -278,9 +281,9 @@
     </footer>
 
     <section id="starBanner" class="star-banner" role="status" aria-live="polite" aria-atomic="true" hidden>
-      <p class="star-banner-label">ÉTOILES DU LIVE</p>
+      <p id="starBannerLabel" class="star-banner-label">ÉTOILES REMPORTÉES</p>
       <p id="starBannerName" class="star-banner-name"></p>
-      <p class="star-banner-total">Total : <strong id="starBannerTotal">0</strong> <span class="star-mark">★</span></p>
+      <p id="starBannerGainLabel" class="star-banner-total">Gain : <strong id="starBannerTotal">0</strong> <span class="star-mark">★</span></p>
     </section>
 
     <section id="wheelModal" class="overlay" role="dialog" aria-modal="true" aria-labelledby="wheelTitle" hidden>
@@ -295,7 +298,7 @@
     <section id="roundModal" class="overlay" role="dialog" aria-modal="true" aria-labelledby="roundTitle" hidden>
       <div class="modal-card">
         <p class="modal-kicker">Fin de manche</p>
-        <h2 id="roundTitle">LE VAINQUEUR</h2>
+        <h2 id="roundTitle">VICTOIRE</h2>
         <p id="roundResult" class="round-result"></p>
         <button id="nextRoundBtn" class="button primary" type="button">Nouvelle manche</button>
       </div>
@@ -316,6 +319,7 @@
     <section class="shortcut-group" aria-label="Réglage RTP">
       <h3>RTP par manche</h3>
       <div class="shortcut-label"><span>Part du gagnant</span><output id="rtpValue">20 %</output></div>
+      <input id="rtpControl" type="range" min="0" max="100" step="1" value="20" aria-label="Pourcentage de la cagnotte versé au gagnant">
       <button id="rtpToggle" type="button" aria-expanded="true">Calcul du RTP</button>
       <p id="rtpHint" class="shortcut-hint">20 % des pièces reçues en cadeaux pendant les 3 minutes sont attribuées au meilleur joueur. Un cadeau d’au moins 100 pièces déclenche un seul tour de roue.</p>
     </section>
@@ -393,9 +397,9 @@
     "use strict";
 
     const ROUND_LENGTH = 180;
+    const DAILY_SCORE_WINDOW_MS = 24 * 60 * 60 * 1000;
     const INITIAL_BALLS = 0;
-    const MAX_SESSION_ROUNDS = 30;
-    const ROUND_PAYOUT_RATE = 0.2;
+    const DEFAULT_ROUND_PAYOUT_PERCENT = 20;
     const WHEEL_GIFT_MINIMUM_COINS = 100;
     const MAX_ACTIVE_BALLS = 240;
     const GIFT_DROPS_PER_FRAME = 8;
@@ -443,6 +447,8 @@
     let remainingTime = ROUND_LENGTH;
     let roundNumber = 1;
     let coinsPool = 0;
+    let roundPayoutPercent = DEFAULT_ROUND_PAYOUT_PERCENT;
+    let dailyScoreResetAt = Date.now() + DAILY_SCORE_WINDOW_MS;
     let roundEnded = false;
     let wheelQueue = [];
     let wheelSpinning = false;
@@ -764,9 +770,10 @@
     }
 
     function addPoints(owner, points) {
+      ensureDailyScoreWindow();
       const player = getPlayer(owner);
-      player.score += points;
-      player.stars += points;
+      player.score = Math.min(Number.MAX_SAFE_INTEGER, player.score + points);
+      player.dailyScore = Math.min(Number.MAX_SAFE_INTEGER, player.dailyScore + points);
       updateLeaderboard();
       scheduleGameSave();
     }
@@ -779,7 +786,7 @@
           player.name.toLocaleLowerCase("fr-FR") === normalizedKey);
       if (existingPlayer) return existingPlayer;
       if (!players.has(normalizedName)) {
-        players.set(normalizedName, { name: normalizedName, score: 0, stars: 0, redeemedStars: 0, balls: INITIAL_BALLS, rewardBalls: 0, avatarSrc: "", avatarImage: null });
+        players.set(normalizedName, { name: normalizedName, score: 0, dailyScore: 0, stars: 0, redeemedStars: 0, balls: INITIAL_BALLS, rewardBalls: 0, avatarSrc: "", avatarImage: null });
       }
       const player = players.get(normalizedName);
       playerAliases.set(normalizedKey, player);
@@ -807,6 +814,28 @@
       return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : minimum;
     }
 
+    function ensureDailyScoreWindow(now = Date.now()) {
+      if (!Number.isSafeInteger(dailyScoreResetAt) || dailyScoreResetAt <= 0) {
+        dailyScoreResetAt = now + DAILY_SCORE_WINDOW_MS;
+        scheduleGameSave();
+        return false;
+      }
+      if (now < dailyScoreResetAt) return false;
+      const elapsedWindows = Math.floor((now - dailyScoreResetAt) / DAILY_SCORE_WINDOW_MS) + 1;
+      dailyScoreResetAt += elapsedWindows * DAILY_SCORE_WINDOW_MS;
+      for (const player of players.values()) player.dailyScore = 0;
+      scheduleGameSave();
+      return true;
+    }
+
+    function updateDailyScoreCountdown() {
+      const totalSeconds = Math.max(0, Math.ceil((dailyScoreResetAt - Date.now()) / 1000));
+      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+      const minutes = String(Math.floor(totalSeconds % 3600 / 60)).padStart(2, "0");
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      document.getElementById("dailyScoreCountdown").textContent = `${hours}:${minutes}:${seconds}`;
+    }
+
     function createGameSnapshot() {
       return {
         format: "gryphon-plinko",
@@ -818,12 +847,14 @@
           coinsPool,
           roundEnded,
           isPaused,
-          rtpPercent: Math.round(ROUND_PAYOUT_RATE * 100)
+          rtpPercent: roundPayoutPercent,
+          dailyScoreResetAt
         },
         stats: { ...liveStats },
         players: [...players.values()].map(player => ({
           name: player.name,
           score: player.score,
+          dailyScore: player.dailyScore,
           stars: player.stars,
           redeemedStars: player.redeemedStars,
           balls: player.balls,
@@ -876,15 +907,23 @@
         if (typeof imported.name !== "string" || !imported.name.trim()) continue;
         const player = getPlayer(imported.name);
         player.score = boundedInteger(imported.score);
+        player.dailyScore = boundedInteger(imported.dailyScore ?? imported.score);
         player.stars = boundedInteger(imported.stars);
         player.redeemedStars = Math.min(player.stars, boundedInteger(imported.redeemedStars));
         player.balls = boundedInteger(imported.balls);
         player.rewardBalls = Math.min(player.balls, boundedInteger(imported.rewardBalls));
         if (typeof imported.avatarUrl === "string" && /^https:\/\//i.test(imported.avatarUrl)) setPlayerAvatar(player, imported.avatarUrl);
       }
-      roundNumber = boundedInteger(session.roundNumber, 1, MAX_SESSION_ROUNDS) || 1;
+      roundNumber = boundedInteger(session.roundNumber, 1) || 1;
       remainingTime = boundedInteger(session.remainingTime, 0, ROUND_LENGTH);
       coinsPool = boundedInteger(session.coinsPool);
+      const savedPayoutPercent = session.rtpPercent;
+      roundPayoutPercent = Number.isSafeInteger(savedPayoutPercent) && savedPayoutPercent >= 0 && savedPayoutPercent <= 100
+        ? savedPayoutPercent
+        : DEFAULT_ROUND_PAYOUT_PERCENT;
+      dailyScoreResetAt = Number.isSafeInteger(session.dailyScoreResetAt) && session.dailyScoreResetAt > 0
+        ? session.dailyScoreResetAt
+        : Date.now() + DAILY_SCORE_WINDOW_MS;
       roundEnded = session.roundEnded === true;
       isPaused = session.isPaused === true;
       liveStats = {
@@ -916,8 +955,9 @@
       wheelQueue = [];
       wheelSpinning = false;
       document.getElementById("timer").textContent = `${String(Math.floor(remainingTime / 60)).padStart(2, "0")}:${String(remainingTime % 60).padStart(2, "0")}`;
-      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")} / ${MAX_SESSION_ROUNDS}`;
+      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")}`;
       updateLeaderboard();
+      updateRtpControls();
       updateStats();
     }
 
@@ -936,11 +976,11 @@
 
     function snapshotAsCsv() {
       const snapshot = createGameSnapshot();
-      const headers = ["type", "name", "score", "stars", "redeemedStars", "balls", "rewardBalls", "roundNumber", "remainingTime", "coinsPool", "roundEnded", "isPaused", "winner", "payout", "timestamp", "giftEvents", "giftBalls", "starRequests", "manualTestBalls", "runBalls"];
+      const headers = ["type", "name", "score", "stars", "redeemedStars", "balls", "rewardBalls", "roundNumber", "remainingTime", "coinsPool", "roundEnded", "isPaused", "rtpPercent", "winner", "payout", "timestamp", "giftEvents", "giftBalls", "starRequests", "manualTestBalls", "runBalls", "dailyScore", "dailyScoreResetAt"];
       const rows = [headers];
-      rows.push(["session", "", "", "", "", "", "", snapshot.session.roundNumber, snapshot.session.remainingTime, snapshot.session.coinsPool, snapshot.session.roundEnded, snapshot.session.isPaused, "", "", snapshot.savedAt, snapshot.stats.giftEvents, snapshot.stats.giftBalls, snapshot.stats.starRequests, snapshot.stats.manualTestBalls, snapshot.stats.runBalls]);
-      for (const player of snapshot.players) rows.push(["player", player.name, player.score, player.stars, player.redeemedStars, player.balls, player.rewardBalls]);
-      for (const entry of snapshot.history) rows.push(["round", "", entry.score, "", "", "", "", entry.roundNumber, "", entry.coinsPool, "", "", entry.winner, entry.payout, entry.completedAt]);
+      rows.push(["session", "", "", "", "", "", "", snapshot.session.roundNumber, snapshot.session.remainingTime, snapshot.session.coinsPool, snapshot.session.roundEnded, snapshot.session.isPaused, snapshot.session.rtpPercent, "", "", snapshot.savedAt, snapshot.stats.giftEvents, snapshot.stats.giftBalls, snapshot.stats.starRequests, snapshot.stats.manualTestBalls, snapshot.stats.runBalls, "", snapshot.session.dailyScoreResetAt]);
+      for (const player of snapshot.players) rows.push(["player", player.name, player.score, player.stars, player.redeemedStars, player.balls, player.rewardBalls, "", "", "", "", "", "", "", "", "", "", "", "", "", "", player.dailyScore, ""]);
+      for (const entry of snapshot.history) rows.push(["round", "", entry.score, "", "", "", "", entry.roundNumber, "", entry.coinsPool, "", "", entry.rtpPercent ?? DEFAULT_ROUND_PAYOUT_PERCENT, entry.winner, entry.payout, entry.completedAt]);
       for (const transaction of snapshot.rewardTransactions) rows.push(["transaction", transaction.name, "", transaction.amount, "", "", "", "", "", "", "", "", "", "", transaction.at]);
       return rows.map(row => row.map(csvCell).join(",")).join("\r\n");
     }
@@ -980,16 +1020,18 @@
             remainingTime: Number(record.remainingTime),
             coinsPool: Number(record.coinsPool),
             roundEnded: record.roundEnded === "true",
-            isPaused: record.isPaused === "true"
+            isPaused: record.isPaused === "true",
+            rtpPercent: Number(record.rtpPercent),
+            ...(record.dailyScoreResetAt === "" ? {} : { dailyScoreResetAt: Number(record.dailyScoreResetAt) })
           };
           snapshot.stats = {
             giftEvents: Number(record.giftEvents), giftBalls: Number(record.giftBalls),
             starRequests: Number(record.starRequests), manualTestBalls: Number(record.manualTestBalls), runBalls: Number(record.runBalls)
           };
         } else if (record.type === "player") {
-          snapshot.players.push({ name: record.name, score: Number(record.score), stars: Number(record.stars), redeemedStars: Number(record.redeemedStars), balls: Number(record.balls), rewardBalls: Number(record.rewardBalls) });
+          snapshot.players.push({ name: record.name, score: Number(record.score), dailyScore: record.dailyScore === "" ? undefined : Number(record.dailyScore), stars: Number(record.stars), redeemedStars: Number(record.redeemedStars), balls: Number(record.balls), rewardBalls: Number(record.rewardBalls) });
         } else if (record.type === "round") {
-          snapshot.history.push({ roundNumber: Number(record.roundNumber), score: Number(record.score), coinsPool: Number(record.coinsPool), winner: record.winner, payout: Number(record.payout), completedAt: record.timestamp });
+          snapshot.history.push({ roundNumber: Number(record.roundNumber), score: Number(record.score), coinsPool: Number(record.coinsPool), ...(record.rtpPercent === "" ? {} : { rtpPercent: Number(record.rtpPercent) }), winner: record.winner, payout: Number(record.payout), completedAt: record.timestamp });
         } else if (record.type === "transaction") {
           snapshot.rewardTransactions.push({ name: record.name, amount: Number(record.stars), at: record.timestamp });
         }
@@ -1022,7 +1064,7 @@
       const data = file.name.toLowerCase().endsWith(".csv") ? snapshotFromCsv(text) : JSON.parse(text);
       restoreGameData(data);
       saveGameData(true);
-      document.getElementById("importStatus").textContent = `Import terminé : ${players.size} joueur(s), manche ${roundNumber}/${MAX_SESSION_ROUNDS}.`;
+      document.getElementById("importStatus").textContent = `Import terminé : ${players.size} joueur(s), manche ${roundNumber}.`;
     }
 
     function modifyBalance(mode) {
@@ -1112,10 +1154,13 @@
       return (normalized.match(/(^|[^a-z0-9_])etoiles?(?=$|[^a-z0-9_])/g) || []).length;
     }
 
-    function showStarBanner(player) {
+    function showStarBanner(player, earnedAmount = null) {
+      const isAward = Number.isSafeInteger(earnedAmount) && earnedAmount > 0;
       const banner = document.getElementById("starBanner");
+      document.getElementById("starBannerLabel").textContent = isAward ? "ÉTOILES REMPORTÉES" : "ÉTOILES DU JOUEUR";
       document.getElementById("starBannerName").textContent = player.name;
-      document.getElementById("starBannerTotal").textContent = player.stars.toLocaleString("fr-FR");
+      document.getElementById("starBannerGainLabel").firstChild.textContent = isAward ? "Gain de la manche : " : "Solde total : ";
+      document.getElementById("starBannerTotal").textContent = (isAward ? earnedAmount : player.stars).toLocaleString("fr-FR");
       banner.hidden = false;
       banner.classList.remove("is-visible");
       void banner.offsetWidth;
@@ -1228,23 +1273,24 @@
     }
 
     function updateLeaderboard() {
+      ensureDailyScoreWindow();
       const sorted = [...players.values()]
-        .filter(player => player.stars > (player.redeemedStars || 0))
-        .sort((a, b) => (b.stars - b.redeemedStars) - (a.stars - a.redeemedStars) || a.name.localeCompare(b.name, "fr"));
+        .filter(player => player.dailyScore > 0)
+        .sort((a, b) => b.dailyScore - a.dailyScore || a.name.localeCompare(b.name, "fr"));
       const container = document.getElementById("leaderboard");
       container.replaceChildren();
       if (!sorted.length) {
         const empty = document.createElement("p");
         empty.className = "empty-board";
-        empty.textContent = "Aucune récompense en attente.";
+        empty.textContent = "Aucun point gagné sur les dernières 24 h.";
         container.appendChild(empty);
       }
       sorted.slice(0, 8).forEach((player, index) => {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "leader-item";
-        item.title = `Modifier le solde de ${player.name}`;
-        item.setAttribute("aria-label", `Sélectionner ${player.name}, ${player.stars - player.redeemedStars} étoiles à remettre, pour modifier son solde`);
+        item.title = `${player.dailyScore.toLocaleString("fr-FR")} points gagnés sur les dernières 24 h`;
+        item.setAttribute("aria-label", `Rang ${index + 1}, ${player.name}, ${player.dailyScore.toLocaleString("fr-FR")} points sur les dernières 24 heures. Cliquer pour sélectionner ce joueur.`);
         item.addEventListener("click", () => {
           document.getElementById("balanceTarget").value = "player";
           document.getElementById("balancePlayerName").value = player.name;
@@ -1261,11 +1307,11 @@
         name.textContent = player.name;
         const score = document.createElement("span");
         score.className = "leader-score";
-        score.textContent = `${(player.stars - player.redeemedStars).toLocaleString("fr-FR")} ★ à remettre`;
+        score.textContent = `${player.dailyScore.toLocaleString("fr-FR")} pts`;
         item.append(rank, name, score);
         container.appendChild(item);
       });
-      document.getElementById("leaderName").textContent = sorted[0]?.name ?? "Aucune en attente";
+      document.getElementById("leaderName").textContent = sorted[0]?.name ?? "Aucun point";
       renderRewardLedger();
     }
 
@@ -1397,13 +1443,15 @@
     }
 
     function updateStats() {
-      const prize = Math.floor(coinsPool * ROUND_PAYOUT_RATE);
+      const prize = Math.floor(coinsPool * roundPayoutPercent / 100);
       const selectedName = document.getElementById("playerName").value.trim().slice(0, 18) || "Joueur";
       const selectedPlayer = players.get(selectedName);
       const availableBalls = selectedPlayer?.balls ?? INITIAL_BALLS;
       document.getElementById("totalCoins").textContent = coinsPool.toLocaleString("fr-FR");
       document.getElementById("winnerPrize").textContent = prize.toLocaleString("fr-FR");
       document.getElementById("sidePrize").textContent = prize.toLocaleString("fr-FR");
+      document.getElementById("winnerPrizeLabel").textContent = `GAIN · ${roundPayoutPercent} %`;
+      document.getElementById("sidePrizeLabel").innerHTML = `PART DU VAINQUEUR<br>${roundPayoutPercent} % DE LA CAGNOTTE`;
       document.getElementById("inventoryName").textContent = selectedName;
       document.getElementById("ballsCount").textContent = availableBalls.toLocaleString("fr-FR");
       const dropButton = document.getElementById("dropBtn");
@@ -1518,9 +1566,10 @@
     }
 
     function updateRtpControls() {
-      document.getElementById("rtpValue").textContent = `${Math.round(ROUND_PAYOUT_RATE * 100)} %`;
+      document.getElementById("rtpValue").textContent = `${roundPayoutPercent} %`;
+      document.getElementById("rtpControl").value = String(roundPayoutPercent);
       document.getElementById("rtpToggle").setAttribute("aria-expanded", "true");
-      document.getElementById("rtpHint").textContent = `20 % des pièces reçues en cadeaux pendant les 3 minutes sont attribuées au meilleur joueur. Un cadeau d’au moins 100 pièces déclenche un seul tour de roue. La cagnotte repart à zéro à chaque manche.`;
+      document.getElementById("rtpHint").textContent = `${roundPayoutPercent} % des pièces reçues en cadeaux pendant les 3 minutes sont attribuées en étoiles au gagnant de la manche. Par exemple, une cagnotte de 2 000 pièces rapporte 400 étoiles à 20 %. Les points du classement s’accumulent pendant 24 heures, puis sont remis à zéro. Un cadeau d’au moins 100 pièces déclenche un seul tour de roue.`;
     }
 
     function togglePause() {
@@ -1682,7 +1731,7 @@
       const winner = [...players.values()]
         .filter(player => player.score > 0)
         .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"))[0];
-      const winnerPrize = Math.floor(coinsPool * ROUND_PAYOUT_RATE);
+      const winnerPrize = Math.floor(coinsPool * roundPayoutPercent / 100);
       if (winner && winnerPrize > 0) {
         winner.stars = Math.min(Number.MAX_SAFE_INTEGER, winner.stars + winnerPrize);
         rewardTransactions.push({
@@ -1691,35 +1740,31 @@
           at: new Date().toISOString()
         });
         rewardTransactions = rewardTransactions.slice(-5000);
+        showStarBanner(winner, winnerPrize);
       }
       roundHistory.push({
         roundNumber,
         coinsPool,
         payout: winnerPrize,
+        rtpPercent: roundPayoutPercent,
         winner: winner?.name ?? "",
         score: winner?.score ?? 0,
         completedAt: new Date().toISOString()
       });
       roundHistory = roundHistory.slice(-500);
       updateLeaderboard();
+      document.getElementById("roundTitle").textContent = winner ? "VICTOIRE" : "FIN DE MANCHE";
       document.getElementById("roundResult").innerHTML = winner
-        ? `<strong>${escapeHtml(winner.name)}</strong> remporte la manche avec <strong>${winner.score.toLocaleString("fr-FR")} points</strong>.<br>Cadeaux reçus : <strong>${coinsPool.toLocaleString("fr-FR")} pièces</strong> · part de 20 % : <strong>${winnerPrize.toLocaleString("fr-FR")} étoiles</strong>${winnerPrize > 0 ? " attribuées et enregistrées." : " (part inférieure à une étoile)."}`
-        : `Aucun joueur n'a marqué de points : aucun gagnant ne peut recevoir la cagnotte.<br>Cadeaux reçus : <strong>${coinsPool.toLocaleString("fr-FR")} pièces</strong> · part de 20 % : <strong>${winnerPrize.toLocaleString("fr-FR")} étoiles</strong>.`;
+        ? `<strong>${escapeHtml(winner.name)}</strong><br><strong>${winner.score.toLocaleString("fr-FR")} points</strong>`
+        : "Aucun joueur n'a marqué de points.";
       const nextButton = document.getElementById("nextRoundBtn");
       const resetButton = document.getElementById("resetBtn");
-      if (roundNumber < MAX_SESSION_ROUNDS) {
-        nextButton.hidden = false;
-        nextButton.textContent = `Manche suivante · ${roundNumber + 1}/${MAX_SESSION_ROUNDS}`;
-        resetButton.hidden = false;
-        resetButton.textContent = "Suivante";
-        nextRoundTimer = window.setTimeout(startNewRound, 5000);
-      } else {
-        nextButton.hidden = true;
-        resetButton.hidden = true;
-        document.getElementById("resetShortcutButton").disabled = true;
-        document.getElementById("roundStatus").textContent = "Session complète · 30/30";
-      }
-      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")} / ${MAX_SESSION_ROUNDS}`;
+      nextButton.hidden = false;
+      nextButton.textContent = "Manche suivante";
+      resetButton.hidden = false;
+      resetButton.textContent = "Suivante";
+      nextRoundTimer = window.setTimeout(startNewRound, 5000);
+      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")}`;
       document.getElementById("roundModal").hidden = false;
       saveGameData();
     }
@@ -1730,8 +1775,7 @@
 
     function startNewRound() {
       if (roundEnded) {
-        if (roundNumber >= MAX_SESSION_ROUNDS) return;
-        roundNumber++;
+        roundNumber = Math.min(Number.MAX_SAFE_INTEGER, roundNumber + 1);
       }
       window.clearTimeout(nextRoundTimer);
       remainingTime = ROUND_LENGTH;
@@ -1750,7 +1794,7 @@
       document.getElementById("resetBtn").hidden = true;
       document.getElementById("roundStatus").textContent = "Manche en cours";
       document.getElementById("timer").textContent = "03:00";
-      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")} / ${MAX_SESSION_ROUNDS}`;
+      document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")}`;
       document.getElementById("pauseButton").textContent = "Mettre en pause";
       document.getElementById("pauseButton").setAttribute("aria-pressed", "false");
       updateStats();
@@ -1834,6 +1878,12 @@
       hint.hidden = !hint.hidden;
       event.currentTarget.setAttribute("aria-expanded", String(!hint.hidden));
     });
+    document.getElementById("rtpControl").addEventListener("input", event => {
+      roundPayoutPercent = boundedInteger(event.currentTarget.value, 0, 100);
+      updateRtpControls();
+      updateStats();
+      scheduleGameSave();
+    });
     document.getElementById("starScaleControl").addEventListener("input", event => scaleStarBanner(event.target.value));
     document.getElementById("connectTikTokButton").addEventListener("click", requestTikTokConnection);
     document.getElementById("liveUsername").addEventListener("keydown", event => {
@@ -1886,6 +1936,8 @@
     });
 
     window.setInterval(() => {
+      if (ensureDailyScoreWindow()) updateLeaderboard();
+      updateDailyScoreCountdown();
       if (remainingTime <= 0 || roundEnded || isPaused) return;
       remainingTime--;
       const minutes = String(Math.floor(remainingTime / 60)).padStart(2, "0");
@@ -1904,7 +1956,7 @@
     drawWheel(wheelAngle);
     updateLeaderboard();
     updateRtpControls();
-    document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")} / ${MAX_SESSION_ROUNDS}`;
+    document.getElementById("roundLabel").textContent = `MANCHE ${String(roundNumber).padStart(2, "0")}`;
     try {
       const savedScale = Number(localStorage.getItem("gryphonPlinkoBannerScale"));
       if (Number.isFinite(savedScale) && savedScale >= 70 && savedScale <= 160) scaleStarBanner(savedScale);
