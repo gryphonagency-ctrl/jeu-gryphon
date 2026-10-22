@@ -395,7 +395,8 @@ donne <!doctype html>
                         <button class="button button-primary" type="submit">Générer le lien audio privé</button>
                         <div id="live-tts-link-panel" hidden>
                             <h4>Commandes du lien privé</h4>
-                            <label class="field"><span class="field-label">Lien privé à ajouter comme source navigateur</span><input id="live-tts-url" type="url" readonly></label>
+                            <p id="live-tts-existing" hidden></p>
+                            <label id="live-tts-url-field" class="field"><span class="field-label">Lien privé à ajouter comme source navigateur</span><input id="live-tts-url" type="url" readonly></label>
                             <button id="live-tts-copy" class="button button-secondary" type="button">Copier le lien</button>
                         </div>
                         <button id="live-tts-revoke" class="button button-danger" type="button" hidden>Supprimer et révoquer le lien</button>
@@ -555,6 +556,8 @@ donne <!doctype html>
         const liveTtsForm = document.getElementById('live-tts-form');
         const liveTtsUsername = document.getElementById('live-tts-username');
         const liveTtsLinkPanel = document.getElementById('live-tts-link-panel');
+        const liveTtsExisting = document.getElementById('live-tts-existing');
+        const liveTtsUrlField = document.getElementById('live-tts-url-field');
         const liveTtsUrl = document.getElementById('live-tts-url');
         const liveTtsCopy = document.getElementById('live-tts-copy');
         const liveTtsRevoke = document.getElementById('live-tts-revoke');
@@ -587,6 +590,19 @@ donne <!doctype html>
             navLogin.hidden = session.authenticated;
             loginForm.hidden = session.authenticated;
             accountName.textContent = session.authenticated ? `Connecté${session.username ? ` · ${session.username}` : ''}` : '';
+            if (session.isAdmin) {
+                try {
+                    await refreshLiveTtsStatus();
+                } catch (error) {
+                    const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
+                    status.className = 'checkout-status error';
+                    status.textContent = error.message || 'Impossible de vérifier la source audio.';
+                }
+            } else {
+                liveTtsLinkPanel.hidden = true;
+                liveTtsRevoke.hidden = true;
+                liveTtsUrl.value = '';
+            }
             if (!session.configured && !session.authenticated) {
                 loginButton.disabled = true;
                 loginInputs.forEach(input => { input.disabled = true; });
@@ -658,6 +674,22 @@ donne <!doctype html>
             return result;
         }
 
+        async function refreshLiveTtsStatus() {
+            const response = await fetch('/api/admin/live-tts', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Impossible de vérifier la source audio.');
+            liveTtsLinkPanel.hidden = !result.active;
+            liveTtsRevoke.hidden = !result.active;
+            liveTtsExisting.hidden = !result.active;
+            liveTtsUrlField.hidden = result.active;
+            liveTtsCopy.hidden = result.active;
+            if (result.active) {
+                liveTtsUsername.value = result.username;
+                liveTtsUrl.value = '';
+                liveTtsExisting.textContent = `Un lien privé est actif pour @${result.username}. Son adresse n’est pas conservée en clair ; génère un nouveau lien pour le remplacer.`;
+            }
+        }
+
         liveTtsForm.addEventListener('submit', async event => {
             event.preventDefault();
             const button = liveTtsForm.querySelector('button[type="submit"]');
@@ -670,6 +702,9 @@ donne <!doctype html>
                 liveTtsUrl.value = new URL(result.url, window.location.origin).href;
                 liveTtsLinkPanel.hidden = false;
                 liveTtsRevoke.hidden = false;
+                liveTtsExisting.hidden = true;
+                liveTtsUrlField.hidden = false;
+                liveTtsCopy.hidden = false;
                 liveTtsUsername.value = result.username;
                 status.className = 'checkout-status success';
                 status.textContent = 'Lien prêt. Garde-le privé : toute personne qui le possède peut écouter ce live.';
@@ -704,6 +739,7 @@ donne <!doctype html>
                 liveTtsUrl.value = '';
                 liveTtsLinkPanel.hidden = true;
                 liveTtsRevoke.hidden = true;
+                liveTtsExisting.hidden = true;
                 status.className = 'checkout-status success';
                 status.textContent = 'Lien révoqué. La source audio ne peut plus se connecter.';
             } catch (error) {

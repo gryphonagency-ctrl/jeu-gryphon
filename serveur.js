@@ -378,6 +378,17 @@ const server = http.createServer((req, res) => {
         }));
         return;
     }
+    if (pathname === '/api/admin/live-tts' && req.method === 'GET') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        const source = store.getLiveTtsSource();
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ active: Boolean(source), username: source?.username || null }));
+        return;
+    }
     if (pathname === '/api/admin/live-tts' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
