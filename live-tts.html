@@ -39,6 +39,10 @@
         .status[data-state="error"]::before { background: #ff6681; }
         .button { width: 100%; min-height: 48px; border: 0; border-radius: 12px; background: linear-gradient(115deg, #40d8ff, #5977ff); color: #061021; cursor: pointer; font: inherit; font-size: 13px; font-weight: 900; }
         .button:disabled { cursor: not-allowed; opacity: .65; }
+        .voice-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .voice-controls .button { min-height: 44px; font-size: 12px; }
+        .voice-controls .button[aria-pressed="true"] { outline: 2px solid #fff; outline-offset: 2px; }
+        .voice-controls .button-secondary { border: 1px solid rgba(143, 190, 255, .28); background: rgba(255, 255, 255, .06); color: #e8f2ff; }
         .details { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 18px; padding-top: 17px; border-top: 1px solid rgba(143, 190, 255, .15); color: #90a3c0; font-size: 11px; }
         .details strong { color: #f5f8ff; }
         .hint { margin: 18px 0 0; color: #7f90aa; font-size: 11px; line-height: 1.65; }
@@ -51,7 +55,10 @@
         <h1>Lecture vocale du chat</h1>
         <p class="description">Cette source se connecte directement au live configuré et lit les commentaires en français. Elle fonctionne indépendamment des jeux.</p>
         <div id="status" class="status" role="status" aria-live="polite">Connexion au relais TikTok…</div>
-        <button id="toggle-voice" class="button" type="button">Activer la voix et tester</button>
+        <div class="voice-controls" role="group" aria-label="Commandes de la voix">
+            <button id="enable-voice" class="button" type="button" aria-pressed="false">Activer la voix</button>
+            <button id="disable-voice" class="button button-secondary" type="button" aria-pressed="true">Désactiver la voix</button>
+        </div>
         <div class="details">
             <span>Direct TikTok</span><strong id="live-username">En attente</strong>
             <span>Commentaires en file</span><strong id="queue-count">0</strong>
@@ -61,7 +68,8 @@
     <script>
         (() => {
             const status = document.getElementById('status');
-            const toggleVoice = document.getElementById('toggle-voice');
+            const enableVoice = document.getElementById('enable-voice');
+            const disableVoice = document.getElementById('disable-voice');
             const liveUsername = document.getElementById('live-username');
             const queueCount = document.getElementById('queue-count');
             const token = window.location.pathname.split('/').pop();
@@ -167,14 +175,16 @@
                 });
             }
 
-            toggleVoice.addEventListener('click', () => {
+            function setVoiceEnabled(enabled) {
                 if (!('speechSynthesis' in window)) {
                     setStatus('La synthèse vocale n’est pas prise en charge par ce navigateur.', 'error');
                     return;
                 }
-                voiceEnabled = !voiceEnabled;
+                if (voiceEnabled === enabled) return;
+                voiceEnabled = enabled;
+                enableVoice.setAttribute('aria-pressed', String(enabled));
+                disableVoice.setAttribute('aria-pressed', String(!enabled));
                 if (voiceEnabled) {
-                    toggleVoice.textContent = 'Désactiver la voix';
                     setStatus('Voix française activée. En attente des commentaires…', 'connected');
                     queue.push('La lecture vocale française est activée.');
                     speakNext();
@@ -182,11 +192,13 @@
                     queue.length = 0;
                     window.speechSynthesis.cancel();
                     isSpeaking = false;
-                    toggleVoice.textContent = 'Activer la voix et tester';
                     setStatus('Voix désactivée. Le relais reste connecté.', 'connected');
                     updateQueueCount();
                 }
-            });
+            }
+
+            enableVoice.addEventListener('click', () => setVoiceEnabled(true));
+            disableVoice.addEventListener('click', () => setVoiceEnabled(false));
 
             window.addEventListener('beforeunload', () => {
                 clearTimeout(reconnectTimer);
