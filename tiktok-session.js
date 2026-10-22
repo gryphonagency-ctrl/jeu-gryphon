@@ -51,7 +51,7 @@ async function getAvatarData(user, cache) {
     }
 }
 
-function createTikTokSession(sendToClients, username) {
+function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     const connection = new TikTokLiveConnection(username, {});
     const processedGiftMessageIds = new Set();
     const avatarLookupTimes = new Map();
@@ -152,17 +152,20 @@ function createTikTokSession(sendToClients, username) {
     });
 
     connection.on('disconnected', () => {
+        onRoomState({ connected: false, roomId: null });
         send({ type: 'STATUS', message: `Connexion TikTok interrompue · @${username}` });
     });
 
     connection.connect()
         .then(state => {
             if (!active) return;
+            onRoomState({ connected: true, roomId: String(state.roomId || '') });
             console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
             send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
         })
         .catch(error => {
             if (!active) return;
+            onRoomState({ connected: false, roomId: null });
             console.error(`Erreur de connexion TikTok @${username} :`, error);
             send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username}` });
         });

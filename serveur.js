@@ -389,6 +389,67 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ active: Boolean(source), username: source?.username || null }));
         return;
     }
+    if (pathname === '/api/admin/live-sessions' && req.method === 'GET') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        const source = store.getLiveTtsSource();
+        const liveSessions = [...sessions.values()]
+            .filter(session => session.isLive)
+            .map(session => ({
+                username: session.username,
+                roomId: session.roomId,
+                hasTtsLink: Boolean(source &&
+                    source.username.toLocaleLowerCase() === session.username.toLocaleLowerCase())
+            }));
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ sessions: liveSessions }));
+        return;
+    }
+    if (pathname === '/api/admin/live-sessions' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const username = typeof body.username === 'string' ? body.username.trim().replace(/^@/, '') : '';
+                if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                    throw invalidAdminInput('Pseudo TikTok invalide.');
+                }
+                const sessionKey = username.toLocaleLowerCase();
+                if (body.action === 'disconnect') {
+                    if (!disconnectLiveSession(sessionKey)) {
+                        const error = new Error('Ce live n’est plus connecté.');
+                        error.statusCode = 404;
+                        throw error;
+                    }
+                } else if (body.action === 'revoke') {
+                    const source = store.getLiveTtsSource();
+                    if (!source || source.username.toLocaleLowerCase() !== sessionKey) {
+                        const error = new Error('Aucun lien TTS actif pour ce pseudo.');
+                        error.statusCode = 404;
+                        throw error;
+                    }
+                    store.saveLiveTtsSource(null);
+                    closeLiveTtsSockets(username);
+                } else {
+                    throw invalidAdminInput('Action d’administration du live inconnue.');
+                }
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de gestion du live TikTok :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: status === 500 ? 'Impossible de gérer ce live.' : error.message }));
+            }
+        });
+        return;
+    }
     if (pathname === '/api/admin/live-tts' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -742,8 +803,11 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
 const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
-function closeLiveTtsSockets() {
-    for (const socket of liveTtsSockets) socket.terminate();
+function closeLiveTtsSockets(username) {
+    for (const socket of liveTtsSockets) {
+        if (username && liveTtsClientUsernames.get(socket)?.toLocaleLowerCase() !== username.toLocaleLowerCase()) continue;
+        socket.terminate();
+    }
 }
 
 server.on('upgrade', (req, socket, head) => {
@@ -777,6 +841,19 @@ function detachClient(socket) {
         sessions.delete(sessionKey);
         void session.disconnect();
     }
+}
+
+function disconnectLiveSession(sessionKey) {
+    const session = sessions.get(sessionKey);
+    if (!session) return false;
+    sessions.delete(sessionKey);
+    for (const client of session.clients) {
+        clientSessions.delete(client);
+        client.terminate();
+    }
+    session.clients.clear();
+    void session.disconnect();
+    return true;
 }
 
 wss.on('connection', socket => {
@@ -836,14 +913,17 @@ wss.on('connection', socket => {
         detachClient(socket);
         let session = sessions.get(sessionKey);
         if (!session) {
-            session = { username, clients: new Set(), disconnect: null, statusMessage: '' };
+            session = { username, clients: new Set(), disconnect: null, statusMessage: '', roomId: null, isLive: false };
             session.disconnect = createTikTokSession(messageData => {
                 if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
                 const encoded = JSON.stringify(messageData);
                 for (const client of session.clients) {
                     if (client.readyState === WebSocket.OPEN) client.send(encoded);
                 }
-            }, username);
+            }, username, ({ connected, roomId }) => {
+                session.isLive = connected;
+                session.roomId = roomId;
+            });
             sessions.set(sessionKey, session);
         }
         session.clients.add(socket);

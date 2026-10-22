@@ -222,6 +222,15 @@ donne <!doctype html>
         .admin-card input[type="file"] { padding: 8px; }
         .admin-card .button { cursor: pointer; }
         .admin-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+        .live-sessions-card { grid-column: 1 / -1; }
+        .live-sessions-table-wrap { overflow-x: auto; }
+        .live-sessions-table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }
+        .live-sessions-table th, .live-sessions-table td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+        .live-sessions-table th { color: var(--muted); font-size: 10px; }
+        .live-sessions-table td:last-child { min-width: 250px; }
+        .live-sessions-table .admin-actions { flex-wrap: nowrap; }
+        .live-sessions-table .button { min-height: 34px; padding: 7px 10px; white-space: nowrap; font-size: 10px; }
+        .live-sessions-table .button:disabled { cursor: not-allowed; opacity: .55; }
         .admin-card .button-danger { border-color: rgba(255,120,120,.35); color: #ffaaaa; background: rgba(255,100,100,.08); }
         footer { margin-top: 55px; border-top: 1px solid rgba(255,255,255,.09); }
         .footer-inner { display: flex; min-height: 105px; align-items: center; justify-content: space-between; gap: 24px; }
@@ -402,6 +411,17 @@ donne <!doctype html>
                         <button id="live-tts-revoke" class="button button-danger" type="button" hidden>Supprimer et révoquer le lien</button>
                         <p class="checkout-status" data-admin-status="live-tts" role="status" aria-live="polite"></p>
                     </form>
+                    <div class="admin-card live-sessions-card">
+                        <h3>Lives TikTok actuellement connectés</h3>
+                        <p>Les numéros de chambre s’actualisent automatiquement. La révocation concerne uniquement le lien audio TTS associé au pseudo.</p>
+                        <div class="live-sessions-table-wrap">
+                            <table class="live-sessions-table">
+                                <thead><tr><th>Utilisateur TikTok</th><th>Numéro de chambre</th><th>Actions</th></tr></thead>
+                                <tbody id="live-sessions-list"><tr><td colspan="3">Chargement des lives…</td></tr></tbody>
+                            </table>
+                        </div>
+                        <p id="live-sessions-status" class="checkout-status" role="status" aria-live="polite"></p>
+                    </div>
                     <form id="game-image-form" class="admin-card">
                         <h3>Personnaliser une image</h3>
                         <p>Choisis une image puis clique sur « Enregistrer l’image » : elle sera envoyée à Cloudinary et réutilisée dans la vitrine.</p>
@@ -561,6 +581,8 @@ donne <!doctype html>
         const liveTtsUrl = document.getElementById('live-tts-url');
         const liveTtsCopy = document.getElementById('live-tts-copy');
         const liveTtsRevoke = document.getElementById('live-tts-revoke');
+        const liveSessionsList = document.getElementById('live-sessions-list');
+        const liveSessionsStatus = document.getElementById('live-sessions-status');
         const adminSection = document.getElementById('administration');
         const adminNav = document.getElementById('admin-nav');
         const gameImageSelect = document.getElementById('game-image-select');
@@ -574,6 +596,7 @@ donne <!doctype html>
         let selectedPlan = '';
         let paypalSdkPromise;
         let paypalConfigurationPromise;
+        let liveSessionsRefreshTimer;
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
@@ -592,16 +615,24 @@ donne <!doctype html>
             accountName.textContent = session.authenticated ? `Connecté${session.username ? ` · ${session.username}` : ''}` : '';
             if (session.isAdmin) {
                 try {
-                    await refreshLiveTtsStatus();
+                    await Promise.all([refreshLiveTtsStatus(), refreshLiveSessions()]);
+                    if (!liveSessionsRefreshTimer) {
+                        liveSessionsRefreshTimer = window.setInterval(() => {
+                            refreshLiveSessions().catch(showLiveSessionsError);
+                        }, 10000);
+                    }
                 } catch (error) {
                     const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
                     status.className = 'checkout-status error';
                     status.textContent = error.message || 'Impossible de vérifier la source audio.';
                 }
             } else {
+                clearInterval(liveSessionsRefreshTimer);
+                liveSessionsRefreshTimer = null;
                 liveTtsLinkPanel.hidden = true;
                 liveTtsRevoke.hidden = true;
                 liveTtsUrl.value = '';
+                liveSessionsList.replaceChildren();
             }
             if (!session.configured && !session.authenticated) {
                 loginButton.disabled = true;
@@ -690,6 +721,87 @@ donne <!doctype html>
             }
         }
 
+        function showLiveSessionsError(error) {
+            liveSessionsStatus.className = 'checkout-status error';
+            liveSessionsStatus.textContent = error.message || 'Impossible de charger les lives.';
+        }
+
+        async function refreshLiveSessions() {
+            const response = await fetch('/api/admin/live-sessions', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Impossible de charger les lives.');
+            liveSessionsList.replaceChildren();
+            if (!Array.isArray(result.sessions) || result.sessions.length === 0) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 3;
+                cell.textContent = 'Aucun live TikTok actuellement connecté.';
+                row.append(cell);
+                liveSessionsList.append(row);
+            } else {
+                for (const live of result.sessions) {
+                    const row = document.createElement('tr');
+                    const userCell = document.createElement('td');
+                    const roomCell = document.createElement('td');
+                    const actionsCell = document.createElement('td');
+                    const actions = document.createElement('div');
+                    const disconnectButton = document.createElement('button');
+                    const revokeButton = document.createElement('button');
+                    const username = String(live.username || '');
+                    userCell.textContent = `@${username}`;
+                    roomCell.textContent = live.roomId ? String(live.roomId) : 'Non communiqué';
+                    actions.className = 'admin-actions';
+                    disconnectButton.className = 'button button-danger';
+                    disconnectButton.type = 'button';
+                    disconnectButton.dataset.liveAction = 'disconnect';
+                    disconnectButton.dataset.username = username;
+                    disconnectButton.textContent = 'Déconnecter le live';
+                    revokeButton.className = 'button button-secondary';
+                    revokeButton.type = 'button';
+                    revokeButton.dataset.liveAction = 'revoke';
+                    revokeButton.dataset.username = username;
+                    revokeButton.disabled = !live.hasTtsLink;
+                    revokeButton.textContent = live.hasTtsLink ? 'Révoquer le lien TTS' : 'Aucun lien TTS';
+                    actions.append(disconnectButton, revokeButton);
+                    actionsCell.append(actions);
+                    row.append(userCell, roomCell, actionsCell);
+                    liveSessionsList.append(row);
+                }
+            }
+            liveSessionsStatus.className = 'checkout-status';
+            liveSessionsStatus.textContent = `Mis à jour à ${new Date().toLocaleTimeString('fr-FR')}.`;
+        }
+
+        liveSessionsList.addEventListener('click', async event => {
+            const button = event.target.closest('button[data-live-action]');
+            if (!button || button.disabled) return;
+            const username = button.dataset.username;
+            const action = button.dataset.liveAction;
+            const confirmed = action === 'disconnect'
+                ? window.confirm(`Déconnecter le live TikTok de @${username} ?`)
+                : window.confirm(`Révoquer le lien audio TTS de @${username} ?`);
+            if (!confirmed) return;
+            button.disabled = true;
+            liveSessionsStatus.className = 'checkout-status';
+            liveSessionsStatus.textContent = action === 'disconnect'
+                ? `Déconnexion du live @${username}…`
+                : `Révocation du lien TTS de @${username}…`;
+            try {
+                const response = await fetch('/api/admin/live-sessions', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, username })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Action impossible.');
+                if (action === 'revoke') await refreshLiveTtsStatus();
+                await refreshLiveSessions();
+            } catch (error) {
+                showLiveSessionsError(error);
+            }
+        });
+
         liveTtsForm.addEventListener('submit', async event => {
             event.preventDefault();
             const button = liveTtsForm.querySelector('button[type="submit"]');
@@ -708,6 +820,7 @@ donne <!doctype html>
                 liveTtsUsername.value = result.username;
                 status.className = 'checkout-status success';
                 status.textContent = 'Lien prêt. Garde-le privé : toute personne qui le possède peut écouter ce live.';
+                refreshLiveSessions().catch(showLiveSessionsError);
             } catch (error) {
                 status.className = 'checkout-status error';
                 status.textContent = error.message || 'Une erreur est survenue.';
@@ -742,6 +855,7 @@ donne <!doctype html>
                 liveTtsExisting.hidden = true;
                 status.className = 'checkout-status success';
                 status.textContent = 'Lien révoqué. La source audio ne peut plus se connecter.';
+                refreshLiveSessions().catch(showLiveSessionsError);
             } catch (error) {
                 status.className = 'checkout-status error';
                 status.textContent = error.message || 'Une erreur est survenue.';
