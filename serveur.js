@@ -73,6 +73,115 @@ function invalidAdminInput(message) {
     return error;
 }
 
+function cloudinaryConfigurationError() {
+    const error = new Error('Configure CLOUDINARY_URL, ou CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET, dans Render pour enregistrer les images.');
+    error.statusCode = 503;
+    return error;
+}
+
+function getCloudinaryCredentials() {
+    if (process.env.CLOUDINARY_URL) {
+        try {
+            const url = new URL(process.env.CLOUDINARY_URL);
+            const credentials = {
+                cloudName: url.hostname,
+                apiKey: decodeURIComponent(url.username),
+                apiSecret: decodeURIComponent(url.password)
+            };
+            if (url.protocol !== 'cloudinary:' ||
+                !/^[a-zA-Z0-9_-]+$/.test(credentials.cloudName) ||
+                !/^\d+$/.test(credentials.apiKey) ||
+                !credentials.apiSecret ||
+                (url.pathname !== '' && url.pathname !== '/')) {
+                throw cloudinaryConfigurationError();
+            }
+            return credentials;
+        } catch (error) {
+            if (error.statusCode === 503) throw error;
+            throw cloudinaryConfigurationError();
+        }
+    }
+
+    return {
+        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+        apiKey: process.env.CLOUDINARY_API_KEY,
+        apiSecret: process.env.CLOUDINARY_API_SECRET
+    };
+}
+
+function cloudinaryImageUrl(imageUrl) {
+    if (typeof imageUrl !== 'string') return false;
+    try {
+        const url = new URL(imageUrl);
+        const cloudName = getCloudinaryCredentials().cloudName;
+        return url.protocol === 'https:' &&
+            url.hostname === 'res.cloudinary.com' &&
+            /^\/[a-zA-Z0-9_-]+\/image\/upload\//.test(url.pathname) &&
+            (!cloudName || url.pathname.startsWith(`/${cloudName}/image/upload/`));
+    } catch {
+        return false;
+    }
+}
+
+async function uploadGameImageToCloudinary(gameId, image) {
+    const { cloudName, apiKey, apiSecret } = getCloudinaryCredentials();
+    if (!cloudName || !apiKey || !apiSecret ||
+        !/^[a-zA-Z0-9_-]+$/.test(cloudName) ||
+        !/^\d+$/.test(apiKey)) {
+        throw cloudinaryConfigurationError();
+    }
+
+    const publicId = `gryphon-arcade-${crypto.createHash('sha256').update(gameId).digest('hex')}`;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const parameters = { overwrite: 'true', public_id: publicId, timestamp };
+    const signedParameters = Object.keys(parameters).sort()
+        .map(key => `${key}=${parameters[key]}`).join('&');
+    const signature = crypto.createHash('sha1')
+        .update(`${signedParameters}${apiSecret}`)
+        .digest('hex');
+    const form = new FormData();
+    form.set('file', new Blob([image.buffer], { type: `image/${image.extension === 'jpg' ? 'jpeg' : image.extension}` }), `vitrine.${image.extension}`);
+    form.set('api_key', apiKey);
+    form.set('overwrite', 'true');
+    form.set('public_id', publicId);
+    form.set('timestamp', timestamp);
+    form.set('signature', signature);
+
+    let response;
+    try {
+        response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+            method: 'POST',
+            body: form,
+            signal: AbortSignal.timeout(30000)
+        });
+    } catch {
+        const uploadError = new Error('Cloudinary est inaccessible. Vérifie la connexion et réessaie.');
+        uploadError.statusCode = 502;
+        throw uploadError;
+    }
+
+    let result;
+    try {
+        result = await response.json();
+    } catch {
+        const uploadError = new Error('Cloudinary a renvoyé une réponse illisible. Réessaie plus tard.');
+        uploadError.statusCode = 502;
+        throw uploadError;
+    }
+    if (!response.ok) {
+        const uploadError = new Error('Cloudinary a refusé l’image. Vérifie les identifiants et le quota du compte.');
+        uploadError.statusCode = 502;
+        throw uploadError;
+    }
+    if (!result || typeof result !== 'object' ||
+        !cloudinaryImageUrl(result.secure_url) || result.public_id !== publicId) {
+        const uploadError = new Error('Cloudinary a renvoyé une adresse d’image invalide.');
+        uploadError.statusCode = 502;
+        throw uploadError;
+    }
+    return { url: result.secure_url, publicId: result.public_id };
+}
+
 function decodeGameImage(dataUrl) {
     if (typeof dataUrl !== 'string') throw invalidAdminInput('Choisis une image PNG, JPG ou WebP.');
     const match = /^data:image\/(png|jpeg|webp);base64,([a-zA-Z0-9+/]+={0,2})$/.exec(dataUrl);
@@ -124,20 +233,9 @@ async function saveAdminGame(body) {
             throw invalidAdminInput('Jeu à personnaliser introuvable.');
         }
         const image = decodeGameImage(body.image);
-        const id = crypto.randomUUID();
-        const filename = `${id}.${image.extension}`;
-        const directory = store.getGameFilesDirectory();
-        fs.mkdirSync(directory, { recursive: true });
-        fs.writeFileSync(path.join(directory, filename), image.buffer, { flag: 'wx', mode: 0o600 });
-        const previousImage = store.saveGameImage(gameId, filename);
-        if (previousImage && /^[a-f0-9-]{36}\.(?:png|jpe?g|webp)$/.test(previousImage)) {
-            try {
-                fs.unlinkSync(path.join(directory, previousImage));
-            } catch (error) {
-                if (error.code !== 'ENOENT') throw error;
-            }
-        }
-        return { success: true, gameId, image: `/game-assets/${filename}` };
+        const uploadedImage = await uploadGameImageToCloudinary(gameId, image);
+        store.saveCloudinaryGameImage(gameId, uploadedImage);
+        return { success: true, gameId, image: uploadedImage.url };
     }
     if (body.action === 'metadata') {
         const gameId = typeof body.gameId === 'string' ? body.gameId : '';
@@ -237,14 +335,18 @@ const server = http.createServer((req, res) => {
             title: game.title,
             description: game.description,
             href: `/uploaded-games/${game.id}`,
-            image: `/game-assets/${game.image}`,
+            image: cloudinaryImageUrl(game.imageUrl)
+                ? game.imageUrl
+                : `/game-assets/${game.image}`,
             hidden: hiddenGames.includes(game.id)
         }));
         const gameImages = {};
         const metadata = {};
         for (const gameId of staticGameIds) {
             const image = store.getGameImage(gameId);
-            if (image) gameImages[gameId] = `/game-assets/${image}`;
+            if (image) gameImages[gameId] = cloudinaryImageUrl(image)
+                ? image
+                : `/game-assets/${image}`;
             const game = storedGames.find(item => item.id === gameId && !item.uploaded);
             if (game?.title || game?.description) metadata[gameId] = {
                 title: game.title,
@@ -423,6 +525,14 @@ const server = http.createServer((req, res) => {
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
         ['/aquarium-fish-boss.png', [aquariumFishBossImage, 'image/png']],
+        ['/images-vitrine/table-a-pieces.png', [path.join(__dirname, 'images-vitrine', 'table-a-pieces.png'), 'image/png']],
+        ['/images-vitrine/pendu.png', [path.join(__dirname, 'images-vitrine', 'pendu.png'), 'image/png']],
+        ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
+        ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
+        ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
+        ['/images-vitrine/coup-de-pied.png', [path.join(__dirname, 'images-vitrine', 'coup-de-pied.png'), 'image/png']],
+        ['/images-vitrine/coffres.png', [path.join(__dirname, 'images-vitrine', 'coffres.png'), 'image/png']],
+        ['/images-vitrine/six-boites.png', [path.join(__dirname, 'images-vitrine', 'six-boites.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]

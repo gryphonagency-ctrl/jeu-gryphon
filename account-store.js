@@ -109,7 +109,8 @@ function saveGame(game) {
 }
 
 function getGameImage(gameId) {
-    return readStore().games[gameId]?.image || null;
+    const game = readStore().games[gameId];
+    return game?.imageUrl || game?.image || null;
 }
 
 function saveGameImage(gameId, image) {
@@ -117,10 +118,21 @@ function saveGameImage(gameId, image) {
         store.games[gameId] ||= { id: gameId, uploaded: false };
         const previous = store.games[gameId].image || null;
         store.games[gameId].image = image;
+        delete store.games[gameId].imageUrl;
+        delete store.games[gameId].cloudinaryPublicId;
         store.games[gameId].updatedAt = new Date().toISOString();
         return previous;
     });
     return previousImage;
+}
+
+function saveCloudinaryGameImage(gameId, image) {
+    updateStore(store => {
+        store.games[gameId] ||= { id: gameId, uploaded: false };
+        store.games[gameId].imageUrl = image.url;
+        store.games[gameId].cloudinaryPublicId = image.publicId;
+        store.games[gameId].updatedAt = new Date().toISOString();
+    });
 }
 
 function saveGameMetadata(gameId, metadata) {
@@ -231,6 +243,7 @@ module.exports = {
     hasAccounts,
     saveGame,
     saveGameImage,
+    saveCloudinaryGameImage,
     saveGameMetadata,
     saveHomepageNotice,
     setGameHidden,

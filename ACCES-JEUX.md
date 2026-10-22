@@ -4,7 +4,7 @@ Les pages des jeux et leur connexion WebSocket sont protégées côté serveur. 
 
 ## Stockage durable sur Render
 
-Ajoute un **Persistent Disk** à ton service Render avec le point de montage `/var/data`, puis définis :
+Pour conserver la base des comptes, les jeux importés et les autres données locales, ajoute un **Persistent Disk** à ton service Render avec le point de montage `/var/data`, puis définis :
 
 ```text
 GAME_DATA_FILE=/var/data/gryphon-accounts.json
@@ -28,7 +28,23 @@ Définis `GAME_ADMIN_USERS` avec une liste séparée par des virgules d'identifi
 GAME_ADMIN_USERS=gryphon
 ```
 
-Un administrateur connecté voit la section **Gestion des jeux** : remplacer l'image d'un jeu existant, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum. Le catalogue, les images et les pages importées sont conservés sur le stockage persistant.
+La section **Gestion des jeux** et ses commandes sont réservées aux administrateurs connectés ; le serveur bloque également les requêtes d'administration des autres comptes. Elle permet de remplacer l'image d'un jeu existant, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.
+
+Pour utiliser le bouton **Enregistrer l’image**, crée un compte Cloudinary puis ajoute **soit** `CLOUDINARY_URL`, **soit** les trois variables séparées dans **Render > ton service > Environment**. Avec l'URL Cloudinary complète :
+
+```text
+CLOUDINARY_URL=cloudinary://<clé_api>:<secret_api>@<nom_du_cloud>
+```
+
+Ou avec les variables séparées :
+
+```text
+CLOUDINARY_CLOUD_NAME=<nom_du_cloud>
+CLOUDINARY_API_KEY=<clé_api>
+CLOUDINARY_API_SECRET=<secret_api>
+```
+
+Récupère les vrais identifiants dans les paramètres de ton compte Cloudinary. Garde le secret confidentiel : l'URL ou le secret est utilisé uniquement par le serveur, ne doit jamais être placé dans le HTML ni communiqué aux joueurs, et ne doit pas être partagé dans une conversation. Après avoir enregistré la variable et redéployé le service, connecte-toi comme administrateur, sélectionne un jeu, choisis une image PNG, JPG ou WebP de 2 Mo maximum, puis clique sur **Enregistrer l’image**. Le serveur signe l’envoi à Cloudinary et la vitrine utilise l’adresse sécurisée renvoyée par le fournisseur. Si Cloudinary n'est pas configuré ou refuse l'envoi, l'application affiche une erreur et n'annonce pas l'image comme enregistrée.
 
 Les jeux HTML importés exécutent du JavaScript dans l'origine du site. Importe uniquement du code que tu as écrit ou vérifié ; ne télécharge jamais un fichier de jeu non fiable. Les fichiers HTML importés sont actuellement autonomes ; les ressources supplémentaires qu'ils référencent doivent déjà être disponibles par URL.
 
