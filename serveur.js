@@ -610,6 +610,7 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 active: Boolean(source),
+                revoked: store.isAccountTtsLinkRevoked(username),
                 username: source?.username || null,
                 roomNumber: store.getCreatorSettings(username).roomNumber || null
             }));
@@ -619,15 +620,21 @@ const server = http.createServer((req, res) => {
             try {
                 const existing = store.getAccountLiveTts(username);
                 if (body.action === 'revoke') {
-                    if (!existing) throw Object.assign(new Error('Aucun lien TTS personnel n’est actif.'), { statusCode: 404 });
-                    store.saveAccountLiveTts(username, null);
-                    closeLiveTtsSockets(existing.username);
-                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ success: true, active: false }));
-                    return;
+                    const error = new Error('Seul l’administrateur peut révoquer un lien TTS.');
+                    error.statusCode = 403;
+                    throw error;
                 }
                 if (body.action !== 'create') throw invalidAdminInput('Action TTS inconnue.');
-                if (existing) closeLiveTtsSockets(existing.username);
+                if (existing) {
+                    const error = new Error('Un lien TTS est déjà actif. Contacte l’administrateur pour le remplacer.');
+                    error.statusCode = 409;
+                    throw error;
+                }
+                if (store.isAccountTtsLinkRevoked(username)) {
+                    const error = new Error('Le lien TTS a été révoqué par l’administrateur. Contacte-le pour rétablir ton accès.');
+                    error.statusCode = 403;
+                    throw error;
+                }
                 const result = createAccountLiveTts(username, body.username);
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, ...result }));
@@ -833,6 +840,7 @@ const server = http.createServer((req, res) => {
                             store.saveAccountLiveTts(username, null);
                             closeLiveTtsSockets(existing.username);
                         }
+                        closeTtsControlSockets(username);
                     }
                     if (service === 'games' && !body.enabled) {
                         for (const [clientId, session] of applicationPresence) {
@@ -863,8 +871,12 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.');
                     }
                     const existing = store.getAccountLiveTts(username);
-                    if (existing) closeLiveTtsSockets(existing.username);
+                    if (existing) {
+                        closeLiveTtsSockets(existing.username);
+                        closeTtsControlSockets(username);
+                    }
                     const result = createAccountLiveTts(username, body.username);
+                    store.setAccountTtsLinkRevoked(username, false);
                     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ success: true, ...result }));
                     return;
@@ -876,7 +888,9 @@ const server = http.createServer((req, res) => {
                         throw error;
                     }
                     store.saveAccountLiveTts(username, null);
+                    store.setAccountTtsLinkRevoked(username, true);
                     closeLiveTtsSockets(existing.username);
+                    closeTtsControlSockets(username);
                 } else if (body.action === 'legacy-tts-revoke') {
                     const existing = store.getLiveTtsSource();
                     if (!existing) {
@@ -1039,6 +1053,8 @@ const server = http.createServer((req, res) => {
                         store.saveLiveTtsSource(null);
                     } else if (accountSource) {
                         store.saveAccountLiveTts(accountSource[0], null);
+                        store.setAccountTtsLinkRevoked(accountSource[0], true);
+                        closeTtsControlSockets(accountSource[0]);
                     } else {
                         const error = new Error('Aucun lien TTS actif pour ce pseudo.');
                         error.statusCode = 404;
@@ -1443,10 +1459,18 @@ const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
 const authenticatedClientUsernames = new Map();
+const authenticatedTtsClientUsernames = new Map();
 function closeLiveTtsSockets(username) {
     for (const socket of liveTtsSockets) {
         if (username && liveTtsClientUsernames.get(socket)?.toLocaleLowerCase() !== username.toLocaleLowerCase()) continue;
         socket.terminate();
+    }
+}
+
+function closeTtsControlSockets(username) {
+    const normalizedUsername = username.toLowerCase();
+    for (const [socket, connectedUsername] of authenticatedTtsClientUsernames) {
+        if (connectedUsername.toLowerCase() === normalizedUsername) socket.terminate();
     }
 }
 
@@ -1461,7 +1485,15 @@ server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
     const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
-    if ((!access.isAuthenticated(req) || !access.canAccessGames(req)) && !ttsSource) {
+    const isTtsControlRequest = requestUrl.pathname === '/live-tts-control';
+    const authenticated = access.isAuthenticated(req);
+    const accountUsername = authenticated ? access.usernameForRequest(req) : '';
+    const canControlTts = isTtsControlRequest &&
+        authenticated &&
+        canUseCreatorTts(accountUsername) &&
+        Boolean(store.getAccountLiveTts(accountUsername));
+    if ((isTtsControlRequest && !canControlTts) ||
+        ((!authenticated || !access.canAccessGames(req)) && !canControlTts && !ttsSource)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -1521,11 +1553,29 @@ function startTikTokSession(session) {
 
 wss.on('connection', (socket, req) => {
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
+    const ttsControlAccount = new URL(req.url, 'http://localhost').pathname === '/live-tts-control'
+        ? access.usernameForRequest(req)
+        : '';
     if (!liveTtsUsername && access.isAuthenticated(req)) {
         authenticatedClientUsernames.set(socket, access.usernameForRequest(req));
     }
+    if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
     if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
+    } else if (ttsControlAccount) {
+        const source = store.getAccountLiveTts(ttsControlAccount);
+        if (!source || !canUseCreatorTts(ttsControlAccount)) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Aucun lien TTS actif ou accès révoqué pour ce compte.'
+            }));
+            socket.terminate();
+            return;
+        }
+        socket.send(JSON.stringify({
+            type: 'TTS_CONFIG',
+            username: source.username
+        }));
     }
     socket.on('message', message => {
         let request;
@@ -1538,6 +1588,20 @@ wss.on('connection', (socket, req) => {
         if (request.action !== 'CONNECT_TIKTOK') return;
 
         const requestedUsername = String(request.username || '').trim().replace(/^@/, '');
+        const creatorTtsSource = ttsControlAccount
+            ? store.getAccountLiveTts(ttsControlAccount)
+            : null;
+        if (ttsControlAccount &&
+            (!canUseCreatorTts(ttsControlAccount) ||
+                !creatorTtsSource ||
+                requestedUsername.toLocaleLowerCase() !== creatorTtsSource.username.toLocaleLowerCase())) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Cette connexion TTS n’est plus autorisée pour ton compte.'
+            }));
+            socket.terminate();
+            return;
+        }
         if (liveTtsUsername &&
             requestedUsername.toLocaleLowerCase() !== liveTtsUsername.toLocaleLowerCase()) {
             socket.send(JSON.stringify({
@@ -1598,6 +1662,7 @@ wss.on('connection', (socket, req) => {
     socket.on('close', () => {
         liveTtsSockets.delete(socket);
         authenticatedClientUsernames.delete(socket);
+        authenticatedTtsClientUsernames.delete(socket);
         detachClient(socket);
     });
     socket.on('error', error => {

@@ -19,6 +19,7 @@ function readStore() {
         parsed.paypalLink ??= null;
         parsed.liveTtsSource ??= null;
         parsed.liveTtsSources ||= {};
+        parsed.revokedTtsLinks ||= {};
         parsed.revokedUsers ||= {};
         parsed.removedUsers ||= {};
         parsed.creatorSettings ||= {};
@@ -40,6 +41,7 @@ function readStore() {
             typeof parsed.games !== 'object' || Array.isArray(parsed.games) ||
             typeof parsed.hiddenGames !== 'object' || Array.isArray(parsed.hiddenGames) ||
             typeof parsed.liveTtsSources !== 'object' || Array.isArray(parsed.liveTtsSources) ||
+            typeof parsed.revokedTtsLinks !== 'object' || Array.isArray(parsed.revokedTtsLinks) ||
             typeof parsed.revokedUsers !== 'object' || Array.isArray(parsed.revokedUsers) ||
             typeof parsed.removedUsers !== 'object' || Array.isArray(parsed.removedUsers) ||
             typeof parsed.creatorSettings !== 'object' || Array.isArray(parsed.creatorSettings) ||
@@ -69,6 +71,8 @@ function readStore() {
                 typeof source.tokenHash !== 'string' ||
                 !/^[a-f0-9]{64}$/.test(source.tokenHash)) ||
             Object.entries(parsed.revokedUsers).some(([username, revoked]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || revoked !== true) ||
+            Object.entries(parsed.revokedTtsLinks).some(([username, revoked]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || revoked !== true) ||
             Object.entries(parsed.removedUsers).some(([username, removed]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || removed !== true) ||
@@ -132,6 +136,7 @@ function readStore() {
             paypalLink: null,
             liveTtsSource: null,
             liveTtsSources: {},
+            revokedTtsLinks: {},
             revokedUsers: {},
             removedUsers: {},
             creatorSettings: {},
@@ -194,6 +199,7 @@ function removeCreator(username) {
 
         delete store.users[key];
         delete store.liveTtsSources[key];
+        delete store.revokedTtsLinks[key];
         delete store.creatorSettings[key];
         delete store.serviceAccess[key];
         delete store.gameAccess[key];
@@ -288,6 +294,18 @@ function saveAdminDashboardLayout(username, layout) {
 
 function getAccountLiveTts(username) {
     return readStore().liveTtsSources[username.toLowerCase()] || null;
+}
+
+function isAccountTtsLinkRevoked(username) {
+    return readStore().revokedTtsLinks[username.toLowerCase()] === true;
+}
+
+function setAccountTtsLinkRevoked(username, revoked) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        if (revoked) store.revokedTtsLinks[key] = true;
+        else delete store.revokedTtsLinks[key];
+    });
 }
 
 function listAccountLiveTtsSources() {
@@ -512,6 +530,7 @@ module.exports = {
     deleteGame,
     getAccount,
     getAccountLiveTts,
+    isAccountTtsLinkRevoked,
     getAccountBySubscription,
     getCheckout,
     getCreatorGameAccess,
@@ -542,6 +561,7 @@ module.exports = {
     savePaypalLink,
     saveLiveTtsSource,
     saveAccountLiveTts,
+    setAccountTtsLinkRevoked,
     saveAdminDashboardLayout,
     recordDailyUsage,
     setGameHidden,

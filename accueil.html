@@ -284,6 +284,16 @@ donne <!doctype html>
         .creator-url-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
         .creator-url-panel input { flex: 1 1 240px; }
         .creator-presence-summary { color: #55f0a3 !important; font-weight: 850; }
+        .creator-space-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .55fr); gap: 18px; }
+        .creator-space-card { min-width: 0; }
+        .creator-voice-panel { position: sticky; top: 18px; align-self: start; border-color: rgba(85,240,163,.28); background: linear-gradient(155deg,rgba(85,240,163,.09),rgba(0,0,0,.16)); }
+        .creator-voice-panel > strong { font-size: 18px; }
+        .creator-voice-username { color: #8bffc2; font-size: 14px; font-weight: 900; }
+        .creator-voice-actions { display: grid; gap: 9px; }
+        .creator-voice-actions .button { width: 100%; }
+        .creator-voice-status { min-height: 36px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+        .creator-voice-status[data-state="connected"] { color: #8bffc2; }
+        .creator-voice-status[data-state="error"] { color: #ff9a9a; }
         .admin-card .button-danger { border-color: rgba(255,120,120,.35); color: #ffaaaa; background: rgba(255,100,100,.08); }
         footer { margin-top: 55px; border-top: 1px solid rgba(255,255,255,.09); }
         .footer-inner { display: flex; min-height: 105px; align-items: center; justify-content: space-between; gap: 24px; }
@@ -312,6 +322,8 @@ donne <!doctype html>
             .login-panel { grid-template-columns: 1fr; gap: 24px; }
             .membership-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
             .admin-grid { grid-template-columns: 1fr; }
+            .creator-space-layout { grid-template-columns: 1fr; }
+            .creator-voice-panel { position: static; }
         }
         @media (max-width: 500px) {
             .wrap { width: min(100% - 32px, 1160px); }
@@ -406,22 +418,34 @@ donne <!doctype html>
         </aside>
 
         <section id="creator-space" class="section wrap" hidden>
-            <div class="admin-card">
-                <div class="section-heading">
-                    <div><p id="creator-space-kicker" class="kicker">Espace créateur</p><h2 id="creator-space-heading">Mon TTS et mon salon</h2></div>
-                    <p id="creator-room-label" class="section-intro"></p>
+            <div class="creator-space-layout">
+                <div class="admin-card creator-space-card">
+                    <div class="section-heading">
+                        <div><p id="creator-space-kicker" class="kicker">Espace créateur</p><h2 id="creator-space-heading">Mon TTS et mon salon</h2></div>
+                        <p id="creator-room-label" class="section-intro"></p>
+                    </div>
+                    <p>Ton accès TTS est conservé sur ton compte. Associe ton pseudo TikTok pour créer ton lien audio privé; seul l’administrateur peut révoquer ou remplacer ce lien.</p>
+                    <form id="creator-tts-form" class="admin-actions">
+                        <label class="field"><span class="field-label">Pseudo TikTok (sans @)</span><input id="creator-tts-username" name="username" maxlength="32" pattern="[A-Za-z0-9._]+" required autocomplete="off" placeholder="Ex. monpseudo"></label>
+                        <button class="button button-primary" type="submit">Créer mon lien TTS</button>
+                    </form>
+                    <div id="creator-tts-link-panel" class="creator-url-panel" hidden>
+                        <label class="field"><span class="field-label">Lien privé de source navigateur</span><input id="creator-tts-url" type="url" readonly></label>
+                        <button id="creator-tts-copy" class="button button-secondary" type="button">Copier</button>
+                    </div>
+                    <p id="creator-tts-status" class="checkout-status" role="status" aria-live="polite"></p>
                 </div>
-                <p>Ton accès TTS est conservé sur ton compte. Associe ton pseudo TikTok pour créer ton lien audio privé; l’administrateur peut révoquer cet accès à tout moment.</p>
-                <form id="creator-tts-form" class="admin-actions">
-                    <label class="field"><span class="field-label">Pseudo TikTok (sans @)</span><input id="creator-tts-username" name="username" maxlength="32" pattern="[A-Za-z0-9._]+" required autocomplete="off" placeholder="Ex. monpseudo"></label>
-                    <button class="button button-primary" type="submit">Créer mon lien TTS</button>
-                    <button id="creator-tts-revoke" class="button button-danger" type="button" hidden>Révoquer mon TTS</button>
-                </form>
-                <div id="creator-tts-link-panel" class="creator-url-panel" hidden>
-                    <label class="field"><span class="field-label">Lien privé de source navigateur</span><input id="creator-tts-url" type="url" readonly></label>
-                    <button id="creator-tts-copy" class="button button-secondary" type="button">Copier</button>
+                <aside class="admin-card creator-voice-panel" aria-labelledby="creator-voice-heading">
+                    <p class="kicker">Commande directe</p>
+                    <strong id="creator-voice-heading">Voix du TTS</strong>
+                    <span id="creator-voice-username" class="creator-voice-username">Aucun pseudo TikTok associé</span>
+                    <p>Active la voix sur cet appareil pour lire les commentaires reçus pendant ton live.</p>
+                    <div class="creator-voice-actions">
+                        <button id="creator-voice-enable" class="button button-primary" type="button" disabled>Activer la voix</button>
+                        <button id="creator-voice-disable" class="button button-danger" type="button" disabled>Désactiver la voix</button>
+                    </div>
+                    <p id="creator-voice-status" class="creator-voice-status" role="status" aria-live="polite" data-state="">Crée ton lien TTS pour activer la voix.</p>
                 </div>
-                <p id="creator-tts-status" class="checkout-status" role="status" aria-live="polite"></p>
             </div>
         </section>
 
@@ -813,11 +837,14 @@ donne <!doctype html>
         const creatorRoomLabel = document.getElementById('creator-room-label');
         const creatorTtsForm = document.getElementById('creator-tts-form');
         const creatorTtsUsername = document.getElementById('creator-tts-username');
-        const creatorTtsRevoke = document.getElementById('creator-tts-revoke');
         const creatorTtsLinkPanel = document.getElementById('creator-tts-link-panel');
         const creatorTtsUrl = document.getElementById('creator-tts-url');
         const creatorTtsCopy = document.getElementById('creator-tts-copy');
         const creatorTtsStatus = document.getElementById('creator-tts-status');
+        const creatorVoiceUsername = document.getElementById('creator-voice-username');
+        const creatorVoiceEnable = document.getElementById('creator-voice-enable');
+        const creatorVoiceDisable = document.getElementById('creator-voice-disable');
+        const creatorVoiceStatus = document.getElementById('creator-voice-status');
         const creatorList = document.getElementById('creator-list');
         const gameAccessDialog = document.getElementById('game-access-dialog');
         const gameAccessForm = document.getElementById('game-access-form');
@@ -873,6 +900,11 @@ donne <!doctype html>
         let savedDashboardLayout = null;
         let dashboardPinnedPositions = new Map();
         let isAdminSession = false;
+        let creatorVoiceSocket = null;
+        let creatorVoiceEnabled = false;
+        let creatorVoiceQueue = [];
+        let creatorVoiceSpeaking = false;
+        let activeCreatorVoiceUsername = '';
 
         function showAdminRoute() {
             adminSection.hidden = !isAdminSession || window.location.hash === '#salons';
@@ -966,10 +998,16 @@ donne <!doctype html>
                     creatorTtsStatus.textContent = error.message || 'Impossible de vérifier ton TTS.';
                 }
             } else {
+                stopCreatorVoice('Connecte-toi avec un compte TTS autorisé pour utiliser la voix.');
                 creatorTtsStatus.textContent = '';
                 creatorTtsLinkPanel.hidden = true;
                 creatorTtsUrl.value = '';
-                creatorTtsRevoke.hidden = true;
+                creatorTtsForm.hidden = true;
+                creatorTtsForm.reset();
+                creatorTtsUsername.readOnly = false;
+                creatorVoiceUsername.textContent = 'Aucun accès TTS';
+                creatorVoiceEnable.disabled = true;
+                creatorVoiceDisable.disabled = true;
             }
             if (session.isAdmin) {
                 try {
@@ -1343,17 +1381,146 @@ donne <!doctype html>
             const response = await fetch('/api/account/live-tts', { credentials: 'same-origin' });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Impossible de vérifier ton TTS.');
-            creatorTtsRevoke.hidden = !result.active;
+            creatorTtsForm.hidden = result.active || result.revoked;
+            creatorTtsUsername.readOnly = result.active || result.revoked;
             creatorTtsLinkPanel.hidden = true;
             creatorTtsStatus.className = 'checkout-status';
             creatorTtsStatus.textContent = result.active
-                ? `Un lien TTS est actif pour @${result.username}. Génère un nouveau lien pour remplacer l’ancien.`
-                : 'Aucun lien TTS personnel actif.';
+                ? `Ton lien TTS est actif pour @${result.username}. Seul l’administrateur peut le révoquer ou le remplacer.`
+                : result.revoked
+                    ? 'Ton lien TTS a été révoqué par l’administrateur. Contacte-le pour rétablir ton accès.'
+                    : 'Aucun lien TTS personnel actif.';
+            creatorVoiceUsername.textContent = result.active
+                ? `@${result.username}`
+                : result.revoked
+                    ? 'Lien TTS révoqué par l’administrateur'
+                    : 'Aucun pseudo TikTok associé';
+            creatorVoiceEnable.disabled = !result.active || creatorVoiceEnabled;
+            creatorVoiceDisable.disabled = !creatorVoiceEnabled;
+            if ((!result.active || result.revoked) && creatorVoiceEnabled) {
+                stopCreatorVoice('Le lien TTS n’est plus actif. Contacte l’administrateur.');
+            }
             if (result.active) creatorTtsUsername.value = result.username;
             creatorRoomLabel.textContent = result.roomNumber
                 ? `Salon attribué : ${result.roomNumber}`
                 : 'Aucun salon attribué pour le moment.';
         }
+
+        function setCreatorVoiceStatus(message, state = '') {
+            creatorVoiceStatus.textContent = message;
+            creatorVoiceStatus.dataset.state = state;
+        }
+
+        function speakCreatorVoiceNext() {
+            if (!creatorVoiceEnabled || creatorVoiceSpeaking || !creatorVoiceQueue.length) return;
+            const message = creatorVoiceQueue.shift();
+            creatorVoiceSpeaking = true;
+            const utterance = new SpeechSynthesisUtterance(message);
+            utterance.lang = 'fr-FR';
+            utterance.rate = 1;
+            utterance.pitch = 1;
+            utterance.onend = () => {
+                creatorVoiceSpeaking = false;
+                speakCreatorVoiceNext();
+            };
+            utterance.onerror = event => {
+                creatorVoiceSpeaking = false;
+                setCreatorVoiceStatus(`Erreur de synthèse vocale : ${event.error}.`, 'error');
+                speakCreatorVoiceNext();
+            };
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function queueCreatorVoiceComment(data) {
+            const comment = data.commentData || data;
+            const text = String(comment.comment || comment.content || '')
+                .replace(/[#*0-9]\uFE0F?\u20E3/gu, ' ')
+                .replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\uFE0E\uFE0F\u200D\u20E3]/gu, ' ')
+                .trim().replace(/\s+/g, ' ').slice(0, 180);
+            if (!text) return;
+            if (creatorVoiceQueue.length >= 12) creatorVoiceQueue.shift();
+            creatorVoiceQueue.push(text);
+            speakCreatorVoiceNext();
+        }
+
+        function stopCreatorVoice(message = 'Voix désactivée. La connexion TTS est arrêtée.', state = 'connected') {
+            creatorVoiceEnabled = false;
+            creatorVoiceQueue = [];
+            creatorVoiceSpeaking = false;
+            window.speechSynthesis?.cancel();
+            const socket = creatorVoiceSocket;
+            creatorVoiceSocket = null;
+            if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+            creatorVoiceEnable.disabled = !creatorTtsUsername.value.trim();
+            creatorVoiceDisable.disabled = true;
+            setCreatorVoiceStatus(message, state);
+        }
+
+        creatorVoiceEnable.addEventListener('click', () => {
+            if (!creatorTtsUsername.value.trim() || !('speechSynthesis' in window)) {
+                setCreatorVoiceStatus('La voix nécessite un lien TTS actif et un navigateur compatible.', 'error');
+                return;
+            }
+            if (creatorVoiceEnabled) return;
+            activeCreatorVoiceUsername = creatorTtsUsername.value.trim();
+            creatorVoiceEnabled = true;
+            creatorVoiceQueue = ['La voix du TTS est activée.'];
+            creatorVoiceEnable.disabled = true;
+            creatorVoiceDisable.disabled = false;
+            setCreatorVoiceStatus(`Connexion à TikTok Live pour @${activeCreatorVoiceUsername}…`);
+            speakCreatorVoiceNext();
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const socket = new WebSocket(`${protocol}//${window.location.host}/live-tts-control`);
+            creatorVoiceSocket = socket;
+            socket.addEventListener('open', () => {
+                if (creatorVoiceSocket === socket) {
+                    setCreatorVoiceStatus(`Relais connecté. En attente du live de @${activeCreatorVoiceUsername}…`, 'connected');
+                }
+            });
+            socket.addEventListener('message', event => {
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    console.error('Message TTS reçu invalide :', error);
+                    setCreatorVoiceStatus('Réponse du service TTS illisible.', 'error');
+                    return;
+                }
+                if (data.type === 'TTS_CONFIG') {
+                    const username = String(data.username || '');
+                    if (username.toLocaleLowerCase() !== activeCreatorVoiceUsername.toLocaleLowerCase()) {
+                        setCreatorVoiceStatus('Le pseudo TikTok ne correspond pas au lien TTS actif.', 'error');
+                        stopCreatorVoice('Connexion au TTS refusée.', 'error');
+                        return;
+                    }
+                    socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                } else if (data.type === 'STATUS') {
+                    const message = data.message || 'Statut du live mis à jour.';
+                    setCreatorVoiceStatus(message, /erreur|invalide|révoqué|refusée/i.test(message) ? 'error' : 'connected');
+                } else if (data.type === 'comment' || data.type === 'chat') {
+                    queueCreatorVoiceComment(data);
+                }
+            });
+            socket.addEventListener('error', () => {
+                if (creatorVoiceSocket === socket) setCreatorVoiceStatus('Relais TTS inaccessible. Réessaie dans un instant.', 'error');
+            });
+            socket.addEventListener('close', () => {
+                if (creatorVoiceSocket !== socket) return;
+                creatorVoiceSocket = null;
+                creatorVoiceEnabled = false;
+                creatorVoiceQueue = [];
+                creatorVoiceSpeaking = false;
+                window.speechSynthesis?.cancel();
+                creatorVoiceEnable.disabled = false;
+                creatorVoiceDisable.disabled = true;
+                setCreatorVoiceStatus('Connexion TTS fermée. Active la voix pour te reconnecter.');
+                void refreshSession().catch(error => {
+                    setCreatorVoiceStatus(error.message || 'Impossible de vérifier les droits TTS.', 'error');
+                });
+            });
+        });
+
+        creatorVoiceDisable.addEventListener('click', () => stopCreatorVoice());
 
         function formatConnectionDuration(totalSeconds) {
             const hours = Math.floor(totalSeconds / 3600);
@@ -2076,9 +2243,13 @@ donne <!doctype html>
                 if (!response.ok) throw new Error(result.message || 'Création du lien impossible.');
                 creatorTtsUrl.value = new URL(result.url, window.location.origin).href;
                 creatorTtsLinkPanel.hidden = false;
-                creatorTtsRevoke.hidden = false;
+                creatorTtsForm.hidden = true;
+                creatorTtsUsername.readOnly = true;
+                creatorVoiceUsername.textContent = `@${result.username}`;
+                creatorVoiceEnable.disabled = false;
+                creatorVoiceDisable.disabled = true;
                 creatorTtsStatus.className = 'checkout-status success';
-                creatorTtsStatus.textContent = 'Lien privé créé. Copie-le maintenant : il ne sera pas conservé en clair.';
+                creatorTtsStatus.textContent = 'Lien privé créé et pseudonyme associé. Tu peux maintenant activer la voix dans le panneau à droite.';
             } catch (error) {
                 creatorTtsStatus.className = 'checkout-status error';
                 creatorTtsStatus.textContent = error.message || 'Une erreur est survenue.';
@@ -2095,30 +2266,6 @@ donne <!doctype html>
             } catch {
                 creatorTtsStatus.className = 'checkout-status error';
                 creatorTtsStatus.textContent = 'Copie impossible : sélectionne et copie le lien manuellement.';
-            }
-        });
-
-        creatorTtsRevoke.addEventListener('click', async () => {
-            if (!window.confirm('Révoquer ton lien TTS ? La source navigateur active sera déconnectée.')) return;
-            creatorTtsRevoke.disabled = true;
-            try {
-                const response = await fetch('/api/account/live-tts', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'revoke' })
-                });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.message || 'Révocation impossible.');
-                creatorTtsLinkPanel.hidden = true;
-                creatorTtsRevoke.hidden = true;
-                creatorTtsStatus.className = 'checkout-status success';
-                creatorTtsStatus.textContent = 'Lien TTS révoqué.';
-            } catch (error) {
-                creatorTtsStatus.className = 'checkout-status error';
-                creatorTtsStatus.textContent = error.message || 'Une erreur est survenue.';
-            } finally {
-                creatorTtsRevoke.disabled = false;
             }
         });
 
