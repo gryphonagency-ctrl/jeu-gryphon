@@ -642,8 +642,8 @@ const server = http.createServer((req, res) => {
                     error.statusCode = 403;
                     throw error;
                 }
-                store.setAccountTtsLinkRevoked(username, false);
                 const result = createAccountLiveTts(username, body.username);
+                store.setAccountTtsLinkRevoked(username, false);
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, ...result }));
             } catch (error) {
@@ -841,10 +841,6 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis.');
                     }
                     store.setCreatorServiceAccess(username, service, body.enabled);
-                    if (service === 'games' && body.enabled &&
-                        store.getCreatorGameAccess(username)?.length === 0) {
-                        store.setCreatorGameAccess(username, null);
-                    }
                     if (service === 'games' && body.enabled) {
                         store.setUserRevoked(username, false);
                     }
@@ -1134,6 +1130,11 @@ const server = http.createServer((req, res) => {
         readJsonBody(req, res, body => {
             try {
                 if (body.action === 'revoke') {
+                    const existing = store.getLiveTtsSource();
+                    if (existing?.accountUsername &&
+                        access.hasActiveSubscription(store.getAccount(existing.accountUsername))) {
+                        throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
+                    }
                     store.saveLiveTtsSource(null);
                     closeLiveTtsSockets();
                     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
