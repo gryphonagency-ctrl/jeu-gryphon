@@ -222,6 +222,7 @@ donne <!doctype html>
         .admin-card.dashboard-dragging { opacity: .55; }
         .dashboard-widget-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
         .dashboard-widget-actions .button { min-height: 32px; padding: 6px 9px; font-size: 10px; }
+        .dashboard-widget-actions .button:disabled { cursor: not-allowed; opacity: .45; }
         .dashboard-drag-handle { cursor: grab !important; touch-action: none; user-select: none; }
         .dashboard-drag-handle:active { cursor: grabbing !important; }
         .admin-dashboard-toolbar { display: grid; gap: 9px; margin-bottom: 18px; padding: 16px; border: 1px solid rgba(114,220,255,.22); border-radius: 12px; background: rgba(0,0,0,.12); }
@@ -780,6 +781,7 @@ donne <!doctype html>
         let draggedDashboardWidget = null;
         let dashboardPointerStart = null;
         let savedDashboardLayout = null;
+        let dashboardPinnedPositions = new Map();
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
@@ -938,11 +940,23 @@ donne <!doctype html>
                 moveButton.textContent = '↕ Déplacer';
                 moveButton.title = 'Faire glisser ce panneau pour le déplacer';
                 moveButton.setAttribute('aria-label', `Déplacer ${widget.querySelector('h3')?.textContent || 'ce panneau'}`);
+                const moveUpButton = document.createElement('button');
+                moveUpButton.className = 'button button-secondary';
+                moveUpButton.type = 'button';
+                moveUpButton.dataset.dashboardMove = '-1';
+                moveUpButton.textContent = '↑ Monter';
+                moveUpButton.title = 'Monter ce panneau dans le bureau';
+                const moveDownButton = document.createElement('button');
+                moveDownButton.className = 'button button-secondary';
+                moveDownButton.type = 'button';
+                moveDownButton.dataset.dashboardMove = '1';
+                moveDownButton.textContent = '↓ Descendre';
+                moveDownButton.title = 'Descendre ce panneau dans le bureau';
                 const pinButton = document.createElement('button');
                 pinButton.className = 'button button-secondary';
                 pinButton.type = 'button';
                 pinButton.dataset.dashboardAction = 'pin';
-                controls.append(moveButton, pinButton);
+                controls.append(moveButton, moveUpButton, moveDownButton, pinButton);
                 widget.prepend(controls);
             }
         }
@@ -964,6 +978,10 @@ donne <!doctype html>
             const pinned = new Set(layout.pinned);
             const order = [...new Set([...layout.order, ...byId.keys()])];
             const orderedWidgets = order.map(widgetId => byId.get(widgetId)).filter(Boolean);
+            dashboardPinnedPositions = new Map(
+                order.map((widgetId, index) => [widgetId, index])
+                    .filter(([widgetId]) => pinned.has(widgetId))
+            );
             for (const widget of orderedWidgets) {
                 widget.hidden = false;
                 widget.dataset.pinned = String(pinned.has(widget.dataset.dashboardWidget));
@@ -973,6 +991,29 @@ donne <!doctype html>
                 pinButton.setAttribute('aria-pressed', String(pinned.has(widget.dataset.dashboardWidget)));
                 dashboardGrid.append(widget);
             }
+            for (const [index, widget] of dashboardWidgets().entries()) {
+                for (const button of widget.querySelectorAll('[data-dashboard-move]')) {
+                    const direction = Number(button.dataset.dashboardMove);
+                    let targetIndex = index + direction;
+                    while (targetIndex >= 0 && targetIndex < orderedWidgets.length &&
+                        pinned.has(orderedWidgets[targetIndex].dataset.dashboardWidget)) {
+                        targetIndex += direction;
+                    }
+                    button.disabled = pinned.has(widget.dataset.dashboardWidget) ||
+                        targetIndex < 0 || targetIndex >= orderedWidgets.length;
+                }
+            }
+        }
+
+        function restorePinnedDashboardPositions() {
+            const widgets = dashboardWidgets();
+            for (const [widgetId, index] of dashboardPinnedPositions) {
+                const widget = widgets.find(item => item.dataset.dashboardWidget === widgetId);
+                if (!widget) continue;
+                widgets.splice(widgets.indexOf(widget), 1);
+                widgets.splice(Math.min(index, widgets.length), 0, widget);
+            }
+            widgets.forEach(widget => dashboardGrid.append(widget));
         }
 
         async function refreshDashboardLayout() {
@@ -1016,18 +1057,42 @@ donne <!doctype html>
         }
 
         dashboardGrid.addEventListener('click', event => {
+            const moveButton = event.target.closest('button[data-dashboard-move]');
+            if (moveButton) {
+                const widget = moveButton.closest('[data-dashboard-widget]');
+                const widgets = dashboardWidgets();
+                const currentIndex = widgets.indexOf(widget);
+                const direction = Number(moveButton.dataset.dashboardMove);
+                let targetIndex = currentIndex + direction;
+                while (targetIndex >= 0 && targetIndex < widgets.length &&
+                    widgets[targetIndex].dataset.pinned === 'true') {
+                    targetIndex += direction;
+                }
+                if (targetIndex < 0 || targetIndex >= widgets.length) return;
+                [widgets[currentIndex], widgets[targetIndex]] = [widgets[targetIndex], widgets[currentIndex]];
+                widgets.forEach(item => dashboardGrid.append(item));
+                applyDashboardLayout(getDashboardLayout());
+                dashboardLayoutStatus.className = 'checkout-status';
+                dashboardLayoutStatus.textContent = 'Position modifiée. Clique sur « Enregistrer mon bureau » pour la conserver.';
+                return;
+            }
             const button = event.target.closest('button[data-dashboard-action]');
             if (!button) return;
             const widget = button.closest('[data-dashboard-widget]');
             if (!widget) return;
             if (button.dataset.dashboardAction === 'pin') {
-                widget.dataset.pinned = String(widget.dataset.pinned !== 'true');
+                const pinning = widget.dataset.pinned !== 'true';
+                widget.dataset.pinned = String(pinning);
+                const widgetId = widget.dataset.dashboardWidget;
+                if (pinning) {
+                    dashboardPinnedPositions.set(widgetId, dashboardWidgets().indexOf(widget));
+                } else {
+                    dashboardPinnedPositions.delete(widgetId);
+                }
             } else {
                 return;
             }
-            widget.classList.toggle('dashboard-pinned', widget.dataset.pinned === 'true');
-            button.textContent = widget.dataset.pinned === 'true' ? 'Épinglé · libérer' : 'Épingler ici';
-            button.setAttribute('aria-pressed', widget.dataset.pinned);
+            applyDashboardLayout(getDashboardLayout());
             dashboardLayoutStatus.className = 'checkout-status';
             dashboardLayoutStatus.textContent = 'Changement non enregistré. Clique sur « Enregistrer mon bureau » pour le conserver.';
         });
@@ -1042,11 +1107,10 @@ donne <!doctype html>
                 return;
             }
             dashboardPointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, widget };
-            handle.setPointerCapture(event.pointerId);
             event.preventDefault();
         });
 
-        dashboardGrid.addEventListener('pointermove', event => {
+        document.addEventListener('pointermove', event => {
             if (!dashboardPointerStart || event.pointerId !== dashboardPointerStart.pointerId) return;
             const distance = Math.hypot(
                 event.clientX - dashboardPointerStart.x,
@@ -1057,6 +1121,8 @@ donne <!doctype html>
                 draggedDashboardWidget = dashboardPointerStart.widget;
                 draggedDashboardWidget.classList.add('dashboard-dragging');
             }
+            if (event.clientY < 72) window.scrollBy(0, -24);
+            else if (event.clientY > window.innerHeight - 72) window.scrollBy(0, 24);
             const target = document.elementFromPoint(event.clientX, event.clientY)
                 ?.closest('[data-dashboard-widget]');
             if (!target || target === draggedDashboardWidget) return;
@@ -1072,17 +1138,18 @@ donne <!doctype html>
             }
         });
 
-        dashboardGrid.addEventListener('pointerup', event => {
+        document.addEventListener('pointerup', event => {
             if (!dashboardPointerStart || event.pointerId !== dashboardPointerStart.pointerId) return;
             dashboardPointerStart = null;
             if (!draggedDashboardWidget) return;
             draggedDashboardWidget.classList.remove('dashboard-dragging');
             draggedDashboardWidget = null;
+            restorePinnedDashboardPositions();
             dashboardLayoutStatus.className = 'checkout-status';
             dashboardLayoutStatus.textContent = 'Position modifiée. Clique sur « Enregistrer mon bureau » pour la conserver.';
         });
 
-        dashboardGrid.addEventListener('pointercancel', () => {
+        document.addEventListener('pointercancel', () => {
             if (draggedDashboardWidget) draggedDashboardWidget.classList.remove('dashboard-dragging');
             draggedDashboardWidget = null;
             dashboardPointerStart = null;
