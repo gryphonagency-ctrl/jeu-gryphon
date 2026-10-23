@@ -198,6 +198,9 @@ donne <!doctype html>
         .login-success strong { color: #8bffc2; font-size: 14px; }
         .login-success p { margin: 0; color: #c4d4ca; font-size: 11px; line-height: 1.7; }
         .login-success-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .game-login-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; padding: 14px 16px; border: 1px solid rgba(85,240,163,.42); border-radius: 12px; background: rgba(85,240,163,.09); color: #c4d4ca; font-size: 12px; line-height: 1.6; }
+        .game-login-notice[hidden] { display: none; }
+        .game-login-notice::before { color: #55f0a3; content: "✓"; font-size: 18px; font-weight: 900; }
         .account-tools { display: none; gap: 10px; align-items: center; }
         .account-tools.visible { display: flex; }
         .admin-nav { display: none; }
@@ -408,7 +411,7 @@ donne <!doctype html>
                     <div><p id="creator-space-kicker" class="kicker">Espace créateur</p><h2 id="creator-space-heading">Mon TTS et mon salon</h2></div>
                     <p id="creator-room-label" class="section-intro"></p>
                 </div>
-                <p>Associe ton pseudo TikTok pour créer ton lien audio privé. L’administrateur peut le révoquer à tout moment.</p>
+                <p>Ton accès TTS est conservé sur ton compte. Associe ton pseudo TikTok pour créer ton lien audio privé; l’administrateur peut révoquer cet accès à tout moment.</p>
                 <form id="creator-tts-form" class="admin-actions">
                     <label class="field"><span class="field-label">Pseudo TikTok (sans @)</span><input id="creator-tts-username" name="username" maxlength="32" pattern="[A-Za-z0-9._]+" required autocomplete="off" placeholder="Ex. monpseudo"></label>
                     <button class="button button-primary" type="submit">Créer mon lien TTS</button>
@@ -427,6 +430,7 @@ donne <!doctype html>
                 <div><p class="kicker blue-kicker">Choisis ton terrain</p><h2 class="games-title">La vitrine des jeux</h2></div>
                 <p class="section-intro">Connecte-toi pour lancer une partie et entrer dans l’arène.</p>
             </div>
+            <p id="game-login-notice" class="game-login-notice" role="status" aria-live="polite" hidden></p>
             <div id="homepage-notice-games-before"></div>
             <div class="games-grid">
                 <a class="game-card" data-game-id="/pousoire.html" href="/pousoire.html"><span class="game-number">01 / ARCADE</span><svg class="game-visual game-image-placeholder game-art" viewBox="0 0 360 150" aria-hidden="true"><defs><linearGradient id="coin-bg" x2="0" y2="1"><stop stop-color="#473311"/><stop offset="1" stop-color="#101827"/></linearGradient><radialGradient id="coin-gold"><stop stop-color="#fff1a0"/><stop offset=".45" stop-color="#e4a72f"/><stop offset="1" stop-color="#795018"/></radialGradient></defs><rect width="360" height="150" fill="url(#coin-bg)"/><path d="M0 112 90 82l95 22 90-39 85 23v62H0Z" fill="#121b2c"/><path d="M0 119 92 92l91 21 92-37 85 22" fill="none" stroke="#5cecff" stroke-opacity=".5" stroke-width="3"/><g fill="url(#coin-gold)" stroke="#fff0a0" stroke-width="3"><ellipse cx="81" cy="101" rx="26" ry="13"/><ellipse cx="135" cy="83" rx="24" ry="12"/><ellipse cx="184" cy="103" rx="28" ry="14"/><ellipse cx="238" cy="71" rx="23" ry="12"/><ellipse cx="286" cy="94" rx="27" ry="13"/></g><g fill="none" stroke="#fff2ae" stroke-opacity=".7"><ellipse cx="81" cy="101" rx="15" ry="7"/><ellipse cx="135" cy="83" rx="14" ry="7"/><ellipse cx="184" cy="103" rx="16" ry="8"/><ellipse cx="238" cy="71" rx="13" ry="6"/><ellipse cx="286" cy="94" rx="15" ry="7"/></g><path d="M24 28h312M45 34v93m270-93v93" stroke="#a8ddff" stroke-opacity=".18" stroke-width="2"/></svg><h3>Table à pièces</h3><p>Lance les pièces, vise les récompenses et fais monter le score.</p><span class="game-launch">JOUER APRÈS CONNEXION ↗</span></a>
@@ -751,6 +755,7 @@ donne <!doctype html>
     <script>
         const loginForm = document.getElementById('login-form');
         const loginStatus = document.getElementById('login-status');
+        const gameLoginNotice = document.getElementById('game-login-notice');
         const loginSuccessPanel = document.getElementById('login-success-panel');
         const loginSuccessHeading = document.getElementById('login-success-heading');
         const loginSuccessCopy = document.getElementById('login-success-copy');
@@ -884,7 +889,8 @@ donne <!doctype html>
             }
         });
 
-        if (new URLSearchParams(window.location.search).has('connexion')) {
+        if (new URLSearchParams(window.location.search).has('connexion') &&
+            new URLSearchParams(window.location.search).get('connexion') !== 'ok') {
             notice.classList.add('visible');
             document.getElementById('connexion').scrollIntoView({ behavior: 'smooth' });
         }
@@ -906,6 +912,8 @@ donne <!doctype html>
             const response = await fetch('/api/session', { credentials: 'same-origin' });
             if (!response.ok) throw new Error('Impossible de vérifier la session.');
             const session = await response.json();
+            const pageUrl = new URL(window.location.href);
+            const loginJustSucceeded = pageUrl.searchParams.get('connexion') === 'ok';
             accountTools.classList.toggle('visible', session.authenticated);
             adminNav.classList.toggle('visible', session.isAdmin);
             adminRoomsNav.classList.toggle('visible', session.isAdmin);
@@ -925,14 +933,28 @@ donne <!doctype html>
                         : 'Ta session est active, mais aucun jeu ni accès TTS ne sont actuellement attribués à ce compte.';
                 loginTtsLink.hidden = !session.canUseTts;
                 loginAdminLink.hidden = !session.isAdmin;
+                if (loginJustSucceeded) {
+                    gameLoginNotice.textContent = session.canAccessGames
+                        ? `Connexion réussie${session.username ? ` pour ${session.username}` : ''}. Tes jeux autorisés sont prêts.`
+                        : `Connexion réussie${session.username ? ` pour ${session.username}` : ''}. Ton compte est actif, mais aucun jeu ne lui est actuellement attribué.`;
+                    gameLoginNotice.hidden = false;
+                    pageUrl.searchParams.delete('connexion');
+                    pageUrl.hash = 'jeux';
+                    window.history.replaceState(null, '', `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`);
+                } else {
+                    gameLoginNotice.hidden = true;
+                }
             } else {
                 loginSuccessCopy.textContent = '';
                 loginTtsLink.hidden = true;
                 loginAdminLink.hidden = true;
+                gameLoginNotice.hidden = true;
             }
             creatorSpace.hidden = !session.canUseTts;
             creatorSpaceKicker.textContent = session.isAdmin ? 'Espace administrateur' : 'Espace créateur';
-            creatorSpaceHeading.textContent = session.isAdmin ? 'Mon TTS personnel' : 'Mon TTS et mon salon';
+            creatorSpaceHeading.textContent = session.isAdmin
+                ? 'Mon TTS personnel'
+                : 'Mon TTS personnel et mon salon';
             creatorRoomLabel.textContent = session.roomNumber
                 ? `Salon attribué : ${session.roomNumber}`
                 : 'Aucun salon attribué pour le moment.';
@@ -1015,7 +1037,10 @@ donne <!doctype html>
                 loginStatus.className = 'login-status success';
                 loginStatus.textContent = 'Connexion réussie. Ton espace vient d’être actualisé.';
                 loginForm.reset();
-                await refreshSession();
+                const returnUrl = new URL(window.location.href);
+                returnUrl.searchParams.set('connexion', 'ok');
+                returnUrl.hash = 'jeux';
+                window.location.assign(`${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`);
             } catch (error) {
                 loginSuccessPanel.hidden = true;
                 loginStatus.className = 'login-status error';
