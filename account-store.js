@@ -30,6 +30,7 @@ function readStore() {
         parsed.creatorSettings ||= {};
         parsed.dailyUsage ||= {};
         parsed.serviceAccess ||= {};
+        parsed.serviceRevocations ||= {};
         parsed.gameAccess ||= {};
         parsed.adminDashboardLayouts ||= {};
         if (typeof parsed.users !== 'object' || Array.isArray(parsed.users) ||
@@ -44,6 +45,12 @@ function readStore() {
             typeof parsed.creatorSettings !== 'object' || Array.isArray(parsed.creatorSettings) ||
             typeof parsed.dailyUsage !== 'object' || Array.isArray(parsed.dailyUsage) ||
             typeof parsed.serviceAccess !== 'object' || Array.isArray(parsed.serviceAccess) ||
+            typeof parsed.serviceRevocations !== 'object' || Array.isArray(parsed.serviceRevocations) ||
+            Object.entries(parsed.serviceRevocations).some(([username, services]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                !services || typeof services !== 'object' || Array.isArray(services) ||
+                Object.entries(services).some(([service, revoked]) =>
+                    !['games', 'tts'].includes(service) || revoked !== true)) ||
             typeof parsed.gameAccess !== 'object' || Array.isArray(parsed.gameAccess) ||
             typeof parsed.adminDashboardLayouts !== 'object' || Array.isArray(parsed.adminDashboardLayouts) ||
             Object.entries(parsed.adminDashboardLayouts).some(([username, layout]) =>
@@ -57,9 +64,10 @@ function readStore() {
                         !/^[a-z][a-z0-9-]{1,63}$/.test(widgetId)))) ||
             Object.entries(parsed.gameAccess).some(([username, gameIds]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
-                !Array.isArray(gameIds) ||
-                gameIds.some(gameId => typeof gameId !== 'string' ||
-                    !/^(?:\/[a-zA-Z0-9._/-]{1,79}|[a-f0-9-]{36})$/.test(gameId))) ||
+                (gameIds !== null &&
+                    (!Array.isArray(gameIds) ||
+                        gameIds.some(gameId => typeof gameId !== 'string' ||
+                            !/^(?:\/[a-zA-Z0-9._/-]{1,79}|[a-f0-9-]{36})$/.test(gameId))))) ||
             Object.entries(parsed.liveTtsSources).some(([owner, source]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(owner) ||
                 !source || typeof source !== 'object' || Array.isArray(source) ||
@@ -140,6 +148,7 @@ function readStore() {
             creatorSettings: {},
             dailyUsage: {},
             serviceAccess: {},
+            serviceRevocations: {},
             gameAccess: {},
             adminDashboardLayouts: {}
         };
@@ -200,6 +209,7 @@ function removeCreator(username) {
         delete store.revokedTtsLinks[key];
         delete store.creatorSettings[key];
         delete store.serviceAccess[key];
+        delete store.serviceRevocations[key];
         delete store.gameAccess[key];
         delete store.revokedUsers[key];
         delete store.adminDashboardLayouts[key];
@@ -230,11 +240,20 @@ function getCreatorSettings(username) {
 }
 
 function isCreatorServiceEnabled(username, service) {
-    return readStore().serviceAccess[username.toLowerCase()]?.[service] !== false;
+    const store = readStore();
+    const key = username.toLowerCase();
+    if (store.users[key]?.accessMode === 'MANUAL') {
+        return store.serviceRevocations[key]?.[service] !== true;
+    }
+    return store.serviceAccess[key]?.[service] !== false;
 }
 
 function getCreatorServiceAccess(username, service) {
-    return readStore().serviceAccess[username.toLowerCase()]?.[service] ?? null;
+    const key = username.toLowerCase();
+    const store = readStore();
+    if (store.serviceRevocations[key]?.[service] === true) return false;
+    if (store.users[key]?.accessMode === 'MANUAL') return true;
+    return store.serviceAccess[key]?.[service] ?? null;
 }
 
 function setCreatorServiceAccess(username, service, enabled) {
@@ -245,6 +264,11 @@ function setCreatorServiceAccess(username, service, enabled) {
         settings[service] = enabled;
         if (Object.keys(settings).length) store.serviceAccess[key] = settings;
         else delete store.serviceAccess[key];
+        const revocations = store.serviceRevocations[key] || {};
+        if (enabled) delete revocations[service];
+        else revocations[service] = true;
+        if (Object.keys(revocations).length) store.serviceRevocations[key] = revocations;
+        else delete store.serviceRevocations[key];
     });
 }
 
@@ -260,7 +284,9 @@ function isCreatorGameAllowed(username, gameId) {
 
 function setCreatorGameAccess(username, gameIds) {
     updateStore(store => {
-        store.gameAccess[username.toLowerCase()] = [...new Set(gameIds)];
+        store.gameAccess[username.toLowerCase()] = gameIds === null
+            ? null
+            : [...new Set(gameIds)];
     });
 }
 
@@ -347,17 +373,19 @@ function saveAccount(username, account) {
     });
 }
 
-function createManualAccount(username, account, gameIds, ttsEnabled) {
+function createManualAccount(username, account, gameIds) {
     return updateStore(store => {
         const key = username.toLowerCase();
         if (store.users[key]) return false;
 
         store.users[key] = account;
-        store.gameAccess[key] = [...new Set(gameIds)];
+        store.gameAccess[key] = gameIds.length ? [...new Set(gameIds)] : null;
         store.serviceAccess[key] = {
-            games: gameIds.length > 0,
-            tts: ttsEnabled
+            games: true,
+            tts: true
         };
+        delete store.serviceRevocations[key];
+        delete store.revokedTtsLinks[key];
         delete store.revokedUsers[key];
         return true;
     });

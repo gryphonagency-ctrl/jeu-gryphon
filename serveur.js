@@ -746,9 +746,6 @@ const server = http.createServer((req, res) => {
                         body.gameIds.length > getGameCatalog().length) {
                         throw invalidAdminInput('Choisis une liste valide de jeux.');
                     }
-                    if (typeof body.ttsEnabled !== 'boolean') {
-                        throw invalidAdminInput('Choisis si ce membre reçoit l’accès au TTS.');
-                    }
                     const availableGameIds = new Set(getGameCatalog().map(game => game.id));
                     const gameIds = [...new Set(body.gameIds)];
                     if (gameIds.some(gameId => !availableGameIds.has(gameId))) {
@@ -764,7 +761,7 @@ const server = http.createServer((req, res) => {
                         accessMode: 'MANUAL',
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString()
-                    }, gameIds, body.ttsEnabled);
+                    }, gameIds);
                     if (!created) {
                         throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
                     }
@@ -831,8 +828,15 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
                     }
                     store.setCreatorServiceAccess(username, service, body.enabled);
+                    if (service === 'games' && body.enabled &&
+                        store.getCreatorGameAccess(username)?.length === 0) {
+                        store.setCreatorGameAccess(username, null);
+                    }
                     if (service === 'games' && body.enabled) {
                         store.setUserRevoked(username, false);
+                    }
+                    if (service === 'tts' && body.enabled) {
+                        store.setAccountTtsLinkRevoked(username, false);
                     }
                     if (service === 'tts' && !body.enabled) {
                         const existing = store.getAccountLiveTts(username);
@@ -864,7 +868,7 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
                     }
                     store.setCreatorGameAccess(username, gameIds);
-                    store.setCreatorServiceAccess(username, 'games', true);
+                    store.setCreatorServiceAccess(username, 'games', gameIds.length > 0);
                     if (gameIds.length) store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {

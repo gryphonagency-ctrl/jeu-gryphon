@@ -100,7 +100,8 @@ function canUseCreatorService(username, service) {
         !store.isUserRevoked(username) &&
         store.isCreatorServiceEnabled(username, service) &&
         (Boolean(account?.subscriptionId && account.status === 'ACTIVE') ||
-            store.getCreatorServiceAccess(username, service) === true);
+            store.getCreatorServiceAccess(username, service) === true ||
+            hasConfiguredUser(username));
 }
 
 function hasConfiguredUser(username) {
@@ -123,10 +124,14 @@ function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
     if (isAdminUser(username)) return true;
+    const account = store.getAccount(username);
     const allowedGameIds = store.getCreatorGameAccess(username);
+    const manualAccountDefaultsToAllGames = account?.accessMode === 'MANUAL' &&
+        allowedGameIds?.length === 0;
     return canUseCreatorService(username, 'games') &&
-        (allowedGameIds === null || allowedGameIds.length > 0) &&
-        (gameId === undefined || store.isCreatorGameAllowed(username, gameId));
+        (allowedGameIds === null || allowedGameIds.length > 0 || manualAccountDefaultsToAllGames) &&
+        (gameId === undefined || manualAccountDefaultsToAllGames ||
+            store.isCreatorGameAllowed(username, gameId));
 }
 
 function hasAdminUsers() {
