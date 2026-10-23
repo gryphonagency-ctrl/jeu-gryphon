@@ -266,6 +266,10 @@ donne <!doctype html>
         .room-management-actions { display: flex; flex-wrap: wrap; gap: 7px; }
         .creators-table input { width: 105px; min-height: 33px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #081329; color: var(--ink); font: inherit; font-size: 10px; }
         .creators-table .creator-tts-name { width: 135px; }
+        .creator-access-lock { width: 30px; height: 30px; margin-left: 7px; padding: 0; border: 1px solid rgba(143,190,255,.28); border-radius: 8px; background: rgba(255,255,255,.06); cursor: pointer; font-size: 15px; vertical-align: middle; }
+        .creator-access-lock.is-unlocked { border-color: rgba(85,240,163,.45); background: rgba(85,240,163,.1); }
+        .creator-access-lock.is-locked { border-color: rgba(255,120,120,.4); background: rgba(255,100,100,.08); }
+        .creator-access-lock:disabled { cursor: not-allowed; opacity: .5; }
         .creator-tts-action { margin-top: 7px; }
         .active-tts-list { display: grid; gap: 9px; }
         .active-tts-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border: 1px solid rgba(114,220,255,.18); border-radius: 10px; background: rgba(0,157,255,.06); }
@@ -487,30 +491,26 @@ donne <!doctype html>
                 <div class="admin-grid">
                     <div class="admin-card live-sessions-card" data-dashboard-widget="creators">
                         <h3>Créateurs, accès, TTS et salons</h3>
-                        <p>Une fois autorisé ici, l’accès aux jeux est conservé même si l’abonnement expire ou change. Il reste actif jusqu’à sa révocation par l’administrateur; l’accès au TTS se gère séparément.</p>
+                        <p>Un abonnement actif autorise automatiquement les jeux et le TTS. Tu peux révoquer ou rétablir séparément chacun de ces accès; un abonnement actif reste nécessaire.</p>
                         <div>
                             <h4>Liens TTS actifs — révocation immédiate</h4>
                             <div id="active-tts-list" class="active-tts-list"><p>Aucun lien TTS actif.</p></div>
                         </div>
                         <form id="manual-member-form" class="creator-tts-manager">
                             <h4>Ajouter un membre manuellement</h4>
-                            <p>Crée un identifiant sans abonnement : l’accès à tous les jeux et au TTS est accordé automatiquement. Tu peux révoquer séparément ces accès depuis le tableau. Communique son mot de passe de façon sécurisée.</p>
+                            <p>Crée un compte sans abonnement. Il ne pourra pas accéder aux jeux ni au TTS avant d’avoir souscrit un abonnement actif. Communique son mot de passe de façon sécurisée.</p>
                             <label class="field"><span class="field-label">Identifiant du membre</span><input id="manual-member-username" name="username" required maxlength="64" pattern="[-A-Za-z0-9._@]+" autocomplete="off"></label>
                             <label class="field"><span class="field-label">Mot de passe initial (12 caractères minimum)</span><input id="manual-member-password" name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label>
-                            <button class="button button-primary" type="submit">Créer le membre et attribuer les accès</button>
+                            <button class="button button-primary" type="submit">Créer le compte</button>
                             <p id="manual-member-status" class="checkout-status" role="status" aria-live="polite"></p>
                         </form>
                         <div class="creator-tts-manager">
                             <h4>Accès aux jeux</h4>
-                            <p>Tous les membres autorisés peuvent ouvrir tous les jeux disponibles. Utilise le bouton « Retirer accès jeux » sur un compte pour révoquer cet accès.</p>
+                            <p>Un abonnement actif donne accès à tous les jeux. Le cadenas à côté du pseudo te permet de révoquer ou de rétablir cet accès; sans abonnement actif, l’accès reste bloqué.</p>
                         </div>
                         <div class="creator-tts-manager">
                             <h4>Accès TTS des membres</h4>
-                            <p>Tu peux autoriser ou retirer le TTS indépendamment de l’abonnement. Un membre autorisé crée et copie son lien depuis son espace.</p>
-                            <div class="admin-actions">
-                                <label class="field"><span class="field-label">Membre à autoriser</span><select id="tts-access-account"><option value="">Choisir un membre…</option></select></label>
-                                <button id="tts-access-add" class="button button-primary" type="button">Autoriser le TTS</button>
-                            </div>
+                            <p>L’abonnement actif autorise automatiquement le TTS. Tu peux révoquer ou rétablir cet accès depuis le tableau; un abonnement actif reste requis. Le membre crée son lien depuis son espace.</p>
                             <div id="tts-access-list" class="active-tts-list"><p>Aucun compte autorisé.</p></div>
                         </div>
                         <div class="live-sessions-table-wrap">
@@ -812,8 +812,6 @@ donne <!doctype html>
         const creatorVoiceStatus = document.getElementById('creator-voice-status');
         const creatorList = document.getElementById('creator-list');
         const activeTtsList = document.getElementById('active-tts-list');
-        const ttsAccessAccount = document.getElementById('tts-access-account');
-        const ttsAccessAdd = document.getElementById('tts-access-add');
         const ttsAccessList = document.getElementById('tts-access-list');
         const manualMemberForm = document.getElementById('manual-member-form');
         const manualMemberStatus = document.getElementById('manual-member-status');
@@ -898,14 +896,14 @@ donne <!doctype html>
                 loginSuccessCopy.textContent = session.canAccessGames
                     ? 'Ta session est active. Tes jeux autorisés sont maintenant disponibles ci-dessous.'
                     : session.canUseTts
-                        ? 'Ta session est active. Tu peux utiliser ton espace TTS; les jeux ne sont pas attribués à ce compte.'
-                        : 'Ta session est active, mais aucun jeu ni accès TTS ne sont actuellement attribués à ce compte.';
+                        ? 'Ta session est active. Le TTS est disponible, mais les jeux nécessitent un abonnement actif.'
+                        : 'Ta session est active, mais les jeux et le TTS nécessitent un abonnement actif.';
                 loginTtsLink.hidden = !session.canUseTts;
                 loginAdminLink.hidden = !session.isAdmin;
                 if (loginJustSucceeded) {
                     gameLoginNotice.textContent = session.canAccessGames
                         ? `Connexion réussie${session.username ? ` pour ${session.username}` : ''}. Tes jeux autorisés sont prêts.`
-                        : `Connexion réussie${session.username ? ` pour ${session.username}` : ''}. Ton compte est actif, mais aucun jeu ne lui est actuellement attribué.`;
+                        : `Connexion réussie${session.username ? ` pour ${session.username}` : ''}. Un abonnement actif est nécessaire pour jouer.`;
                     gameLoginNotice.hidden = false;
                     pageUrl.searchParams.delete('connexion');
                     pageUrl.hash = 'jeux';
@@ -939,7 +937,7 @@ donne <!doctype html>
             } else {
                 stopCreatorVoice('Le TTS n’est pas autorisé pour ce compte.');
                 creatorTtsStatus.className = 'checkout-status';
-                creatorTtsStatus.textContent = 'Le TTS n’est pas encore autorisé pour ce compte. Demande à l’administrateur de l’activer; le panneau vocal sera disponible ici dès que ton accès sera accordé.';
+                creatorTtsStatus.textContent = 'Un abonnement actif est nécessaire pour accéder au TTS.';
                 creatorTtsLinkPanel.hidden = true;
                 creatorTtsUrl.value = '';
                 creatorTtsForm.hidden = true;
@@ -1526,14 +1524,6 @@ donne <!doctype html>
                 entry.append(details, revokeButton);
                 activeTtsList.append(entry);
             }
-            const availableTtsAccounts = result.creators.filter(creator =>
-                !creator.ttsAccessEnabled && !creator.protectedAdmin
-            );
-            ttsAccessAccount.replaceChildren(new Option('Choisir un membre…', ''));
-            for (const creator of availableTtsAccounts) {
-                ttsAccessAccount.add(new Option(creator.username, creator.username));
-            }
-            ttsAccessAdd.disabled = availableTtsAccounts.length === 0;
             ttsAccessList.replaceChildren();
             const authorizedTtsAccounts = result.creators.filter(creator => creator.ttsAccessEnabled);
             if (!authorizedTtsAccounts.length) {
@@ -1575,11 +1565,33 @@ donne <!doctype html>
                 const ttsAccessButton = document.createElement('button');
                 const ttsLinkButton = document.createElement('button');
                 const gamesCell = document.createElement('td');
-                const gamesAccessButton = document.createElement('button');
                 const gameSelectionCell = document.createElement('td');
                 const gameSelectionSummary = document.createElement('span');
 
-                accountCell.textContent = creator.username;
+                const accountName = document.createElement('span');
+                const gamesAccessButton = document.createElement('button');
+                accountName.textContent = creator.username;
+                gamesAccessButton.className = creator.gamesAccessEnabled
+                    ? 'creator-access-lock is-unlocked'
+                    : 'creator-access-lock is-locked';
+                gamesAccessButton.type = 'button';
+                gamesAccessButton.dataset.creatorAction = 'service-access';
+                gamesAccessButton.dataset.service = 'games';
+                gamesAccessButton.dataset.enabled = String(!creator.gamesAccessEnabled);
+                gamesAccessButton.disabled = creator.protectedAdmin || !creator.subscriptionActive;
+                gamesAccessButton.textContent = creator.gamesAccessEnabled ? '🔓' : '🔒';
+                gamesAccessButton.setAttribute(
+                    'aria-label',
+                    !creator.subscriptionActive
+                        ? `Abonnement actif requis pour l’accès aux jeux de ${creator.username}`
+                        : `${creator.gamesAccessEnabled ? 'Révoquer' : 'Rétablir'} l’accès aux jeux de ${creator.username}`
+                );
+                gamesAccessButton.title = creator.gamesAccessEnabled
+                    ? 'Verrouiller et révoquer l’accès aux jeux'
+                    : creator.subscriptionActive
+                        ? 'Déverrouiller et rétablir l’accès aux jeux'
+                        : 'Un abonnement actif est nécessaire';
+                accountCell.append(accountName, document.createTextNode(' '), gamesAccessButton);
                 subscriptionCell.textContent = creator.hasSubscription
                     ? `${creator.plan || 'PayPal'} · ${creator.subscriptionStatus}`
                     : creator.manualAccount ? 'Accès manuel · sans abonnement' : 'Aucun abonnement';
@@ -1591,9 +1603,11 @@ donne <!doctype html>
                 tiktokInput.value = pendingEdits.get(creator.username)?.tiktok ?? creator.ttsUsername ?? '';
                 tiktokInput.dataset.creatorTtsName = '';
                 tiktokCell.append(tiktokInput);
-                ttsCell.textContent = creator.ttsAccessEnabled
-                    ? creator.ttsActive ? 'Autorisé · lien actif' : 'Autorisé · lien à créer'
-                    : 'Non autorisé';
+                ttsCell.textContent = !creator.subscriptionActive
+                    ? 'Abonnement requis'
+                    : creator.ttsAccessEnabled
+                        ? creator.ttsActive ? 'Autorisé · lien actif' : 'Autorisé · lien à créer'
+                        : 'Révoqué';
                 ttsAccessButton.className = creator.ttsAccessEnabled
                     ? 'button button-danger creator-tts-action'
                     : 'button button-primary creator-tts-action';
@@ -1601,8 +1615,10 @@ donne <!doctype html>
                 ttsAccessButton.dataset.creatorAction = 'service-access';
                 ttsAccessButton.dataset.service = 'tts';
                 ttsAccessButton.dataset.enabled = String(!creator.ttsAccessEnabled);
-                ttsAccessButton.disabled = creator.protectedAdmin;
-                ttsAccessButton.textContent = creator.ttsAccessEnabled ? 'Retirer accès TTS' : 'Autoriser TTS';
+                ttsAccessButton.disabled = creator.protectedAdmin || !creator.subscriptionActive;
+                ttsAccessButton.textContent = !creator.subscriptionActive
+                    ? 'Abonnement requis'
+                    : creator.ttsAccessEnabled ? 'Retirer accès TTS' : 'Rétablir accès TTS';
                 ttsLinkButton.className = 'button button-secondary creator-tts-action';
                 ttsLinkButton.type = 'button';
                 ttsLinkButton.dataset.creatorAction = creator.ttsActive ? 'tts-revoke' : 'tts-create';
@@ -1621,17 +1637,9 @@ donne <!doctype html>
                 roomButton.dataset.creatorAction = 'room';
                 roomButton.textContent = 'Attribuer';
                 roomCell.append(roomInput, roomButton);
-                gamesCell.textContent = creator.gamesAccessEnabled ? 'Autorisé' : 'Non autorisé';
-                gamesAccessButton.className = creator.gamesAccessEnabled
-                    ? 'button button-danger creator-tts-action'
-                    : 'button button-primary creator-tts-action';
-                gamesAccessButton.type = 'button';
-                gamesAccessButton.dataset.creatorAction = 'service-access';
-                gamesAccessButton.dataset.service = 'games';
-                gamesAccessButton.dataset.enabled = String(!creator.gamesAccessEnabled);
-                gamesAccessButton.disabled = creator.protectedAdmin;
-                gamesAccessButton.textContent = creator.gamesAccessEnabled ? 'Retirer accès jeux' : 'Autoriser les jeux';
-                gamesCell.append(document.createElement('br'), gamesAccessButton);
+                gamesCell.textContent = !creator.subscriptionActive
+                    ? 'Abonnement requis'
+                    : creator.gamesAccessEnabled ? 'Autorisé' : 'Révoqué';
                 gameSelectionSummary.textContent = 'Tous les jeux';
                 gameSelectionCell.append(gameSelectionSummary);
                 row.append(accountCell, subscriptionCell, tiktokCell, ttsCell, roomCell, gamesCell, gameSelectionCell);
@@ -1673,7 +1681,9 @@ donne <!doctype html>
                         const ttsCell = document.createElement('td');
                         const ttsStatus = document.createElement('span');
                         const ttsButton = document.createElement('button');
-                        ttsStatus.textContent = creator?.ttsAccessEnabled ? 'Autorisé' : 'Refusé';
+                        ttsStatus.textContent = !creator?.subscriptionActive
+                            ? 'Abonnement requis'
+                            : creator.ttsAccessEnabled ? 'Autorisé' : 'Révoqué';
                         ttsButton.className = creator?.ttsAccessEnabled
                             ? 'button button-danger creator-tts-action'
                             : 'button button-primary creator-tts-action';
@@ -1681,7 +1691,7 @@ donne <!doctype html>
                         ttsButton.dataset.roomAccount = connection.username;
                         ttsButton.dataset.roomService = 'tts';
                         ttsButton.dataset.enabled = String(!creator?.ttsAccessEnabled);
-                        ttsButton.disabled = !creator || creator.protectedAdmin;
+                        ttsButton.disabled = !creator || creator.protectedAdmin || !creator.subscriptionActive;
                         ttsButton.textContent = creator?.ttsAccessEnabled ? 'Retirer' : 'Autoriser';
                         ttsCell.append(ttsStatus, document.createElement('br'), ttsButton);
                         row.append(ttsCell);
@@ -1689,7 +1699,9 @@ donne <!doctype html>
                         const gamesCell = document.createElement('td');
                         const gamesStatus = document.createElement('span');
                         const gamesButton = document.createElement('button');
-                        gamesStatus.textContent = creator?.gamesAccessEnabled ? 'Autorisé' : 'Refusé';
+                        gamesStatus.textContent = !creator?.subscriptionActive
+                            ? 'Abonnement requis'
+                            : creator.gamesAccessEnabled ? 'Autorisé' : 'Révoqué';
                         gamesButton.className = creator?.gamesAccessEnabled
                             ? 'button button-danger creator-tts-action'
                             : 'button button-primary creator-tts-action';
@@ -1697,7 +1709,7 @@ donne <!doctype html>
                         gamesButton.dataset.roomAccount = connection.username;
                         gamesButton.dataset.roomService = 'games';
                         gamesButton.dataset.enabled = String(!creator?.gamesAccessEnabled);
-                        gamesButton.disabled = !creator || creator.protectedAdmin;
+                        gamesButton.disabled = !creator || creator.protectedAdmin || !creator.subscriptionActive;
                         gamesButton.textContent = creator?.gamesAccessEnabled ? 'Retirer' : 'Autoriser';
                         gamesCell.append(gamesStatus, document.createElement('br'), gamesButton);
                         row.append(gamesCell);
@@ -1773,7 +1785,7 @@ donne <!doctype html>
             const button = manualMemberForm.querySelector('button[type="submit"]');
             button.disabled = true;
             manualMemberStatus.className = 'checkout-status';
-            manualMemberStatus.textContent = 'Création du membre et attribution des accès…';
+            manualMemberStatus.textContent = 'Création du compte…';
             try {
                 const result = await submitCreatorAction({
                     action: 'manual-create',
@@ -1784,7 +1796,7 @@ donne <!doctype html>
                 await refreshCreatorAdmin();
                 manualMemberStatus.className = 'checkout-status success';
                 manualMemberStatus.textContent =
-                    `Compte ${result.username} créé. Communique-lui son identifiant et son mot de passe de façon sécurisée.`;
+                    `Compte ${result.username} créé. Un abonnement actif est nécessaire pour accéder aux jeux et au TTS. Communique-lui son identifiant et son mot de passe de façon sécurisée.`;
             } catch (error) {
                 manualMemberStatus.className = 'checkout-status error';
                 manualMemberStatus.textContent = error.message || 'Impossible de créer ce membre.';
@@ -1818,26 +1830,6 @@ donne <!doctype html>
                 ? `Accès TTS autorisé pour ${accountUsername}.`
                 : `Accès TTS retiré pour ${accountUsername}.`;
         }
-
-        ttsAccessAdd.addEventListener('click', async () => {
-            const accountUsername = ttsAccessAccount.value;
-            if (!accountUsername) {
-                creatorAdminStatus.className = 'checkout-status error';
-                creatorAdminStatus.textContent = 'Choisis un compte à autoriser.';
-                return;
-            }
-            ttsAccessAdd.disabled = true;
-            creatorAdminStatus.className = 'checkout-status';
-            creatorAdminStatus.textContent = 'Autorisation du TTS…';
-            try {
-                await saveCreatorTtsAccess(accountUsername, true);
-            } catch (error) {
-                creatorAdminStatus.className = 'checkout-status error';
-                creatorAdminStatus.textContent = error.message || 'Impossible d’autoriser le TTS.';
-            } finally {
-                ttsAccessAdd.disabled = ttsAccessAccount.options.length <= 1;
-            }
-        });
 
         ttsAccessList.addEventListener('click', async event => {
             const button = event.target.closest('button[data-tts-remove-account]');

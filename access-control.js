@@ -90,12 +90,13 @@ function usernameForRequest(req) {
 function canUseCreatorService(username, service) {
     if (isAdminUser(username)) return true;
     const account = store.getAccount(username);
-    return !store.isCreatorRemoved(username) &&
-        !store.isUserRevoked(username) &&
-        store.isCreatorServiceEnabled(username, service) &&
-        (Boolean(account) ||
-            hasConfiguredUser(username) ||
-            store.getCreatorServiceAccess(username, service) === true);
+    if (store.isCreatorRemoved(username) ||
+        store.isUserRevoked(username) ||
+        !store.isCreatorServiceEnabled(username, service)) return false;
+
+    const explicitAccess = store.getCreatorServiceAccess(username, service);
+    if (explicitAccess === false) return false;
+    return Boolean(account?.subscriptionId && account.status === 'ACTIVE');
 }
 
 function hasConfiguredUser(username) {

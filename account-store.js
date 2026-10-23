@@ -251,19 +251,13 @@ function getCreatorSettings(username) {
 function isCreatorServiceEnabled(username, service) {
     const store = readStore();
     const key = username.toLowerCase();
-    if (store.serviceRevocations[key]?.[service] === true) return false;
-    if (service === 'tts') return true;
-    if (store.users[key]?.accessMode === 'MANUAL') {
-        return true;
-    }
-    return store.serviceAccess[key]?.[service] !== false;
+    return store.serviceRevocations[key]?.[service] !== true;
 }
 
 function getCreatorServiceAccess(username, service) {
     const key = username.toLowerCase();
     const store = readStore();
     if (store.serviceRevocations[key]?.[service] === true) return false;
-    if (store.users[key]?.accessMode === 'MANUAL') return true;
     return store.serviceAccess[key]?.[service] ?? null;
 }
 
@@ -391,10 +385,7 @@ function createManualAccount(username, account) {
 
         store.users[key] = account;
         store.gameAccess[key] = null;
-        store.serviceAccess[key] = {
-            games: true,
-            tts: true
-        };
+        delete store.serviceAccess[key];
         delete store.serviceRevocations[key];
         delete store.revokedTtsLinks[key];
         delete store.revokedUsers[key];

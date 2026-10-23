@@ -272,7 +272,8 @@ function listCreatorAccounts() {
             subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
             protectedAdmin: access.isAdminUser(username),
             accessEnabled: access.isAdminUser(username) ||
-                (!store.isUserRevoked(username) && (Boolean(account) || access.hasConfiguredUser(username))),
+                (!store.isUserRevoked(username) &&
+                    (access.canUseCreatorService(username, 'games') || canUseCreatorTts(username))),
             roomClosed: store.isUserRevoked(username),
             gamesAccessEnabled: access.canUseCreatorService(username, 'games'),
             manualAccount,
@@ -598,7 +599,7 @@ const server = http.createServer((req, res) => {
         const username = access.usernameForRequest(req);
         if (!canUseCreatorTts(username)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: 'Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.' }));
+            res.end(JSON.stringify({ message: 'Un abonnement actif est requis et l’accès TTS ne doit pas avoir été révoqué par l’administrateur.' }));
             return;
         }
         if (req.method === 'GET') {
@@ -813,6 +814,11 @@ const server = http.createServer((req, res) => {
                     if (access.isAdminUser(username)) {
                         throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
                     }
+                    const targetAccount = store.getAccount(username);
+                    if (body.enabled &&
+                        (!targetAccount?.subscriptionId || targetAccount.status !== 'ACTIVE')) {
+                        throw invalidAdminInput('Un abonnement actif est nécessaire avant de rétablir les jeux ou le TTS.');
+                    }
                     store.setCreatorServiceAccess(username, service, body.enabled);
                     if (service === 'games' && body.enabled &&
                         store.getCreatorGameAccess(username)?.length === 0) {
@@ -852,7 +858,7 @@ const server = http.createServer((req, res) => {
                     store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
-                        throw invalidAdminInput('Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.');
+                        throw invalidAdminInput('Un abonnement actif est requis et l’accès TTS ne doit pas avoir été révoqué par l’administrateur.');
                     }
                     const existing = store.getAccountLiveTts(username);
                     if (existing) {
@@ -1084,7 +1090,7 @@ const server = http.createServer((req, res) => {
                 }
                 const accountUsername = access.usernameForRequest(req);
                 if (!canUseCreatorTts(accountUsername)) {
-                    throw invalidAdminInput('Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.');
+                    throw invalidAdminInput('Un abonnement actif est requis et l’accès TTS ne doit pas avoir été révoqué par l’administrateur.');
                 }
                 const token = crypto.randomBytes(32).toString('hex');
                 const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
