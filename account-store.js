@@ -154,6 +154,10 @@ function isCreatorServiceEnabled(username, service) {
     return readStore().serviceAccess[username.toLowerCase()]?.[service] !== false;
 }
 
+function hasCreatorServiceGrant(username, service) {
+    return readStore().serviceAccess[username.toLowerCase()]?.[service] === true;
+}
+
 function setCreatorServiceAccess(username, service, enabled) {
     if (!['games', 'tts'].includes(service)) throw new Error('Unknown creator service.');
     updateStore(store => {
@@ -384,6 +388,7 @@ module.exports = {
     getLiveTtsSource,
     isUserRevoked,
     isCreatorServiceEnabled,
+    hasCreatorServiceGrant,
     listGames,
     listAccounts,
     listAccountLiveTtsSources,
