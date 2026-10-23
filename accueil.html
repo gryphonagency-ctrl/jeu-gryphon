@@ -217,6 +217,17 @@ donne <!doctype html>
         .admin-panel { padding: 24px; border: 1px solid rgba(114,220,255,.28); border-radius: 18px; background: linear-gradient(145deg,rgba(0,157,255,.12),rgba(255,255,255,.035)); }
         .admin-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
         .admin-card { display: grid; align-content: start; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.15); }
+        .admin-card[hidden] { display: none !important; }
+        .admin-card.dashboard-pinned { border-color: rgba(114,220,255,.7); box-shadow: inset 0 0 0 1px rgba(114,220,255,.12); }
+        .admin-card.dashboard-dragging { opacity: .55; }
+        .dashboard-widget-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+        .dashboard-widget-actions .button { min-height: 32px; padding: 6px 9px; font-size: 10px; }
+        .dashboard-drag-handle { cursor: grab !important; }
+        .dashboard-drag-handle:active { cursor: grabbing !important; }
+        .admin-dashboard-toolbar { display: grid; gap: 9px; margin-bottom: 18px; padding: 16px; border: 1px solid rgba(114,220,255,.22); border-radius: 12px; background: rgba(0,0,0,.12); }
+        .admin-dashboard-toolbar strong { font-size: 13px; }
+        .admin-dashboard-toolbar > span { color: var(--muted); font-size: 11px; }
+        .admin-dashboard-toolbar .checkout-status { margin: 0; }
         .admin-card h3 { margin: 0; font-size: 15px; }
         .admin-card > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
         .admin-card input, .admin-card select, .admin-card textarea { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #081329; color: var(--ink); font: inherit; font-size: 11px; }
@@ -377,7 +388,7 @@ donne <!doctype html>
         <section id="creator-space" class="section wrap" hidden>
             <div class="admin-card">
                 <div class="section-heading">
-                    <div><p class="kicker">Espace créateur</p><h2>Mon TTS et mon salon</h2></div>
+                    <div><p id="creator-space-kicker" class="kicker">Espace créateur</p><h2 id="creator-space-heading">Mon TTS et mon salon</h2></div>
                     <p id="creator-room-label" class="section-intro"></p>
                 </div>
                 <p>Associe ton pseudo TikTok pour créer ton lien audio privé. L’administrateur peut le révoquer à tout moment.</p>
@@ -424,10 +435,17 @@ donne <!doctype html>
                 <p class="section-intro">Personnalise les images ou importe une nouvelle page de jeu.</p>
             </div>
             <div class="admin-panel">
+                <div class="admin-dashboard-toolbar">
+                    <strong>Personnaliser mon bureau</strong>
+                    <span>Déplace les panneaux avec ↕, épingle ceux à garder en haut ou masque-les.</span>
+                    <div id="dashboard-hidden-widgets" class="admin-actions" aria-label="Panneaux masqués"></div>
+                    <button id="dashboard-reset" class="button button-secondary" type="button">Réinitialiser le bureau</button>
+                    <p id="dashboard-layout-status" class="checkout-status" role="status" aria-live="polite"></p>
+                </div>
                 <div class="admin-grid">
-                    <div class="admin-card live-sessions-card">
+                    <div class="admin-card live-sessions-card" data-dashboard-widget="creators">
                         <h3>Créateurs, accès, TTS et salons</h3>
-                        <p>Un abonnement PayPal actif est obligatoire pour jouer et utiliser le TTS. Tu peux limiter chaque abonné à une sélection précise de jeux, gérer son accès TTS et organiser ton salon hôte.</p>
+                        <p>Un abonnement PayPal actif est obligatoire pour les membres. L’administrateur dispose de son propre accès TTS et peut limiter chaque abonné à une sélection précise de jeux, gérer ses droits et organiser le salon hôte.</p>
                         <div>
                             <h4>Liens TTS actifs — révocation immédiate</h4>
                             <div id="active-tts-list" class="active-tts-list"><p>Aucun lien TTS actif.</p></div>
@@ -453,7 +471,7 @@ donne <!doctype html>
                         </div>
                         <p id="creator-admin-status" class="checkout-status" role="status" aria-live="polite"></p>
                     </div>
-                    <div class="admin-card live-sessions-card">
+                    <div class="admin-card live-sessions-card" data-dashboard-widget="host-room">
                         <h3 id="host-room-heading">Salon hôte · chargement…</h3>
                         <p id="host-room-description">Les membres affectés à ce salon et connectés à l’application apparaissent ici en temps réel.</p>
                         <p id="daily-usage-count" class="daily-usage-count"><strong>—</strong><span>comptes distincts ayant utilisé l’application aujourd’hui</span></p>
@@ -465,7 +483,7 @@ donne <!doctype html>
                             </table>
                         </div>
                     </div>
-                    <form id="homepage-notice-form" class="admin-card">
+                    <form id="homepage-notice-form" class="admin-card" data-dashboard-widget="homepage-notice">
                         <h3>Modifier le message d’accueil</h3>
                         <p>Modifie le texte, choisis son emplacement, sa largeur et sa taille. Les changements sont visibles par tous les visiteurs.</p>
                         <label class="field"><span class="field-label">Titre du message</span><input name="label" id="homepage-notice-label" maxlength="50" required></label>
@@ -486,9 +504,9 @@ donne <!doctype html>
                         <button class="button button-primary" type="submit">Enregistrer le message</button>
                         <p class="checkout-status" data-admin-status="homepage-notice" role="status" aria-live="polite"></p>
                     </form>
-                    <form id="live-tts-form" class="admin-card">
+                    <form id="live-tts-form" class="admin-card" data-dashboard-widget="live-tts">
                         <h3>Source audio TTS pour TikTok Live Studio</h3>
-                        <p>Cette source audio est réservée à un compte administrateur avec un abonnement PayPal actif. Chaque abonné peut aussi créer son propre lien TTS depuis son espace créateur.</p>
+                        <p>En tant qu’administrateur, tu peux créer et copier ton lien privé ici ou depuis ton espace TTS. Chaque abonné actif autorisé dispose également de son propre lien.</p>
                         <label class="field"><span class="field-label">Pseudo TikTok du live (sans @)</span><input id="live-tts-username" name="username" required maxlength="32" pattern="[A-Za-z0-9._]+" value="gryphon.agency" placeholder="Ex. gryphon.agency" autocomplete="off"></label>
                         <button class="button button-primary" type="submit">Générer le lien audio privé</button>
                         <div id="live-tts-link-panel" hidden>
@@ -500,7 +518,7 @@ donne <!doctype html>
                         <button id="live-tts-revoke" class="button button-danger" type="button" hidden>Supprimer et révoquer le lien</button>
                         <p class="checkout-status" data-admin-status="live-tts" role="status" aria-live="polite"></p>
                     </form>
-                    <div class="admin-card live-sessions-card">
+                    <div class="admin-card live-sessions-card" data-dashboard-widget="live-sessions">
                         <h3>Lives TikTok actuellement connectés</h3>
                         <p>Les numéros de chambre s’actualisent automatiquement. La révocation concerne uniquement le lien audio TTS associé au pseudo.</p>
                         <div class="live-sessions-table-wrap">
@@ -511,7 +529,7 @@ donne <!doctype html>
                         </div>
                         <p id="live-sessions-status" class="checkout-status" role="status" aria-live="polite"></p>
                     </div>
-                    <form id="game-image-form" class="admin-card">
+                    <form id="game-image-form" class="admin-card" data-dashboard-widget="game-image">
                         <h3>Personnaliser une image</h3>
                         <p>Choisis une image puis clique sur « Enregistrer l’image » : elle sera envoyée à Cloudinary et réutilisée dans la vitrine.</p>
                         <label class="field"><span class="field-label">Jeu</span><select name="gameId" id="game-image-select" required></select></label>
@@ -519,7 +537,7 @@ donne <!doctype html>
                         <button class="button button-primary" type="submit">Enregistrer l’image</button>
                         <p class="checkout-status" data-admin-status="image" role="status" aria-live="polite"></p>
                     </form>
-                    <form id="game-manage-form" class="admin-card">
+                    <form id="game-manage-form" class="admin-card" data-dashboard-widget="game-manage">
                         <h3>Modifier ou retirer un jeu</h3>
                         <p>Change le titre et la description, masque un jeu intégré ou supprime définitivement un jeu importé.</p>
                         <label class="field"><span class="field-label">Jeu à gérer</span><select name="gameId" id="managed-game-select" required></select></label>
@@ -532,7 +550,7 @@ donne <!doctype html>
                         </div>
                         <p class="checkout-status" data-admin-status="manage" role="status" aria-live="polite"></p>
                     </form>
-                    <form id="game-import-form" class="admin-card">
+                    <form id="game-import-form" class="admin-card" data-dashboard-widget="game-import">
                         <h3>Importer un nouveau jeu</h3>
                         <p>Importe une page HTML autonome et une image. Après l’importation, choisis quels abonnés actifs pourront accéder à ce jeu.</p>
                         <label class="field"><span class="field-label">Nom du jeu</span><input name="title" required maxlength="80" placeholder="Ex. Mon nouveau jeu"></label>
@@ -694,6 +712,8 @@ donne <!doctype html>
         const adminOnlineNav = document.getElementById('admin-online-nav');
         const onlineCount = document.getElementById('online-count');
         const creatorSpace = document.getElementById('creator-space');
+        const creatorSpaceKicker = document.getElementById('creator-space-kicker');
+        const creatorSpaceHeading = document.getElementById('creator-space-heading');
         const creatorRoomLabel = document.getElementById('creator-room-label');
         const creatorTtsForm = document.getElementById('creator-tts-form');
         const creatorTtsUsername = document.getElementById('creator-tts-username');
@@ -733,6 +753,14 @@ donne <!doctype html>
         const managedGameDescription = document.getElementById('managed-game-description');
         const toggleGameVisibility = document.getElementById('toggle-game-visibility');
         const deleteImportedGame = document.getElementById('delete-imported-game');
+        const dashboardGrid = document.querySelector('.admin-grid');
+        const dashboardHiddenWidgets = document.getElementById('dashboard-hidden-widgets');
+        const dashboardReset = document.getElementById('dashboard-reset');
+        const dashboardLayoutStatus = document.getElementById('dashboard-layout-status');
+        const dashboardDefaultOrder = [
+            'creators', 'host-room', 'homepage-notice', 'live-tts',
+            'live-sessions', 'game-image', 'game-manage', 'game-import'
+        ];
         const gameCardsById = new Map();
         const gameCatalogById = new Map();
         let selectedPlan = '';
@@ -743,6 +771,8 @@ donne <!doctype html>
         let creatorGameAccessByUsername = new Map();
         let gameAccessAccount = '';
         let gameCatalogLoaded = false;
+        let draggedDashboardWidget = null;
+        let dashboardLayoutChanged = false;
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
@@ -761,6 +791,8 @@ donne <!doctype html>
             loginForm.hidden = session.authenticated;
             accountName.textContent = session.authenticated ? `Connecté${session.username ? ` · ${session.username}` : ''}` : '';
             creatorSpace.hidden = !session.canUseTts;
+            creatorSpaceKicker.textContent = session.isAdmin ? 'Espace administrateur' : 'Espace créateur';
+            creatorSpaceHeading.textContent = session.isAdmin ? 'Mon TTS personnel' : 'Mon TTS et mon salon';
             creatorRoomLabel.textContent = session.roomNumber
                 ? `Salon attribué : ${session.roomNumber}`
                 : 'Aucun salon attribué pour le moment.';
@@ -779,7 +811,12 @@ donne <!doctype html>
             }
             if (session.isAdmin) {
                 try {
-                    await Promise.all([refreshLiveTtsStatus(), refreshLiveSessions(), refreshCreatorAdmin()]);
+                    await Promise.all([
+                        refreshLiveTtsStatus(),
+                        refreshLiveSessions(),
+                        refreshCreatorAdmin(),
+                        refreshDashboardLayout()
+                    ]);
                     if (!liveSessionsRefreshTimer) {
                         liveSessionsRefreshTimer = window.setInterval(() => {
                             Promise.all([refreshLiveSessions(), refreshCreatorAdmin()])
@@ -864,6 +901,185 @@ donne <!doctype html>
             return result;
         }
 
+        function dashboardWidgets() {
+            return [...dashboardGrid.querySelectorAll('[data-dashboard-widget]')];
+        }
+
+        function ensureDashboardWidgetControls() {
+            for (const widget of dashboardWidgets()) {
+                if (widget.querySelector('.dashboard-widget-actions')) continue;
+                widget.draggable = true;
+                const controls = document.createElement('div');
+                controls.className = 'dashboard-widget-actions';
+                const moveButton = document.createElement('button');
+                moveButton.className = 'button button-secondary dashboard-drag-handle';
+                moveButton.type = 'button';
+                moveButton.draggable = false;
+                moveButton.textContent = '↕ Déplacer';
+                moveButton.title = 'Faire glisser ce panneau pour le déplacer';
+                const pinButton = document.createElement('button');
+                pinButton.className = 'button button-secondary';
+                pinButton.type = 'button';
+                pinButton.dataset.dashboardAction = 'pin';
+                const hideButton = document.createElement('button');
+                hideButton.className = 'button button-secondary';
+                hideButton.type = 'button';
+                hideButton.dataset.dashboardAction = 'hide';
+                hideButton.textContent = 'Masquer';
+                controls.append(moveButton, pinButton, hideButton);
+                widget.prepend(controls);
+            }
+        }
+
+        function getDashboardLayout() {
+            const widgets = dashboardWidgets();
+            return {
+                order: widgets.map(widget => widget.dataset.dashboardWidget),
+                pinned: widgets.filter(widget => widget.dataset.pinned === 'true')
+                    .map(widget => widget.dataset.dashboardWidget),
+                hidden: widgets.filter(widget => widget.hidden)
+                    .map(widget => widget.dataset.dashboardWidget)
+            };
+        }
+
+        function applyDashboardLayout(layout) {
+            ensureDashboardWidgetControls();
+            const widgets = dashboardWidgets();
+            const byId = new Map(widgets.map(widget => [widget.dataset.dashboardWidget, widget]));
+            const hidden = new Set(layout.hidden);
+            const pinned = new Set(layout.pinned.filter(widgetId => !hidden.has(widgetId)));
+            const order = [...new Set([...layout.order, ...byId.keys()])];
+            const orderedWidgets = [
+                ...order.filter(widgetId => pinned.has(widgetId)),
+                ...order.filter(widgetId => !pinned.has(widgetId))
+            ].map(widgetId => byId.get(widgetId)).filter(Boolean);
+            for (const widget of orderedWidgets) {
+                widget.hidden = hidden.has(widget.dataset.dashboardWidget);
+                widget.dataset.pinned = String(pinned.has(widget.dataset.dashboardWidget));
+                widget.classList.toggle('dashboard-pinned', pinned.has(widget.dataset.dashboardWidget));
+                const pinButton = widget.querySelector('[data-dashboard-action="pin"]');
+                pinButton.textContent = pinned.has(widget.dataset.dashboardWidget) ? 'Désépingler' : 'Épingler';
+                pinButton.setAttribute('aria-pressed', String(pinned.has(widget.dataset.dashboardWidget)));
+                dashboardGrid.append(widget);
+            }
+            dashboardHiddenWidgets.replaceChildren();
+            for (const widgetId of order.filter(id => hidden.has(id))) {
+                const widget = byId.get(widgetId);
+                if (!widget) continue;
+                const restoreButton = document.createElement('button');
+                restoreButton.className = 'button button-secondary';
+                restoreButton.type = 'button';
+                restoreButton.dataset.dashboardRestore = widgetId;
+                restoreButton.textContent = `Réafficher : ${widget.querySelector('h3')?.textContent || widgetId}`;
+                dashboardHiddenWidgets.append(restoreButton);
+            }
+            if (!dashboardHiddenWidgets.childElementCount) {
+                const empty = document.createElement('span');
+                empty.textContent = 'Aucun panneau masqué.';
+                dashboardHiddenWidgets.append(empty);
+            }
+        }
+
+        async function refreshDashboardLayout() {
+            const response = await fetch('/api/admin/dashboard-layout', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Impossible de charger ton bureau.');
+            applyDashboardLayout(result.layout);
+            dashboardLayoutStatus.className = 'checkout-status';
+            dashboardLayoutStatus.textContent = 'Tes préférences de bureau sont chargées.';
+        }
+
+        async function saveDashboardLayout() {
+            dashboardLayoutStatus.className = 'checkout-status';
+            dashboardLayoutStatus.textContent = 'Enregistrement du bureau…';
+            try {
+                const response = await fetch('/api/admin/dashboard-layout', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ layout: getDashboardLayout() })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Enregistrement du bureau impossible.');
+                dashboardLayoutStatus.className = 'checkout-status success';
+                dashboardLayoutStatus.textContent = 'Bureau enregistré.';
+            } catch (error) {
+                dashboardLayoutStatus.className = 'checkout-status error';
+                dashboardLayoutStatus.textContent = error.message || 'Enregistrement du bureau impossible.';
+            }
+        }
+
+        dashboardGrid.addEventListener('click', event => {
+            const button = event.target.closest('button[data-dashboard-action]');
+            if (!button) return;
+            const widget = button.closest('[data-dashboard-widget]');
+            if (!widget) return;
+            if (button.dataset.dashboardAction === 'pin') {
+                widget.dataset.pinned = String(widget.dataset.pinned !== 'true');
+            } else if (button.dataset.dashboardAction === 'hide') {
+                widget.hidden = true;
+                widget.dataset.pinned = 'false';
+            } else {
+                return;
+            }
+            applyDashboardLayout(getDashboardLayout());
+            saveDashboardLayout();
+        });
+
+        dashboardHiddenWidgets.addEventListener('click', event => {
+            const button = event.target.closest('button[data-dashboard-restore]');
+            if (!button) return;
+            const widget = dashboardGrid.querySelector(
+                `[data-dashboard-widget="${button.dataset.dashboardRestore}"]`
+            );
+            if (!widget) return;
+            widget.hidden = false;
+            applyDashboardLayout(getDashboardLayout());
+            saveDashboardLayout();
+        });
+
+        dashboardGrid.addEventListener('dragstart', event => {
+            const handle = event.target.closest('.dashboard-drag-handle');
+            const widget = handle?.closest('[data-dashboard-widget]');
+            if (!widget) {
+                event.preventDefault();
+                return;
+            }
+            draggedDashboardWidget = widget;
+            dashboardLayoutChanged = false;
+            widget.classList.add('dashboard-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', widget.dataset.dashboardWidget);
+        });
+
+        dashboardGrid.addEventListener('dragover', event => {
+            const target = event.target.closest('[data-dashboard-widget]');
+            if (!draggedDashboardWidget || !target || target === draggedDashboardWidget) return;
+            event.preventDefault();
+            const bounds = target.getBoundingClientRect();
+            const insertBefore = event.clientY < bounds.top + bounds.height / 2;
+            dashboardGrid.insertBefore(
+                draggedDashboardWidget,
+                insertBefore ? target : target.nextElementSibling
+            );
+            dashboardLayoutChanged = true;
+        });
+
+        dashboardGrid.addEventListener('dragend', () => {
+            if (!draggedDashboardWidget) return;
+            draggedDashboardWidget.classList.remove('dashboard-dragging');
+            draggedDashboardWidget = null;
+            if (!dashboardLayoutChanged) return;
+            dashboardLayoutChanged = false;
+            applyDashboardLayout(getDashboardLayout());
+            saveDashboardLayout();
+        });
+
+        dashboardReset.addEventListener('click', () => {
+            applyDashboardLayout({ order: dashboardDefaultOrder, pinned: [], hidden: [] });
+            saveDashboardLayout();
+        });
+
         async function submitLiveTtsAction(action, username) {
             const response = await fetch('/api/admin/live-tts', {
                 method: 'POST',
@@ -902,6 +1118,7 @@ donne <!doctype html>
             creatorTtsStatus.textContent = result.active
                 ? `Un lien TTS est actif pour @${result.username}. Génère un nouveau lien pour remplacer l’ancien.`
                 : 'Aucun lien TTS personnel actif.';
+            if (result.active) creatorTtsUsername.value = result.username;
             creatorRoomLabel.textContent = result.roomNumber
                 ? `Salon attribué : ${result.roomNumber}`
                 : 'Aucun salon attribué pour le moment.';

@@ -11,6 +11,16 @@ const store = require('./account-store');
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const adminDashboardWidgetIds = [
+    'creators',
+    'host-room',
+    'homepage-notice',
+    'live-tts',
+    'live-sessions',
+    'game-image',
+    'game-manage',
+    'game-import'
+];
 const configuredMaxTikTokSessions = Number(process.env.MAX_TIKTOK_SESSIONS);
 const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
     configuredMaxTikTokSessions > 0 ? configuredMaxTikTokSessions : 25;
@@ -102,6 +112,7 @@ function invalidAdminInput(message) {
 }
 
 function canUseCreatorTts(username) {
+    if (access.isAdminUser(username) && !store.isUserRevoked(username)) return true;
     const account = store.getAccount(username);
     return Boolean(account?.subscriptionId &&
         account.status === 'ACTIVE' &&
@@ -129,6 +140,23 @@ function getGameCatalog() {
         uploaded: true
     }));
     return [...builtInGames, ...uploadedGames];
+}
+
+function normalizeAdminDashboardLayout(layout) {
+    if (!layout || typeof layout !== 'object' || Array.isArray(layout) ||
+        ['order', 'pinned', 'hidden'].some(key =>
+            !Array.isArray(layout[key]) ||
+            layout[key].some(widgetId =>
+                typeof widgetId !== 'string' || !adminDashboardWidgetIds.includes(widgetId)))) {
+        throw invalidAdminInput('La disposition du tableau de bord est invalide.');
+    }
+    const order = [...new Set([...layout.order, ...adminDashboardWidgetIds])];
+    const hidden = [...new Set(layout.hidden)];
+    return {
+        order,
+        pinned: [...new Set(layout.pinned)].filter(widgetId => !hidden.includes(widgetId)),
+        hidden
+    };
 }
 
 function getLiveTtsSource(token) {
@@ -591,6 +619,39 @@ const server = http.createServer((req, res) => {
                 }));
             }
         });
+        return;
+    }
+    if (pathname === '/api/admin/dashboard-layout' &&
+        (req.method === 'GET' || req.method === 'POST')) {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        const username = access.usernameForRequest(req);
+        if (req.method === 'GET') {
+            const layout = normalizeAdminDashboardLayout(store.getAdminDashboardLayout(username));
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ layout }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const layout = normalizeAdminDashboardLayout(body.layout);
+                store.saveAdminDashboardLayout(username, layout);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, layout }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de sauvegarde du tableau de bord :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible d’enregistrer la disposition du tableau de bord.'
+                        : error.message
+                }));
+            }
+        }, 32 * 1024);
         return;
     }
     if (pathname === '/api/admin/creators' &&

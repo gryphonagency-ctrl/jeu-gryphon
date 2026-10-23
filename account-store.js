@@ -23,6 +23,7 @@ function readStore() {
         parsed.dailyUsage ||= {};
         parsed.serviceAccess ||= {};
         parsed.gameAccess ||= {};
+        parsed.adminDashboardLayouts ||= {};
         if (parsed.homepageNotice) {
             if (parsed.homepageNotice.widthPercent === undefined) parsed.homepageNotice.widthPercent = 100;
             if (parsed.homepageNotice.text ===
@@ -42,6 +43,16 @@ function readStore() {
             typeof parsed.dailyUsage !== 'object' || Array.isArray(parsed.dailyUsage) ||
             typeof parsed.serviceAccess !== 'object' || Array.isArray(parsed.serviceAccess) ||
             typeof parsed.gameAccess !== 'object' || Array.isArray(parsed.gameAccess) ||
+            typeof parsed.adminDashboardLayouts !== 'object' || Array.isArray(parsed.adminDashboardLayouts) ||
+            Object.entries(parsed.adminDashboardLayouts).some(([username, layout]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                !layout || typeof layout !== 'object' || Array.isArray(layout) ||
+                ['order', 'pinned', 'hidden'].some(key =>
+                    !Array.isArray(layout[key]) ||
+                    layout[key].length > 100 ||
+                    layout[key].some(widgetId =>
+                        typeof widgetId !== 'string' ||
+                        !/^[a-z][a-z0-9-]{1,63}$/.test(widgetId)))) ||
             Object.entries(parsed.gameAccess).some(([username, gameIds]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
                 !Array.isArray(gameIds) ||
@@ -115,7 +126,8 @@ function readStore() {
             creatorSettings: {},
             dailyUsage: {},
             serviceAccess: {},
-            gameAccess: {}
+            gameAccess: {},
+            adminDashboardLayouts: {}
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -200,6 +212,21 @@ function setCreatorRoom(username, roomNumber) {
         else settings.roomNumber = roomNumber;
         if (Object.keys(settings).length) store.creatorSettings[key] = settings;
         else delete store.creatorSettings[key];
+    });
+}
+
+function getAdminDashboardLayout(username) {
+    return readStore().adminDashboardLayouts[username.toLowerCase()] ||
+        { order: [], pinned: [], hidden: [] };
+}
+
+function saveAdminDashboardLayout(username, layout) {
+    updateStore(store => {
+        store.adminDashboardLayouts[username.toLowerCase()] = {
+            order: [...layout.order],
+            pinned: [...layout.pinned],
+            hidden: [...layout.hidden]
+        };
     });
 }
 
@@ -407,6 +434,7 @@ module.exports = {
     getCheckout,
     getCreatorGameAccess,
     getCreatorSettings,
+    getAdminDashboardLayout,
     getDailyUsageCount,
     getGameFilesDirectory,
     getGameImage,
@@ -428,6 +456,7 @@ module.exports = {
     saveHomepageNotice,
     saveLiveTtsSource,
     saveAccountLiveTts,
+    saveAdminDashboardLayout,
     recordDailyUsage,
     setGameHidden,
     setCreatorRoom,
