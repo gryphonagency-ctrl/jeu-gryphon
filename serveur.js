@@ -134,6 +134,19 @@ function canUseCreatorTts(username) {
     return access.canUseCreatorService(username, 'tts');
 }
 
+function canUseCreatorRoom(username) {
+    if (access.isAdminUser(username)) return true;
+    const account = store.getAccount(username);
+    return account?.accessMode === 'MANUAL' || access.hasActiveSubscription(account);
+}
+
+function getCreatorRoomNumber(username) {
+    const settings = store.getCreatorSettings(username);
+    if (!settings.roomNumber || settings.roomRevoked || store.isCreatorRemoved(username) ||
+        store.isUserRevoked(username)) return null;
+    return canUseCreatorRoom(username) ? settings.roomNumber : null;
+}
+
 function getGameCatalog() {
     const hiddenGames = new Set(store.getHiddenGames());
     const storedGames = store.listGames();
@@ -234,7 +247,7 @@ function getActivePresence() {
         active.push({
             username: session.username,
             game: session.game,
-            roomNumber: store.getCreatorSettings(session.username).roomNumber || null,
+            roomNumber: getCreatorRoomNumber(session.username),
             connectedAt: session.connectedAt,
             durationSeconds: Math.floor((Date.now() - session.connectedAt) / 1000)
         });
@@ -290,7 +303,11 @@ function listCreatorAccounts() {
             ttsUsername: source?.username || settings.tiktokUsername || null,
             gameAccess: store.getCreatorGameAccess(username),
             settingsLocked: settings.locked === true,
-            roomNumber: settings.roomNumber || null
+            roomNumber: getCreatorRoomNumber(username),
+            assignedRoomNumber: settings.roomNumber || null,
+            roomEligible: canUseCreatorRoom(username),
+            roomRevoked: settings.roomRevoked === true,
+            roomAccessEnabled: Boolean(getCreatorRoomNumber(username))
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
 }
@@ -556,7 +573,7 @@ const server = http.createServer((req, res) => {
             creatorTts: creatorTts
                 ? { active: true, username: creatorTts.username }
                 : { active: false, username: null },
-            roomNumber: username ? store.getCreatorSettings(username).roomNumber || null : null
+            roomNumber: username ? getCreatorRoomNumber(username) : null
         }));
         return;
     }
@@ -619,7 +636,7 @@ const server = http.createServer((req, res) => {
                 revoked: store.isAccountTtsLinkRevoked(username) &&
                     !access.hasActiveSubscription(store.getAccount(username)),
                 username: source?.username || null,
-                roomNumber: store.getCreatorSettings(username).roomNumber || null
+                roomNumber: getCreatorRoomNumber(username)
             }));
             return;
         }
@@ -709,7 +726,7 @@ const server = http.createServer((req, res) => {
         if (req.method === 'GET') {
             const connections = getActivePresence();
             const hostUsername = access.usernameForRequest(req);
-            const hostRoomNumber = store.getCreatorSettings(hostUsername).roomNumber || 1;
+            const hostRoomNumber = getCreatorRoomNumber(hostUsername) || 1;
             const activeTtsSources = store.listAccountLiveTtsSources()
                 .filter(([accountUsername]) => canUseCreatorTts(accountUsername))
                 .map(([accountUsername, source]) => ({
@@ -783,7 +800,7 @@ const server = http.createServer((req, res) => {
                     throw invalidAdminInput('Compte créateur introuvable.');
                 }
                 if (access.isAdminUser(username) &&
-                    !['tts-create', 'tts-revoke', 'room', 'room-close', 'room-open',
+                    !['tts-create', 'tts-revoke', 'room', 'room-access', 'room-close', 'room-open',
                         'service-access', 'settings-lock'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
@@ -799,6 +816,9 @@ const server = http.createServer((req, res) => {
                         if (roomNumber !== null &&
                             (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
                             throw invalidAdminInput('Le numéro de salon doit être compris entre 1 et 9999.');
+                        }
+                        if (roomNumber !== null && !canUseCreatorRoom(username)) {
+                            throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis pour attribuer un salon.');
                         }
                         const tiktokUsername = typeof body.tiktokUsername === 'string'
                             ? body.tiktokUsername.trim().replace(/^@/, '')
@@ -867,7 +887,29 @@ const server = http.createServer((req, res) => {
                         (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
                         throw invalidAdminInput('Le numéro de salon doit être compris entre 1 et 9999.');
                     }
+                    const targetAccount = store.getAccount(username);
+                    if (roomNumber !== null && !access.isAdminUser(username) &&
+                        targetAccount?.accessMode !== 'MANUAL' &&
+                        !access.hasActiveSubscription(targetAccount)) {
+                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis pour attribuer un salon.');
+                    }
                     store.setCreatorRoom(username, roomNumber);
+                } else if (body.action === 'room-access') {
+                    if (access.isAdminUser(username) || typeof body.enabled !== 'boolean') {
+                        throw invalidAdminInput('État d’accès au salon invalide.');
+                    }
+                    const settings = store.getCreatorSettings(username);
+                    if (!settings.roomNumber) {
+                        throw invalidAdminInput('Attribue d’abord un numéro de salon à ce membre.');
+                    }
+                    if (body.enabled) {
+                        const targetAccount = store.getAccount(username);
+                        if (targetAccount?.accessMode !== 'MANUAL' &&
+                            !access.hasActiveSubscription(targetAccount)) {
+                            throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis pour rétablir le salon.');
+                        }
+                    }
+                    store.setCreatorRoomRevoked(username, !body.enabled);
                 } else if (body.action === 'service-access') {
                     const service = body.service;
                     if (!['games', 'tts'].includes(service) || typeof body.enabled !== 'boolean') {

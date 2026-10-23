@@ -96,6 +96,7 @@ function readStore() {
                 (settings.roomNumber !== undefined &&
                     (!Number.isInteger(settings.roomNumber) ||
                         settings.roomNumber < 1 || settings.roomNumber > 9999)) ||
+                (settings.roomRevoked !== undefined && typeof settings.roomRevoked !== 'boolean') ||
                 (settings.tiktokUsername !== undefined &&
                     (typeof settings.tiktokUsername !== 'string' ||
                         !/^[a-zA-Z0-9._]{1,32}$/.test(settings.tiktokUsername))) ||
@@ -304,7 +305,21 @@ function setCreatorRoom(username, roomNumber) {
         const key = username.toLowerCase();
         const settings = store.creatorSettings[key] || {};
         if (roomNumber === null) delete settings.roomNumber;
-        else settings.roomNumber = roomNumber;
+        else {
+            if (settings.roomNumber !== roomNumber) delete settings.roomRevoked;
+            settings.roomNumber = roomNumber;
+        }
+        if (Object.keys(settings).length) store.creatorSettings[key] = settings;
+        else delete store.creatorSettings[key];
+    });
+}
+
+function setCreatorRoomRevoked(username, revoked) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        if (revoked) settings.roomRevoked = true;
+        else delete settings.roomRevoked;
         if (Object.keys(settings).length) store.creatorSettings[key] = settings;
         else delete store.creatorSettings[key];
     });
@@ -618,6 +633,7 @@ module.exports = {
     recordDailyUsage,
     setGameHidden,
     setCreatorRoom,
+    setCreatorRoomRevoked,
     setCreatorTiktokUsername,
     setCreatorSettingsLocked,
     setCreatorGameAccess,
