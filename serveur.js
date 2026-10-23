@@ -151,11 +151,10 @@ function normalizeAdminDashboardLayout(layout) {
         throw invalidAdminInput('La disposition du tableau de bord est invalide.');
     }
     const order = [...new Set([...layout.order, ...adminDashboardWidgetIds])];
-    const hidden = [...new Set(layout.hidden)];
     return {
         order,
-        pinned: [...new Set(layout.pinned)].filter(widgetId => !hidden.includes(widgetId)),
-        hidden
+        pinned: [...new Set(layout.pinned)],
+        hidden: []
     };
 }
 
@@ -771,6 +770,8 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
                     }
                     store.setCreatorGameAccess(username, gameIds);
+                    store.setCreatorServiceAccess(username, 'games', true);
+                    if (gameIds.length) store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
                         throw invalidAdminInput('Un abonnement PayPal actif est requis pour utiliser le TTS.');

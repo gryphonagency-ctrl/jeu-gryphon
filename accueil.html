@@ -222,7 +222,7 @@ donne <!doctype html>
         .admin-card.dashboard-dragging { opacity: .55; }
         .dashboard-widget-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
         .dashboard-widget-actions .button { min-height: 32px; padding: 6px 9px; font-size: 10px; }
-        .dashboard-drag-handle { cursor: grab !important; }
+        .dashboard-drag-handle { cursor: grab !important; touch-action: none; user-select: none; }
         .dashboard-drag-handle:active { cursor: grabbing !important; }
         .admin-dashboard-toolbar { display: grid; gap: 9px; margin-bottom: 18px; padding: 16px; border: 1px solid rgba(114,220,255,.22); border-radius: 12px; background: rgba(0,0,0,.12); }
         .admin-dashboard-toolbar strong { font-size: 13px; }
@@ -437,9 +437,11 @@ donne <!doctype html>
             <div class="admin-panel">
                 <div class="admin-dashboard-toolbar">
                     <strong>Personnaliser mon bureau</strong>
-                    <span>Déplace les panneaux avec ↕, épingle ceux à garder en haut ou masque-les.</span>
-                    <div id="dashboard-hidden-widgets" class="admin-actions" aria-label="Panneaux masqués"></div>
-                    <button id="dashboard-reset" class="button button-secondary" type="button">Réinitialiser le bureau</button>
+                    <span>Glisse un panneau avec ↕ pour le déplacer. Épingle-le pour figer sa position, puis enregistre ton bureau.</span>
+                    <div class="admin-actions">
+                        <button id="dashboard-save" class="button button-primary" type="button">Enregistrer mon bureau</button>
+                        <button id="dashboard-reset" class="button button-secondary" type="button">Annuler mes changements</button>
+                    </div>
                     <p id="dashboard-layout-status" class="checkout-status" role="status" aria-live="polite"></p>
                 </div>
                 <div class="admin-grid">
@@ -449,6 +451,14 @@ donne <!doctype html>
                         <div>
                             <h4>Liens TTS actifs — révocation immédiate</h4>
                             <div id="active-tts-list" class="active-tts-list"><p>Aucun lien TTS actif.</p></div>
+                        </div>
+                        <div class="creator-tts-manager">
+                            <h4>Donner un jeu à un abonné</h4>
+                            <p>Sélectionne un abonné actif, choisis les jeux auxquels il aura accès, puis enregistre. L’accès aux jeux sera activé automatiquement.</p>
+                            <div class="admin-actions">
+                                <label class="field"><span class="field-label">Abonné</span><select id="game-access-account"><option value="">Choisir un abonné actif…</option></select></label>
+                                <button id="game-access-open" class="button button-primary" type="button" disabled>Choisir ses jeux</button>
+                            </div>
                         </div>
                         <div class="creator-tts-manager">
                             <h4>Accès TTS des abonnés</h4>
@@ -754,13 +764,9 @@ donne <!doctype html>
         const toggleGameVisibility = document.getElementById('toggle-game-visibility');
         const deleteImportedGame = document.getElementById('delete-imported-game');
         const dashboardGrid = document.querySelector('.admin-grid');
-        const dashboardHiddenWidgets = document.getElementById('dashboard-hidden-widgets');
+        const dashboardSave = document.getElementById('dashboard-save');
         const dashboardReset = document.getElementById('dashboard-reset');
         const dashboardLayoutStatus = document.getElementById('dashboard-layout-status');
-        const dashboardDefaultOrder = [
-            'creators', 'host-room', 'homepage-notice', 'live-tts',
-            'live-sessions', 'game-image', 'game-manage', 'game-import'
-        ];
         const gameCardsById = new Map();
         const gameCatalogById = new Map();
         let selectedPlan = '';
@@ -772,12 +778,26 @@ donne <!doctype html>
         let gameAccessAccount = '';
         let gameCatalogLoaded = false;
         let draggedDashboardWidget = null;
-        let dashboardLayoutChanged = false;
+        let dashboardPointerStart = null;
+        let savedDashboardLayout = null;
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
             document.getElementById('connexion').scrollIntoView({ behavior: 'smooth' });
         }
+
+        document.getElementById('game-access-account').addEventListener('change', event => {
+            document.getElementById('game-access-open').disabled = !event.currentTarget.value;
+        });
+
+        document.getElementById('game-access-open').addEventListener('click', event => {
+            const username = document.getElementById('game-access-account').value;
+            if (!username) return;
+            openGameAccessDialog({
+                username,
+                gameAccess: creatorGameAccessByUsername.get(username.toLowerCase()) ?? null
+            });
+        });
 
         async function refreshSession() {
             const response = await fetch('/api/session', { credentials: 'same-origin' });
@@ -908,7 +928,7 @@ donne <!doctype html>
         function ensureDashboardWidgetControls() {
             for (const widget of dashboardWidgets()) {
                 if (widget.querySelector('.dashboard-widget-actions')) continue;
-                widget.draggable = true;
+                widget.draggable = false;
                 const controls = document.createElement('div');
                 controls.className = 'dashboard-widget-actions';
                 const moveButton = document.createElement('button');
@@ -917,16 +937,12 @@ donne <!doctype html>
                 moveButton.draggable = false;
                 moveButton.textContent = '↕ Déplacer';
                 moveButton.title = 'Faire glisser ce panneau pour le déplacer';
+                moveButton.setAttribute('aria-label', `Déplacer ${widget.querySelector('h3')?.textContent || 'ce panneau'}`);
                 const pinButton = document.createElement('button');
                 pinButton.className = 'button button-secondary';
                 pinButton.type = 'button';
                 pinButton.dataset.dashboardAction = 'pin';
-                const hideButton = document.createElement('button');
-                hideButton.className = 'button button-secondary';
-                hideButton.type = 'button';
-                hideButton.dataset.dashboardAction = 'hide';
-                hideButton.textContent = 'Masquer';
-                controls.append(moveButton, pinButton, hideButton);
+                controls.append(moveButton, pinButton);
                 widget.prepend(controls);
             }
         }
@@ -937,8 +953,7 @@ donne <!doctype html>
                 order: widgets.map(widget => widget.dataset.dashboardWidget),
                 pinned: widgets.filter(widget => widget.dataset.pinned === 'true')
                     .map(widget => widget.dataset.dashboardWidget),
-                hidden: widgets.filter(widget => widget.hidden)
-                    .map(widget => widget.dataset.dashboardWidget)
+                hidden: []
             };
         }
 
@@ -946,37 +961,17 @@ donne <!doctype html>
             ensureDashboardWidgetControls();
             const widgets = dashboardWidgets();
             const byId = new Map(widgets.map(widget => [widget.dataset.dashboardWidget, widget]));
-            const hidden = new Set(layout.hidden);
-            const pinned = new Set(layout.pinned.filter(widgetId => !hidden.has(widgetId)));
+            const pinned = new Set(layout.pinned);
             const order = [...new Set([...layout.order, ...byId.keys()])];
-            const orderedWidgets = [
-                ...order.filter(widgetId => pinned.has(widgetId)),
-                ...order.filter(widgetId => !pinned.has(widgetId))
-            ].map(widgetId => byId.get(widgetId)).filter(Boolean);
+            const orderedWidgets = order.map(widgetId => byId.get(widgetId)).filter(Boolean);
             for (const widget of orderedWidgets) {
-                widget.hidden = hidden.has(widget.dataset.dashboardWidget);
+                widget.hidden = false;
                 widget.dataset.pinned = String(pinned.has(widget.dataset.dashboardWidget));
                 widget.classList.toggle('dashboard-pinned', pinned.has(widget.dataset.dashboardWidget));
                 const pinButton = widget.querySelector('[data-dashboard-action="pin"]');
-                pinButton.textContent = pinned.has(widget.dataset.dashboardWidget) ? 'Désépingler' : 'Épingler';
+                pinButton.textContent = pinned.has(widget.dataset.dashboardWidget) ? 'Épinglé · libérer' : 'Épingler ici';
                 pinButton.setAttribute('aria-pressed', String(pinned.has(widget.dataset.dashboardWidget)));
                 dashboardGrid.append(widget);
-            }
-            dashboardHiddenWidgets.replaceChildren();
-            for (const widgetId of order.filter(id => hidden.has(id))) {
-                const widget = byId.get(widgetId);
-                if (!widget) continue;
-                const restoreButton = document.createElement('button');
-                restoreButton.className = 'button button-secondary';
-                restoreButton.type = 'button';
-                restoreButton.dataset.dashboardRestore = widgetId;
-                restoreButton.textContent = `Réafficher : ${widget.querySelector('h3')?.textContent || widgetId}`;
-                dashboardHiddenWidgets.append(restoreButton);
-            }
-            if (!dashboardHiddenWidgets.childElementCount) {
-                const empty = document.createElement('span');
-                empty.textContent = 'Aucun panneau masqué.';
-                dashboardHiddenWidgets.append(empty);
             }
         }
 
@@ -985,8 +980,13 @@ donne <!doctype html>
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Impossible de charger ton bureau.');
             applyDashboardLayout(result.layout);
+            savedDashboardLayout = {
+                order: [...result.layout.order],
+                pinned: [...result.layout.pinned],
+                hidden: []
+            };
             dashboardLayoutStatus.className = 'checkout-status';
-            dashboardLayoutStatus.textContent = 'Tes préférences de bureau sont chargées.';
+            dashboardLayoutStatus.textContent = 'Bureau chargé. Enregistre après tes changements pour les conserver.';
         }
 
         async function saveDashboardLayout() {
@@ -1001,8 +1001,14 @@ donne <!doctype html>
                 });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || 'Enregistrement du bureau impossible.');
+                applyDashboardLayout(result.layout);
+                savedDashboardLayout = {
+                    order: [...result.layout.order],
+                    pinned: [...result.layout.pinned],
+                    hidden: []
+                };
                 dashboardLayoutStatus.className = 'checkout-status success';
-                dashboardLayoutStatus.textContent = 'Bureau enregistré.';
+                dashboardLayoutStatus.textContent = 'Bureau enregistré. Ta disposition et les éléments épinglés resteront en place.';
             } catch (error) {
                 dashboardLayoutStatus.className = 'checkout-status error';
                 dashboardLayoutStatus.textContent = error.message || 'Enregistrement du bureau impossible.';
@@ -1016,68 +1022,78 @@ donne <!doctype html>
             if (!widget) return;
             if (button.dataset.dashboardAction === 'pin') {
                 widget.dataset.pinned = String(widget.dataset.pinned !== 'true');
-            } else if (button.dataset.dashboardAction === 'hide') {
-                widget.hidden = true;
-                widget.dataset.pinned = 'false';
             } else {
                 return;
             }
-            applyDashboardLayout(getDashboardLayout());
-            saveDashboardLayout();
+            widget.classList.toggle('dashboard-pinned', widget.dataset.pinned === 'true');
+            button.textContent = widget.dataset.pinned === 'true' ? 'Épinglé · libérer' : 'Épingler ici';
+            button.setAttribute('aria-pressed', widget.dataset.pinned);
+            dashboardLayoutStatus.className = 'checkout-status';
+            dashboardLayoutStatus.textContent = 'Changement non enregistré. Clique sur « Enregistrer mon bureau » pour le conserver.';
         });
 
-        dashboardHiddenWidgets.addEventListener('click', event => {
-            const button = event.target.closest('button[data-dashboard-restore]');
-            if (!button) return;
-            const widget = dashboardGrid.querySelector(
-                `[data-dashboard-widget="${button.dataset.dashboardRestore}"]`
-            );
-            if (!widget) return;
-            widget.hidden = false;
-            applyDashboardLayout(getDashboardLayout());
-            saveDashboardLayout();
-        });
-
-        dashboardGrid.addEventListener('dragstart', event => {
+        dashboardGrid.addEventListener('pointerdown', event => {
             const handle = event.target.closest('.dashboard-drag-handle');
             const widget = handle?.closest('[data-dashboard-widget]');
-            if (!widget) {
-                event.preventDefault();
+            if (!widget || event.button !== 0) return;
+            if (widget.dataset.pinned === 'true') {
+                dashboardLayoutStatus.className = 'checkout-status';
+                dashboardLayoutStatus.textContent = 'Ce panneau est épinglé. Libère-le avant de le déplacer.';
                 return;
             }
-            draggedDashboardWidget = widget;
-            dashboardLayoutChanged = false;
-            widget.classList.add('dashboard-dragging');
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', widget.dataset.dashboardWidget);
-        });
-
-        dashboardGrid.addEventListener('dragover', event => {
-            const target = event.target.closest('[data-dashboard-widget]');
-            if (!draggedDashboardWidget || !target || target === draggedDashboardWidget) return;
+            dashboardPointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, widget };
+            handle.setPointerCapture(event.pointerId);
             event.preventDefault();
-            const bounds = target.getBoundingClientRect();
-            const insertBefore = event.clientY < bounds.top + bounds.height / 2;
-            dashboardGrid.insertBefore(
-                draggedDashboardWidget,
-                insertBefore ? target : target.nextElementSibling
-            );
-            dashboardLayoutChanged = true;
         });
 
-        dashboardGrid.addEventListener('dragend', () => {
+        dashboardGrid.addEventListener('pointermove', event => {
+            if (!dashboardPointerStart || event.pointerId !== dashboardPointerStart.pointerId) return;
+            const distance = Math.hypot(
+                event.clientX - dashboardPointerStart.x,
+                event.clientY - dashboardPointerStart.y
+            );
+            if (!draggedDashboardWidget && distance < 8) return;
+            if (!draggedDashboardWidget) {
+                draggedDashboardWidget = dashboardPointerStart.widget;
+                draggedDashboardWidget.classList.add('dashboard-dragging');
+            }
+            const target = document.elementFromPoint(event.clientX, event.clientY)
+                ?.closest('[data-dashboard-widget]');
+            if (!target || target === draggedDashboardWidget) return;
+            const bounds = target.getBoundingClientRect();
+            const sameRow = event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+            const insertBefore = sameRow
+                ? event.clientX < bounds.left + bounds.width / 2
+                : event.clientY < bounds.top + bounds.height / 2;
+            const insertionPoint = insertBefore ? target : target.nextElementSibling;
+            if (insertionPoint !== draggedDashboardWidget &&
+                insertionPoint !== draggedDashboardWidget.nextElementSibling) {
+                dashboardGrid.insertBefore(draggedDashboardWidget, insertionPoint);
+            }
+        });
+
+        dashboardGrid.addEventListener('pointerup', event => {
+            if (!dashboardPointerStart || event.pointerId !== dashboardPointerStart.pointerId) return;
+            dashboardPointerStart = null;
             if (!draggedDashboardWidget) return;
             draggedDashboardWidget.classList.remove('dashboard-dragging');
             draggedDashboardWidget = null;
-            if (!dashboardLayoutChanged) return;
-            dashboardLayoutChanged = false;
-            applyDashboardLayout(getDashboardLayout());
-            saveDashboardLayout();
+            dashboardLayoutStatus.className = 'checkout-status';
+            dashboardLayoutStatus.textContent = 'Position modifiée. Clique sur « Enregistrer mon bureau » pour la conserver.';
         });
 
+        dashboardGrid.addEventListener('pointercancel', () => {
+            if (draggedDashboardWidget) draggedDashboardWidget.classList.remove('dashboard-dragging');
+            draggedDashboardWidget = null;
+            dashboardPointerStart = null;
+        });
+
+        dashboardSave.addEventListener('click', saveDashboardLayout);
+
         dashboardReset.addEventListener('click', () => {
-            applyDashboardLayout({ order: dashboardDefaultOrder, pinned: [], hidden: [] });
-            saveDashboardLayout();
+            if (savedDashboardLayout) applyDashboardLayout(savedDashboardLayout);
+            dashboardLayoutStatus.className = 'checkout-status';
+            dashboardLayoutStatus.textContent = 'Modifications annulées. Le bureau revient à sa dernière disposition enregistrée.';
         });
 
         async function submitLiveTtsAction(action, username) {
@@ -1201,6 +1217,18 @@ donne <!doctype html>
                 ttsAccessAccount.add(new Option(creator.username, creator.username));
             }
             ttsAccessAdd.disabled = availableTtsAccounts.length === 0;
+            const gameAccessAccounts = result.creators.filter(creator => creator.subscriptionActive);
+            const gameAccessAccountSelect = document.getElementById('game-access-account');
+            const gameAccessOpen = document.getElementById('game-access-open');
+            const selectedGameAccessAccount = gameAccessAccountSelect.value;
+            gameAccessAccountSelect.replaceChildren(new Option('Choisir un abonné actif…', ''));
+            for (const creator of gameAccessAccounts) {
+                gameAccessAccountSelect.add(new Option(creator.username, creator.username));
+            }
+            if (gameAccessAccounts.some(creator => creator.username === selectedGameAccessAccount)) {
+                gameAccessAccountSelect.value = selectedGameAccessAccount;
+            }
+            gameAccessOpen.disabled = !gameAccessAccountSelect.value;
             ttsAccessList.replaceChildren();
             const authorizedTtsAccounts = result.creators.filter(creator => creator.ttsAccessEnabled);
             if (!authorizedTtsAccounts.length) {
@@ -1306,8 +1334,8 @@ donne <!doctype html>
                 gameSelectionButton.className = 'button button-secondary creator-tts-action';
                 gameSelectionButton.type = 'button';
                 gameSelectionButton.dataset.creatorAction = 'game-access';
-                gameSelectionButton.textContent = 'Choisir';
-                gameSelectionButton.disabled = !creator.subscriptionActive || !creator.gamesAccessEnabled;
+                gameSelectionButton.textContent = 'Choisir les jeux';
+                gameSelectionButton.disabled = !creator.subscriptionActive;
                 gameSelectionCell.append(gameSelectionSummary, document.createElement('br'), gameSelectionButton);
                 row.append(accountCell, subscriptionCell, tiktokCell, ttsCell, roomCell, gamesCell, gameSelectionCell);
                 creatorList.append(row);
@@ -1452,7 +1480,9 @@ donne <!doctype html>
                 });
                 await refreshCreatorAdmin();
                 gameAccessStatus.className = 'checkout-status success';
-                gameAccessStatus.textContent = `${gameIds.length} jeu${gameIds.length === 1 ? '' : 'x'} autorisé${gameIds.length === 1 ? '' : 's'} pour ${gameAccessAccount}.`;
+                gameAccessStatus.textContent = gameIds.length
+                    ? `${gameIds.length} jeu${gameIds.length === 1 ? '' : 'x'} autorisé${gameIds.length === 1 ? '' : 's'} et accès aux jeux activé pour ${gameAccessAccount}.`
+                    : `Aucun jeu autorisé pour ${gameAccessAccount}.`;
                 gameAccessDialog.close();
             } catch (error) {
                 gameAccessStatus.className = 'checkout-status error';
