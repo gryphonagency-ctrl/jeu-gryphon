@@ -263,13 +263,7 @@ function listCreatorAccounts() {
     return [...creators.entries()].map(([username, account]) => {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
-        const storedGameIds = store.getCreatorGameAccess(username);
         const manualAccount = account?.accessMode === 'MANUAL';
-        const gameIds = manualAccount &&
-            storedGameIds?.length === 0 &&
-            store.getCreatorServiceAccess(username, 'games') !== false
-            ? null
-            : storedGameIds;
         return {
             username,
             subscriptionStatus: account?.status || 'MANUEL',
@@ -277,19 +271,15 @@ function listCreatorAccounts() {
             hasSubscription: Boolean(account?.subscriptionId),
             subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
             protectedAdmin: access.isAdminUser(username),
-            accessEnabled: access.isAdminUser(username) || (!store.isUserRevoked(username) &&
-                (!account || account.status === 'ACTIVE' ||
-                    store.getCreatorServiceAccess(username, 'games') === true ||
-                    store.getCreatorServiceAccess(username, 'tts') === true)),
+            accessEnabled: access.isAdminUser(username) ||
+                (!store.isUserRevoked(username) && (Boolean(account) || access.hasConfiguredUser(username))),
             roomClosed: store.isUserRevoked(username),
-            gamesAccessEnabled: access.isAdminUser(username) ||
-                (access.canUseCreatorService(username, 'games') &&
-                    (gameIds === null || gameIds.length > 0)),
+            gamesAccessEnabled: access.canUseCreatorService(username, 'games'),
             manualAccount,
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,
-            gameAccess: gameIds,
+            gameAccess: null,
             roomNumber: settings.roomNumber || null
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
@@ -608,7 +598,7 @@ const server = http.createServer((req, res) => {
         const username = access.usernameForRequest(req);
         if (!canUseCreatorTts(username)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: 'L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.' }));
+            res.end(JSON.stringify({ message: 'Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.' }));
             return;
         }
         if (req.method === 'GET') {
@@ -747,16 +737,6 @@ const server = http.createServer((req, res) => {
                     if (password.length < 12 || password.length > 256) {
                         throw invalidAdminInput('Le mot de passe doit contenir de 12 à 256 caractères.');
                     }
-                    if (!Array.isArray(body.gameIds) ||
-                        body.gameIds.some(gameId => typeof gameId !== 'string') ||
-                        body.gameIds.length > getGameCatalog().length) {
-                        throw invalidAdminInput('Choisis une liste valide de jeux.');
-                    }
-                    const availableGameIds = new Set(getGameCatalog().map(game => game.id));
-                    const gameIds = [...new Set(body.gameIds)];
-                    if (gameIds.some(gameId => !availableGameIds.has(gameId))) {
-                        throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
-                    }
                     const salt = crypto.randomBytes(16).toString('hex');
                     const created = store.createManualAccount(username, {
                         salt,
@@ -767,7 +747,7 @@ const server = http.createServer((req, res) => {
                         accessMode: 'MANUAL',
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString()
-                    }, gameIds);
+                    });
                     if (!created) {
                         throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
                     }
@@ -867,18 +847,12 @@ const server = http.createServer((req, res) => {
                     if (!targetAccount && !access.hasConfiguredUser(username)) {
                         throw invalidAdminInput('Compte membre introuvable.');
                     }
-                    const availableGameIds = new Set(getGameCatalog().map(game => game.id));
-                    const gameIds = [...new Set(body.gameIds)];
-                    if (body.gameIds.length > availableGameIds.size ||
-                        gameIds.some(gameId => !availableGameIds.has(gameId))) {
-                        throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
-                    }
-                    store.setCreatorGameAccess(username, gameIds);
-                    store.setCreatorServiceAccess(username, 'games', gameIds.length > 0);
-                    if (gameIds.length) store.setUserRevoked(username, false);
+                    store.setCreatorGameAccess(username, null);
+                    store.setCreatorServiceAccess(username, 'games', true);
+                    store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
-                        throw invalidAdminInput('L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.');
+                        throw invalidAdminInput('Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.');
                     }
                     const existing = store.getAccountLiveTts(username);
                     if (existing) {
@@ -1110,7 +1084,7 @@ const server = http.createServer((req, res) => {
                 }
                 const accountUsername = access.usernameForRequest(req);
                 if (!canUseCreatorTts(accountUsername)) {
-                    throw invalidAdminInput('L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.');
+                    throw invalidAdminInput('Le TTS n’est pas autorisé pour ce compte ou a été révoqué par l’administrateur.');
                 }
                 const token = crypto.randomBytes(32).toString('hex');
                 const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

@@ -251,8 +251,10 @@ function getCreatorSettings(username) {
 function isCreatorServiceEnabled(username, service) {
     const store = readStore();
     const key = username.toLowerCase();
+    if (store.serviceRevocations[key]?.[service] === true) return false;
+    if (service === 'tts') return true;
     if (store.users[key]?.accessMode === 'MANUAL') {
-        return store.serviceRevocations[key]?.[service] !== true;
+        return true;
     }
     return store.serviceAccess[key]?.[service] !== false;
 }
@@ -382,13 +384,13 @@ function saveAccount(username, account) {
     });
 }
 
-function createManualAccount(username, account, gameIds) {
+function createManualAccount(username, account) {
     return updateStore(store => {
         const key = username.toLowerCase();
         if (store.users[key]) return false;
 
         store.users[key] = account;
-        store.gameAccess[key] = gameIds.length ? [...new Set(gameIds)] : null;
+        store.gameAccess[key] = null;
         store.serviceAccess[key] = {
             games: true,
             tts: true
