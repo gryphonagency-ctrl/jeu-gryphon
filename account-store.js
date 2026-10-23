@@ -183,6 +183,10 @@ function isCreatorServiceEnabled(username, service) {
     return readStore().serviceAccess[username.toLowerCase()]?.[service] !== false;
 }
 
+function getCreatorServiceAccess(username, service) {
+    return readStore().serviceAccess[username.toLowerCase()]?.[service] ?? null;
+}
+
 function setCreatorServiceAccess(username, service, enabled) {
     if (!['games', 'tts'].includes(service)) throw new Error('Unknown creator service.');
     updateStore(store => {
@@ -281,6 +285,22 @@ function getAccountBySubscription(subscriptionId) {
 function saveAccount(username, account) {
     updateStore(store => {
         store.users[username.toLowerCase()] = account;
+    });
+}
+
+function createManualAccount(username, account, gameIds, ttsEnabled) {
+    return updateStore(store => {
+        const key = username.toLowerCase();
+        if (store.users[key]) return false;
+
+        store.users[key] = account;
+        store.gameAccess[key] = [...new Set(gameIds)];
+        store.serviceAccess[key] = {
+            games: gameIds.length > 0,
+            tts: ttsEnabled
+        };
+        delete store.revokedUsers[key];
+        return true;
     });
 }
 
@@ -451,6 +471,7 @@ module.exports = {
     getCreatorGameAccess,
     getCreatorSettings,
     getAdminDashboardLayout,
+    getCreatorServiceAccess,
     getDailyUsageCount,
     getGameFilesDirectory,
     getGameImage,
@@ -482,6 +503,7 @@ module.exports = {
     setCreatorServiceAccess,
     setUserRevoked,
     saveAccount,
+    createManualAccount,
     reserveCheckout,
     savePlans,
     setSubscriptionStatus

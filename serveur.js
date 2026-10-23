@@ -131,11 +131,7 @@ function normalizePaypalLink(value) {
 }
 
 function canUseCreatorTts(username) {
-    if (access.isAdminUser(username)) return true;
-    const account = store.getAccount(username);
-    return Boolean(account?.subscriptionId &&
-        account.status === 'ACTIVE' &&
-        store.isCreatorServiceEnabled(username, 'tts'));
+    return access.canUseCreatorService(username, 'tts');
 }
 
 function getGameCatalog() {
@@ -263,6 +259,7 @@ function listCreatorAccounts() {
     return [...creators.entries()].map(([username, account]) => {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
+        const gameIds = store.getCreatorGameAccess(username);
         return {
             username,
             subscriptionStatus: account?.status || 'MANUEL',
@@ -271,14 +268,17 @@ function listCreatorAccounts() {
             subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
             protectedAdmin: access.isAdminUser(username),
             accessEnabled: access.isAdminUser(username) || (!store.isUserRevoked(username) &&
-                (!account || account.status === 'ACTIVE')),
-            gamesAccessEnabled: access.isAdminUser(username) || (!store.isUserRevoked(username) &&
-                store.isCreatorServiceEnabled(username, 'games') &&
-                (!account || (Boolean(account.subscriptionId) && account.status === 'ACTIVE'))),
+                (!account || account.status === 'ACTIVE' ||
+                    store.getCreatorServiceAccess(username, 'games') === true ||
+                    store.getCreatorServiceAccess(username, 'tts') === true)),
+            gamesAccessEnabled: access.isAdminUser(username) ||
+                (access.canUseCreatorService(username, 'games') &&
+                    (gameIds === null || gameIds.length > 0)),
+            manualAccount: account?.accessMode === 'MANUAL',
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,
-            gameAccess: store.getCreatorGameAccess(username),
+            gameAccess: gameIds,
             roomNumber: settings.roomNumber || null
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
@@ -715,6 +715,51 @@ const server = http.createServer((req, res) => {
         }
         readJsonBody(req, res, body => {
             try {
+                if (body.action === 'manual-create') {
+                    const username = typeof body.username === 'string'
+                        ? body.username.trim().toLowerCase()
+                        : '';
+                    const password = typeof body.password === 'string' ? body.password : '';
+                    if (!/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                        access.isAdminUser(username) ||
+                        access.hasConfiguredUser(username) ||
+                        store.getAccount(username)) {
+                        throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
+                    }
+                    if (password.length < 12 || password.length > 256) {
+                        throw invalidAdminInput('Le mot de passe doit contenir de 12 à 256 caractères.');
+                    }
+                    if (!Array.isArray(body.gameIds) ||
+                        body.gameIds.some(gameId => typeof gameId !== 'string') ||
+                        body.gameIds.length > getGameCatalog().length) {
+                        throw invalidAdminInput('Choisis une liste valide de jeux.');
+                    }
+                    if (typeof body.ttsEnabled !== 'boolean') {
+                        throw invalidAdminInput('Choisis si ce membre reçoit l’accès au TTS.');
+                    }
+                    const availableGameIds = new Set(getGameCatalog().map(game => game.id));
+                    const gameIds = [...new Set(body.gameIds)];
+                    if (gameIds.some(gameId => !availableGameIds.has(gameId))) {
+                        throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
+                    }
+                    const salt = crypto.randomBytes(16).toString('hex');
+                    const created = store.createManualAccount(username, {
+                        salt,
+                        passwordHash: crypto.scryptSync(password, salt, 64).toString('hex'),
+                        status: 'ACTIVE',
+                        subscriptionId: null,
+                        plan: 'Accès manuel',
+                        accessMode: 'MANUAL',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    }, gameIds, body.ttsEnabled);
+                    if (!created) {
+                        throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
+                    }
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, username }));
+                    return;
+                }
                 const username = typeof body.accountUsername === 'string'
                     ? body.accountUsername.trim().toLowerCase()
                     : '';
@@ -751,11 +796,6 @@ const server = http.createServer((req, res) => {
                     if (access.isAdminUser(username)) {
                         throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
                     }
-                    const targetAccount = store.getAccount(username);
-                    if (body.enabled &&
-                        (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId)) {
-                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour autoriser cet accès.');
-                    }
                     store.setCreatorServiceAccess(username, service, body.enabled);
                     if (service === 'games' && body.enabled) {
                         store.setUserRevoked(username, false);
@@ -779,8 +819,8 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Choisis une liste valide de jeux.');
                     }
                     const targetAccount = store.getAccount(username);
-                    if (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId) {
-                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour configurer les jeux.');
+                    if (!targetAccount && !access.hasConfiguredUser(username)) {
+                        throw invalidAdminInput('Compte membre introuvable.');
                     }
                     const availableGameIds = new Set(getGameCatalog().map(game => game.id));
                     const gameIds = [...new Set(body.gameIds)];
@@ -793,7 +833,7 @@ const server = http.createServer((req, res) => {
                     if (gameIds.length) store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
-                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour utiliser le TTS.');
+                        throw invalidAdminInput('L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.');
                     }
                     const existing = store.getAccountLiveTts(username);
                     if (existing) closeLiveTtsSockets(existing.username);
@@ -1014,7 +1054,7 @@ const server = http.createServer((req, res) => {
                 }
                 const accountUsername = access.usernameForRequest(req);
                 if (!canUseCreatorTts(accountUsername)) {
-                    throw invalidAdminInput('Un abonnement PayPal actif est requis pour créer une source TTS.');
+                    throw invalidAdminInput('L’accès au TTS doit être autorisé par l’administrateur ou par un abonnement actif.');
                 }
                 const token = crypto.randomBytes(32).toString('hex');
                 const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

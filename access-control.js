@@ -61,7 +61,8 @@ function isAuthenticated(req) {
     const administrator = isAdminUser(session.username);
     if (session.storeBacked) {
         const account = store.getAccount(session.username);
-        if (!administrator && (!account || account.status !== 'ACTIVE')) {
+        if (!administrator && (!account ||
+            (account.status !== 'ACTIVE' && !hasManualServiceAccess(session.username)))) {
             sessions.delete(token);
             return false;
         }
@@ -81,6 +82,20 @@ function usernameForRequest(req) {
     if (!token) return '';
     const session = sessions.get(token);
     return session && session.expiresAt > Date.now() ? session.username || '' : '';
+}
+
+function hasManualServiceAccess(username) {
+    return store.getCreatorServiceAccess(username, 'games') === true ||
+        store.getCreatorServiceAccess(username, 'tts') === true;
+}
+
+function canUseCreatorService(username, service) {
+    if (isAdminUser(username)) return true;
+    const account = store.getAccount(username);
+    return !store.isUserRevoked(username) &&
+        store.isCreatorServiceEnabled(username, service) &&
+        (Boolean(account?.subscriptionId && account.status === 'ACTIVE') ||
+            store.getCreatorServiceAccess(username, service) === true);
 }
 
 function hasConfiguredUser(username) {
@@ -103,11 +118,8 @@ function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
     if (isAdminUser(username)) return true;
-    const account = store.getAccount(username);
     const allowedGameIds = store.getCreatorGameAccess(username);
-    return Boolean(account?.subscriptionId && account.status === 'ACTIVE') &&
-        !store.isUserRevoked(username) &&
-        store.isCreatorServiceEnabled(username, 'games') &&
+    return canUseCreatorService(username, 'games') &&
         (allowedGameIds === null || allowedGameIds.length > 0) &&
         (gameId === undefined || store.isCreatorGameAllowed(username, gameId));
 }
@@ -134,7 +146,8 @@ function login(username, password, req, res) {
     if (storedAccount) {
         const providedHash = crypto.scryptSync(providedPassword, storedAccount.salt, 64);
         const storedHash = Buffer.from(storedAccount.passwordHash, 'hex');
-        matches = (administrator || (storedAccount.status === 'ACTIVE' &&
+        matches = (administrator || ((storedAccount.status === 'ACTIVE' ||
+            hasManualServiceAccess(normalizedUsername)) &&
             !store.isUserRevoked(normalizedUsername))) &&
             storedHash.length === providedHash.length &&
             crypto.timingSafeEqual(providedHash, storedHash);
@@ -195,6 +208,7 @@ module.exports = {
     hasAdminUsers,
     hasConfiguredUser,
     canAccessGames,
+    canUseCreatorService,
     isAdminUser,
     isAdmin,
     isAuthenticated,
