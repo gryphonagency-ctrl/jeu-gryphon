@@ -29,6 +29,7 @@ const gryphonSwordImage = path.join(__dirname, 'epee-fanfan-detouree.png');
 const matterFile = path.join(__dirname, 'node_modules', 'matter-js', 'build', 'matter.min.js');
 const homepageFile = path.join(__dirname, 'accueil.html');
 const liveTtsFile = path.join(__dirname, 'live-tts.html');
+const presenceScriptFile = path.join(__dirname, 'arcade-presence.js');
 const protectedRoutes = new Set([
     '/pousoire.html',
     '/pendu',
@@ -67,6 +68,8 @@ const defaultHomepageNotice = Object.freeze({
     widthPercent: 100,
     placement: 'hero'
 });
+const applicationPresence = new Map();
+const PRESENCE_EXPIRY_MS = 45 * 1000;
 
 function invalidAdminInput(message) {
     const error = new Error(message);
@@ -76,13 +79,111 @@ function invalidAdminInput(message) {
 
 function getLiveTtsSource(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
-    const source = store.getLiveTtsSource();
-    if (!source) return null;
     const providedHash = crypto.createHash('sha256').update(token).digest();
-    const storedHash = Buffer.from(source.tokenHash, 'hex');
-    if (storedHash.length !== providedHash.length ||
-        !crypto.timingSafeEqual(storedHash, providedHash)) return null;
-    return source;
+    const sources = [
+        store.getLiveTtsSource(),
+        ...store.listAccountLiveTtsSources().map(([accountUsername, source]) => ({
+            ...source,
+            accountUsername
+        }))
+    ].filter(Boolean);
+    for (const source of sources) {
+        const storedHash = Buffer.from(source.tokenHash, 'hex');
+        if (storedHash.length === providedHash.length &&
+            crypto.timingSafeEqual(storedHash, providedHash)) {
+            if (source.accountUsername) {
+                const account = store.getAccount(source.accountUsername);
+                if (!account || account.status !== 'ACTIVE' || !account.subscriptionId ||
+                    !store.isCreatorServiceEnabled(source.accountUsername, 'tts')) return null;
+            }
+            return source;
+        }
+    }
+    return null;
+}
+
+function createAccountLiveTts(accountUsername, requestedUsername) {
+    const username = typeof requestedUsername === 'string'
+        ? requestedUsername.trim().replace(/^@/, '')
+        : '';
+    if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+        throw invalidAdminInput('Saisis un pseudo TikTok valide de 1 à 32 caractères.');
+    }
+    const normalizedUsername = username.toLocaleLowerCase();
+    const duplicate = store.listAccountLiveTtsSources().some(([owner, source]) =>
+        owner !== accountUsername.toLowerCase() &&
+        source.username.toLocaleLowerCase() === normalizedUsername
+    );
+    const legacySource = store.getLiveTtsSource();
+    if (duplicate || legacySource?.username.toLocaleLowerCase() === normalizedUsername) {
+        throw invalidAdminInput('Ce pseudo TikTok possède déjà un lien TTS actif.');
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    store.saveAccountLiveTts(accountUsername, {
+        username,
+        tokenHash,
+        createdAt: new Date().toISOString()
+    });
+    return { username, url: `/live-tts/${token}` };
+}
+
+function getActivePresence() {
+    const cutoff = Date.now() - PRESENCE_EXPIRY_MS;
+    const active = [];
+    for (const [clientId, session] of applicationPresence) {
+        if (session.lastSeenAt <= cutoff) {
+            applicationPresence.delete(clientId);
+            continue;
+        }
+        active.push({
+            username: session.username,
+            game: session.game,
+            roomNumber: store.getCreatorSettings(session.username).roomNumber || null,
+            connectedAt: session.connectedAt,
+            durationSeconds: Math.floor((Date.now() - session.connectedAt) / 1000)
+        });
+    }
+    return active.sort((first, second) => first.connectedAt - second.connectedAt);
+}
+
+function getApplicationDate() {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Paris',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+function listCreatorAccounts() {
+    const creators = new Map(access.listConfiguredUsers().map(username => [username, null]));
+    for (const [username, account] of store.listAccounts()) creators.set(username, account);
+    return [...creators.entries()].map(([username, account]) => {
+        const source = store.getAccountLiveTts(username);
+        const settings = store.getCreatorSettings(username);
+        return {
+            username,
+            subscriptionStatus: account?.status || 'MANUEL',
+            plan: account?.plan || null,
+            hasSubscription: Boolean(account?.subscriptionId),
+            subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
+            protectedAdmin: access.isAdminUser(username),
+            accessEnabled: !store.isUserRevoked(username) &&
+                (!account || account.status === 'ACTIVE'),
+            gamesAccessEnabled: !store.isUserRevoked(username) &&
+                store.isCreatorServiceEnabled(username, 'games') &&
+                (!account || (Boolean(account.subscriptionId) && account.status === 'ACTIVE')),
+            ttsAccessEnabled: Boolean(account?.subscriptionId &&
+                account.status === 'ACTIVE' &&
+                store.isCreatorServiceEnabled(username, 'tts')),
+            ttsActive: Boolean(source),
+            ttsUsername: source?.username || null,
+            roomNumber: settings.roomNumber || null
+        };
+    }).sort((first, second) => first.username.localeCompare(second.username));
 }
 
 function cloudinaryConfigurationError() {
@@ -327,16 +428,264 @@ async function saveAdminGame(body) {
 const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
     if (pathname === '/api/session' && req.method === 'GET') {
+        const authenticated = access.isAuthenticated(req);
+        const username = authenticated ? access.usernameForRequest(req) : '';
+        const account = username ? store.getAccount(username) : null;
+        const creatorTts = username ? store.getAccountLiveTts(username) : null;
         res.writeHead(200, {
             'Cache-Control': 'no-store',
             'Content-Type': 'application/json; charset=utf-8'
         });
         res.end(JSON.stringify({
-            authenticated: access.isAuthenticated(req),
+            authenticated,
             configured: access.hasUsers,
             isAdmin: access.isAdmin(req),
-            username: access.usernameForRequest(req)
+            username,
+            hasSubscription: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
+            canAccessGames: access.canAccessGames(req),
+            creatorTts: creatorTts
+                ? { active: true, username: creatorTts.username }
+                : { active: false, username: null },
+            roomNumber: username ? store.getCreatorSettings(username).roomNumber || null : null
         }));
+        return;
+    }
+    if (pathname === '/api/presence' && req.method === 'POST') {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion requise.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const clientId = typeof body.clientId === 'string' ? body.clientId : '';
+            if (!/^[a-f0-9-]{36}$/i.test(clientId) ||
+                (body.action !== 'heartbeat' && body.action !== 'leave')) {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Signal de présence invalide.' }));
+                return;
+            }
+            const username = access.usernameForRequest(req);
+            store.recordDailyUsage(username, getApplicationDate());
+            if (body.action === 'leave') {
+                if (applicationPresence.get(clientId)?.username === username) {
+                    applicationPresence.delete(clientId);
+                }
+            } else {
+                const game = typeof body.game === 'string' &&
+                    /^\/[a-zA-Z0-9._/-]{1,100}$/.test(body.game)
+                    ? body.game
+                    : '/';
+                const existing = applicationPresence.get(clientId);
+                applicationPresence.set(clientId, {
+                    username,
+                    game,
+                    connectedAt: existing?.username === username ? existing.connectedAt : Date.now(),
+                    lastSeenAt: Date.now()
+                });
+            }
+            res.writeHead(204, { 'Cache-Control': 'no-store' });
+            res.end();
+        });
+        return;
+    }
+    if (pathname === '/api/account/live-tts' &&
+        (req.method === 'GET' || req.method === 'POST')) {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion requise.' }));
+            return;
+        }
+        const username = access.usernameForRequest(req);
+        const account = store.getAccount(username);
+        if (!account || account.status !== 'ACTIVE' || !account.subscriptionId ||
+            !store.isCreatorServiceEnabled(username, 'tts')) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Le TTS personnel est réservé aux abonnements actifs.' }));
+            return;
+        }
+        if (req.method === 'GET') {
+            const source = store.getAccountLiveTts(username);
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                active: Boolean(source),
+                username: source?.username || null,
+                roomNumber: store.getCreatorSettings(username).roomNumber || null
+            }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const existing = store.getAccountLiveTts(username);
+                if (body.action === 'revoke') {
+                    if (!existing) throw Object.assign(new Error('Aucun lien TTS personnel n’est actif.'), { statusCode: 404 });
+                    store.saveAccountLiveTts(username, null);
+                    closeLiveTtsSockets(existing.username);
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, active: false }));
+                    return;
+                }
+                if (body.action !== 'create') throw invalidAdminInput('Action TTS inconnue.');
+                if (existing) closeLiveTtsSockets(existing.username);
+                const result = createAccountLiveTts(username, body.username);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, ...result }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de configuration du TTS du créateur :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible de configurer le TTS. Vérifie le stockage persistant.'
+                        : error.message
+                }));
+            }
+        });
+        return;
+    }
+    if (pathname === '/api/admin/creators' &&
+        (req.method === 'GET' || req.method === 'POST')) {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        if (req.method === 'GET') {
+            const connections = getActivePresence();
+            const hostUsername = access.usernameForRequest(req);
+            const hostRoomNumber = store.getCreatorSettings(hostUsername).roomNumber || 1;
+            const activeTtsSources = store.listAccountLiveTtsSources().map(([accountUsername, source]) => ({
+                accountUsername,
+                username: source.username,
+                legacy: false
+            }));
+            const legacySource = store.getLiveTtsSource();
+            if (legacySource) {
+                activeTtsSources.unshift({
+                    accountUsername: null,
+                    username: legacySource.username,
+                    legacy: true
+                });
+            }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                creators: listCreatorAccounts(),
+                hostUsername,
+                hostRoomNumber,
+                roomMembers: connections.filter(connection => connection.roomNumber === hostRoomNumber),
+                onlineCount: new Set(connections.map(connection => connection.username.toLowerCase())).size,
+                dailyUniqueUsers: store.getDailyUsageCount(getApplicationDate()),
+                dailyUsageDate: getApplicationDate(),
+                activeTtsSources,
+                connections
+            }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const username = typeof body.accountUsername === 'string'
+                    ? body.accountUsername.trim().toLowerCase()
+                    : '';
+                if (!/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                    (!access.hasConfiguredUser(username) && !store.getAccount(username))) {
+                    throw invalidAdminInput('Compte créateur introuvable.');
+                }
+                if (access.isAdminUser(username) &&
+                    !['tts-revoke', 'room', 'service-access'].includes(body.action)) {
+                    throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
+                }
+                if (body.action === 'access') {
+                    if (typeof body.enabled !== 'boolean') throw invalidAdminInput('État d’accès invalide.');
+                    store.setUserRevoked(username, !body.enabled);
+                    access.revokeUserSessions(username);
+                    if (!body.enabled) {
+                        for (const [clientId, session] of applicationPresence) {
+                            if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+                        }
+                        closeAuthenticatedSockets(username);
+                    }
+                } else if (body.action === 'room') {
+                    const roomNumber = body.roomNumber;
+                    if (roomNumber !== null &&
+                        (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
+                        throw invalidAdminInput('Le numéro de salon doit être compris entre 1 et 9999.');
+                    }
+                    store.setCreatorRoom(username, roomNumber);
+                } else if (body.action === 'service-access') {
+                    const service = body.service;
+                    if (!['games', 'tts'].includes(service) || typeof body.enabled !== 'boolean') {
+                        throw invalidAdminInput('Service ou autorisation invalide.');
+                    }
+                    if (access.isAdminUser(username)) {
+                        throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
+                    }
+                    const targetAccount = store.getAccount(username);
+                    if (body.enabled &&
+                        (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId)) {
+                        throw invalidAdminInput('Seul un abonnement PayPal actif peut autoriser cet accès.');
+                    }
+                    store.setCreatorServiceAccess(username, service, body.enabled);
+                    if (service === 'games' && body.enabled) {
+                        store.setUserRevoked(username, false);
+                    }
+                    if (service === 'tts' && !body.enabled) {
+                        const existing = store.getAccountLiveTts(username);
+                        if (existing) {
+                            store.saveAccountLiveTts(username, null);
+                            closeLiveTtsSockets(existing.username);
+                        }
+                    }
+                    if (service === 'games' && !body.enabled) {
+                        for (const [clientId, session] of applicationPresence) {
+                            if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+                        }
+                        closeAuthenticatedSockets(username);
+                    }
+                } else if (body.action === 'tts-create') {
+                    const targetAccount = store.getAccount(username);
+                    if (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId ||
+                        !store.isCreatorServiceEnabled(username, 'tts')) {
+                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour créer un lien TTS.');
+                    }
+                    const existing = store.getAccountLiveTts(username);
+                    if (existing) closeLiveTtsSockets(existing.username);
+                    const result = createAccountLiveTts(username, body.username);
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, ...result }));
+                    return;
+                } else if (body.action === 'tts-revoke') {
+                    const existing = store.getAccountLiveTts(username);
+                    if (!existing) {
+                        const error = new Error('Aucun lien TTS actif pour ce créateur.');
+                        error.statusCode = 404;
+                        throw error;
+                    }
+                    store.saveAccountLiveTts(username, null);
+                    closeLiveTtsSockets(existing.username);
+                } else if (body.action === 'legacy-tts-revoke') {
+                    const existing = store.getLiveTtsSource();
+                    if (!existing) {
+                        const error = new Error('Aucune source TTS globale active.');
+                        error.statusCode = 404;
+                        throw error;
+                    }
+                    store.saveLiveTtsSource(null);
+                    closeLiveTtsSockets(existing.username);
+                } else {
+                    throw invalidAdminInput('Action de gestion du créateur inconnue.');
+                }
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de gestion d’un créateur :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible de gérer ce créateur. Vérifie le stockage persistant.'
+                        : error.message
+                }));
+            }
+        });
         return;
     }
     if (pathname === '/api/games' && req.method === 'GET') {
@@ -396,13 +745,14 @@ const server = http.createServer((req, res) => {
             return;
         }
         const source = store.getLiveTtsSource();
+        const accountSources = store.listAccountLiveTtsSources().map(([, item]) => item);
         const liveSessions = [...sessions.values()]
             .filter(session => session.isLive)
             .map(session => ({
                 username: session.username,
                 roomId: session.roomId,
-                hasTtsLink: Boolean(source &&
-                    source.username.toLocaleLowerCase() === session.username.toLocaleLowerCase())
+                hasTtsLink: [source, ...accountSources].some(item =>
+                    item?.username.toLocaleLowerCase() === session.username.toLocaleLowerCase())
             }));
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ sessions: liveSessions }));
@@ -428,13 +778,19 @@ const server = http.createServer((req, res) => {
                         throw error;
                     }
                 } else if (body.action === 'revoke') {
-                    const source = store.getLiveTtsSource();
-                    if (!source || source.username.toLocaleLowerCase() !== sessionKey) {
+                    const legacySource = store.getLiveTtsSource();
+                    const accountSource = store.listAccountLiveTtsSources().find(([, item]) =>
+                        item.username.toLocaleLowerCase() === sessionKey
+                    );
+                    if (legacySource?.username.toLocaleLowerCase() === sessionKey) {
+                        store.saveLiveTtsSource(null);
+                    } else if (accountSource) {
+                        store.saveAccountLiveTts(accountSource[0], null);
+                    } else {
                         const error = new Error('Aucun lien TTS actif pour ce pseudo.');
                         error.statusCode = 404;
                         throw error;
                     }
-                    store.saveLiveTtsSource(null);
                     closeLiveTtsSockets(username);
                 } else {
                     throw invalidAdminInput('Action d’administration du live inconnue.');
@@ -660,6 +1016,7 @@ const server = http.createServer((req, res) => {
     }
     const routes = new Map([
         ['/', [homepageFile, 'text/html; charset=utf-8']],
+        ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/pousoire.html', [gameFile, 'text/html; charset=utf-8']],
         ['/pendu', [hangmanFile, 'text/html; charset=utf-8']],
         ['/pendu.html', [hangmanFile, 'text/html; charset=utf-8']],
@@ -691,8 +1048,11 @@ const server = http.createServer((req, res) => {
     const route = routes.get(pathname);
 
     if (pathname.startsWith('/uploaded-games/')) {
-        if (!access.isAuthenticated(req)) {
-            res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
+        if (!access.canAccessGames(req)) {
+            res.writeHead(302, {
+                'Cache-Control': 'no-store',
+                Location: access.isAuthenticated(req) ? '/?acces=jeux' : '/?connexion=requise'
+            });
             res.end();
             return;
         }
@@ -714,7 +1074,10 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'no-store',
                 'Content-Type': 'text/html; charset=utf-8'
             });
-            res.end(content);
+            res.end(content.toString('utf8').replace(
+                /<\/body>/i,
+                '<script src="/arcade-presence.js" defer></script></body>'
+            ));
         });
         return;
     }
@@ -746,8 +1109,11 @@ const server = http.createServer((req, res) => {
     }
 
     if (route) {
-        if (protectedRoutes.has(pathname) && !access.isAuthenticated(req)) {
-            res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
+        if (protectedRoutes.has(pathname) && !access.canAccessGames(req)) {
+            res.writeHead(302, {
+                'Cache-Control': 'no-store',
+                Location: access.isAuthenticated(req) ? '/?acces=jeux' : '/?connexion=requise'
+            });
             res.end();
             return;
         }
@@ -762,7 +1128,12 @@ const server = http.createServer((req, res) => {
                 headers['Cache-Control'] = 'no-store';
             }
             res.writeHead(200, headers);
-            res.end(content);
+            res.end(contentType.startsWith('text/html;')
+                ? content.toString('utf8').replace(
+                    /<\/body>/i,
+                    '<script src="/arcade-presence.js" defer></script></body>'
+                )
+                : content);
         });
     } else {
         res.writeHead(404);
@@ -803,6 +1174,7 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
 const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
+const authenticatedClientUsernames = new Map();
 function closeLiveTtsSockets(username) {
     for (const socket of liveTtsSockets) {
         if (username && liveTtsClientUsernames.get(socket)?.toLocaleLowerCase() !== username.toLocaleLowerCase()) continue;
@@ -810,11 +1182,18 @@ function closeLiveTtsSockets(username) {
     }
 }
 
+function closeAuthenticatedSockets(username) {
+    const normalizedUsername = username.toLowerCase();
+    for (const [socket, connectedUsername] of authenticatedClientUsernames) {
+        if (connectedUsername.toLowerCase() === normalizedUsername) socket.terminate();
+    }
+}
+
 server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
     const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
-    if (!access.isAuthenticated(req) && !ttsSource) {
+    if ((!access.isAuthenticated(req) || !access.canAccessGames(req)) && !ttsSource) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -872,8 +1251,11 @@ function startTikTokSession(session) {
     });
 }
 
-wss.on('connection', socket => {
+wss.on('connection', (socket, req) => {
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
+    if (!liveTtsUsername && access.isAuthenticated(req)) {
+        authenticatedClientUsernames.set(socket, access.usernameForRequest(req));
+    }
     if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
     }
@@ -947,6 +1329,7 @@ wss.on('connection', socket => {
     });
     socket.on('close', () => {
         liveTtsSockets.delete(socket);
+        authenticatedClientUsernames.delete(socket);
         detachClient(socket);
     });
     socket.on('error', error => {

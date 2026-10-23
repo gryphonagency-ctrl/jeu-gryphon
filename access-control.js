@@ -70,6 +70,10 @@ function isAuthenticated(req) {
             return false;
         }
     }
+    if (store.isUserRevoked(session.username)) {
+        sessions.delete(token);
+        return false;
+    }
     return true;
 }
 
@@ -87,8 +91,24 @@ function hasConfiguredUser(username) {
     return users.has(username.trim().toLowerCase());
 }
 
+function listConfiguredUsers() {
+    return [...users.keys()];
+}
+
+function isAdminUser(username) {
+    return adminUsers.has(username.trim().toLowerCase());
+}
+
 function isAdmin(req) {
     return isAuthenticated(req) && adminUsers.has(usernameForRequest(req));
+}
+
+function canAccessGames(req) {
+    if (!isAuthenticated(req)) return false;
+    const username = usernameForRequest(req);
+    if (isAdmin(req)) return true;
+    return !store.isUserRevoked(username) &&
+        store.isCreatorServiceEnabled(username, 'games');
 }
 
 function hasAdminUsers() {
@@ -113,12 +133,14 @@ function login(username, password, req, res) {
         const providedHash = crypto.scryptSync(providedPassword, storedAccount.salt, 64);
         const storedHash = Buffer.from(storedAccount.passwordHash, 'hex');
         matches = storedAccount.status === 'ACTIVE' &&
+            !store.isUserRevoked(normalizedUsername) &&
             storedHash.length === providedHash.length &&
             crypto.timingSafeEqual(providedHash, storedHash);
     } else if (configuredPassword !== undefined) {
         const providedBuffer = Buffer.from(providedPassword);
         const configuredBuffer = Buffer.from(configuredPassword);
-        matches = providedBuffer.length === configuredBuffer.length &&
+        matches = !store.isUserRevoked(normalizedUsername) &&
+            providedBuffer.length === configuredBuffer.length &&
             crypto.timingSafeEqual(providedBuffer, configuredBuffer);
     }
 
@@ -157,15 +179,26 @@ function logout(req, res) {
     res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
 }
 
+function revokeUserSessions(username) {
+    const normalizedUsername = username.trim().toLowerCase();
+    for (const [token, session] of sessions) {
+        if (session.username === normalizedUsername) sessions.delete(token);
+    }
+}
+
 module.exports = {
     get hasUsers() {
         return users.size > 0 || store.hasAccounts();
     },
     hasAdminUsers,
     hasConfiguredUser,
+    canAccessGames,
+    isAdminUser,
     isAdmin,
     isAuthenticated,
+    listConfiguredUsers,
     login,
     logout,
+    revokeUserSessions,
     usernameForRequest
 };

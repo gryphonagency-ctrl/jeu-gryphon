@@ -17,6 +17,11 @@ function readStore() {
         parsed.hiddenGames ||= {};
         parsed.homepageNotice ??= null;
         parsed.liveTtsSource ??= null;
+        parsed.liveTtsSources ||= {};
+        parsed.revokedUsers ||= {};
+        parsed.creatorSettings ||= {};
+        parsed.dailyUsage ||= {};
+        parsed.serviceAccess ||= {};
         if (parsed.homepageNotice) {
             if (parsed.homepageNotice.widthPercent === undefined) parsed.homepageNotice.widthPercent = 100;
             if (parsed.homepageNotice.text ===
@@ -30,6 +35,36 @@ function readStore() {
             typeof parsed.plans !== 'object' || Array.isArray(parsed.plans) ||
             typeof parsed.games !== 'object' || Array.isArray(parsed.games) ||
             typeof parsed.hiddenGames !== 'object' || Array.isArray(parsed.hiddenGames) ||
+            typeof parsed.liveTtsSources !== 'object' || Array.isArray(parsed.liveTtsSources) ||
+            typeof parsed.revokedUsers !== 'object' || Array.isArray(parsed.revokedUsers) ||
+            typeof parsed.creatorSettings !== 'object' || Array.isArray(parsed.creatorSettings) ||
+            typeof parsed.dailyUsage !== 'object' || Array.isArray(parsed.dailyUsage) ||
+            typeof parsed.serviceAccess !== 'object' || Array.isArray(parsed.serviceAccess) ||
+            Object.entries(parsed.liveTtsSources).some(([owner, source]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(owner) ||
+                !source || typeof source !== 'object' || Array.isArray(source) ||
+                typeof source.username !== 'string' ||
+                !/^[a-zA-Z0-9._]{1,32}$/.test(source.username) ||
+                typeof source.tokenHash !== 'string' ||
+                !/^[a-f0-9]{64}$/.test(source.tokenHash)) ||
+            Object.entries(parsed.revokedUsers).some(([username, revoked]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || revoked !== true) ||
+            Object.entries(parsed.creatorSettings).some(([username, settings]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                !settings || typeof settings !== 'object' || Array.isArray(settings) ||
+                (settings.roomNumber !== undefined &&
+                    (!Number.isInteger(settings.roomNumber) ||
+                        settings.roomNumber < 1 || settings.roomNumber > 9999))) ||
+            Object.entries(parsed.dailyUsage).some(([date, users]) =>
+                !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+                !users || typeof users !== 'object' || Array.isArray(users) ||
+                Object.entries(users).some(([username, used]) =>
+                    !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || used !== true)) ||
+            Object.entries(parsed.serviceAccess).some(([username, services]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                !services || typeof services !== 'object' || Array.isArray(services) ||
+                Object.entries(services).some(([service, enabled]) =>
+                    !['games', 'tts'].includes(service) || typeof enabled !== 'boolean')) ||
             (parsed.liveTtsSource !== null &&
                 (typeof parsed.liveTtsSource !== 'object' ||
                     Array.isArray(parsed.liveTtsSource) ||
@@ -64,7 +99,12 @@ function readStore() {
             games: {},
             hiddenGames: {},
             homepageNotice: null,
-            liveTtsSource: null
+            liveTtsSource: null,
+            liveTtsSources: {},
+            revokedUsers: {},
+            creatorSettings: {},
+            dailyUsage: {},
+            serviceAccess: {}
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -88,6 +128,87 @@ function updateStore(mutator) {
 function getAccount(username) {
     const store = readStore();
     return store.users[username.toLowerCase()] || null;
+}
+
+function listAccounts() {
+    return Object.entries(readStore().users);
+}
+
+function isUserRevoked(username) {
+    return readStore().revokedUsers[username.toLowerCase()] === true;
+}
+
+function setUserRevoked(username, revoked) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        if (revoked) store.revokedUsers[key] = true;
+        else delete store.revokedUsers[key];
+    });
+}
+
+function getCreatorSettings(username) {
+    return readStore().creatorSettings[username.toLowerCase()] || {};
+}
+
+function isCreatorServiceEnabled(username, service) {
+    return readStore().serviceAccess[username.toLowerCase()]?.[service] !== false;
+}
+
+function setCreatorServiceAccess(username, service, enabled) {
+    if (!['games', 'tts'].includes(service)) throw new Error('Unknown creator service.');
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.serviceAccess[key] || {};
+        settings[service] = enabled;
+        if (Object.keys(settings).length) store.serviceAccess[key] = settings;
+        else delete store.serviceAccess[key];
+    });
+}
+
+function setCreatorRoom(username, roomNumber) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        if (roomNumber === null) delete settings.roomNumber;
+        else settings.roomNumber = roomNumber;
+        if (Object.keys(settings).length) store.creatorSettings[key] = settings;
+        else delete store.creatorSettings[key];
+    });
+}
+
+function getAccountLiveTts(username) {
+    return readStore().liveTtsSources[username.toLowerCase()] || null;
+}
+
+function listAccountLiveTtsSources() {
+    return Object.entries(readStore().liveTtsSources);
+}
+
+function saveAccountLiveTts(username, source) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        if (source) store.liveTtsSources[key] = source;
+        else delete store.liveTtsSources[key];
+    });
+}
+
+function recordDailyUsage(username, date) {
+    const key = username.toLowerCase();
+    if (readStore().dailyUsage[date]?.[key]) return false;
+    return updateStore(store => {
+        const users = store.dailyUsage[date] || {};
+        if (users[key]) return false;
+        users[key] = true;
+        store.dailyUsage[date] = users;
+        for (const storedDate of Object.keys(store.dailyUsage)) {
+            if (storedDate < date) delete store.dailyUsage[storedDate];
+        }
+        return true;
+    });
+}
+
+function getDailyUsageCount(date) {
+    return Object.keys(readStore().dailyUsage[date] || {}).length;
 }
 
 function getAccountBySubscription(subscriptionId) {
@@ -251,14 +372,21 @@ module.exports = {
     deleteCheckout,
     deleteGame,
     getAccount,
+    getAccountLiveTts,
     getAccountBySubscription,
     getCheckout,
+    getCreatorSettings,
+    getDailyUsageCount,
     getGameFilesDirectory,
     getGameImage,
     getHiddenGames,
     getHomepageNotice,
     getLiveTtsSource,
+    isUserRevoked,
+    isCreatorServiceEnabled,
     listGames,
+    listAccounts,
+    listAccountLiveTtsSources,
     getPlans,
     hasAccounts,
     saveGame,
@@ -267,7 +395,12 @@ module.exports = {
     saveGameMetadata,
     saveHomepageNotice,
     saveLiveTtsSource,
+    saveAccountLiveTts,
+    recordDailyUsage,
     setGameHidden,
+    setCreatorRoom,
+    setCreatorServiceAccess,
+    setUserRevoked,
     saveAccount,
     reserveCheckout,
     savePlans,

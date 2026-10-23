@@ -98,14 +98,14 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
             }
         }
 
-        const { avatarDataUri, avatarUrls } = await getAvatarData(gift.user, avatarCache);
+        const avatarUrls = getAvatarUrls(gift.user);
         send({
             type: 'gift',
             gift: {
                 messageId,
                 username: gift.user?.displayId || gift.user?.nickname || '',
                 nickname: gift.user?.nickname || '',
-                avatarDataUri,
+                avatarDataUri: null,
                 avatarUrls,
                 coinValue,
                 giftType,
@@ -113,6 +113,19 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
                 coinCount,
                 giftName: gift.gift?.name || ''
             }
+        });
+        getAvatarData(gift.user, avatarCache).then(({ avatarDataUri }) => {
+            if (avatarDataUri) {
+                send({
+                    type: 'viewer',
+                    viewer: {
+                        username: gift.user?.displayId || gift.user?.nickname || '',
+                        avatarDataUri
+                    }
+                });
+            }
+        }).catch(error => {
+            console.warn(`Impossible de charger l’avatar du cadeau de ${gift.user?.nickname || 'un spectateur'} :`, error);
         });
     });
 
