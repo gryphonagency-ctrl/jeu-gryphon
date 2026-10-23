@@ -623,7 +623,6 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({
                 creators: listCreatorAccounts(),
                 gameCatalog: getGameCatalog(),
-                gameCatalog: getGameCatalog(),
                 hostUsername,
                 hostRoomNumber,
                 roomMembers: connections.filter(connection => connection.roomNumber === hostRoomNumber),
@@ -706,7 +705,8 @@ const server = http.createServer((req, res) => {
                     }
                     const availableGameIds = new Set(getGameCatalog().map(game => game.id));
                     const gameIds = [...new Set(body.gameIds)];
-                    if (gameIds.some(gameId => !availableGameIds.has(gameId))) {
+                    if (body.gameIds.length > availableGameIds.size ||
+                        gameIds.some(gameId => !availableGameIds.has(gameId))) {
                         throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
                     }
                     store.setCreatorGameAccess(username, gameIds);
@@ -753,7 +753,7 @@ const server = http.createServer((req, res) => {
                         : error.message
                 }));
             }
-        });
+        }, 256 * 1024);
         return;
     }
     if (pathname === '/api/games' && req.method === 'GET') {

@@ -339,6 +339,9 @@ function deleteGame(gameId) {
         if (!game || !game.uploaded) return null;
         delete store.games[gameId];
         delete store.hiddenGames[gameId];
+        for (const [username, allowedGameIds] of Object.entries(store.gameAccess)) {
+            store.gameAccess[username] = allowedGameIds.filter(id => id !== gameId);
+        }
         return game;
     });
 }

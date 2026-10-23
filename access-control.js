@@ -107,9 +107,11 @@ function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
     const account = store.getAccount(username);
+    const allowedGameIds = store.getCreatorGameAccess(username);
     return Boolean(account?.subscriptionId && account.status === 'ACTIVE') &&
         !store.isUserRevoked(username) &&
         store.isCreatorServiceEnabled(username, 'games') &&
+        (allowedGameIds === null || allowedGameIds.length > 0) &&
         (gameId === undefined || store.isCreatorGameAllowed(username, gameId));
 }
 

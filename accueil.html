@@ -245,6 +245,11 @@ donne <!doctype html>
         .creator-tts-manager { margin-top: 18px; }
         .creator-tts-manager .admin-actions { align-items: end; }
         .creator-tts-remove { min-width: 34px; padding: 5px 10px; font-size: 18px; line-height: 1; }
+        #game-access-dialog { width: min(680px, calc(100% - 28px)); max-height: 85vh; padding: 22px; border: 1px solid rgba(114,220,255,.35); border-radius: 16px; background: #081329; color: var(--ink); }
+        #game-access-dialog::backdrop { background: rgba(0,5,16,.78); }
+        .game-access-options { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 8px; max-height: 48vh; overflow: auto; padding: 4px; }
+        .game-access-option { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
+        .game-access-option input { width: auto; min-height: auto; accent-color: var(--lime); }
         .daily-usage-count { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 12px 15px; border: 1px solid rgba(85,240,163,.3); border-radius: 11px; background: rgba(51,225,139,.08); color: #b9ffd8; }
         .daily-usage-count strong { color: #55f0a3; font-size: 25px; }
         .creator-url-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -422,7 +427,7 @@ donne <!doctype html>
                 <div class="admin-grid">
                     <div class="admin-card live-sessions-card">
                         <h3>Créateurs, accès, TTS et salons</h3>
-                        <p>Un abonnement PayPal actif est obligatoire pour jouer et utiliser le TTS. Tu peux retirer ou rétablir séparément l’accès TTS d’un abonné actif et gérer ton salon hôte.</p>
+                        <p>Un abonnement PayPal actif est obligatoire pour jouer et utiliser le TTS. Tu peux limiter chaque abonné à une sélection précise de jeux, gérer son accès TTS et organiser ton salon hôte.</p>
                         <div>
                             <h4>Liens TTS actifs — révocation immédiate</h4>
                             <div id="active-tts-list" class="active-tts-list"><p>Aucun lien TTS actif.</p></div>
@@ -438,8 +443,8 @@ donne <!doctype html>
                         </div>
                         <div class="live-sessions-table-wrap">
                             <table class="live-sessions-table creators-table">
-                                <thead><tr><th>Compte</th><th>Abonnement</th><th>Pseudo TikTok</th><th>Accès TTS</th><th>Salon</th><th>Jeux interactifs</th></tr></thead>
-                                <tbody id="creator-list"><tr><td colspan="6">Chargement des créateurs…</td></tr></tbody>
+                                <thead><tr><th>Compte</th><th>Abonnement</th><th>Pseudo TikTok</th><th>Accès TTS</th><th>Salon</th><th>Accès global jeux</th><th>Jeux autorisés</th></tr></thead>
+                                <tbody id="creator-list"><tr><td colspan="7">Chargement des créateurs…</td></tr></tbody>
                             </table>
                         </div>
                         <div id="admin-creator-link-panel" class="creator-url-panel" hidden>
@@ -529,7 +534,7 @@ donne <!doctype html>
                     </form>
                     <form id="game-import-form" class="admin-card">
                         <h3>Importer un nouveau jeu</h3>
-                        <p>Importe une page HTML autonome et une image de présentation. Le jeu sera protégé par la connexion membre.</p>
+                        <p>Importe une page HTML autonome et une image. Après l’importation, choisis quels abonnés actifs pourront accéder à ce jeu.</p>
                         <label class="field"><span class="field-label">Nom du jeu</span><input name="title" required maxlength="80" placeholder="Ex. Mon nouveau jeu"></label>
                         <label class="field"><span class="field-label">Description</span><textarea name="description" required maxlength="240" placeholder="Décris le jeu en quelques mots"></textarea></label>
                         <label class="field"><span class="field-label">Fichier du jeu (.html · 2 Mo max.)</span><input name="html" type="file" accept=".html,text/html" required></label>
@@ -540,6 +545,23 @@ donne <!doctype html>
                     </form>
                 </div>
             </div>
+            <dialog id="game-access-dialog">
+                <form id="game-access-form">
+                    <h3 id="game-access-heading">Jeux autorisés</h3>
+                    <p id="game-access-description">Sélectionne les jeux autorisés pour cet abonné.</p>
+                    <label class="field"><span class="field-label">Rechercher un jeu</span><input id="game-access-search" type="search" autocomplete="off" placeholder="Nom du jeu"></label>
+                    <div class="admin-actions">
+                        <button id="game-access-select-all" class="button button-secondary" type="button">Tout sélectionner</button>
+                        <button id="game-access-select-none" class="button button-secondary" type="button">Tout désélectionner</button>
+                    </div>
+                    <div id="game-access-options" class="game-access-options"></div>
+                    <p id="game-access-status" class="checkout-status" role="status" aria-live="polite"></p>
+                    <div class="admin-actions">
+                        <button id="game-access-save" class="button button-primary" type="submit">Enregistrer les jeux autorisés</button>
+                        <button id="game-access-cancel" class="button button-secondary" type="button">Annuler</button>
+                    </div>
+                </form>
+            </dialog>
         </section>
 
         <section id="abonnements" class="section wrap">
@@ -681,6 +703,17 @@ donne <!doctype html>
         const creatorTtsCopy = document.getElementById('creator-tts-copy');
         const creatorTtsStatus = document.getElementById('creator-tts-status');
         const creatorList = document.getElementById('creator-list');
+        const gameAccessDialog = document.getElementById('game-access-dialog');
+        const gameAccessForm = document.getElementById('game-access-form');
+        const gameAccessHeading = document.getElementById('game-access-heading');
+        const gameAccessDescription = document.getElementById('game-access-description');
+        const gameAccessSearch = document.getElementById('game-access-search');
+        const gameAccessOptions = document.getElementById('game-access-options');
+        const gameAccessStatus = document.getElementById('game-access-status');
+        const gameAccessSave = document.getElementById('game-access-save');
+        const gameAccessSelectAll = document.getElementById('game-access-select-all');
+        const gameAccessSelectNone = document.getElementById('game-access-select-none');
+        const gameAccessCancel = document.getElementById('game-access-cancel');
         const activeTtsList = document.getElementById('active-tts-list');
         const ttsAccessAccount = document.getElementById('tts-access-account');
         const ttsAccessAdd = document.getElementById('tts-access-add');
@@ -706,6 +739,10 @@ donne <!doctype html>
         let paypalSdkPromise;
         let paypalConfigurationPromise;
         let liveSessionsRefreshTimer;
+        let creatorGameCatalog = [];
+        let creatorGameAccessByUsername = new Map();
+        let gameAccessAccount = '';
+        let gameCatalogLoaded = false;
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
@@ -767,6 +804,7 @@ donne <!doctype html>
                 adminCreatorLinkPanel.hidden = true;
                 adminCreatorUrl.value = '';
             }
+            if (gameCatalogLoaded) await refreshGameAccessVisibility();
             if (!session.configured && !session.authenticated) {
                 loginButton.disabled = true;
                 loginInputs.forEach(input => { input.disabled = true; });
@@ -882,6 +920,11 @@ donne <!doctype html>
             const response = await fetch('/api/admin/creators', { credentials: 'same-origin' });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Impossible de charger les créateurs.');
+            creatorGameCatalog = result.gameCatalog || [];
+            creatorGameAccessByUsername = new Map(result.creators.map(creator => [
+                creator.username.toLowerCase(),
+                creator.gameAccess
+            ]));
             onlineCount.textContent = String(result.onlineCount);
             dailyUsageCount.querySelector('strong').textContent = String(result.dailyUniqueUsers);
             const [usageYear, usageMonth, usageDay] = result.dailyUsageDate.split('-');
@@ -902,7 +945,7 @@ donne <!doctype html>
             if (!result.creators.length) {
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
-                cell.colSpan = 6;
+                cell.colSpan = 7;
                 cell.textContent = 'Aucun compte créateur configuré.';
                 row.append(cell);
                 creatorList.append(row);
@@ -983,6 +1026,9 @@ donne <!doctype html>
                 const ttsLinkButton = document.createElement('button');
                 const gamesCell = document.createElement('td');
                 const gamesAccessButton = document.createElement('button');
+                const gameSelectionCell = document.createElement('td');
+                const gameSelectionSummary = document.createElement('span');
+                const gameSelectionButton = document.createElement('button');
 
                 accountCell.textContent = creator.username;
                 subscriptionCell.textContent = creator.hasSubscription
@@ -1037,7 +1083,16 @@ donne <!doctype html>
                 gamesAccessButton.disabled = creator.protectedAdmin || !creator.subscriptionActive;
                 gamesAccessButton.textContent = creator.gamesAccessEnabled ? 'Retirer accès jeux' : 'Autoriser les jeux';
                 gamesCell.append(document.createElement('br'), gamesAccessButton);
-                row.append(accountCell, subscriptionCell, tiktokCell, ttsCell, roomCell, gamesCell);
+                gameSelectionSummary.textContent = creator.gameAccess === null
+                    ? `Tous les jeux (${creatorGameCatalog.length})`
+                    : `${creator.gameAccess.length} jeu${creator.gameAccess.length === 1 ? '' : 'x'} sur ${creatorGameCatalog.length}`;
+                gameSelectionButton.className = 'button button-secondary creator-tts-action';
+                gameSelectionButton.type = 'button';
+                gameSelectionButton.dataset.creatorAction = 'game-access';
+                gameSelectionButton.textContent = 'Choisir';
+                gameSelectionButton.disabled = !creator.subscriptionActive || !creator.gamesAccessEnabled;
+                gameSelectionCell.append(gameSelectionSummary, document.createElement('br'), gameSelectionButton);
+                row.append(accountCell, subscriptionCell, tiktokCell, ttsCell, roomCell, gamesCell, gameSelectionCell);
                 creatorList.append(row);
             }
 
@@ -1111,6 +1166,84 @@ donne <!doctype html>
             creatorAdminStatus.className = 'checkout-status';
             creatorAdminStatus.textContent = `Mis à jour à ${new Date().toLocaleTimeString('fr-FR')}.`;
         }
+
+        function openGameAccessDialog(creator) {
+            gameAccessAccount = creator.username;
+            gameAccessHeading.textContent = `Jeux autorisés · ${creator.username}`;
+            const selectedGames = creator.gameAccess === null
+                ? new Set(creatorGameCatalog.map(game => game.id))
+                : new Set(creator.gameAccess);
+            gameAccessOptions.replaceChildren();
+            for (const game of creatorGameCatalog) {
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                const title = document.createElement('span');
+                label.className = 'game-access-option';
+                label.dataset.gameTitle = game.title.toLocaleLowerCase();
+                checkbox.type = 'checkbox';
+                checkbox.value = game.id;
+                checkbox.checked = selectedGames.has(game.id);
+                title.textContent = `${game.title}${game.hidden ? ' · masqué' : ''}`;
+                label.append(checkbox, title);
+                gameAccessOptions.append(label);
+            }
+            const currentCount = creator.gameAccess === null
+                ? creatorGameCatalog.length
+                : creator.gameAccess.length;
+            gameAccessDescription.textContent = creator.gameAccess === null
+                ? `Tous les jeux sont actuellement accessibles (${currentCount}). Décoche ceux à retirer. Les jeux ajoutés ultérieurement ne seront pas inclus dans cette sélection.`
+                : `${currentCount} jeu${currentCount === 1 ? '' : 'x'} autorisé${currentCount === 1 ? '' : 's'} sur ${creatorGameCatalog.length}.`;
+            gameAccessSearch.value = '';
+            gameAccessStatus.textContent = '';
+            gameAccessSave.disabled = false;
+            gameAccessDialog.showModal();
+        }
+
+        gameAccessSearch.addEventListener('input', () => {
+            const search = gameAccessSearch.value.trim().toLocaleLowerCase();
+            for (const option of gameAccessOptions.querySelectorAll('.game-access-option')) {
+                option.hidden = search !== '' && !option.dataset.gameTitle.includes(search);
+            }
+        });
+
+        gameAccessSelectAll.addEventListener('click', () => {
+            for (const checkbox of gameAccessOptions.querySelectorAll('input[type="checkbox"]')) {
+                checkbox.checked = true;
+            }
+        });
+
+        gameAccessSelectNone.addEventListener('click', () => {
+            for (const checkbox of gameAccessOptions.querySelectorAll('input[type="checkbox"]')) {
+                checkbox.checked = false;
+            }
+        });
+
+        gameAccessCancel.addEventListener('click', () => gameAccessDialog.close());
+
+        gameAccessForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const gameIds = [...gameAccessOptions.querySelectorAll('input[type="checkbox"]:checked')]
+                .map(checkbox => checkbox.value);
+            gameAccessSave.disabled = true;
+            gameAccessStatus.className = 'checkout-status';
+            gameAccessStatus.textContent = 'Enregistrement des jeux autorisés…';
+            try {
+                await submitCreatorAction({
+                    action: 'game-access',
+                    accountUsername: gameAccessAccount,
+                    gameIds
+                });
+                await refreshCreatorAdmin();
+                gameAccessStatus.className = 'checkout-status success';
+                gameAccessStatus.textContent = `${gameIds.length} jeu${gameIds.length === 1 ? '' : 'x'} autorisé${gameIds.length === 1 ? '' : 's'} pour ${gameAccessAccount}.`;
+                gameAccessDialog.close();
+            } catch (error) {
+                gameAccessStatus.className = 'checkout-status error';
+                gameAccessStatus.textContent = error.message || 'Impossible d’enregistrer les jeux autorisés.';
+            } finally {
+                gameAccessSave.disabled = false;
+            }
+        });
 
         async function submitCreatorAction(body) {
             const response = await fetch('/api/admin/creators', {
@@ -1198,6 +1331,12 @@ donne <!doctype html>
                 body.enabled = button.dataset.enabled === 'true';
                 const serviceLabel = body.service === 'tts' ? 'TTS' : 'jeux interactifs';
                 if (!window.confirm(`${body.enabled ? 'Autoriser' : 'Retirer'} l’accès aux ${serviceLabel} pour ${accountUsername} ?`)) return;
+            } else if (action === 'game-access') {
+                openGameAccessDialog({
+                    username: accountUsername,
+                    gameAccess: creatorGameAccessByUsername.get(accountUsername.toLowerCase()) ?? null
+                });
+                return;
             } else if (action === 'tts-create') {
                 body.action = 'tts-create';
                 body.username = tiktokInput.value.trim();
@@ -1854,10 +1993,10 @@ donne <!doctype html>
                     gameImageSelect.querySelector(`option[value="${CSS.escape(game.id)}"]`).textContent = game.title;
                     managedGameSelect.querySelector(`option[value="${CSS.escape(game.id)}"]`).textContent = game.title;
                 }
-                if (catalog.hidden.includes(card.dataset.gameId) && game) {
-                    game.hidden = true;
-                    card.hidden = true;
-                }
+                if (game) game.hidden = catalog.hidden.includes(card.dataset.gameId);
+                card.hidden = catalog.hidden.includes(card.dataset.gameId) ||
+                    (Array.isArray(catalog.allowedGameIds) &&
+                        !catalog.allowedGameIds.includes(card.dataset.gameId));
                 const customImage = catalog.images[card.dataset.gameId];
                 if (customImage) applyGameImage(card, customImage);
             }
@@ -1884,7 +2023,9 @@ donne <!doctype html>
                 launch.textContent = 'JOUER APRÈS CONNEXION ↗';
                 card.append(number, image, title, description, launch);
                 gamesGrid.append(card);
-                card.hidden = game.hidden;
+                card.hidden = game.hidden ||
+                    (Array.isArray(catalog.allowedGameIds) &&
+                        !catalog.allowedGameIds.includes(game.id));
                 gameCardsById.set(game.id, card);
                 gameCatalogById.set(game.id, { ...game, uploaded: true });
                 for (const select of [gameImageSelect, managedGameSelect]) {
@@ -1895,6 +2036,20 @@ donne <!doctype html>
                 }
             }
             refreshManagedGameFields();
+            gameCatalogLoaded = true;
+        }
+
+        async function refreshGameAccessVisibility() {
+            const response = await fetch('/api/games', { credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Impossible de vérifier les jeux autorisés.');
+            const catalog = await response.json();
+            const hiddenGames = new Set(catalog.hidden);
+            const allowedGames = Array.isArray(catalog.allowedGameIds)
+                ? new Set(catalog.allowedGameIds)
+                : null;
+            for (const [gameId, card] of gameCardsById) {
+                card.hidden = hiddenGames.has(gameId) || (allowedGames !== null && !allowedGames.has(gameId));
+            }
         }
 
         logoutButton.addEventListener('click', async () => {
