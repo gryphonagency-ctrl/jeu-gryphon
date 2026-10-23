@@ -133,10 +133,12 @@ function readStore() {
                     !Number.isInteger(parsed.homepageNotice.fontSize) ||
                     parsed.homepageNotice.fontSize < 11 ||
                     parsed.homepageNotice.fontSize > 26 ||
+                    (parsed.homepageNotice.fontSizeDoubled !== undefined &&
+                        typeof parsed.homepageNotice.fontSizeDoubled !== 'boolean') ||
                     (parsed.homepageNotice.widthPercent !== undefined &&
                         (!Number.isInteger(parsed.homepageNotice.widthPercent) ||
                             parsed.homepageNotice.widthPercent < 40 ||
-                            parsed.homepageNotice.widthPercent > 100)) ||
+                            parsed.homepageNotice.widthPercent > 120)) ||
                     !['hero', 'games-before', 'games-after'].includes(parsed.homepageNotice.placement))) ||
             (parsed.paypalLink !== null &&
                 (typeof parsed.paypalLink !== 'string' ||

@@ -249,7 +249,9 @@ function getActivePresence() {
             game: session.game,
             roomNumber: getCreatorRoomNumber(session.username),
             connectedAt: session.connectedAt,
-            durationSeconds: Math.floor((Date.now() - session.connectedAt) / 1000)
+            durationSeconds: Math.floor((Date.now() - session.connectedAt) / 1000),
+            gameStartedAt: session.gameStartedAt || session.connectedAt,
+            gameDurationSeconds: Math.floor((Date.now() - (session.gameStartedAt || session.connectedAt)) / 1000)
         });
     }
     return active.sort((first, second) => first.connectedAt - second.connectedAt);
@@ -455,13 +457,23 @@ async function saveAdminGame(body) {
         if (!Number.isInteger(fontSize) || fontSize < 11 || fontSize > 26) {
             throw invalidAdminInput('La taille du texte doit être comprise entre 11 et 26 pixels.');
         }
-        if (!Number.isInteger(widthPercent) || widthPercent < 40 || widthPercent > 100) {
-            throw invalidAdminInput('La largeur du message doit être comprise entre 40 et 100 %.');
+        if (!Number.isInteger(widthPercent) || widthPercent < 40 || widthPercent > 120) {
+            throw invalidAdminInput('La largeur du message doit être comprise entre 40 et 120 %.');
+        }
+        if (body.fontSizeDoubled !== undefined && typeof body.fontSizeDoubled !== 'boolean') {
+            throw invalidAdminInput('Le réglage de taille doublée est invalide.');
         }
         if (!['hero', 'games-before', 'games-after'].includes(placement)) {
             throw invalidAdminInput('Choisis un emplacement valide pour le message.');
         }
-        const settings = { label, text, fontSize, widthPercent, placement };
+        const settings = {
+            label,
+            text,
+            fontSize,
+            fontSizeDoubled: body.fontSizeDoubled === true,
+            widthPercent,
+            placement
+        };
         store.saveHomepageNotice(settings);
         return { success: true, settings };
     }
@@ -607,6 +619,9 @@ const server = http.createServer((req, res) => {
                     username,
                     game,
                     connectedAt: existing?.username === username ? existing.connectedAt : Date.now(),
+                    gameStartedAt: existing?.username === username && existing.game === game
+                        ? existing.gameStartedAt || existing.connectedAt
+                        : Date.now(),
                     lastSeenAt: Date.now()
                 });
             }
@@ -1074,7 +1089,11 @@ const server = http.createServer((req, res) => {
             hidden: access.isAdmin(req) ? [] : hiddenGames,
             allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
             homepageNotice: savedHomepageNotice
-                ? { ...savedHomepageNotice, widthPercent: savedHomepageNotice.widthPercent ?? 100 }
+                ? {
+                    ...savedHomepageNotice,
+                    fontSizeDoubled: savedHomepageNotice.fontSizeDoubled === true,
+                    widthPercent: savedHomepageNotice.widthPercent ?? 100
+                }
                 : defaultHomepageNotice,
             paypalLink: store.getPaypalLink()
         }));
