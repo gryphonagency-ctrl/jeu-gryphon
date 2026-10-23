@@ -544,7 +544,7 @@ donne <!doctype html>
                         <p id="creator-presence-summary" class="creator-presence-summary">Chargement des connexions…</p>
                         <div class="live-sessions-table-wrap">
                             <table class="live-sessions-table">
-                                <thead><tr><th>Membre</th><th>État</th><th>Jeu ouvert</th><th>Accès TTS</th><th>Accès jeux</th><th>Salon</th><th>Arrivé à</th><th>Durée</th></tr></thead>
+                                <thead><tr><th>Membre</th><th>État</th><th>Jeu ouvert</th><th>Accès TTS</th><th>Accès jeux</th><th>Chambre de cette session</th><th>Arrivé à</th><th>Durée</th></tr></thead>
                                 <tbody id="creator-presence-list"><tr><td colspan="8">Chargement des connexions…</td></tr></tbody>
                             </table>
                         </div>
@@ -860,6 +860,7 @@ donne <!doctype html>
         const activeRoomList = document.getElementById('active-room-list');
         const allPresenceSummary = document.getElementById('all-presence-summary');
         const allPresenceList = document.getElementById('all-presence-list');
+        const pendingPresenceRooms = new Map();
         const hostRoomHeading = document.getElementById('host-room-heading');
         const hostRoomDescription = document.getElementById('host-room-description');
         const adminCreatorLinkPanel = document.getElementById('admin-creator-link-panel');
@@ -1511,6 +1512,89 @@ donne <!doctype html>
                 : minutes ? `${minutes} min ${seconds} s` : `${seconds} s`;
         }
 
+        function appendPresenceRoomEditor(cell, connection) {
+            const roomInput = document.createElement('input');
+            const saveButton = document.createElement('button');
+            roomInput.type = 'number';
+            roomInput.min = '1';
+            roomInput.max = '9999';
+            roomInput.step = '1';
+            roomInput.placeholder = 'Chambre';
+            roomInput.setAttribute('aria-label', `Chambre de la session de ${connection.username}`);
+            roomInput.dataset.presenceRoomInput = '';
+            roomInput.value = pendingPresenceRooms.get(connection.clientId) ??
+                (connection.roomNumber || '');
+            roomInput.disabled = !connection.roomAssignmentEnabled;
+            saveButton.className = 'button button-secondary';
+            saveButton.type = 'button';
+            saveButton.dataset.presenceRoom = '';
+            saveButton.dataset.roomAccount = connection.username;
+            saveButton.dataset.presenceClientId = connection.clientId;
+            saveButton.textContent = 'Enregistrer';
+            saveButton.disabled = !connection.roomAssignmentEnabled;
+            saveButton.title = connection.roomAssignmentEnabled
+                ? 'Attribuer cette chambre uniquement à cette session active. Vide : reprendre la chambre du compte.'
+                : 'Cette session ne peut pas recevoir de chambre : compte verrouillé ou accès inactif.';
+            cell.append(roomInput, saveButton);
+        }
+
+        async function handlePresenceRoomEdit(event) {
+            const button = event.target.closest('button[data-presence-room]');
+            if (!button || button.disabled) return;
+            const row = button.closest('tr');
+            const accountUsername = button.dataset.roomAccount;
+            const clientId = button.dataset.presenceClientId;
+            const roomInput = row?.querySelector('[data-presence-room-input]');
+            if (!accountUsername || !clientId || !roomInput) return;
+            const roomNumber = roomInput.value ? Number(roomInput.value) : null;
+            if (roomNumber !== null &&
+                (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
+                roomInput.setCustomValidity('Saisis un numéro compris entre 1 et 9999.');
+                roomInput.reportValidity();
+                return;
+            }
+            roomInput.setCustomValidity('');
+            button.disabled = true;
+            const status = button.closest('#all-presence-list')
+                ? roomManagementStatus
+                : creatorAdminStatus;
+            status.className = 'checkout-status';
+            status.textContent = `Enregistrement de la chambre de la session de ${accountUsername}…`;
+            try {
+                await submitCreatorAction({
+                    action: 'presence-room',
+                    accountUsername,
+                    clientId,
+                    roomNumber
+                });
+                pendingPresenceRooms.delete(clientId);
+                await refreshCreatorAdmin();
+                status.className = 'checkout-status success';
+                status.textContent = roomNumber === null
+                    ? `La session de ${accountUsername} reprend la chambre attribuée à son compte.`
+                    : `Chambre n° ${roomNumber} attribuée à cette session de ${accountUsername}.`;
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = error.message || 'Impossible d’attribuer la chambre à cette session.';
+                button.disabled = false;
+            }
+        }
+
+        creatorPresenceList.addEventListener('input', event => {
+            const input = event.target.closest('[data-presence-room-input]');
+            if (!input) return;
+            const clientId = input.closest('tr')?.querySelector('[data-presence-client-id]')?.dataset.presenceClientId;
+            if (clientId) pendingPresenceRooms.set(clientId, input.value);
+        });
+        allPresenceList.addEventListener('input', event => {
+            const input = event.target.closest('[data-presence-room-input]');
+            if (!input) return;
+            const clientId = input.closest('tr')?.querySelector('[data-presence-client-id]')?.dataset.presenceClientId;
+            if (clientId) pendingPresenceRooms.set(clientId, input.value);
+        });
+        creatorPresenceList.addEventListener('click', handlePresenceRoomEdit);
+        allPresenceList.addEventListener('click', handlePresenceRoomEdit);
+
         async function refreshCreatorAdmin() {
             const response = await fetch('/api/admin/creators', { credentials: 'same-origin' });
             const result = await response.json();
@@ -1529,8 +1613,14 @@ donne <!doctype html>
                 if (!creator.roomAccessEnabled || !creator.assignedRoomNumber) continue;
                 const roomNumber = creator.assignedRoomNumber;
                 const members = activeRooms.get(roomNumber) || [];
-                members.push(creator.username);
+                if (!members.includes(creator.username)) members.push(creator.username);
                 activeRooms.set(roomNumber, members);
+            }
+            for (const connection of result.connections) {
+                if (!connection.roomNumber) continue;
+                const members = activeRooms.get(connection.roomNumber) || [];
+                if (!members.includes(connection.username)) members.push(connection.username);
+                activeRooms.set(connection.roomNumber, members);
             }
             activeRoomList.replaceChildren();
             if (!activeRooms.size) {
@@ -1587,9 +1677,10 @@ donne <!doctype html>
                     formatConnectionDuration(connection.durationSeconds),
                     formatConnectionDuration(connection.gameDurationSeconds ?? connection.durationSeconds)
                 ];
-                for (const value of values) {
+                for (const [index, value] of values.entries()) {
                     const cell = document.createElement('td');
                     cell.textContent = String(value);
+                    if (index === 1) appendPresenceRoomEditor(cell, connection);
                     row.append(cell);
                 }
                 allPresenceList.append(row);
@@ -1724,13 +1815,13 @@ donne <!doctype html>
                 gamesAccessButton.disabled = creator.protectedAdmin ||
                     creator.subscriptionActive ||
                     creator.settingsLocked ||
-                    (!creator.subscriptionActive && !creator.manualAccount);
+                    (!creator.subscriptionActive && !creator.managedPlayer);
                 gamesAccessButton.textContent = creator.gamesAccessEnabled ? '🔓' : '🔒';
                 gamesAccessButton.setAttribute(
                     'aria-label',
                     creator.protectedAdmin
                         ? 'Accès complet aux jeux accordé au compte administrateur'
-                        : !creator.subscriptionActive && !creator.manualAccount
+                        : !creator.subscriptionActive && !creator.managedPlayer
                         ? `Abonnement actif requis pour l’accès aux jeux de ${creator.username}`
                         : `${creator.gamesAccessEnabled ? 'Révoquer' : 'Rétablir'} l’accès aux jeux de ${creator.username}`
                 );
@@ -1740,7 +1831,7 @@ donne <!doctype html>
                         : creator.subscriptionActive
                         ? 'Accès obligatoire jusqu’à la fin de la période payée'
                         : 'Verrouiller et révoquer l’accès aux jeux'
-                    : creator.subscriptionActive || creator.manualAccount
+                    : creator.subscriptionActive || creator.managedPlayer
                         ? 'Déverrouiller et rétablir l’accès aux jeux'
                         : 'Un abonnement actif est nécessaire';
                 accountCell.append(accountName, document.createTextNode(' '), gamesAccessButton);
@@ -1766,7 +1857,11 @@ donne <!doctype html>
                         : ''}`
                     : creator.protectedAdmin
                         ? 'Administrateur · accès complet'
-                        : creator.manualAccount ? 'Accès manuel · sans abonnement' : 'Aucun abonnement';
+                        : creator.manualAccount
+                            ? 'Accès manuel · sans abonnement'
+                            : creator.managedPlayer
+                                ? 'Compte joueur configuré · sans abonnement'
+                                : 'Aucun abonnement';
                 tiktokInput.className = 'creator-tts-name';
                 tiktokInput.type = 'text';
                 tiktokInput.maxLength = 32;
@@ -1777,7 +1872,7 @@ donne <!doctype html>
                 tiktokInput.disabled = creator.settingsLocked;
                 tiktokCell.append(tiktokInput);
                 ttsCell.textContent = !creator.protectedAdmin &&
-                    !creator.subscriptionActive && !creator.manualAccount
+                    !creator.subscriptionActive && !creator.managedPlayer
                     ? 'Abonnement requis'
                     : creator.ttsAccessEnabled
                         ? creator.ttsActive ? 'Autorisé · lien actif' : 'Autorisé · lien à créer'
@@ -1792,10 +1887,10 @@ donne <!doctype html>
                 ttsAccessButton.disabled = creator.protectedAdmin ||
                     creator.subscriptionActive ||
                     creator.settingsLocked ||
-                    (!creator.subscriptionActive && !creator.manualAccount);
+                    (!creator.subscriptionActive && !creator.managedPlayer);
                 ttsAccessButton.textContent = creator.subscriptionActive
                     ? 'Obligatoire jusqu’à expiration'
-                    : !creator.protectedAdmin && !creator.subscriptionActive && !creator.manualAccount
+                    : !creator.protectedAdmin && !creator.subscriptionActive && !creator.managedPlayer
                     ? 'Abonnement requis'
                     : creator.protectedAdmin
                         ? 'Accès TTS administrateur'
@@ -1830,7 +1925,7 @@ donne <!doctype html>
                         : 'Un abonnement actif ou un compte créé manuellement est requis.';
                 roomCell.append(roomInput, roomButton);
                 gamesCell.textContent = !creator.protectedAdmin &&
-                    !creator.subscriptionActive && !creator.manualAccount
+                    !creator.subscriptionActive && !creator.managedPlayer
                     ? 'Abonnement requis'
                     : creator.protectedAdmin
                         ? 'Accès complet administrateur'
@@ -1853,7 +1948,7 @@ donne <!doctype html>
                     gameCheckbox.checked = selectedGameIds.includes(game.id);
                     gameCheckbox.disabled = creator.protectedAdmin ||
                         creator.settingsLocked ||
-                        (!creator.subscriptionActive && !creator.manualAccount);
+                        (!creator.subscriptionActive && !creator.managedPlayer);
                     gameCheckbox.dataset.creatorGame = game.id;
                     gameLabel.append(gameCheckbox, document.createTextNode(game.title));
                     gameSelectionList.append(gameLabel);
@@ -1863,7 +1958,7 @@ donne <!doctype html>
                 gameSelectionSave.dataset.creatorAction = 'game-access';
                 gameSelectionSave.disabled = creator.protectedAdmin ||
                     creator.settingsLocked ||
-                    (!creator.subscriptionActive && !creator.manualAccount);
+                    (!creator.subscriptionActive && !creator.managedPlayer);
                 gameSelectionSave.textContent = 'Enregistrer la sélection';
                 gameSelectionDetails.append(gameSelectionList, gameSelectionSave);
                 gameSelectionCell.append(gameSelectionDetails);
@@ -1901,13 +1996,14 @@ donne <!doctype html>
                 for (const [index, value] of values.entries()) {
                     const cell = document.createElement('td');
                     cell.textContent = String(value);
+                    if (index === 3) appendPresenceRoomEditor(cell, connection);
                     row.append(cell);
                     if (index === 2) {
                         const ttsCell = document.createElement('td');
                         const ttsStatus = document.createElement('span');
                         const ttsButton = document.createElement('button');
                         ttsStatus.textContent = !creator?.protectedAdmin &&
-                            !creator?.subscriptionActive && !creator?.manualAccount
+                            !creator?.subscriptionActive && !creator?.managedPlayer
                             ? 'Abonnement requis'
                             : creator.ttsAccessEnabled ? 'Autorisé' : 'Révoqué';
                         ttsButton.className = creator?.ttsAccessEnabled
@@ -1920,7 +2016,7 @@ donne <!doctype html>
                         ttsButton.disabled = !creator || creator.protectedAdmin ||
                             creator.subscriptionActive ||
                             creator.settingsLocked ||
-                            (!creator.subscriptionActive && !creator.manualAccount);
+                            (!creator.subscriptionActive && !creator.managedPlayer);
                         ttsButton.textContent = creator?.subscriptionActive
                             ? 'Obligatoire'
                             : creator?.protectedAdmin
@@ -1933,7 +2029,7 @@ donne <!doctype html>
                         const gamesStatus = document.createElement('span');
                         const gamesButton = document.createElement('button');
                         gamesStatus.textContent = !creator?.protectedAdmin &&
-                            !creator?.subscriptionActive && !creator?.manualAccount
+                            !creator?.subscriptionActive && !creator?.managedPlayer
                             ? 'Abonnement requis'
                             : creator.gamesAccessEnabled ? 'Autorisé' : 'Révoqué';
                         gamesButton.className = creator?.gamesAccessEnabled
@@ -1946,7 +2042,7 @@ donne <!doctype html>
                         gamesButton.disabled = !creator || creator.protectedAdmin ||
                             creator.subscriptionActive ||
                             creator.settingsLocked ||
-                            (!creator.subscriptionActive && !creator.manualAccount);
+                            (!creator.subscriptionActive && !creator.managedPlayer);
                         gamesButton.textContent = creator?.subscriptionActive
                             ? 'Obligatoire'
                             : creator?.protectedAdmin

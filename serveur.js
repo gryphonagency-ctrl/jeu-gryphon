@@ -137,7 +137,16 @@ function canUseCreatorTts(username) {
 function canUseCreatorRoom(username) {
     if (access.isAdminUser(username)) return true;
     const account = store.getAccount(username);
-    return account?.accessMode === 'MANUAL' || access.hasActiveSubscription(account);
+    return account?.accessMode === 'MANUAL' ||
+        access.hasConfiguredUser(username) ||
+        access.hasActiveSubscription(account);
+}
+
+function canManageCreatorAccess(username) {
+    const account = store.getAccount(username);
+    return account?.accessMode === 'MANUAL' ||
+        access.hasConfiguredUser(username) ||
+        access.hasActiveSubscription(account);
 }
 
 function getCreatorRoomNumber(username) {
@@ -245,9 +254,17 @@ function getActivePresence() {
             continue;
         }
         active.push({
+            clientId,
             username: session.username,
             game: session.game,
-            roomNumber: getCreatorRoomNumber(session.username),
+            roomNumber: session.roomNumberOverride !== undefined
+                ? session.roomNumberOverride
+                : getCreatorRoomNumber(session.username),
+            roomAssignmentEnabled: canUseCreatorRoom(session.username) &&
+                store.getCreatorSettings(session.username).locked !== true &&
+                !store.getCreatorSettings(session.username).roomRevoked &&
+                !store.isCreatorRemoved(session.username) &&
+                !store.isUserRevoked(session.username),
             connectedAt: session.connectedAt,
             durationSeconds: Math.floor((Date.now() - session.connectedAt) / 1000),
             gameStartedAt: session.gameStartedAt || session.connectedAt,
@@ -279,6 +296,7 @@ function listCreatorAccounts() {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
         const manualAccount = account?.accessMode === 'MANUAL';
+        const managedPlayer = manualAccount || access.hasConfiguredUser(username);
         const subscriptionActive = access.hasActiveSubscription(account);
         const paidAt = Date.parse(account?.lastPaymentAt || account?.createdAt || '');
         const subscriptionExpiresAt = account?.subscriptionId && Number.isFinite(paidAt)
@@ -300,6 +318,7 @@ function listCreatorAccounts() {
             roomClosed: store.isUserRevoked(username),
             gamesAccessEnabled: access.canUseCreatorService(username, 'games'),
             manualAccount,
+            managedPlayer,
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || settings.tiktokUsername || null,
@@ -622,6 +641,9 @@ const server = http.createServer((req, res) => {
                     gameStartedAt: existing?.username === username && existing.game === game
                         ? existing.gameStartedAt || existing.connectedAt
                         : Date.now(),
+                    ...(existing?.username === username && existing.roomNumberOverride !== undefined
+                        ? { roomNumberOverride: existing.roomNumberOverride }
+                        : {}),
                     lastSeenAt: Date.now()
                 });
             }
@@ -802,6 +824,8 @@ const server = http.createServer((req, res) => {
                     if (!created) {
                         throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
                     }
+                    store.setCreatorServiceAccess(username, 'games', true);
+                    store.setCreatorServiceAccess(username, 'tts', true);
                     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ success: true, username }));
                     return;
@@ -816,7 +840,7 @@ const server = http.createServer((req, res) => {
                 }
                 if (access.isAdminUser(username) &&
                     !['tts-create', 'tts-revoke', 'room', 'room-access', 'room-close', 'room-open',
-                        'service-access', 'settings-lock'].includes(body.action)) {
+                        'service-access', 'settings-lock', 'presence-room'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
                 if (body.action === 'settings-lock') {
@@ -860,6 +884,26 @@ const server = http.createServer((req, res) => {
                     store.setCreatorSettingsLocked(username, body.locked);
                 } else if (store.getCreatorSettings(username).locked === true) {
                     throw invalidAdminInput('Les réglages de ce membre sont verrouillés. Déverrouille-les avant de les modifier.');
+                } else if (body.action === 'presence-room') {
+                    const clientId = typeof body.clientId === 'string' ? body.clientId : '';
+                    const roomNumber = body.roomNumber;
+                    if (!/^[a-f0-9-]{36}$/i.test(clientId) ||
+                        (roomNumber !== null &&
+                            (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999))) {
+                        throw invalidAdminInput('Session active ou numéro de chambre invalide.');
+                    }
+                    const session = applicationPresence.get(clientId);
+                    if (!session || session.lastSeenAt <= Date.now() - PRESENCE_EXPIRY_MS ||
+                        session.username.toLowerCase() !== username) {
+                        throw invalidAdminInput('Cette session n’est plus active. Actualise la liste des connexions.');
+                    }
+                    const settings = store.getCreatorSettings(username);
+                    if (!canUseCreatorRoom(username) || settings.roomRevoked === true ||
+                        store.isCreatorRemoved(username) || store.isUserRevoked(username)) {
+                        throw invalidAdminInput('Un salon autorisé est requis pour affecter cette session.');
+                    }
+                    if (roomNumber === null) delete session.roomNumberOverride;
+                    else session.roomNumberOverride = roomNumber;
                 } else if (body.action === 'room-close' || body.action === 'remove-creator') {
                     if (access.isAdminUser(username)) {
                         throw invalidAdminInput('Le salon et le compte de l’administrateur principal sont protégés.');
@@ -902,11 +946,9 @@ const server = http.createServer((req, res) => {
                         (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
                         throw invalidAdminInput('Le numéro de salon doit être compris entre 1 et 9999.');
                     }
-                    const targetAccount = store.getAccount(username);
                     if (roomNumber !== null && !access.isAdminUser(username) &&
-                        targetAccount?.accessMode !== 'MANUAL' &&
-                        !access.hasActiveSubscription(targetAccount)) {
-                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis pour attribuer un salon.');
+                        !canManageCreatorAccess(username)) {
+                        throw invalidAdminInput('Un compte joueur autorisé est requis pour attribuer un salon.');
                     }
                     store.setCreatorRoom(username, roomNumber);
                 } else if (body.action === 'room-access') {
@@ -918,10 +960,8 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Attribue d’abord un numéro de salon à ce membre.');
                     }
                     if (body.enabled) {
-                        const targetAccount = store.getAccount(username);
-                        if (targetAccount?.accessMode !== 'MANUAL' &&
-                            !access.hasActiveSubscription(targetAccount)) {
-                            throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis pour rétablir le salon.');
+                        if (!canManageCreatorAccess(username)) {
+                            throw invalidAdminInput('Un compte joueur autorisé est requis pour rétablir le salon.');
                         }
                     }
                     store.setCreatorRoomRevoked(username, !body.enabled);
@@ -937,10 +977,8 @@ const server = http.createServer((req, res) => {
                     if (!body.enabled && access.hasActiveSubscription(targetAccount)) {
                         throw invalidAdminInput('Les accès aux jeux et au TTS restent obligatoires jusqu’à la fin de la période payée.');
                     }
-                    if (body.enabled &&
-                        targetAccount?.accessMode !== 'MANUAL' &&
-                        !access.hasActiveSubscription(targetAccount)) {
-                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis.');
+                    if (body.enabled && !canManageCreatorAccess(username)) {
+                        throw invalidAdminInput('Un compte joueur autorisé est requis.');
                     }
                     store.setCreatorServiceAccess(username, service, body.enabled);
                     if (service === 'games' && body.enabled) {
@@ -968,9 +1006,8 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Les droits de jeu de l’administrateur principal ne peuvent pas être modifiés.');
                     }
                     const targetAccount = store.getAccount(username);
-                    if (targetAccount?.accessMode !== 'MANUAL' &&
-                        !access.hasActiveSubscription(targetAccount)) {
-                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis.');
+                    if (!canManageCreatorAccess(username)) {
+                        throw invalidAdminInput('Un compte joueur autorisé est requis.');
                     }
                     const gameCatalog = getGameCatalog();
                     if (!Array.isArray(body.gameIds) ||

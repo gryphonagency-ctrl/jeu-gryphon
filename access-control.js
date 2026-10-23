@@ -96,6 +96,10 @@ function canUseCreatorService(username, service) {
         return store.isCreatorServiceEnabled(username, service) &&
             store.getCreatorServiceAccess(username, service) === true;
     }
+    if (hasConfiguredUser(username)) {
+        return store.isCreatorServiceEnabled(username, service) &&
+            store.getCreatorServiceAccess(username, service) !== false;
+    }
     return hasActiveSubscription(account);
 }
 
