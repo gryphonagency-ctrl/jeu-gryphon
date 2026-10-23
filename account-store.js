@@ -20,6 +20,7 @@ function readStore() {
         parsed.liveTtsSource ??= null;
         parsed.liveTtsSources ||= {};
         parsed.revokedUsers ||= {};
+        parsed.removedUsers ||= {};
         parsed.creatorSettings ||= {};
         parsed.dailyUsage ||= {};
         parsed.serviceAccess ||= {};
@@ -40,6 +41,7 @@ function readStore() {
             typeof parsed.hiddenGames !== 'object' || Array.isArray(parsed.hiddenGames) ||
             typeof parsed.liveTtsSources !== 'object' || Array.isArray(parsed.liveTtsSources) ||
             typeof parsed.revokedUsers !== 'object' || Array.isArray(parsed.revokedUsers) ||
+            typeof parsed.removedUsers !== 'object' || Array.isArray(parsed.removedUsers) ||
             typeof parsed.creatorSettings !== 'object' || Array.isArray(parsed.creatorSettings) ||
             typeof parsed.dailyUsage !== 'object' || Array.isArray(parsed.dailyUsage) ||
             typeof parsed.serviceAccess !== 'object' || Array.isArray(parsed.serviceAccess) ||
@@ -68,6 +70,8 @@ function readStore() {
                 !/^[a-f0-9]{64}$/.test(source.tokenHash)) ||
             Object.entries(parsed.revokedUsers).some(([username, revoked]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || revoked !== true) ||
+            Object.entries(parsed.removedUsers).some(([username, removed]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) || removed !== true) ||
             Object.entries(parsed.creatorSettings).some(([username, settings]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
                 !settings || typeof settings !== 'object' || Array.isArray(settings) ||
@@ -129,6 +133,7 @@ function readStore() {
             liveTtsSource: null,
             liveTtsSources: {},
             revokedUsers: {},
+            removedUsers: {},
             creatorSettings: {},
             dailyUsage: {},
             serviceAccess: {},
@@ -167,11 +172,52 @@ function isUserRevoked(username) {
     return readStore().revokedUsers[username.toLowerCase()] === true;
 }
 
+function isCreatorRemoved(username) {
+    return readStore().removedUsers[username.toLowerCase()] === true;
+}
+
 function setUserRevoked(username, revoked) {
     updateStore(store => {
         const key = username.toLowerCase();
         if (revoked) store.revokedUsers[key] = true;
         else delete store.revokedUsers[key];
+    });
+}
+
+function removeCreator(username) {
+    return updateStore(store => {
+        const key = username.toLowerCase();
+        const ttsSource = store.liveTtsSources[key] || null;
+        const legacyTtsSource = store.liveTtsSource?.accountUsername?.toLowerCase() === key
+            ? store.liveTtsSource
+            : null;
+
+        delete store.users[key];
+        delete store.liveTtsSources[key];
+        delete store.creatorSettings[key];
+        delete store.serviceAccess[key];
+        delete store.gameAccess[key];
+        delete store.revokedUsers[key];
+        delete store.adminDashboardLayouts[key];
+        if (legacyTtsSource) store.liveTtsSource = null;
+        for (const users of Object.values(store.dailyUsage)) delete users[key];
+        store.removedUsers[key] = true;
+
+        return { ttsSource, legacyTtsSource };
+    });
+}
+
+function closeCreatorRoom(username) {
+    return updateStore(store => {
+        const key = username.toLowerCase();
+        const ttsSource = store.liveTtsSources[key] || null;
+        const legacyTtsSource = store.liveTtsSource?.accountUsername?.toLowerCase() === key
+            ? store.liveTtsSource
+            : null;
+        store.revokedUsers[key] = true;
+        delete store.liveTtsSources[key];
+        if (legacyTtsSource) store.liveTtsSource = null;
+        return { ttsSource, legacyTtsSource };
     });
 }
 
@@ -480,6 +526,7 @@ module.exports = {
     getPaypalLink,
     getLiveTtsSource,
     isUserRevoked,
+    isCreatorRemoved,
     isCreatorServiceEnabled,
     isCreatorGameAllowed,
     listGames,
@@ -502,6 +549,8 @@ module.exports = {
     setCreatorGameAccess,
     setCreatorServiceAccess,
     setUserRevoked,
+    closeCreatorRoom,
+    removeCreator,
     saveAccount,
     createManualAccount,
     reserveCheckout,

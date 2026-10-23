@@ -196,6 +196,8 @@ donne <!doctype html>
         .account-tools.visible { display: flex; }
         .admin-nav { display: none; }
         .admin-nav.visible { display: inline; }
+        .admin-nav-room { display: none; }
+        .admin-nav-room.visible { display: inline; }
         .online-count-link { display: none; align-items: center; gap: 5px; color: #55f0a3 !important; font-weight: 900; }
         .online-count-link.visible { display: inline-flex; }
         .online-count-link svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.5; }
@@ -248,6 +250,11 @@ donne <!doctype html>
         .live-sessions-table .admin-actions { flex-wrap: nowrap; }
         .live-sessions-table .button { min-height: 34px; padding: 7px 10px; white-space: nowrap; font-size: 10px; }
         .live-sessions-table .button:disabled { cursor: not-allowed; opacity: .55; }
+        .room-status { display: inline-flex; align-items: center; gap: 7px; font-weight: 850; }
+        .room-status::before { width: 8px; height: 8px; border-radius: 50%; background: #8b8d98; content: ""; }
+        .room-status.online::before { background: #55f0a3; box-shadow: 0 0 10px rgba(85,240,163,.65); }
+        .room-status.closed::before { background: #ff7777; }
+        .room-management-actions { display: flex; flex-wrap: wrap; gap: 7px; }
         .creators-table input { width: 105px; min-height: 33px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #081329; color: var(--ink); font: inherit; font-size: 10px; }
         .creators-table .creator-tts-name { width: 135px; }
         .creator-tts-action { margin-top: 7px; }
@@ -284,6 +291,7 @@ donne <!doctype html>
             .nav-links { gap: 13px; }
             .nav-links > a:not(.nav-login) { display: none; }
             .nav-links > #admin-nav.visible { display: inline; }
+            .nav-links > #admin-room-nav.visible { display: inline; }
             .nav-links > #admin-online-nav.visible { display: inline-flex; }
             .hero { min-height: auto; grid-template-columns: 1fr; gap: 6px; padding-top: 58px; padding-bottom: 47px; }
             .hero-art { min-height: 310px; }
@@ -341,6 +349,7 @@ donne <!doctype html>
                     <span id="online-count">0</span>
                 </a>
                 <a id="admin-nav" class="admin-nav" href="#administration">Administration ↗</a>
+                <a id="admin-room-nav" class="admin-nav-room" href="#salons">Salons des hôtes ↗</a>
                 <div id="account-tools" class="account-tools">
                     <span id="account-name" class="account-name"></span>
                     <button id="logout-button" class="logout-button" type="button">Déconnexion</button>
@@ -457,7 +466,7 @@ donne <!doctype html>
                         <form id="manual-member-form" class="creator-tts-manager">
                             <h4>Ajouter un membre manuellement</h4>
                             <p>Crée un identifiant sans abonnement et attribue-lui directement le TTS et les jeux choisis. Communique son mot de passe de façon sécurisée.</p>
-                            <label class="field"><span class="field-label">Identifiant du membre</span><input id="manual-member-username" name="username" required maxlength="64" pattern="[A-Za-z0-9._@-]+" autocomplete="off"></label>
+                            <label class="field"><span class="field-label">Identifiant du membre</span><input id="manual-member-username" name="username" required maxlength="64" pattern="[-A-Za-z0-9._@]+" autocomplete="off"></label>
                             <label class="field"><span class="field-label">Mot de passe initial (12 caractères minimum)</span><input id="manual-member-password" name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label>
                             <label class="game-access-option"><input id="manual-member-tts" type="checkbox"><span>Autoriser le TTS sans abonnement</span></label>
                             <div>
@@ -618,6 +627,26 @@ donne <!doctype html>
             </dialog>
         </section>
 
+        <section id="salons" class="section wrap" hidden>
+            <div class="section-heading">
+                <div><p class="kicker">Administration · temps réel</p><h2>Gestion des salons</h2></div>
+                <p class="section-intro">État des hôtes, de leurs salons et de leurs accès. Les statuts sont actualisés automatiquement.</p>
+            </div>
+            <div class="admin-panel">
+                <div class="admin-card live-sessions-card">
+                    <h3>Salons et hôtes</h3>
+                    <p>Fermer un salon bloque immédiatement la connexion, les jeux et le TTS de l’hôte, et révoque son lien TTS. Tu peux le rouvrir plus tard. La suppression retire son compte, son salon et ses droits de Griffon Arcade; elle ne résilie pas un éventuel abonnement PayPal.</p>
+                    <p id="room-management-status" class="checkout-status" role="status" aria-live="polite"></p>
+                    <div class="live-sessions-table-wrap">
+                        <table class="live-sessions-table">
+                            <thead><tr><th>Hôte</th><th>Salon</th><th>État en direct</th><th>Jeux</th><th>TTS</th><th>Abonnement</th><th>Gestion</th></tr></thead>
+                            <tbody id="room-host-list"><tr><td colspan="7">Chargement des hôtes…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section id="abonnements" class="section wrap">
             <div class="section-heading">
                 <div><p class="kicker blue-kicker">À toi de choisir</p><h2 class="games-title">Les abonnements</h2></div>
@@ -748,7 +777,9 @@ donne <!doctype html>
         const liveSessionsList = document.getElementById('live-sessions-list');
         const liveSessionsStatus = document.getElementById('live-sessions-status');
         const adminSection = document.getElementById('administration');
+        const adminRoomsSection = document.getElementById('salons');
         const adminNav = document.getElementById('admin-nav');
+        const adminRoomsNav = document.getElementById('admin-room-nav');
         const adminOnlineNav = document.getElementById('admin-online-nav');
         const onlineCount = document.getElementById('online-count');
         const creatorSpace = document.getElementById('creator-space');
@@ -785,6 +816,8 @@ donne <!doctype html>
         const creatorAdminStatus = document.getElementById('creator-admin-status');
         const creatorPresenceSummary = document.getElementById('creator-presence-summary');
         const creatorPresenceList = document.getElementById('creator-presence-list');
+        const roomHostList = document.getElementById('room-host-list');
+        const roomManagementStatus = document.getElementById('room-management-status');
         const hostRoomHeading = document.getElementById('host-room-heading');
         const hostRoomDescription = document.getElementById('host-room-description');
         const adminCreatorLinkPanel = document.getElementById('admin-creator-link-panel');
@@ -814,6 +847,22 @@ donne <!doctype html>
         let dashboardPointerStart = null;
         let savedDashboardLayout = null;
         let dashboardPinnedPositions = new Map();
+        let isAdminSession = false;
+
+        function showAdminRoute() {
+            adminSection.hidden = !isAdminSession || window.location.hash === '#salons';
+            adminRoomsSection.hidden = !isAdminSession || window.location.hash !== '#salons';
+        }
+
+        window.addEventListener('hashchange', () => {
+            showAdminRoute();
+            if (isAdminSession && window.location.hash === '#salons') {
+                refreshCreatorAdmin().catch(error => {
+                    roomManagementStatus.className = 'checkout-status error';
+                    roomManagementStatus.textContent = error.message || 'Impossible de charger les salons.';
+                });
+            }
+        });
 
         if (new URLSearchParams(window.location.search).has('connexion')) {
             notice.classList.add('visible');
@@ -839,8 +888,10 @@ donne <!doctype html>
             const session = await response.json();
             accountTools.classList.toggle('visible', session.authenticated);
             adminNav.classList.toggle('visible', session.isAdmin);
+            adminRoomsNav.classList.toggle('visible', session.isAdmin);
             adminOnlineNav.classList.toggle('visible', session.isAdmin);
-            adminSection.hidden = !session.isAdmin;
+            isAdminSession = session.isAdmin;
+            showAdminRoute();
             navLogin.hidden = session.authenticated;
             loginForm.hidden = session.authenticated;
             accountName.textContent = session.authenticated ? `Connecté${session.username ? ` · ${session.username}` : ''}` : '';
@@ -891,6 +942,7 @@ donne <!doctype html>
                 liveSessionsList.replaceChildren();
                 creatorList.replaceChildren();
                 creatorPresenceList.replaceChildren();
+                roomHostList.replaceChildren();
                 onlineCount.textContent = '0';
                 adminCreatorLinkPanel.hidden = true;
                 adminCreatorUrl.value = '';
@@ -1522,6 +1574,65 @@ donne <!doctype html>
                 }
                 creatorPresenceList.append(row);
             }
+            roomHostList.replaceChildren();
+            if (!result.creators.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 7;
+                cell.textContent = 'Aucun hôte ou membre à gérer.';
+                row.append(cell);
+                roomHostList.append(row);
+            }
+            for (const creator of result.creators) {
+                const row = document.createElement('tr');
+                const hostCell = document.createElement('td');
+                const roomCell = document.createElement('td');
+                const liveCell = document.createElement('td');
+                const gamesCell = document.createElement('td');
+                const ttsCell = document.createElement('td');
+                const subscriptionCell = document.createElement('td');
+                const actionsCell = document.createElement('td');
+                const hostConnections = result.connections.filter(connection =>
+                    connection.username.toLowerCase() === creator.username.toLowerCase()
+                );
+                const liveStatus = document.createElement('span');
+                hostCell.textContent = creator.username;
+                roomCell.textContent = creator.roomNumber ? `Salon n° ${creator.roomNumber}` : 'Non attribué';
+                liveStatus.className = `room-status${creator.roomClosed ? ' closed' : hostConnections.length ? ' online' : ''}`;
+                liveStatus.textContent = creator.roomClosed
+                    ? 'FERMÉ'
+                    : hostConnections.length
+                        ? `EN LIGNE · ${hostConnections.length} session${hostConnections.length === 1 ? '' : 's'}`
+                        : creator.accessEnabled ? 'OUVERT · HORS LIGNE' : 'ACCÈS INACTIF';
+                liveCell.append(liveStatus);
+                gamesCell.textContent = creator.gamesAccessEnabled ? 'Autorisé' : 'Bloqué';
+                ttsCell.textContent = creator.ttsAccessEnabled ? 'Autorisé' : 'Bloqué';
+                subscriptionCell.textContent = creator.subscriptionActive
+                    ? `${creator.plan || 'PayPal'} · actif`
+                    : creator.hasSubscription ? `${creator.subscriptionStatus} · inactif` : 'Sans abonnement';
+                actionsCell.className = 'room-management-actions';
+                if (!creator.protectedAdmin) {
+                    const roomButton = document.createElement('button');
+                    const removeButton = document.createElement('button');
+                    roomButton.className = creator.roomClosed ? 'button button-primary' : 'button button-danger';
+                    roomButton.type = 'button';
+                    roomButton.dataset.roomAction = creator.roomClosed ? 'room-open' : 'room-close';
+                    roomButton.dataset.roomUsername = creator.username;
+                    roomButton.textContent = creator.roomClosed ? 'Rouvrir le salon' : 'Fermer le salon';
+                    removeButton.className = 'button button-danger';
+                    removeButton.type = 'button';
+                    removeButton.dataset.roomAction = 'remove-creator';
+                    removeButton.dataset.roomUsername = creator.username;
+                    removeButton.textContent = 'Retirer de l’application';
+                    actionsCell.append(roomButton, removeButton);
+                } else {
+                    actionsCell.textContent = 'Compte administrateur protégé';
+                }
+                row.append(hostCell, roomCell, liveCell, gamesCell, ttsCell, subscriptionCell, actionsCell);
+                roomHostList.append(row);
+            }
+            roomManagementStatus.className = 'checkout-status';
+            roomManagementStatus.textContent = `Actualisé à ${new Date().toLocaleTimeString('fr-FR')}.`;
             creatorAdminStatus.className = 'checkout-status';
             creatorAdminStatus.textContent = `Mis à jour à ${new Date().toLocaleTimeString('fr-FR')}.`;
         }
@@ -1955,6 +2066,42 @@ donne <!doctype html>
             } catch {
                 creatorAdminStatus.className = 'checkout-status error';
                 creatorAdminStatus.textContent = 'Copie impossible : sélectionne et copie le lien manuellement.';
+            }
+        });
+
+        roomHostList.addEventListener('click', async event => {
+            const button = event.target.closest('button[data-room-action]');
+            if (!button || button.disabled) return;
+            const action = button.dataset.roomAction;
+            const accountUsername = button.dataset.roomUsername;
+            if (!accountUsername) return;
+            const confirmed = action === 'room-close'
+                ? window.confirm(`Fermer le salon de ${accountUsername} ? Ses sessions seront coupées et ses accès aux jeux et au TTS seront révoqués. Le salon pourra être rouvert ensuite.`)
+                : action === 'remove-creator'
+                    ? window.confirm(`Retirer définitivement ${accountUsername} de Griffon Arcade ? Son compte, son salon, ses droits et ses liens TTS seront supprimés. Cette action ne résilie pas son abonnement PayPal.`)
+                    : true;
+            if (!confirmed) return;
+
+            button.disabled = true;
+            roomManagementStatus.className = 'checkout-status';
+            roomManagementStatus.textContent = action === 'remove-creator'
+                ? `Suppression de ${accountUsername}…`
+                : action === 'room-close'
+                    ? `Fermeture du salon de ${accountUsername}…`
+                    : `Réouverture du salon de ${accountUsername}…`;
+            try {
+                await submitCreatorAction({ action, accountUsername });
+                await refreshCreatorAdmin();
+                roomManagementStatus.className = 'checkout-status success';
+                roomManagementStatus.textContent = action === 'remove-creator'
+                    ? `${accountUsername} a été retiré de l’application et ses accès ont été coupés.`
+                    : action === 'room-close'
+                        ? `Salon de ${accountUsername} fermé. Ses sessions et liens TTS sont révoqués.`
+                        : `Salon de ${accountUsername} rouvert. L’hôte devra se reconnecter.`;
+            } catch (error) {
+                roomManagementStatus.className = 'checkout-status error';
+                roomManagementStatus.textContent = error.message || 'Impossible de modifier ce salon.';
+                button.disabled = false;
             }
         });
 

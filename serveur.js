@@ -254,8 +254,12 @@ function getApplicationDate() {
 }
 
 function listCreatorAccounts() {
-    const creators = new Map(access.listConfiguredUsers().map(username => [username, null]));
-    for (const [username, account] of store.listAccounts()) creators.set(username, account);
+    const creators = new Map(access.listConfiguredUsers()
+        .filter(username => !store.isCreatorRemoved(username))
+        .map(username => [username, null]));
+    for (const [username, account] of store.listAccounts()) {
+        if (!store.isCreatorRemoved(username)) creators.set(username, account);
+    }
     return [...creators.entries()].map(([username, account]) => {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
@@ -271,6 +275,7 @@ function listCreatorAccounts() {
                 (!account || account.status === 'ACTIVE' ||
                     store.getCreatorServiceAccess(username, 'games') === true ||
                     store.getCreatorServiceAccess(username, 'tts') === true)),
+            roomClosed: store.isUserRevoked(username),
             gamesAccessEnabled: access.isAdminUser(username) ||
                 (access.canUseCreatorService(username, 'games') &&
                     (gameIds === null || gameIds.length > 0)),
@@ -764,14 +769,36 @@ const server = http.createServer((req, res) => {
                     ? body.accountUsername.trim().toLowerCase()
                     : '';
                 if (!/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                    store.isCreatorRemoved(username) ||
                     (!access.hasConfiguredUser(username) && !store.getAccount(username))) {
                     throw invalidAdminInput('Compte créateur introuvable.');
                 }
                 if (access.isAdminUser(username) &&
-                    !['tts-create', 'tts-revoke', 'room', 'service-access', 'game-access'].includes(body.action)) {
+                    !['tts-create', 'tts-revoke', 'room', 'room-close', 'room-open',
+                        'service-access', 'game-access'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
-                if (body.action === 'access') {
+                if (body.action === 'room-close' || body.action === 'remove-creator') {
+                    if (access.isAdminUser(username)) {
+                        throw invalidAdminInput('Le salon et le compte de l’administrateur principal sont protégés.');
+                    }
+                    const removedSources = body.action === 'room-close'
+                        ? store.closeCreatorRoom(username)
+                        : store.removeCreator(username);
+                    access.revokeUserSessions(username);
+                    for (const [clientId, session] of applicationPresence) {
+                        if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+                    }
+                    closeAuthenticatedSockets(username);
+                    if (removedSources.ttsSource) closeLiveTtsSockets(removedSources.ttsSource.username);
+                    if (removedSources.legacyTtsSource) closeLiveTtsSockets(removedSources.legacyTtsSource.username);
+                } else if (body.action === 'room-open') {
+                    if (access.isAdminUser(username)) {
+                        throw invalidAdminInput('Le salon de l’administrateur principal ne peut pas être fermé ici.');
+                    }
+                    store.setUserRevoked(username, false);
+                    access.revokeUserSessions(username);
+                } else if (body.action === 'access') {
                     if (typeof body.enabled !== 'boolean') throw invalidAdminInput('État d’accès invalide.');
                     store.setUserRevoked(username, !body.enabled);
                     access.revokeUserSessions(username);

@@ -59,6 +59,10 @@ function isAuthenticated(req) {
         return false;
     }
     const administrator = isAdminUser(session.username);
+    if (!administrator && store.isCreatorRemoved(session.username)) {
+        sessions.delete(token);
+        return false;
+    }
     if (session.storeBacked) {
         const account = store.getAccount(session.username);
         if (!administrator && (!account ||
@@ -92,7 +96,8 @@ function hasManualServiceAccess(username) {
 function canUseCreatorService(username, service) {
     if (isAdminUser(username)) return true;
     const account = store.getAccount(username);
-    return !store.isUserRevoked(username) &&
+    return !store.isCreatorRemoved(username) &&
+        !store.isUserRevoked(username) &&
         store.isCreatorServiceEnabled(username, service) &&
         (Boolean(account?.subscriptionId && account.status === 'ACTIVE') ||
             store.getCreatorServiceAccess(username, service) === true);
@@ -143,7 +148,9 @@ function login(username, password, req, res) {
     const storedAccount = store.getAccount(normalizedUsername);
     const administrator = isAdminUser(normalizedUsername);
     let matches = false;
-    if (storedAccount) {
+    if (!administrator && store.isCreatorRemoved(normalizedUsername)) {
+        matches = false;
+    } else if (storedAccount) {
         const providedHash = crypto.scryptSync(providedPassword, storedAccount.salt, 64);
         const storedHash = Buffer.from(storedAccount.passwordHash, 'hex');
         matches = (administrator || ((storedAccount.status === 'ACTIVE' ||
@@ -209,6 +216,7 @@ module.exports = {
     hasConfiguredUser,
     canAccessGames,
     canUseCreatorService,
+    isCreatorRemoved: store.isCreatorRemoved,
     isAdminUser,
     isAdmin,
     isAuthenticated,
