@@ -192,6 +192,12 @@ donne <!doctype html>
         .login-status { min-height: 17px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
         .login-status.error { color: #ff9a9a; }
         .login-status.success { color: var(--lime); }
+        .login-success { display: grid; gap: 12px; align-content: center; padding: 17px; border: 1px solid rgba(85,240,163,.4); border-radius: 13px; background: rgba(85,240,163,.08); }
+        .login-success[hidden] { display: none; }
+        .login-success, #login-status { grid-column: 1 / -1; }
+        .login-success strong { color: #8bffc2; font-size: 14px; }
+        .login-success p { margin: 0; color: #c4d4ca; font-size: 11px; line-height: 1.7; }
+        .login-success-actions { display: flex; flex-wrap: wrap; gap: 8px; }
         .account-tools { display: none; gap: 10px; align-items: center; }
         .account-tools.visible { display: flex; }
         .admin-nav { display: none; }
@@ -688,9 +694,18 @@ donne <!doctype html>
                     <a class="login-snap-button" href="https://www.snapchat.com/add/gryphonagency" target="_blank" rel="noreferrer" aria-label="Ouvrir le profil Snapchat @gryphonagency">
                         <span class="snap-button-ghost" aria-hidden="true">👻</span> Nous retrouver sur Snapchat ↗
                     </a>
-                    <p id="login-status" class="login-status" role="status" aria-live="polite"></p>
                     <p class="login-status">Pas encore de compte ? Choisis un abonnement ci-dessus pour en créer un.</p>
                 </form>
+                <div id="login-success-panel" class="login-success" role="status" aria-live="polite" hidden>
+                    <strong id="login-success-heading">Connexion confirmée</strong>
+                    <p id="login-success-copy"></p>
+                    <div class="login-success-actions">
+                        <a class="button button-primary" href="#jeux">Accéder aux jeux ↓</a>
+                        <a id="login-tts-link" class="button button-secondary" href="#creator-space" hidden>Ouvrir mon espace TTS</a>
+                        <a id="login-admin-link" class="button button-secondary" href="#administration" hidden>Ouvrir l’administration</a>
+                    </div>
+                </div>
+                <p id="login-status" class="login-status" role="status" aria-live="polite"></p>
             </div>
         </section>
 
@@ -736,6 +751,11 @@ donne <!doctype html>
     <script>
         const loginForm = document.getElementById('login-form');
         const loginStatus = document.getElementById('login-status');
+        const loginSuccessPanel = document.getElementById('login-success-panel');
+        const loginSuccessHeading = document.getElementById('login-success-heading');
+        const loginSuccessCopy = document.getElementById('login-success-copy');
+        const loginTtsLink = document.getElementById('login-tts-link');
+        const loginAdminLink = document.getElementById('login-admin-link');
         const accountTools = document.getElementById('account-tools');
         const accountName = document.getElementById('account-name');
         const logoutButton = document.getElementById('logout-button');
@@ -895,6 +915,21 @@ donne <!doctype html>
             navLogin.hidden = session.authenticated;
             loginForm.hidden = session.authenticated;
             accountName.textContent = session.authenticated ? `Connecté${session.username ? ` · ${session.username}` : ''}` : '';
+            loginSuccessPanel.hidden = !session.authenticated;
+            if (session.authenticated) {
+                loginSuccessHeading.textContent = `Connexion confirmée · ${session.username}`;
+                loginSuccessCopy.textContent = session.canAccessGames
+                    ? 'Ta session est active. Tes jeux autorisés sont maintenant disponibles ci-dessous.'
+                    : session.canUseTts
+                        ? 'Ta session est active. Tu peux utiliser ton espace TTS; les jeux ne sont pas attribués à ce compte.'
+                        : 'Ta session est active, mais aucun jeu ni accès TTS ne sont actuellement attribués à ce compte.';
+                loginTtsLink.hidden = !session.canUseTts;
+                loginAdminLink.hidden = !session.isAdmin;
+            } else {
+                loginSuccessCopy.textContent = '';
+                loginTtsLink.hidden = true;
+                loginAdminLink.hidden = true;
+            }
             creatorSpace.hidden = !session.canUseTts;
             creatorSpaceKicker.textContent = session.isAdmin ? 'Espace administrateur' : 'Espace créateur';
             creatorSpaceHeading.textContent = session.isAdmin ? 'Mon TTS personnel' : 'Mon TTS et mon salon';
@@ -974,11 +1009,15 @@ donne <!doctype html>
                 });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || 'Connexion impossible.');
+                loginSuccessPanel.hidden = false;
+                loginSuccessHeading.textContent = `Connexion confirmée · ${formData.get('username')}`;
+                loginSuccessCopy.textContent = 'Mise à jour de ton espace et de tes accès…';
                 loginStatus.className = 'login-status success';
-                loginStatus.textContent = 'Connexion réussie. Tu peux maintenant ouvrir les jeux.';
+                loginStatus.textContent = 'Connexion réussie. Ton espace vient d’être actualisé.';
                 loginForm.reset();
                 await refreshSession();
             } catch (error) {
+                loginSuccessPanel.hidden = true;
                 loginStatus.className = 'login-status error';
                 loginStatus.textContent = error.message || 'Une erreur est survenue.';
             } finally {
