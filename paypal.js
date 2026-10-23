@@ -15,6 +15,10 @@ const offers = {
     }
 };
 const PRICE_VERSION = 'gryphon-prices-2026-10-v5';
+const BILLING_PERIOD_MS = {
+    mensuel: 30 * 24 * 60 * 60 * 1000,
+    annuel: 365 * 24 * 60 * 60 * 1000
+};
 const checkoutAttempts = new Map();
 const CHECKOUT_LIMIT = 5;
 const CHECKOUT_WINDOW_MS = 15 * 60 * 1000;
@@ -101,6 +105,15 @@ function credentialsConfigured(configuration) {
 
 function paymentsConfigured(configuration) {
     return credentialsConfigured(configuration) && Boolean(configuration.webhookId);
+}
+
+function getLastPaymentAt(subscription, fallback = new Date().toISOString()) {
+    const paymentTime = subscription.billing_info?.last_payment?.time ||
+        subscription.start_time ||
+        fallback;
+    return Number.isFinite(Date.parse(paymentTime))
+        ? new Date(paymentTime).toISOString()
+        : fallback;
 }
 
 async function ensurePlans(configuration) {
@@ -279,6 +292,7 @@ async function confirmSubscription(subscriptionId, checkoutId, password, req, re
         subscriptionId,
         plan: checkout.plan,
         status: 'ACTIVE',
+        lastPaymentAt: getLastPaymentAt(subscription),
         createdAt: new Date().toISOString()
     });
     store.deleteCheckout(checkoutId);
@@ -314,7 +328,10 @@ async function verifyWebhook(event, headers) {
         'BILLING.SUBSCRIPTION.CANCELLED': 'CANCELLED',
         'BILLING.SUBSCRIPTION.EXPIRED': 'EXPIRED',
         'BILLING.SUBSCRIPTION.SUSPENDED': 'SUSPENDED',
-        'BILLING.SUBSCRIPTION.PAYMENT.FAILED': 'PAYMENT_FAILED'
+        'BILLING.SUBSCRIPTION.PAYMENT.FAILED': 'PAYMENT_FAILED',
+        'BILLING.SUBSCRIPTION.PAYMENT.COMPLETED': 'ACTIVE',
+        'BILLING.SUBSCRIPTION.PAYMENT.SUCCEEDED': 'ACTIVE',
+        'PAYMENT.SALE.COMPLETED': 'ACTIVE'
     };
     const eventStatus = eventToStatus[event.event_type];
     if (!eventStatus) return { received: true, updated: false };
@@ -332,8 +349,16 @@ async function verifyWebhook(event, headers) {
         EXPIRED: 'EXPIRED',
         SUSPENDED: 'SUSPENDED'
     };
-    const status = statusByPayPalState[subscription.status];
+    const status = eventStatus === 'PAYMENT_FAILED'
+        ? 'PAYMENT_FAILED'
+        : statusByPayPalState[subscription.status];
     if (!status) return { received: true, updated: false };
+    const paymentSucceeded = eventStatus === 'ACTIVE' &&
+        event.event_type !== 'BILLING.SUBSCRIPTION.ACTIVATED' &&
+        event.event_type !== 'BILLING.SUBSCRIPTION.CANCELLED';
+    const lastPaymentAt = eventStatus === 'ACTIVE'
+        ? getLastPaymentAt(subscription, resource.create_time || event.create_time)
+        : null;
 
     if (status === 'ACTIVE') {
         const checkout = store.getCheckout(subscription.custom_id);
@@ -345,12 +370,20 @@ async function verifyWebhook(event, headers) {
                 subscriptionId,
                 plan: checkout.plan,
                 status,
+                lastPaymentAt,
                 createdAt: new Date().toISOString()
             });
             store.deleteCheckout(subscription.custom_id);
         }
     }
-    return { received: true, updated: store.setSubscriptionStatus(subscriptionId, status) };
+    return {
+        received: true,
+        updated: store.setSubscriptionStatus(subscriptionId, status, {
+            lastPaymentAt: paymentSucceeded || event.event_type === 'BILLING.SUBSCRIPTION.ACTIVATED'
+                ? lastPaymentAt
+                : null
+        })
+    };
 }
 
 module.exports = {

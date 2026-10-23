@@ -266,10 +266,12 @@ function listCreatorAccounts() {
         const manualAccount = account?.accessMode === 'MANUAL';
         return {
             username,
-            subscriptionStatus: account?.status || 'MANUEL',
+            subscriptionStatus: account?.status === 'ACTIVE' && !access.hasActiveSubscription(account)
+                ? 'EXPIRED'
+                : account?.status || 'MANUEL',
             plan: account?.plan || null,
             hasSubscription: Boolean(account?.subscriptionId),
-            subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
+            subscriptionActive: access.hasActiveSubscription(account),
             protectedAdmin: access.isAdminUser(username),
             accessEnabled: access.isAdminUser(username) ||
                 (!store.isUserRevoked(username) &&
@@ -541,7 +543,7 @@ const server = http.createServer((req, res) => {
             configured: access.hasUsers,
             isAdmin: access.isAdmin(req),
             username,
-            hasSubscription: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
+            hasSubscription: access.hasActiveSubscription(account),
             canUseTts: canUseCreatorTts(username),
             canAccessGames: access.canAccessGames(req),
             creatorTts: creatorTts
@@ -766,7 +768,7 @@ const server = http.createServer((req, res) => {
                 }
                 if (access.isAdminUser(username) &&
                     !['tts-create', 'tts-revoke', 'room', 'room-close', 'room-open',
-                        'service-access', 'game-access'].includes(body.action)) {
+                        'service-access'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
                 if (body.action === 'room-close' || body.action === 'remove-creator') {
@@ -816,8 +818,9 @@ const server = http.createServer((req, res) => {
                     }
                     const targetAccount = store.getAccount(username);
                     if (body.enabled &&
-                        (!targetAccount?.subscriptionId || targetAccount.status !== 'ACTIVE')) {
-                        throw invalidAdminInput('Un abonnement actif est nécessaire avant de rétablir les jeux ou le TTS.');
+                        targetAccount?.accessMode !== 'MANUAL' &&
+                        !access.hasActiveSubscription(targetAccount)) {
+                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis.');
                     }
                     store.setCreatorServiceAccess(username, service, body.enabled);
                     if (service === 'games' && body.enabled &&
@@ -844,18 +847,6 @@ const server = http.createServer((req, res) => {
                         }
                         closeAuthenticatedSockets(username);
                     }
-                } else if (body.action === 'game-access') {
-                    if (!Array.isArray(body.gameIds) ||
-                        body.gameIds.some(gameId => typeof gameId !== 'string')) {
-                        throw invalidAdminInput('Choisis une liste valide de jeux.');
-                    }
-                    const targetAccount = store.getAccount(username);
-                    if (!targetAccount && !access.hasConfiguredUser(username)) {
-                        throw invalidAdminInput('Compte membre introuvable.');
-                    }
-                    store.setCreatorGameAccess(username, null);
-                    store.setCreatorServiceAccess(username, 'games', true);
-                    store.setUserRevoked(username, false);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
                         throw invalidAdminInput('Un abonnement actif est requis et l’accès TTS ne doit pas avoir été révoqué par l’administrateur.');
@@ -1499,6 +1490,20 @@ server.on('upgrade', (req, socket, head) => {
         wss.emit('connection', webSocket, req);
     });
 });
+
+setInterval(() => {
+    for (const [username, account] of store.listAccounts()) {
+        if (!account.subscriptionId || access.hasActiveSubscription(account)) continue;
+        closeAuthenticatedSockets(username);
+        closeTtsControlSockets(username);
+        const source = store.getAccountLiveTts(username);
+        if (source) closeLiveTtsSockets(source.username);
+        for (const [clientId, session] of applicationPresence) {
+            if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+        }
+    }
+}, 30_000).unref();
+
 const sessions = new Map();
 const clientSessions = new Map();
 

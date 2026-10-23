@@ -96,7 +96,16 @@ function canUseCreatorService(username, service) {
 
     const explicitAccess = store.getCreatorServiceAccess(username, service);
     if (explicitAccess === false) return false;
-    return Boolean(account?.subscriptionId && account.status === 'ACTIVE');
+    if (account?.accessMode === 'MANUAL') return explicitAccess === true;
+    return hasActiveSubscription(account);
+}
+
+function hasActiveSubscription(account, now = Date.now()) {
+    if (!account?.subscriptionId) return false;
+    const paidAt = Date.parse(account.lastPaymentAt || account.createdAt || '');
+    if (!Number.isFinite(paidAt)) return false;
+    const duration = account.plan === 'annuel' ? 365 : 30;
+    return now < paidAt + duration * 24 * 60 * 60 * 1000;
 }
 
 function hasConfiguredUser(username) {
@@ -205,6 +214,7 @@ module.exports = {
         return users.size > 0 || store.hasAccounts();
     },
     hasAdminUsers,
+    hasActiveSubscription,
     hasConfiguredUser,
     canAccessGames,
     canUseCreatorService,

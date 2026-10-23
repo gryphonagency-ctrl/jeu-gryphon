@@ -538,13 +538,14 @@ function savePlans(plans) {
     });
 }
 
-function setSubscriptionStatus(subscriptionId, status) {
+function setSubscriptionStatus(subscriptionId, status, updates = {}) {
     return updateStore(store => {
         const entry = Object.entries(store.users).find(([, account]) =>
             account.subscriptionId === subscriptionId
         );
         if (!entry) return false;
         entry[1].status = status;
+        if (updates.lastPaymentAt) entry[1].lastPaymentAt = updates.lastPaymentAt;
         entry[1].updatedAt = new Date().toISOString();
         return true;
     });
