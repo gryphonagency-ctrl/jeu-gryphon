@@ -287,8 +287,9 @@ function listCreatorAccounts() {
             manualAccount,
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
-            ttsUsername: source?.username || null,
+            ttsUsername: source?.username || settings.tiktokUsername || null,
             gameAccess: store.getCreatorGameAccess(username),
+            settingsLocked: settings.locked === true,
             roomNumber: settings.roomNumber || null
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
@@ -624,6 +625,11 @@ const server = http.createServer((req, res) => {
         }
         readJsonBody(req, res, body => {
             try {
+                if (store.getCreatorSettings(username).locked === true) {
+                    const error = new Error('Les réglages de ce membre sont verrouillés. Contacte l’administrateur pour les modifier.');
+                    error.statusCode = 403;
+                    throw error;
+                }
                 const existing = store.getAccountLiveTts(username);
                 if (body.action === 'revoke') {
                     const error = new Error('Seul l’administrateur peut révoquer un lien TTS.');
@@ -643,6 +649,7 @@ const server = http.createServer((req, res) => {
                     throw error;
                 }
                 const result = createAccountLiveTts(username, body.username);
+                store.setCreatorTiktokUsername(username, result.username);
                 store.setAccountTtsLinkRevoked(username, false);
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, ...result }));
@@ -777,10 +784,48 @@ const server = http.createServer((req, res) => {
                 }
                 if (access.isAdminUser(username) &&
                     !['tts-create', 'tts-revoke', 'room', 'room-close', 'room-open',
-                        'service-access'].includes(body.action)) {
+                        'service-access', 'settings-lock'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
-                if (body.action === 'room-close' || body.action === 'remove-creator') {
+                if (body.action === 'settings-lock') {
+                    const settings = store.getCreatorSettings(username);
+                    if (access.isAdminUser(username) || typeof body.locked !== 'boolean' ||
+                        (settings.locked === true && body.locked)) {
+                        throw invalidAdminInput('Le verrouillage des réglages de ce compte est impossible.');
+                    }
+                    if (body.locked) {
+                        const roomNumber = body.roomNumber;
+                        const gameCatalog = getGameCatalog();
+                        if (roomNumber !== null &&
+                            (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999)) {
+                            throw invalidAdminInput('Le numéro de salon doit être compris entre 1 et 9999.');
+                        }
+                        const tiktokUsername = typeof body.tiktokUsername === 'string'
+                            ? body.tiktokUsername.trim().replace(/^@/, '')
+                            : '';
+                        if (tiktokUsername && !/^[a-zA-Z0-9._]{1,32}$/.test(tiktokUsername)) {
+                            throw invalidAdminInput('Pseudo TikTok invalide.');
+                        }
+                        if (!Array.isArray(body.gameIds) ||
+                            body.gameIds.length > gameCatalog.length ||
+                            body.gameIds.some(gameId =>
+                                typeof gameId !== 'string' ||
+                                !gameCatalog.some(game => game.id === gameId)) ||
+                            new Set(body.gameIds).size !== body.gameIds.length) {
+                            throw invalidAdminInput('La sélection des jeux est invalide.');
+                        }
+                        if (access.hasActiveSubscription(store.getAccount(username)) &&
+                            body.gameIds.length === 0) {
+                            throw invalidAdminInput('Un abonné actif doit conserver l’accès à au moins un jeu.');
+                        }
+                        store.setCreatorGameAccess(username, body.gameIds);
+                        store.setCreatorRoom(username, roomNumber);
+                        store.setCreatorTiktokUsername(username, tiktokUsername || null);
+                    }
+                    store.setCreatorSettingsLocked(username, body.locked);
+                } else if (store.getCreatorSettings(username).locked === true) {
+                    throw invalidAdminInput('Les réglages de ce membre sont verrouillés. Déverrouille-les avant de les modifier.');
+                } else if (body.action === 'room-close' || body.action === 'remove-creator') {
                     if (access.isAdminUser(username)) {
                         throw invalidAdminInput('Le salon et le compte de l’administrateur principal sont protégés.');
                     }
@@ -899,6 +944,7 @@ const server = http.createServer((req, res) => {
                         closeTtsControlSockets(username);
                     }
                     const result = createAccountLiveTts(username, body.username);
+                    store.setCreatorTiktokUsername(username, result.username);
                     store.setAccountTtsLinkRevoked(username, false);
                     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ success: true, ...result }));
@@ -1051,6 +1097,15 @@ const server = http.createServer((req, res) => {
                 .filter(([accountUsername]) => access.hasActiveSubscription(store.getAccount(accountUsername)))
                 .map(([, item]) => item.username.toLocaleLowerCase())
         ]);
+        const lockedTtsNames = new Set([
+            ...(source?.accountUsername &&
+                store.getCreatorSettings(source.accountUsername).locked === true
+                ? [source.username.toLocaleLowerCase()]
+                : []),
+            ...store.listAccountLiveTtsSources()
+                .filter(([accountUsername]) => store.getCreatorSettings(accountUsername).locked === true)
+                .map(([, item]) => item.username.toLocaleLowerCase())
+        ]);
         const liveSessions = [...sessions.values()]
             .filter(session => session.isLive)
             .map(session => ({
@@ -1058,7 +1113,8 @@ const server = http.createServer((req, res) => {
                 roomId: session.roomId,
                 hasTtsLink: [activeSource, ...accountSources].some(item =>
                     item?.username.toLocaleLowerCase() === session.username.toLocaleLowerCase()),
-                subscriptionActive: protectedSubscriberTtsNames.has(session.username.toLocaleLowerCase())
+                subscriptionActive: protectedSubscriberTtsNames.has(session.username.toLocaleLowerCase()),
+                settingsLocked: lockedTtsNames.has(session.username.toLocaleLowerCase())
             }));
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ sessions: liveSessions }));
@@ -1090,11 +1146,18 @@ const server = http.createServer((req, res) => {
                     );
                     if (legacySource?.username.toLocaleLowerCase() === sessionKey) {
                         if (legacySource.accountUsername &&
+                            store.getCreatorSettings(legacySource.accountUsername).locked === true) {
+                            throw invalidAdminInput('Les réglages TTS de ce membre sont verrouillés. Déverrouille-les avant de révoquer son lien.');
+                        }
+                        if (legacySource.accountUsername &&
                             access.hasActiveSubscription(store.getAccount(legacySource.accountUsername))) {
                             throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
                         }
                         store.saveLiveTtsSource(null);
                     } else if (accountSource) {
+                        if (store.getCreatorSettings(accountSource[0]).locked === true) {
+                            throw invalidAdminInput('Les réglages TTS de ce membre sont verrouillés. Déverrouille-les avant de révoquer son lien.');
+                        }
                         if (access.hasActiveSubscription(store.getAccount(accountSource[0]))) {
                             throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
                         }
@@ -1131,6 +1194,10 @@ const server = http.createServer((req, res) => {
             try {
                 if (body.action === 'revoke') {
                     const existing = store.getLiveTtsSource();
+                    if (existing?.accountUsername &&
+                        store.getCreatorSettings(existing.accountUsername).locked === true) {
+                        throw invalidAdminInput('Les réglages TTS de ce membre sont verrouillés. Déverrouille-les avant de révoquer son lien.');
+                    }
                     if (existing?.accountUsername &&
                         access.hasActiveSubscription(store.getAccount(existing.accountUsername))) {
                         throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');

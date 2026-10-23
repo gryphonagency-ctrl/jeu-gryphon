@@ -95,7 +95,11 @@ function readStore() {
                 !settings || typeof settings !== 'object' || Array.isArray(settings) ||
                 (settings.roomNumber !== undefined &&
                     (!Number.isInteger(settings.roomNumber) ||
-                        settings.roomNumber < 1 || settings.roomNumber > 9999))) ||
+                        settings.roomNumber < 1 || settings.roomNumber > 9999)) ||
+                (settings.tiktokUsername !== undefined &&
+                    (typeof settings.tiktokUsername !== 'string' ||
+                        !/^[a-zA-Z0-9._]{1,32}$/.test(settings.tiktokUsername))) ||
+                (settings.locked !== undefined && typeof settings.locked !== 'boolean')) ||
             Object.entries(parsed.dailyUsage).some(([date, users]) =>
                 !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
                 !users || typeof users !== 'object' || Array.isArray(users) ||
@@ -301,6 +305,28 @@ function setCreatorRoom(username, roomNumber) {
         const settings = store.creatorSettings[key] || {};
         if (roomNumber === null) delete settings.roomNumber;
         else settings.roomNumber = roomNumber;
+        if (Object.keys(settings).length) store.creatorSettings[key] = settings;
+        else delete store.creatorSettings[key];
+    });
+}
+
+function setCreatorTiktokUsername(username, tiktokUsername) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        if (tiktokUsername === null) delete settings.tiktokUsername;
+        else settings.tiktokUsername = tiktokUsername;
+        if (Object.keys(settings).length) store.creatorSettings[key] = settings;
+        else delete store.creatorSettings[key];
+    });
+}
+
+function setCreatorSettingsLocked(username, locked) {
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        if (locked) settings.locked = true;
+        else delete settings.locked;
         if (Object.keys(settings).length) store.creatorSettings[key] = settings;
         else delete store.creatorSettings[key];
     });
@@ -592,6 +618,8 @@ module.exports = {
     recordDailyUsage,
     setGameHidden,
     setCreatorRoom,
+    setCreatorTiktokUsername,
+    setCreatorSettingsLocked,
     setCreatorGameAccess,
     setCreatorServiceAccess,
     setUserRevoked,
