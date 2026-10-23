@@ -28,7 +28,15 @@ Définis `GAME_ADMIN_USERS` avec une liste séparée par des virgules d'identifi
 GAME_ADMIN_USERS=gryphon
 ```
 
-La section **Gestion des jeux** et ses commandes sont réservées aux administrateurs connectés ; le serveur bloque également les requêtes d'administration des autres comptes. Elle permet de remplacer l'image d'un jeu existant, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.
+La section d'administration et ses commandes sont réservées aux administrateurs connectés ; le serveur bloque également les requêtes d'administration des autres comptes. Elle permet de remplacer l'image d'un jeu existant, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.
+
+### Créateurs, TTS, accès et salons
+
+Le panneau **Créateurs, accès, TTS et salons** réunit les comptes PayPal enregistrés et les comptes définis dans `GAME_USERS_JSON`. Un abonné dont le statut PayPal est actif peut créer son propre lien TTS depuis son espace créateur. Un administrateur peut également créer ou révoquer le lien TTS d'un compte, rétablir ou retirer son accès aux jeux et lui attribuer un numéro de salon de 1 à 9999. Les numéros de salon sont des affectations de l'arcade, distinctes des identifiants de salon renvoyés par TikTok.
+
+Les liens TTS sont individuels, leurs jetons ne sont stockés que sous forme d'empreinte et l'adresse complète n'est affichée qu'au moment de sa création. Copie-la immédiatement dans TikTok Live Studio. Une révocation coupe les sources TTS actives utilisant ce lien. Le retrait de l'accès aux jeux est une commande distincte : il ne modifie pas l'état de l'abonnement PayPal, et un compte dont l'abonnement est inactif ne retrouve pas l'accès avant sa réactivation par PayPal.
+
+La loupe verte indique le nombre de comptes authentifiés présents dans l'application. Le tableau de présence affiche les pages de jeu ouvertes, leur durée et le salon attribué. La présence est actualisée toutes les 15 secondes et considérée terminée après 45 secondes sans signal ; les durées en cours ne sont pas conservées après le redémarrage du serveur.
 
 Pour utiliser le bouton **Enregistrer l’image**, crée un compte Cloudinary puis ajoute **soit** `CLOUDINARY_URL`, **soit** les trois variables séparées dans **Render > ton service > Environment**. Avec l'URL Cloudinary complète :
 
