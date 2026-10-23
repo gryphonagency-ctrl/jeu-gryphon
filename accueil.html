@@ -163,6 +163,7 @@ donne <!doctype html>
         .membership.annual { border-color: rgba(114,220,255,.42); background: linear-gradient(150deg,rgba(0,157,255,.15),var(--panel) 63%); }
         .membership.annual .membership-label { color: var(--lime); }
         .membership .button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+        #custom-paypal-link[hidden] { display: none !important; }
         .faq-list { display: grid; gap: 9px; }
         details { padding: 0 17px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025); }
         summary { display: flex; min-height: 55px; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; list-style: none; font-size: 12px; font-weight: 800; }
@@ -515,6 +516,13 @@ donne <!doctype html>
                         <button class="button button-primary" type="submit">Enregistrer le message</button>
                         <p class="checkout-status" data-admin-status="homepage-notice" role="status" aria-live="polite"></p>
                     </form>
+                    <form id="paypal-link-form" class="admin-card" data-dashboard-widget="paypal-link">
+                        <h3>Ajouter mon lien PayPal</h3>
+                        <p>Quand tu auras ton lien, ajoute-le ici pour afficher un bouton PayPal sur la page publique, sous les abonnements. Laisse le champ vide pour retirer le bouton.</p>
+                        <label class="field"><span class="field-label">Lien PayPal (paypal.me ou page de paiement)</span><input id="paypal-link-url" name="url" type="url" maxlength="2048" placeholder="https://www.paypal.com/paypalme/..." autocomplete="url"></label>
+                        <button class="button button-primary" type="submit">Enregistrer le lien PayPal</button>
+                        <p class="checkout-status" data-admin-status="paypal-link" role="status" aria-live="polite"></p>
+                    </form>
                     <form id="live-tts-form" class="admin-card" data-dashboard-widget="live-tts">
                         <h3>Source audio TTS pour TikTok Live Studio</h3>
                         <p>En tant qu’administrateur, tu peux créer et copier ton lien privé ici ou depuis ton espace TTS. Chaque abonné actif autorisé dispose également de son propre lien.</p>
@@ -598,6 +606,7 @@ donne <!doctype html>
                 <div><p class="kicker blue-kicker">À toi de choisir</p><h2 class="games-title">Les abonnements</h2></div>
                 <p class="section-intro">Choisis entre l'abonnement mensuel et la formule annuelle, puis règle en toute sécurité avec PayPal.</p>
             </div>
+            <a id="custom-paypal-link" class="button button-primary" hidden target="_blank" rel="noopener noreferrer">PayPal · Soutenir Gryphon Agency ↗</a>
             <div class="membership-grid">
                 <article class="membership">
                     <span class="membership-label">Abonnement mensuel</span>
@@ -705,6 +714,9 @@ donne <!doctype html>
         const homepageNoticeSizeValue = document.getElementById('homepage-notice-size-value');
         const homepageNoticeWidthInput = document.getElementById('homepage-notice-width');
         const homepageNoticeWidthValue = document.getElementById('homepage-notice-width-value');
+        const customPaypalLink = document.getElementById('custom-paypal-link');
+        const paypalLinkForm = document.getElementById('paypal-link-form');
+        const paypalLinkUrlInput = document.getElementById('paypal-link-url');
         const homepageNoticeHeroAnchor = document.querySelector('.hero');
         const homepageNoticeGamesBeforeAnchor = document.getElementById('homepage-notice-games-before');
         const homepageNoticeGamesAfterAnchor = document.getElementById('homepage-notice-games-after');
@@ -1992,6 +2004,42 @@ donne <!doctype html>
             anchor.after(homepageNotice);
         }
 
+        function applyPaypalLink(url) {
+            customPaypalLink.hidden = !url;
+            if (url) customPaypalLink.href = url;
+            else customPaypalLink.removeAttribute('href');
+        }
+
+        paypalLinkForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = paypalLinkForm.querySelector('button[type="submit"]');
+            const status = paypalLinkForm.querySelector('[data-admin-status]');
+            button.disabled = true;
+            status.className = 'checkout-status';
+            status.textContent = 'Enregistrement du lien PayPal…';
+            try {
+                const response = await fetch('/api/admin/paypal-link', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: paypalLinkUrlInput.value })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Enregistrement du lien PayPal impossible.');
+                paypalLinkUrlInput.value = result.url || '';
+                applyPaypalLink(result.url);
+                status.className = 'checkout-status success';
+                status.textContent = result.url
+                    ? 'Lien PayPal enregistré et visible sur la page publique, sous les abonnements.'
+                    : 'Lien PayPal retiré de la page publique.';
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = error.message || 'Enregistrement du lien PayPal impossible.';
+            } finally {
+                button.disabled = false;
+            }
+        });
+
         homepageNoticeSizeInput.addEventListener('input', () => {
             homepageNoticeSizeValue.value = `${homepageNoticeSizeInput.value} px`;
             homepageNoticeSizeValue.textContent = `${homepageNoticeSizeInput.value} px`;
@@ -2296,6 +2344,8 @@ donne <!doctype html>
             if (!response.ok) throw new Error('Impossible de charger les jeux importés.');
             const catalog = await response.json();
             applyHomepageNoticeSettings(catalog.homepageNotice);
+            applyPaypalLink(catalog.paypalLink);
+            paypalLinkUrlInput.value = catalog.paypalLink || '';
             for (const card of staticCards) {
                 const metadata = catalog.metadata[card.dataset.gameId];
                 const game = gameCatalogById.get(card.dataset.gameId);

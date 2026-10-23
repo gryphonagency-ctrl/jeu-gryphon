@@ -12,23 +12,17 @@ GAME_DATA_FILE=/var/data/gryphon-accounts.json
 
 Sans disque persistant, les comptes et les identifiants de plans PayPal peuvent être perdus au prochain déploiement ou redémarrage. Ne place pas ce fichier dans le dépôt.
 
-Les comptes gérés manuellement peuvent toujours être définis avec `GAME_USERS_JSON`, par exemple :
+Le compte administrateur unique est `gryphon.agency`. Il doit être défini avec `GAME_USERS_JSON` si le compte n'a pas encore été créé par un abonnement PayPal :
 
 ```json
-{"gryphon":"choisir-un-mot-de-passe-long-et-unique"}
+{"gryphon.agency":"choisir-un-mot-de-passe-long-et-unique"}
 ```
 
-Utilise des mots de passe d'au moins 12 caractères et garde cette variable secrète.
+Utilise un mot de passe d'au moins 12 caractères et garde cette variable secrète. Les autres comptes configurés ou abonnés n'ont aucun droit d'administration. `GAME_ADMIN_USERS` ne permet pas d'ajouter d'autres administrateurs.
 
 ## Comptes administrateurs et gestion des jeux
 
-Définis `GAME_ADMIN_USERS` avec une liste séparée par des virgules d'identifiants administrateurs. Chaque identifiant doit aussi être autorisé à se connecter avec `GAME_USERS_JSON` ou être un compte actif créé après achat PayPal.
-
-```text
-GAME_ADMIN_USERS=gryphon
-```
-
-La section d'administration et ses commandes sont réservées aux administrateurs connectés ; le serveur bloque également les requêtes d'administration des autres comptes. Elle permet de remplacer l'image d'un jeu existant, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.
+Seul le compte `gryphon.agency` voit le tableau de bord et peut appeler les API d'administration; les autres comptes restent sur les pages publiques et leur espace membre autorisé. Cette restriction est vérifiée côté serveur, pas seulement par masquage de l'interface. Le compte unique peut remplacer l'image d'un jeu, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Il peut également ajouter ou retirer un lien PayPal HTTPS (`paypal.com` ou `paypal.me`) depuis le panneau. Le bouton correspondant n'apparaît sur la page publique que lorsqu'un lien est enregistré; le champ vide le retire. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.
 
 ### Créateurs, TTS, accès et salons
 

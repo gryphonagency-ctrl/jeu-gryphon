@@ -16,6 +16,7 @@ function readStore() {
         parsed.games ||= {};
         parsed.hiddenGames ||= {};
         parsed.homepageNotice ??= null;
+        parsed.paypalLink ??= null;
         parsed.liveTtsSource ??= null;
         parsed.liveTtsSources ||= {};
         parsed.revokedUsers ||= {};
@@ -108,7 +109,11 @@ function readStore() {
                     !Number.isInteger(parsed.homepageNotice.widthPercent) ||
                     parsed.homepageNotice.widthPercent < 40 ||
                     parsed.homepageNotice.widthPercent > 100 ||
-                    !['hero', 'games-before', 'games-after'].includes(parsed.homepageNotice.placement)))) {
+                    !['hero', 'games-before', 'games-after'].includes(parsed.homepageNotice.placement))) ||
+            (parsed.paypalLink !== null &&
+                (typeof parsed.paypalLink !== 'string' ||
+                    parsed.paypalLink.length > 2048 ||
+                    !/^https:\/\/(?:www\.)?paypal\.(?:com|me)\/[^\s]*$/i.test(parsed.paypalLink)))) {
             throw new Error('Game account store has an invalid data shape.');
         }
         return parsed;
@@ -120,6 +125,7 @@ function readStore() {
             games: {},
             hiddenGames: {},
             homepageNotice: null,
+            paypalLink: null,
             liveTtsSource: null,
             liveTtsSources: {},
             revokedUsers: {},
@@ -350,6 +356,16 @@ function saveHomepageNotice(settings) {
     });
 }
 
+function getPaypalLink() {
+    return readStore().paypalLink;
+}
+
+function savePaypalLink(url) {
+    updateStore(store => {
+        store.paypalLink = url;
+    });
+}
+
 function getLiveTtsSource() {
     return readStore().liveTtsSource;
 }
@@ -440,6 +456,7 @@ module.exports = {
     getGameImage,
     getHiddenGames,
     getHomepageNotice,
+    getPaypalLink,
     getLiveTtsSource,
     isUserRevoked,
     isCreatorServiceEnabled,
@@ -454,6 +471,7 @@ module.exports = {
     saveCloudinaryGameImage,
     saveGameMetadata,
     saveHomepageNotice,
+    savePaypalLink,
     saveLiveTtsSource,
     saveAccountLiveTts,
     saveAdminDashboardLayout,

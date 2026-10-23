@@ -15,6 +15,7 @@ const adminDashboardWidgetIds = [
     'creators',
     'host-room',
     'homepage-notice',
+    'paypal-link',
     'live-tts',
     'live-sessions',
     'game-image',
@@ -109,6 +110,24 @@ function invalidAdminInput(message) {
     const error = new Error(message);
     error.statusCode = 400;
     return error;
+}
+
+function normalizePaypalLink(value) {
+    const input = typeof value === 'string' ? value.trim() : '';
+    if (!input) return null;
+    if (input.length > 2048) throw invalidAdminInput('Le lien PayPal est trop long.');
+    let url;
+    try {
+        url = new URL(input);
+    } catch {
+        throw invalidAdminInput('Saisis une adresse PayPal valide en HTTPS.');
+    }
+    const allowedHosts = new Set(['paypal.com', 'www.paypal.com', 'paypal.me', 'www.paypal.me']);
+    if (url.protocol !== 'https:' || !allowedHosts.has(url.hostname.toLowerCase()) ||
+        url.username || url.password || url.pathname === '/') {
+        throw invalidAdminInput('Le lien doit être une adresse HTTPS PayPal personnelle ou de paiement.');
+    }
+    return url.href;
 }
 
 function canUseCreatorTts(username) {
@@ -251,11 +270,11 @@ function listCreatorAccounts() {
             hasSubscription: Boolean(account?.subscriptionId),
             subscriptionActive: Boolean(account?.subscriptionId && account.status === 'ACTIVE'),
             protectedAdmin: access.isAdminUser(username),
-            accessEnabled: !store.isUserRevoked(username) &&
-                (!account || account.status === 'ACTIVE'),
-            gamesAccessEnabled: !store.isUserRevoked(username) &&
+            accessEnabled: access.isAdminUser(username) || (!store.isUserRevoked(username) &&
+                (!account || account.status === 'ACTIVE')),
+            gamesAccessEnabled: access.isAdminUser(username) || (!store.isUserRevoked(username) &&
                 store.isCreatorServiceEnabled(username, 'games') &&
-                (!account || (Boolean(account.subscriptionId) && account.status === 'ACTIVE')),
+                (!account || (Boolean(account.subscriptionId) && account.status === 'ACTIVE'))),
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,
@@ -829,7 +848,7 @@ const server = http.createServer((req, res) => {
             image: cloudinaryImageUrl(game.imageUrl)
                 ? game.imageUrl
                 : `/game-assets/${game.image}`,
-            hidden: hiddenGames.includes(game.id),
+            hidden: !access.isAdmin(req) && hiddenGames.includes(game.id),
             allowed: access.canAccessGames(req, game.id)
         }));
         const allowedGameIds = getGameCatalog()
@@ -856,10 +875,36 @@ const server = http.createServer((req, res) => {
             games,
             images: gameImages,
             metadata,
-            hidden: hiddenGames,
+            hidden: access.isAdmin(req) ? [] : hiddenGames,
             allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
-            homepageNotice: store.getHomepageNotice() || defaultHomepageNotice
+            homepageNotice: store.getHomepageNotice() || defaultHomepageNotice,
+            paypalLink: store.getPaypalLink()
         }));
+        return;
+    }
+    if (pathname === '/api/admin/paypal-link' && req.method === 'POST') {
+        if (!access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à l’administrateur Gryphon Agency.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const url = normalizePaypalLink(body.url);
+                store.savePaypalLink(url);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, url }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de sauvegarde du lien PayPal :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible d’enregistrer le lien PayPal.'
+                        : error.message
+                }));
+            }
+        }, 4096);
         return;
     }
     if (pathname === '/api/admin/live-tts' && req.method === 'GET') {

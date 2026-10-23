@@ -5,14 +5,9 @@ const SESSION_COOKIE = 'gryphon_session';
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LOGIN_ATTEMPTS = 10;
+const ADMIN_USERNAME = 'gryphon.agency';
 const sessions = new Map();
 const loginAttempts = new Map();
-const adminUsers = new Set(
-    (process.env.GAME_ADMIN_USERS || '')
-        .split(',')
-        .map(username => username.trim().toLowerCase())
-        .filter(Boolean)
-);
 
 function loadUsers() {
     const configuredUsers = process.env.GAME_USERS_JSON;
@@ -63,14 +58,15 @@ function isAuthenticated(req) {
         sessions.delete(token);
         return false;
     }
+    const administrator = isAdminUser(session.username);
     if (session.storeBacked) {
         const account = store.getAccount(session.username);
-        if (!account || account.status !== 'ACTIVE') {
+        if (!administrator && (!account || account.status !== 'ACTIVE')) {
             sessions.delete(token);
             return false;
         }
     }
-    if (store.isUserRevoked(session.username)) {
+    if (!administrator && store.isUserRevoked(session.username)) {
         sessions.delete(token);
         return false;
     }
@@ -96,16 +92,17 @@ function listConfiguredUsers() {
 }
 
 function isAdminUser(username) {
-    return adminUsers.has(username.trim().toLowerCase());
+    return username.trim().toLowerCase() === ADMIN_USERNAME;
 }
 
 function isAdmin(req) {
-    return isAuthenticated(req) && adminUsers.has(usernameForRequest(req));
+    return isAuthenticated(req) && isAdminUser(usernameForRequest(req));
 }
 
 function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
+    if (isAdminUser(username)) return true;
     const account = store.getAccount(username);
     const allowedGameIds = store.getCreatorGameAccess(username);
     return Boolean(account?.subscriptionId && account.status === 'ACTIVE') &&
@@ -116,7 +113,7 @@ function canAccessGames(req, gameId) {
 }
 
 function hasAdminUsers() {
-    return adminUsers.size > 0;
+    return users.has(ADMIN_USERNAME) || Boolean(store.getAccount(ADMIN_USERNAME));
 }
 
 function login(username, password, req, res) {
@@ -132,18 +129,19 @@ function login(username, password, req, res) {
     const configuredPassword = users.get(normalizedUsername);
     const providedPassword = typeof password === 'string' && password.length <= 256 ? password : '';
     const storedAccount = store.getAccount(normalizedUsername);
+    const administrator = isAdminUser(normalizedUsername);
     let matches = false;
     if (storedAccount) {
         const providedHash = crypto.scryptSync(providedPassword, storedAccount.salt, 64);
         const storedHash = Buffer.from(storedAccount.passwordHash, 'hex');
-        matches = storedAccount.status === 'ACTIVE' &&
-            !store.isUserRevoked(normalizedUsername) &&
+        matches = (administrator || (storedAccount.status === 'ACTIVE' &&
+            !store.isUserRevoked(normalizedUsername))) &&
             storedHash.length === providedHash.length &&
             crypto.timingSafeEqual(providedHash, storedHash);
     } else if (configuredPassword !== undefined) {
         const providedBuffer = Buffer.from(providedPassword);
         const configuredBuffer = Buffer.from(configuredPassword);
-        matches = !store.isUserRevoked(normalizedUsername) &&
+        matches = (administrator || !store.isUserRevoked(normalizedUsername)) &&
             providedBuffer.length === configuredBuffer.length &&
             crypto.timingSafeEqual(providedBuffer, configuredBuffer);
     }
