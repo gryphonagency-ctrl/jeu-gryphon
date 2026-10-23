@@ -1,13 +1,22 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const renderEnvironment = process.env.RENDER === 'true';
-const storeDirectory = renderEnvironment ? '/var/data' : path.join(__dirname, 'data');
-const storeFile = process.env.GAME_DATA_FILE || path.join(storeDirectory, 'gryphon-accounts.json');
-const gameFilesDirectory = path.join(path.dirname(storeFile), 'game-files');
-if (renderEnvironment && !process.env.GAME_DATA_FILE) {
-    console.warn('GAME_DATA_FILE is not set; using /var/data/gryphon-accounts.json. Attach a Persistent Disk at /var/data to keep data across deploys.');
+const persistentDataDirectory = '/var/data';
+let defaultStoreDirectory = path.join(__dirname, 'data');
+if (renderEnvironment) {
+    try {
+        fs.accessSync(persistentDataDirectory, fs.constants.W_OK);
+        defaultStoreDirectory = persistentDataDirectory;
+    } catch (error) {
+        if (!['EACCES', 'ENOENT', 'ENOTDIR', 'EROFS'].includes(error.code)) throw error;
+        defaultStoreDirectory = path.join(os.tmpdir(), 'gryphon-arcade');
+        console.warn(`Persistent disk unavailable at ${persistentDataDirectory}; using temporary storage at ${defaultStoreDirectory}. Data may be lost on restart. Attach a Persistent Disk to preserve it.`);
+    }
 }
+const storeFile = process.env.GAME_DATA_FILE || path.join(defaultStoreDirectory, 'gryphon-accounts.json');
+const gameFilesDirectory = path.join(path.dirname(storeFile), 'game-files');
 
 function readStore() {
     try {

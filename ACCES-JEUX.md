@@ -10,7 +10,7 @@ Pour conserver la base des comptes, les jeux importés et les autres données lo
 GAME_DATA_FILE=/var/data/gryphon-accounts.json
 ```
 
-Si `GAME_DATA_FILE` n'est pas défini, le serveur utilise `/var/data/gryphon-accounts.json` par défaut et affiche un avertissement. Le service démarre, mais un Persistent Disk monté sur `/var/data` reste nécessaire pour conserver les données au-delà d'un redéploiement. Si des données existent déjà, copie d'abord le fichier de comptes actuel vers le disque, sans écraser une base plus récente. Ne place pas ce fichier dans le dépôt. Les droits de jeux, les membres manuels, les réglages de la vitrine, les liens et la disposition du tableau de bord sont conservés dans cette base après rechargement ou redémarrage.
+Si `GAME_DATA_FILE` n'est pas défini, le serveur utilise `/var/data/gryphon-accounts.json` lorsque `/var/data` est accessible en écriture. Si le disque persistant n'est pas monté ou accessible, il démarre en utilisant un stockage temporaire et affiche un avertissement explicite; ces données temporaires peuvent être perdues au redémarrage. Configure `GAME_DATA_FILE=/var/data/gryphon-accounts.json` et monte le Persistent Disk Render sur `/var/data` pour conserver les comptes et réglages après redéploiement. Si des données existent déjà, copie d'abord le fichier de comptes actuel vers le disque, sans écraser une base plus récente. Ne place pas ce fichier dans le dépôt.
 
 Le compte administrateur unique est `gryphon.agency`. Il doit être défini avec `GAME_USERS_JSON` si le compte n'a pas encore été créé par un abonnement PayPal :
 
