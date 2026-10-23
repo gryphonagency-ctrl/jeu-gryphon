@@ -31,6 +31,7 @@ const footballFile = path.join(__dirname, 'jeu-foot-tiktok.html');
 const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
+const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
@@ -52,6 +53,7 @@ const protectedRoutes = new Set([
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
     '/aquarium-tiktok-live.html',
+    '/petits-chevaux-tiktok.html',
     '/gryphon-plinko',
     '/index.html',
     '/plinko.html',
@@ -69,6 +71,7 @@ const staticGameIds = [
     '/aquarium-tiktok-live.html',
     '/coin-pusher-tiktok.html',
     '/jeu-foot-tiktok.html',
+    '/petits-chevaux-tiktok.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -79,6 +82,7 @@ const staticGameTitles = {
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
+    '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/coffres': 'Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -90,6 +94,7 @@ const gameRouteIds = new Map([
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
+    ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
     ['/gryphon-plinko', '/coffres'],
@@ -1516,6 +1521,7 @@ const server = http.createServer((req, res) => {
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
+        ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
