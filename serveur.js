@@ -131,7 +131,7 @@ function normalizePaypalLink(value) {
 }
 
 function canUseCreatorTts(username) {
-    if (access.isAdminUser(username) && !store.isUserRevoked(username)) return true;
+    if (access.isAdminUser(username)) return true;
     const account = store.getAccount(username);
     return Boolean(account?.subscriptionId &&
         account.status === 'ACTIVE' &&
