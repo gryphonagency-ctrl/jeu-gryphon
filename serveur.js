@@ -263,7 +263,13 @@ function listCreatorAccounts() {
     return [...creators.entries()].map(([username, account]) => {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
-        const gameIds = store.getCreatorGameAccess(username);
+        const storedGameIds = store.getCreatorGameAccess(username);
+        const manualAccount = account?.accessMode === 'MANUAL';
+        const gameIds = manualAccount &&
+            storedGameIds?.length === 0 &&
+            store.getCreatorServiceAccess(username, 'games') !== false
+            ? null
+            : storedGameIds;
         return {
             username,
             subscriptionStatus: account?.status || 'MANUEL',
@@ -279,7 +285,7 @@ function listCreatorAccounts() {
             gamesAccessEnabled: access.isAdminUser(username) ||
                 (access.canUseCreatorService(username, 'games') &&
                     (gameIds === null || gameIds.length > 0)),
-            manualAccount: account?.accessMode === 'MANUAL',
+            manualAccount,
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,

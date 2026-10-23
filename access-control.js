@@ -100,8 +100,7 @@ function canUseCreatorService(username, service) {
         !store.isUserRevoked(username) &&
         store.isCreatorServiceEnabled(username, service) &&
         (Boolean(account?.subscriptionId && account.status === 'ACTIVE') ||
-            store.getCreatorServiceAccess(username, service) === true ||
-            hasConfiguredUser(username));
+            store.getCreatorServiceAccess(username, service) === true);
 }
 
 function hasConfiguredUser(username) {
