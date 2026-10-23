@@ -264,14 +264,20 @@ function listCreatorAccounts() {
         const source = store.getAccountLiveTts(username);
         const settings = store.getCreatorSettings(username);
         const manualAccount = account?.accessMode === 'MANUAL';
+        const subscriptionActive = access.hasActiveSubscription(account);
+        const paidAt = Date.parse(account?.lastPaymentAt || account?.createdAt || '');
+        const subscriptionExpiresAt = account?.subscriptionId && Number.isFinite(paidAt)
+            ? new Date(paidAt + (account.plan === 'annuel' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString()
+            : null;
         return {
             username,
-            subscriptionStatus: account?.status === 'ACTIVE' && !access.hasActiveSubscription(account)
+            subscriptionStatus: account?.status === 'ACTIVE' && !subscriptionActive
                 ? 'EXPIRED'
                 : account?.status || 'MANUEL',
             plan: account?.plan || null,
             hasSubscription: Boolean(account?.subscriptionId),
-            subscriptionActive: access.hasActiveSubscription(account),
+            subscriptionActive,
+            subscriptionExpiresAt,
             protectedAdmin: access.isAdminUser(username),
             accessEnabled: access.isAdminUser(username) ||
                 (!store.isUserRevoked(username) &&
@@ -282,7 +288,7 @@ function listCreatorAccounts() {
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,
-            gameAccess: null,
+            gameAccess: store.getCreatorGameAccess(username),
             roomNumber: settings.roomNumber || null
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
@@ -609,7 +615,8 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 active: Boolean(source),
-                revoked: store.isAccountTtsLinkRevoked(username),
+                revoked: store.isAccountTtsLinkRevoked(username) &&
+                    !access.hasActiveSubscription(store.getAccount(username)),
                 username: source?.username || null,
                 roomNumber: store.getCreatorSettings(username).roomNumber || null
             }));
@@ -629,11 +636,13 @@ const server = http.createServer((req, res) => {
                     error.statusCode = 409;
                     throw error;
                 }
-                if (store.isAccountTtsLinkRevoked(username)) {
+                if (store.isAccountTtsLinkRevoked(username) &&
+                    !access.hasActiveSubscription(store.getAccount(username))) {
                     const error = new Error('Le lien TTS a été révoqué par l’administrateur. Contacte-le pour rétablir ton accès.');
                     error.statusCode = 403;
                     throw error;
                 }
+                store.setAccountTtsLinkRevoked(username, false);
                 const result = createAccountLiveTts(username, body.username);
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, ...result }));
@@ -775,6 +784,9 @@ const server = http.createServer((req, res) => {
                     if (access.isAdminUser(username)) {
                         throw invalidAdminInput('Le salon et le compte de l’administrateur principal sont protégés.');
                     }
+                    if (access.hasActiveSubscription(store.getAccount(username))) {
+                        throw invalidAdminInput('Les accès de l’abonné restent actifs jusqu’à la fin de la période payée.');
+                    }
                     const removedSources = body.action === 'room-close'
                         ? store.closeCreatorRoom(username)
                         : store.removeCreator(username);
@@ -793,6 +805,9 @@ const server = http.createServer((req, res) => {
                     access.revokeUserSessions(username);
                 } else if (body.action === 'access') {
                     if (typeof body.enabled !== 'boolean') throw invalidAdminInput('État d’accès invalide.');
+                    if (!body.enabled && access.hasActiveSubscription(store.getAccount(username))) {
+                        throw invalidAdminInput('Les accès de l’abonné restent actifs jusqu’à la fin de la période payée.');
+                    }
                     store.setUserRevoked(username, !body.enabled);
                     access.revokeUserSessions(username);
                     if (!body.enabled) {
@@ -817,6 +832,9 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
                     }
                     const targetAccount = store.getAccount(username);
+                    if (!body.enabled && access.hasActiveSubscription(targetAccount)) {
+                        throw invalidAdminInput('Les accès aux jeux et au TTS restent obligatoires jusqu’à la fin de la période payée.');
+                    }
                     if (body.enabled &&
                         targetAccount?.accessMode !== 'MANUAL' &&
                         !access.hasActiveSubscription(targetAccount)) {
@@ -847,6 +865,34 @@ const server = http.createServer((req, res) => {
                         }
                         closeAuthenticatedSockets(username);
                     }
+                } else if (body.action === 'game-access') {
+                    if (access.isAdminUser(username)) {
+                        throw invalidAdminInput('Les droits de jeu de l’administrateur principal ne peuvent pas être modifiés.');
+                    }
+                    const targetAccount = store.getAccount(username);
+                    if (targetAccount?.accessMode !== 'MANUAL' &&
+                        !access.hasActiveSubscription(targetAccount)) {
+                        throw invalidAdminInput('Un abonnement actif ou un compte créé manuellement par l’administrateur est requis.');
+                    }
+                    const gameCatalog = getGameCatalog();
+                    if (!Array.isArray(body.gameIds) ||
+                        body.gameIds.length > gameCatalog.length ||
+                        body.gameIds.some(gameId =>
+                            typeof gameId !== 'string' ||
+                            !gameCatalog.some(game => game.id === gameId)) ||
+                        new Set(body.gameIds).size !== body.gameIds.length) {
+                        throw invalidAdminInput('La sélection des jeux est invalide.');
+                    }
+                    if (access.hasActiveSubscription(targetAccount) && !body.gameIds.length) {
+                        throw invalidAdminInput('Un abonné actif doit conserver l’accès à au moins un jeu.');
+                    }
+                    store.setCreatorGameAccess(username, body.gameIds);
+                    if (!body.gameIds.length) {
+                        for (const [clientId, session] of applicationPresence) {
+                            if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+                        }
+                        closeAuthenticatedSockets(username);
+                    }
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
                         throw invalidAdminInput('Un abonnement actif est requis et l’accès TTS ne doit pas avoir été révoqué par l’administrateur.');
@@ -862,6 +908,9 @@ const server = http.createServer((req, res) => {
                     res.end(JSON.stringify({ success: true, ...result }));
                     return;
                 } else if (body.action === 'tts-revoke') {
+                    if (access.hasActiveSubscription(store.getAccount(username))) {
+                        throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
+                    }
                     const existing = store.getAccountLiveTts(username);
                     if (!existing) {
                         const error = new Error('Aucun lien TTS actif pour ce créateur.');
@@ -997,13 +1046,23 @@ const server = http.createServer((req, res) => {
         const accountSources = store.listAccountLiveTtsSources()
             .filter(([accountUsername]) => canUseCreatorTts(accountUsername))
             .map(([, item]) => item);
+        const protectedSubscriberTtsNames = new Set([
+            ...(activeSource &&
+                access.hasActiveSubscription(store.getAccount(activeSource.accountUsername))
+                ? [activeSource.username.toLocaleLowerCase()]
+                : []),
+            ...store.listAccountLiveTtsSources()
+                .filter(([accountUsername]) => access.hasActiveSubscription(store.getAccount(accountUsername)))
+                .map(([, item]) => item.username.toLocaleLowerCase())
+        ]);
         const liveSessions = [...sessions.values()]
             .filter(session => session.isLive)
             .map(session => ({
                 username: session.username,
                 roomId: session.roomId,
                 hasTtsLink: [activeSource, ...accountSources].some(item =>
-                    item?.username.toLocaleLowerCase() === session.username.toLocaleLowerCase())
+                    item?.username.toLocaleLowerCase() === session.username.toLocaleLowerCase()),
+                subscriptionActive: protectedSubscriberTtsNames.has(session.username.toLocaleLowerCase())
             }));
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ sessions: liveSessions }));
@@ -1034,8 +1093,15 @@ const server = http.createServer((req, res) => {
                         item.username.toLocaleLowerCase() === sessionKey
                     );
                     if (legacySource?.username.toLocaleLowerCase() === sessionKey) {
+                        if (legacySource.accountUsername &&
+                            access.hasActiveSubscription(store.getAccount(legacySource.accountUsername))) {
+                            throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
+                        }
                         store.saveLiveTtsSource(null);
                     } else if (accountSource) {
+                        if (access.hasActiveSubscription(store.getAccount(accountSource[0]))) {
+                            throw invalidAdminInput('Le TTS reste obligatoire jusqu’à la fin de la période payée.');
+                        }
                         store.saveAccountLiveTts(accountSource[0], null);
                         store.setAccountTtsLinkRevoked(accountSource[0], true);
                         closeTtsControlSockets(accountSource[0]);

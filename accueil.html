@@ -278,6 +278,11 @@ donne <!doctype html>
         .creator-tts-manager { margin-top: 18px; }
         .creator-tts-manager .admin-actions { align-items: end; }
         .creator-tts-remove { min-width: 34px; padding: 5px 10px; font-size: 18px; line-height: 1; }
+        .creator-game-selection { min-width: 190px; }
+        .creator-game-selection > summary { cursor: pointer; color: var(--ink); font-weight: 750; }
+        .creator-game-list { display: grid; gap: 6px; max-height: 190px; overflow-y: auto; margin: 9px 0; }
+        .creator-game-list label { display: flex; align-items: center; gap: 7px; color: var(--muted); white-space: nowrap; }
+        .creator-game-list input[type="checkbox"] { width: auto; min-height: 0; accent-color: var(--lime); }
         .daily-usage-count { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 12px 15px; border: 1px solid rgba(85,240,163,.3); border-radius: 11px; background: rgba(51,225,139,.08); color: #b9ffd8; }
         .daily-usage-count strong { color: #55f0a3; font-size: 25px; }
         .creator-url-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -510,7 +515,7 @@ donne <!doctype html>
                         </div>
                         <div class="creator-tts-manager">
                             <h4>Accès TTS des membres</h4>
-                            <p>L’abonnement actif autorise automatiquement le TTS. Pour les comptes créés manuellement, tu peux accorder un accès permanent. Tu peux révoquer séparément cet accès; le membre crée son lien depuis son espace.</p>
+                            <p>Pour les abonnés, les jeux et le TTS restent obligatoires pendant la période payée et expirent automatiquement avec elle. Tous les jeux sont sélectionnés par défaut; tu peux ensuite choisir précisément le catalogue de chacun et voir le nombre autorisé. Pour les comptes créés manuellement, tu peux accorder ou révoquer séparément chaque accès, qui reste enregistré sans limite de durée. Le membre crée son lien TTS depuis son espace.</p>
                             <div id="tts-access-list" class="active-tts-list"><p>Aucun compte autorisé.</p></div>
                         </div>
                         <div class="live-sessions-table-wrap">
@@ -1486,7 +1491,9 @@ donne <!doctype html>
                 row.dataset.creatorAccount,
                 {
                     tiktok: row.querySelector('[data-creator-tts-name]').value,
-                    room: row.querySelector('[data-creator-room]').value
+                    room: row.querySelector('[data-creator-room]').value,
+                    gameIds: [...row.querySelectorAll('[data-creator-game]:checked')]
+                        .map(input => input.dataset.creatorGame)
                 }
             ]));
             creatorList.replaceChildren();
@@ -1544,8 +1551,11 @@ donne <!doctype html>
                     removeButton.className = 'button button-danger creator-tts-remove';
                     removeButton.type = 'button';
                     removeButton.dataset.ttsRemoveAccount = creator.username;
+                    removeButton.disabled = creator.subscriptionActive;
+                    removeButton.title = creator.subscriptionActive
+                        ? 'Le TTS est obligatoire jusqu’à la fin de la période payée.'
+                        : `Retirer l’accès TTS de ${creator.username}`;
                     removeButton.setAttribute('aria-label', `Retirer l’accès TTS de ${creator.username}`);
-                    removeButton.title = `Retirer l’accès TTS de ${creator.username}`;
                     removeButton.textContent = '×';
                     entry.append(removeButton);
                 }
@@ -1567,6 +1577,9 @@ donne <!doctype html>
                 const gamesCell = document.createElement('td');
                 const gameSelectionCell = document.createElement('td');
                 const gameSelectionSummary = document.createElement('span');
+                const gameSelectionDetails = document.createElement('details');
+                const gameSelectionList = document.createElement('div');
+                const gameSelectionSave = document.createElement('button');
 
                 const accountName = document.createElement('span');
                 const gamesAccessButton = document.createElement('button');
@@ -1579,6 +1592,7 @@ donne <!doctype html>
                 gamesAccessButton.dataset.service = 'games';
                 gamesAccessButton.dataset.enabled = String(!creator.gamesAccessEnabled);
                 gamesAccessButton.disabled = creator.protectedAdmin ||
+                    creator.subscriptionActive ||
                     (!creator.subscriptionActive && !creator.manualAccount);
                 gamesAccessButton.textContent = creator.gamesAccessEnabled ? '🔓' : '🔒';
                 gamesAccessButton.setAttribute(
@@ -1588,13 +1602,17 @@ donne <!doctype html>
                         : `${creator.gamesAccessEnabled ? 'Révoquer' : 'Rétablir'} l’accès aux jeux de ${creator.username}`
                 );
                 gamesAccessButton.title = creator.gamesAccessEnabled
-                    ? 'Verrouiller et révoquer l’accès aux jeux'
+                    ? creator.subscriptionActive
+                        ? 'Accès obligatoire jusqu’à la fin de la période payée'
+                        : 'Verrouiller et révoquer l’accès aux jeux'
                     : creator.subscriptionActive || creator.manualAccount
                         ? 'Déverrouiller et rétablir l’accès aux jeux'
                         : 'Un abonnement actif est nécessaire';
                 accountCell.append(accountName, document.createTextNode(' '), gamesAccessButton);
                 subscriptionCell.textContent = creator.hasSubscription
-                    ? `${creator.plan || 'PayPal'} · ${creator.subscriptionStatus}`
+                    ? `${creator.plan || 'PayPal'} · ${creator.subscriptionStatus}${creator.subscriptionExpiresAt
+                        ? ` · ${creator.subscriptionActive ? 'expire' : 'expiré'} le ${new Date(creator.subscriptionExpiresAt).toLocaleDateString('fr-FR')}`
+                        : ''}`
                     : creator.manualAccount ? 'Accès manuel · sans abonnement' : 'Aucun abonnement';
                 tiktokInput.className = 'creator-tts-name';
                 tiktokInput.type = 'text';
@@ -1617,15 +1635,21 @@ donne <!doctype html>
                 ttsAccessButton.dataset.service = 'tts';
                 ttsAccessButton.dataset.enabled = String(!creator.ttsAccessEnabled);
                 ttsAccessButton.disabled = creator.protectedAdmin ||
+                    creator.subscriptionActive ||
                     (!creator.subscriptionActive && !creator.manualAccount);
-                ttsAccessButton.textContent = !creator.subscriptionActive && !creator.manualAccount
+                ttsAccessButton.textContent = creator.subscriptionActive
+                    ? 'Obligatoire jusqu’à expiration'
+                    : !creator.subscriptionActive && !creator.manualAccount
                     ? 'Abonnement requis'
                     : creator.ttsAccessEnabled ? 'Retirer accès TTS' : 'Rétablir accès TTS';
                 ttsLinkButton.className = 'button button-secondary creator-tts-action';
                 ttsLinkButton.type = 'button';
                 ttsLinkButton.dataset.creatorAction = creator.ttsActive ? 'tts-revoke' : 'tts-create';
-                ttsLinkButton.disabled = !creator.ttsAccessEnabled;
-                ttsLinkButton.textContent = creator.ttsActive ? 'Révoquer le lien' : 'Créer le lien';
+                ttsLinkButton.disabled = !creator.ttsAccessEnabled ||
+                    (creator.subscriptionActive && creator.ttsActive);
+                ttsLinkButton.textContent = creator.subscriptionActive && creator.ttsActive
+                    ? 'Lien protégé pendant l’abonnement'
+                    : creator.ttsActive ? 'Révoquer le lien' : 'Créer le lien';
                 ttsCell.append(document.createElement('br'), ttsAccessButton, document.createElement('br'), ttsLinkButton);
                 roomInput.type = 'number';
                 roomInput.min = '1';
@@ -1642,8 +1666,34 @@ donne <!doctype html>
                 gamesCell.textContent = !creator.subscriptionActive && !creator.manualAccount
                     ? 'Abonnement requis'
                     : creator.gamesAccessEnabled ? 'Autorisé' : 'Révoqué';
-                gameSelectionSummary.textContent = 'Tous les jeux';
-                gameSelectionCell.append(gameSelectionSummary);
+                const selectedGameIds = pendingEdits.get(creator.username)?.gameIds ??
+                    (creator.gameAccess === null
+                        ? result.gameCatalog.map(game => game.id)
+                        : creator.gameAccess || []);
+                gameSelectionDetails.className = 'creator-game-selection';
+                gameSelectionList.className = 'creator-game-list';
+                gameSelectionSummary.textContent =
+                    `${selectedGameIds.length} / ${result.gameCatalog.length} jeux`;
+                gameSelectionDetails.append(gameSelectionSummary);
+                for (const game of result.gameCatalog) {
+                    const gameLabel = document.createElement('label');
+                    const gameCheckbox = document.createElement('input');
+                    gameCheckbox.type = 'checkbox';
+                    gameCheckbox.checked = selectedGameIds.includes(game.id);
+                    gameCheckbox.disabled = creator.protectedAdmin ||
+                        (!creator.subscriptionActive && !creator.manualAccount);
+                    gameCheckbox.dataset.creatorGame = game.id;
+                    gameLabel.append(gameCheckbox, document.createTextNode(game.title));
+                    gameSelectionList.append(gameLabel);
+                }
+                gameSelectionSave.className = 'button button-secondary';
+                gameSelectionSave.type = 'button';
+                gameSelectionSave.dataset.creatorAction = 'game-access';
+                gameSelectionSave.disabled = creator.protectedAdmin ||
+                    (!creator.subscriptionActive && !creator.manualAccount);
+                gameSelectionSave.textContent = 'Enregistrer la sélection';
+                gameSelectionDetails.append(gameSelectionList, gameSelectionSave);
+                gameSelectionCell.append(gameSelectionDetails);
                 row.append(accountCell, subscriptionCell, tiktokCell, ttsCell, roomCell, gamesCell, gameSelectionCell);
                 creatorList.append(row);
             }
@@ -1694,8 +1744,11 @@ donne <!doctype html>
                         ttsButton.dataset.roomService = 'tts';
                         ttsButton.dataset.enabled = String(!creator?.ttsAccessEnabled);
                         ttsButton.disabled = !creator || creator.protectedAdmin ||
+                            creator.subscriptionActive ||
                             (!creator.subscriptionActive && !creator.manualAccount);
-                        ttsButton.textContent = creator?.ttsAccessEnabled ? 'Retirer' : 'Autoriser';
+                        ttsButton.textContent = creator?.subscriptionActive
+                            ? 'Obligatoire'
+                            : creator?.ttsAccessEnabled ? 'Retirer' : 'Autoriser';
                         ttsCell.append(ttsStatus, document.createElement('br'), ttsButton);
                         row.append(ttsCell);
 
@@ -1713,8 +1766,11 @@ donne <!doctype html>
                         gamesButton.dataset.roomService = 'games';
                         gamesButton.dataset.enabled = String(!creator?.gamesAccessEnabled);
                         gamesButton.disabled = !creator || creator.protectedAdmin ||
+                            creator.subscriptionActive ||
                             (!creator.subscriptionActive && !creator.manualAccount);
-                        gamesButton.textContent = creator?.gamesAccessEnabled ? 'Retirer' : 'Autoriser';
+                        gamesButton.textContent = creator?.subscriptionActive
+                            ? 'Obligatoire'
+                            : creator?.gamesAccessEnabled ? 'Retirer' : 'Autoriser';
                         gamesCell.append(gamesStatus, document.createElement('br'), gamesButton);
                         row.append(gamesCell);
                     }
@@ -1766,11 +1822,19 @@ donne <!doctype html>
                     roomButton.dataset.roomAction = creator.roomClosed ? 'room-open' : 'room-close';
                     roomButton.dataset.roomUsername = creator.username;
                     roomButton.textContent = creator.roomClosed ? 'Rouvrir le salon' : 'Fermer le salon';
+                    roomButton.disabled = creator.subscriptionActive && !creator.roomClosed;
+                    if (roomButton.disabled) {
+                        roomButton.title = 'Les accès restent actifs jusqu’à la fin de la période payée.';
+                    }
                     removeButton.className = 'button button-danger';
                     removeButton.type = 'button';
                     removeButton.dataset.roomAction = 'remove-creator';
                     removeButton.dataset.roomUsername = creator.username;
                     removeButton.textContent = 'Retirer de l’application';
+                    removeButton.disabled = creator.subscriptionActive;
+                    if (removeButton.disabled) {
+                        removeButton.title = 'Le compte abonné ne peut pas être retiré avant la fin de la période payée.';
+                    }
                     actionsCell.append(roomButton, removeButton);
                 } else {
                     actionsCell.textContent = 'Compte administrateur protégé';
@@ -1878,6 +1942,10 @@ donne <!doctype html>
                     ? `Autoriser durablement l’accès aux ${serviceLabel} pour ${accountUsername}, jusqu’à révocation par l’administrateur ?`
                     : `Révoquer l’accès aux ${serviceLabel} pour ${accountUsername} ?`;
                 if (!window.confirm(confirmation)) return;
+            } else if (action === 'game-access') {
+                body.gameIds = [...row.querySelectorAll('[data-creator-game]:checked')]
+                    .map(input => input.dataset.creatorGame);
+                if (!window.confirm(`Autoriser ${body.gameIds.length} jeu${body.gameIds.length === 1 ? '' : 'x'} pour ${accountUsername} ?`)) return;
             } else if (action === 'tts-create') {
                 body.action = 'tts-create';
                 body.username = tiktokInput.value.trim();
@@ -1900,13 +1968,25 @@ donne <!doctype html>
                     ? `Lien TTS créé pour ${accountUsername}. Copie-le maintenant : il ne sera pas conservé en clair.`
                     : action === 'service-access'
                         ? `Accès ${body.service === 'tts' ? 'TTS' : 'aux jeux'} ${body.enabled ? 'autorisé' : 'retiré'} pour ${accountUsername}.`
-                        : 'Modification enregistrée.';
+                        : action === 'game-access'
+                            ? `Sélection de ${body.gameIds.length} jeu${body.gameIds.length === 1 ? '' : 'x'} enregistrée pour ${accountUsername}.`
+                            : 'Modification enregistrée.';
             } catch (error) {
                 creatorAdminStatus.className = 'checkout-status error';
                 creatorAdminStatus.textContent = error.message || 'Une erreur est survenue.';
             } finally {
                 button.disabled = false;
             }
+        });
+
+        creatorList.addEventListener('change', event => {
+            if (!event.target.matches('[data-creator-game]')) return;
+            const row = event.target.closest('tr[data-creator-account]');
+            const summary = row?.querySelector('.creator-game-selection > summary');
+            if (!row || !summary) return;
+            const selectedCount = row.querySelectorAll('[data-creator-game]:checked').length;
+            const totalCount = row.querySelectorAll('[data-creator-game]').length;
+            summary.textContent = `${selectedCount} / ${totalCount} jeux`;
         });
 
         creatorPresenceList.addEventListener('click', async event => {
@@ -1982,8 +2062,10 @@ donne <!doctype html>
                     revokeButton.type = 'button';
                     revokeButton.dataset.liveAction = 'revoke';
                     revokeButton.dataset.username = username;
-                    revokeButton.disabled = !live.hasTtsLink;
-                    revokeButton.textContent = live.hasTtsLink ? 'Révoquer le lien TTS' : 'Aucun lien TTS';
+                    revokeButton.disabled = !live.hasTtsLink || live.subscriptionActive;
+                    revokeButton.textContent = live.subscriptionActive
+                        ? 'TTS protégé jusqu’à expiration'
+                        : live.hasTtsLink ? 'Révoquer le lien TTS' : 'Aucun lien TTS';
                     actions.append(disconnectButton, revokeButton);
                     actionsCell.append(actions);
                     row.append(userCell, roomCell, actionsCell);

@@ -90,13 +90,12 @@ function usernameForRequest(req) {
 function canUseCreatorService(username, service) {
     if (isAdminUser(username)) return true;
     const account = store.getAccount(username);
-    if (store.isCreatorRemoved(username) ||
-        store.isUserRevoked(username) ||
-        !store.isCreatorServiceEnabled(username, service)) return false;
+    if (store.isCreatorRemoved(username) || store.isUserRevoked(username)) return false;
 
-    const explicitAccess = store.getCreatorServiceAccess(username, service);
-    if (explicitAccess === false) return false;
-    if (account?.accessMode === 'MANUAL') return explicitAccess === true;
+    if (account?.accessMode === 'MANUAL') {
+        return store.isCreatorServiceEnabled(username, service) &&
+            store.getCreatorServiceAccess(username, service) === true;
+    }
     return hasActiveSubscription(account);
 }
 
@@ -128,7 +127,8 @@ function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
     if (isAdminUser(username)) return true;
-    return canUseCreatorService(username, 'games');
+    return canUseCreatorService(username, 'games') &&
+        (gameId === undefined || store.isCreatorGameAllowed(username, gameId));
 }
 
 function hasAdminUsers() {
