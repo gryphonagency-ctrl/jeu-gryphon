@@ -61,6 +61,30 @@ const staticGameIds = [
     '/coffres',
     '/inedexd.html'
 ];
+const staticGameTitles = {
+    '/pousoire.html': 'Table à pièces',
+    '/pendu.html': 'Le Pendu',
+    '/plinko.html': 'Gryphon Plinko',
+    '/aquarium-tiktok-live.html': 'Aquarium Live',
+    '/coin-pusher-tiktok.html': 'Coin Pusher',
+    '/jeu-foot-tiktok.html': 'Le Coup de Pied',
+    '/coffres': 'Coffres',
+    '/inedexd.html': 'Six Boîtes'
+};
+const gameRouteIds = new Map([
+    ['/pousoire.html', '/pousoire.html'],
+    ['/pendu', '/pendu.html'],
+    ['/pendu.html', '/pendu.html'],
+    ['/plinko.html', '/plinko.html'],
+    ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
+    ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
+    ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
+    ['/coffres', '/coffres'],
+    ['/coffres.html', '/coffres'],
+    ['/gryphon-plinko', '/coffres'],
+    ['/index.html', '/coffres'],
+    ['/inedexd.html', '/inedexd.html']
+]);
 const defaultHomepageNotice = Object.freeze({
     label: 'Nouveautés de l’arcade',
     text: 'Notre arcade propose plusieurs jeux interactifs, et de nouvelles expériences sont en préparation. Une idée de jeu ou une fonctionnalité vous intéresse ? Faites-nous part de vos suggestions : nous les étudierons avec attention pour enrichir la vitrine.',
@@ -78,19 +102,41 @@ function invalidAdminInput(message) {
 }
 
 function canUseCreatorTts(username) {
-    if (access.isAdminUser(username)) return true;
     const account = store.getAccount(username);
-    return store.hasCreatorServiceGrant(username, 'tts') ||
-        Boolean(account?.subscriptionId &&
-            account.status === 'ACTIVE' &&
-            store.isCreatorServiceEnabled(username, 'tts'));
+    return Boolean(account?.subscriptionId &&
+        account.status === 'ACTIVE' &&
+        store.isCreatorServiceEnabled(username, 'tts'));
+}
+
+function getGameCatalog() {
+    const hiddenGames = new Set(store.getHiddenGames());
+    const storedGames = store.listGames();
+    const builtInGames = staticGameIds.map(id => {
+        const metadata = storedGames.find(game => game.id === id && !game.uploaded);
+        return {
+            id,
+            title: metadata?.title || staticGameTitles[id],
+            href: id,
+            hidden: hiddenGames.has(id),
+            uploaded: false
+        };
+    });
+    const uploadedGames = storedGames.filter(game => game.uploaded).map(game => ({
+        id: game.id,
+        title: game.title,
+        href: `/uploaded-games/${game.id}`,
+        hidden: hiddenGames.has(game.id),
+        uploaded: true
+    }));
+    return [...builtInGames, ...uploadedGames];
 }
 
 function getLiveTtsSource(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
     const providedHash = crypto.createHash('sha256').update(token).digest();
+    const globalSource = store.getLiveTtsSource();
     const sources = [
-        store.getLiveTtsSource(),
+        globalSource?.accountUsername ? globalSource : null,
         ...store.listAccountLiveTtsSources().map(([accountUsername, source]) => ({
             ...source,
             accountUsername
@@ -100,7 +146,7 @@ function getLiveTtsSource(token) {
         const storedHash = Buffer.from(source.tokenHash, 'hex');
         if (storedHash.length === providedHash.length &&
             crypto.timingSafeEqual(storedHash, providedHash)) {
-            if (source.accountUsername && !canUseCreatorTts(source.accountUsername)) return null;
+            if (!source.accountUsername || !canUseCreatorTts(source.accountUsername)) return null;
             return source;
         }
     }
@@ -120,7 +166,9 @@ function createAccountLiveTts(accountUsername, requestedUsername) {
         source.username.toLocaleLowerCase() === normalizedUsername
     );
     const legacySource = store.getLiveTtsSource();
-    if (duplicate || legacySource?.username.toLocaleLowerCase() === normalizedUsername) {
+    if (duplicate || (legacySource?.accountUsername &&
+        canUseCreatorTts(legacySource.accountUsername) &&
+        legacySource.username.toLocaleLowerCase() === normalizedUsername)) {
         throw invalidAdminInput('Ce pseudo TikTok possède déjà un lien TTS actif.');
     }
     const token = crypto.randomBytes(32).toString('hex');
@@ -184,6 +232,7 @@ function listCreatorAccounts() {
             ttsAccessEnabled: canUseCreatorTts(username),
             ttsActive: Boolean(source),
             ttsUsername: source?.username || null,
+            gameAccess: store.getCreatorGameAccess(username),
             roomNumber: settings.roomNumber || null
         };
     }).sort((first, second) => first.username.localeCompare(second.username));
@@ -555,15 +604,17 @@ const server = http.createServer((req, res) => {
             const connections = getActivePresence();
             const hostUsername = access.usernameForRequest(req);
             const hostRoomNumber = store.getCreatorSettings(hostUsername).roomNumber || 1;
-            const activeTtsSources = store.listAccountLiveTtsSources().map(([accountUsername, source]) => ({
-                accountUsername,
-                username: source.username,
-                legacy: false
-            }));
+            const activeTtsSources = store.listAccountLiveTtsSources()
+                .filter(([accountUsername]) => canUseCreatorTts(accountUsername))
+                .map(([accountUsername, source]) => ({
+                    accountUsername,
+                    username: source.username,
+                    legacy: false
+                }));
             const legacySource = store.getLiveTtsSource();
-            if (legacySource) {
+            if (legacySource?.accountUsername && canUseCreatorTts(legacySource.accountUsername)) {
                 activeTtsSources.unshift({
-                    accountUsername: null,
+                    accountUsername: legacySource.accountUsername,
                     username: legacySource.username,
                     legacy: true
                 });
@@ -571,6 +622,8 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 creators: listCreatorAccounts(),
+                gameCatalog: getGameCatalog(),
+                gameCatalog: getGameCatalog(),
                 hostUsername,
                 hostRoomNumber,
                 roomMembers: connections.filter(connection => connection.roomNumber === hostRoomNumber),
@@ -592,7 +645,7 @@ const server = http.createServer((req, res) => {
                     throw invalidAdminInput('Compte créateur introuvable.');
                 }
                 if (access.isAdminUser(username) &&
-                    !['tts-create', 'tts-revoke', 'room', 'service-access'].includes(body.action)) {
+                    !['tts-create', 'tts-revoke', 'room', 'service-access', 'game-access'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
                 if (body.action === 'access') {
@@ -621,9 +674,9 @@ const server = http.createServer((req, res) => {
                         throw invalidAdminInput('Les droits de service de l’administrateur principal ne peuvent pas être modifiés.');
                     }
                     const targetAccount = store.getAccount(username);
-                    if (body.enabled && service === 'games' &&
+                    if (body.enabled &&
                         (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId)) {
-                        throw invalidAdminInput('Seul un abonnement PayPal actif peut autoriser cet accès.');
+                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour autoriser cet accès.');
                     }
                     store.setCreatorServiceAccess(username, service, body.enabled);
                     if (service === 'games' && body.enabled) {
@@ -642,9 +695,24 @@ const server = http.createServer((req, res) => {
                         }
                         closeAuthenticatedSockets(username);
                     }
+                } else if (body.action === 'game-access') {
+                    if (!Array.isArray(body.gameIds) ||
+                        body.gameIds.some(gameId => typeof gameId !== 'string')) {
+                        throw invalidAdminInput('Choisis une liste valide de jeux.');
+                    }
+                    const targetAccount = store.getAccount(username);
+                    if (!targetAccount || targetAccount.status !== 'ACTIVE' || !targetAccount.subscriptionId) {
+                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour configurer les jeux.');
+                    }
+                    const availableGameIds = new Set(getGameCatalog().map(game => game.id));
+                    const gameIds = [...new Set(body.gameIds)];
+                    if (gameIds.some(gameId => !availableGameIds.has(gameId))) {
+                        throw invalidAdminInput('Un ou plusieurs jeux sélectionnés ne sont plus disponibles.');
+                    }
+                    store.setCreatorGameAccess(username, gameIds);
                 } else if (body.action === 'tts-create') {
                     if (!canUseCreatorTts(username)) {
-                        throw invalidAdminInput('L’accès TTS doit d’abord être autorisé pour ce compte.');
+                        throw invalidAdminInput('Un abonnement PayPal actif est requis pour utiliser le TTS.');
                     }
                     const existing = store.getAccountLiveTts(username);
                     if (existing) closeLiveTtsSockets(existing.username);
@@ -699,8 +767,12 @@ const server = http.createServer((req, res) => {
             image: cloudinaryImageUrl(game.imageUrl)
                 ? game.imageUrl
                 : `/game-assets/${game.image}`,
-            hidden: hiddenGames.includes(game.id)
+            hidden: hiddenGames.includes(game.id),
+            allowed: access.canAccessGames(req, game.id)
         }));
+        const allowedGameIds = getGameCatalog()
+            .filter(game => access.canAccessGames(req, game.id))
+            .map(game => game.id);
         const gameImages = {};
         const metadata = {};
         for (const gameId of staticGameIds) {
@@ -723,6 +795,7 @@ const server = http.createServer((req, res) => {
             images: gameImages,
             metadata,
             hidden: hiddenGames,
+            allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
             homepageNotice: store.getHomepageNotice() || defaultHomepageNotice
         }));
         return;
@@ -735,7 +808,8 @@ const server = http.createServer((req, res) => {
         }
         const source = store.getLiveTtsSource();
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ active: Boolean(source), username: source?.username || null }));
+        const active = Boolean(source?.accountUsername && canUseCreatorTts(source.accountUsername));
+        res.end(JSON.stringify({ active, username: active ? source.username : null }));
         return;
     }
     if (pathname === '/api/admin/live-sessions' && req.method === 'GET') {
@@ -745,13 +819,18 @@ const server = http.createServer((req, res) => {
             return;
         }
         const source = store.getLiveTtsSource();
-        const accountSources = store.listAccountLiveTtsSources().map(([, item]) => item);
+        const activeSource = source?.accountUsername && canUseCreatorTts(source.accountUsername)
+            ? source
+            : null;
+        const accountSources = store.listAccountLiveTtsSources()
+            .filter(([accountUsername]) => canUseCreatorTts(accountUsername))
+            .map(([, item]) => item);
         const liveSessions = [...sessions.values()]
             .filter(session => session.isLive)
             .map(session => ({
                 username: session.username,
                 roomId: session.roomId,
-                hasTtsLink: [source, ...accountSources].some(item =>
+                hasTtsLink: [activeSource, ...accountSources].some(item =>
                     item?.username.toLocaleLowerCase() === session.username.toLocaleLowerCase())
             }));
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -826,9 +905,13 @@ const server = http.createServer((req, res) => {
                 if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
                     throw invalidAdminInput('Saisis un pseudo TikTok valide de 1 à 32 caractères.');
                 }
+                const accountUsername = access.usernameForRequest(req);
+                if (!canUseCreatorTts(accountUsername)) {
+                    throw invalidAdminInput('Un abonnement PayPal actif est requis pour créer une source TTS.');
+                }
                 const token = crypto.randomBytes(32).toString('hex');
                 const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-                store.saveLiveTtsSource({ username, tokenHash });
+                store.saveLiveTtsSource({ username, tokenHash, accountUsername });
                 closeLiveTtsSockets();
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, username, url: `/live-tts/${token}` }));
@@ -1063,6 +1146,14 @@ const server = http.createServer((req, res) => {
             res.end('Jeu introuvable.');
             return;
         }
+        if (!access.canAccessGames(req, game.id)) {
+            res.writeHead(302, {
+                'Cache-Control': 'no-store',
+                Location: '/?acces=jeux'
+            });
+            res.end();
+            return;
+        }
         fs.readFile(path.join(store.getGameFilesDirectory(), game.html), (error, content) => {
             if (error) {
                 console.error('Fichier de jeu importé introuvable :', error.message);
@@ -1109,7 +1200,10 @@ const server = http.createServer((req, res) => {
     }
 
     if (route) {
-        if (protectedRoutes.has(pathname) && !access.canAccessGames(req)) {
+        const gameId = gameRouteIds.get(pathname);
+        if (protectedRoutes.has(pathname) &&
+            (!access.canAccessGames(req) ||
+                (gameId !== undefined && !access.canAccessGames(req, gameId)))) {
             res.writeHead(302, {
                 'Cache-Control': 'no-store',
                 Location: access.isAuthenticated(req) ? '/?acces=jeux' : '/?connexion=requise'

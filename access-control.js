@@ -103,12 +103,14 @@ function isAdmin(req) {
     return isAuthenticated(req) && adminUsers.has(usernameForRequest(req));
 }
 
-function canAccessGames(req) {
+function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
-    if (isAdmin(req)) return true;
-    return !store.isUserRevoked(username) &&
-        store.isCreatorServiceEnabled(username, 'games');
+    const account = store.getAccount(username);
+    return Boolean(account?.subscriptionId && account.status === 'ACTIVE') &&
+        !store.isUserRevoked(username) &&
+        store.isCreatorServiceEnabled(username, 'games') &&
+        (gameId === undefined || store.isCreatorGameAllowed(username, gameId));
 }
 
 function hasAdminUsers() {

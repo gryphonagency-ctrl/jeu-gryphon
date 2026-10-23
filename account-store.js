@@ -22,6 +22,7 @@ function readStore() {
         parsed.creatorSettings ||= {};
         parsed.dailyUsage ||= {};
         parsed.serviceAccess ||= {};
+        parsed.gameAccess ||= {};
         if (parsed.homepageNotice) {
             if (parsed.homepageNotice.widthPercent === undefined) parsed.homepageNotice.widthPercent = 100;
             if (parsed.homepageNotice.text ===
@@ -40,6 +41,12 @@ function readStore() {
             typeof parsed.creatorSettings !== 'object' || Array.isArray(parsed.creatorSettings) ||
             typeof parsed.dailyUsage !== 'object' || Array.isArray(parsed.dailyUsage) ||
             typeof parsed.serviceAccess !== 'object' || Array.isArray(parsed.serviceAccess) ||
+            typeof parsed.gameAccess !== 'object' || Array.isArray(parsed.gameAccess) ||
+            Object.entries(parsed.gameAccess).some(([username, gameIds]) =>
+                !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
+                !Array.isArray(gameIds) ||
+                gameIds.some(gameId => typeof gameId !== 'string' ||
+                    !/^(?:\/[a-zA-Z0-9._/-]{1,79}|[a-f0-9-]{36})$/.test(gameId))) ||
             Object.entries(parsed.liveTtsSources).some(([owner, source]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(owner) ||
                 !source || typeof source !== 'object' || Array.isArray(source) ||
@@ -71,7 +78,10 @@ function readStore() {
                     typeof parsed.liveTtsSource.username !== 'string' ||
                     !/^[a-zA-Z0-9._]{1,32}$/.test(parsed.liveTtsSource.username) ||
                     typeof parsed.liveTtsSource.tokenHash !== 'string' ||
-                    !/^[a-f0-9]{64}$/.test(parsed.liveTtsSource.tokenHash))) ||
+                    !/^[a-f0-9]{64}$/.test(parsed.liveTtsSource.tokenHash) ||
+                    (parsed.liveTtsSource.accountUsername !== undefined &&
+                        (typeof parsed.liveTtsSource.accountUsername !== 'string' ||
+                            !/^[a-zA-Z0-9._@-]{1,64}$/.test(parsed.liveTtsSource.accountUsername))))) ||
             (parsed.homepageNotice !== null &&
                 (typeof parsed.homepageNotice !== 'object' ||
                     Array.isArray(parsed.homepageNotice) ||
@@ -104,7 +114,8 @@ function readStore() {
             revokedUsers: {},
             creatorSettings: {},
             dailyUsage: {},
-            serviceAccess: {}
+            serviceAccess: {},
+            gameAccess: {}
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -154,10 +165,6 @@ function isCreatorServiceEnabled(username, service) {
     return readStore().serviceAccess[username.toLowerCase()]?.[service] !== false;
 }
 
-function hasCreatorServiceGrant(username, service) {
-    return readStore().serviceAccess[username.toLowerCase()]?.[service] === true;
-}
-
 function setCreatorServiceAccess(username, service, enabled) {
     if (!['games', 'tts'].includes(service)) throw new Error('Unknown creator service.');
     updateStore(store => {
@@ -166,6 +173,22 @@ function setCreatorServiceAccess(username, service, enabled) {
         settings[service] = enabled;
         if (Object.keys(settings).length) store.serviceAccess[key] = settings;
         else delete store.serviceAccess[key];
+    });
+}
+
+function getCreatorGameAccess(username) {
+    const gameIds = readStore().gameAccess[username.toLowerCase()];
+    return Array.isArray(gameIds) ? gameIds : null;
+}
+
+function isCreatorGameAllowed(username, gameId) {
+    const gameIds = getCreatorGameAccess(username);
+    return gameIds === null || gameIds.includes(gameId);
+}
+
+function setCreatorGameAccess(username, gameIds) {
+    updateStore(store => {
+        store.gameAccess[username.toLowerCase()] = [...new Set(gameIds)];
     });
 }
 
@@ -379,6 +402,7 @@ module.exports = {
     getAccountLiveTts,
     getAccountBySubscription,
     getCheckout,
+    getCreatorGameAccess,
     getCreatorSettings,
     getDailyUsageCount,
     getGameFilesDirectory,
@@ -388,7 +412,7 @@ module.exports = {
     getLiveTtsSource,
     isUserRevoked,
     isCreatorServiceEnabled,
-    hasCreatorServiceGrant,
+    isCreatorGameAllowed,
     listGames,
     listAccounts,
     listAccountLiveTtsSources,
@@ -404,6 +428,7 @@ module.exports = {
     recordDailyUsage,
     setGameHidden,
     setCreatorRoom,
+    setCreatorGameAccess,
     setCreatorServiceAccess,
     setUserRevoked,
     saveAccount,
