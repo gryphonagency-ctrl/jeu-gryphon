@@ -3,6 +3,19 @@ const path = require('path');
 
 const storeFile = process.env.GAME_DATA_FILE || path.join(__dirname, 'data', 'accounts.json');
 const gameFilesDirectory = path.join(path.dirname(storeFile), 'game-files');
+if (process.env.RENDER === 'true') {
+    const persistentDataDirectory = path.resolve('/var/data');
+    const configuredStoreFile = process.env.GAME_DATA_FILE
+        ? path.resolve(process.env.GAME_DATA_FILE)
+        : '';
+    const relativeStoreFile = configuredStoreFile
+        ? path.relative(persistentDataDirectory, configuredStoreFile)
+        : '..';
+    if (!configuredStoreFile || !relativeStoreFile ||
+        relativeStoreFile.startsWith('..') || path.isAbsolute(relativeStoreFile)) {
+        throw new Error('Render requires GAME_DATA_FILE to point inside the persistent disk mounted at /var/data.');
+    }
+}
 
 function readStore() {
     try {
@@ -27,14 +40,6 @@ function readStore() {
         parsed.serviceAccess ||= {};
         parsed.gameAccess ||= {};
         parsed.adminDashboardLayouts ||= {};
-        if (parsed.homepageNotice) {
-            if (parsed.homepageNotice.widthPercent === undefined) parsed.homepageNotice.widthPercent = 100;
-            if (parsed.homepageNotice.text ===
-                'Plusieurs jeux sont déjà disponibles et de nouvelles expériences arriveront prochainement. Vous avez une idée de jeu ou une envie particulière ? Nous sommes à votre écoute pour étudier vos propositions et imaginer de nouveaux jeux avec vous.') {
-                parsed.homepageNotice.text =
-                    'Notre arcade propose plusieurs jeux interactifs, et de nouvelles expériences sont en préparation. Une idée de jeu ou une fonctionnalité vous intéresse ? Faites-nous part de vos suggestions : nous les étudierons avec attention pour enrichir la vitrine.';
-            }
-        }
         if (typeof parsed.users !== 'object' || Array.isArray(parsed.users) ||
             typeof parsed.checkouts !== 'object' || Array.isArray(parsed.checkouts) ||
             typeof parsed.plans !== 'object' || Array.isArray(parsed.plans) ||
@@ -114,9 +119,10 @@ function readStore() {
                     !Number.isInteger(parsed.homepageNotice.fontSize) ||
                     parsed.homepageNotice.fontSize < 11 ||
                     parsed.homepageNotice.fontSize > 26 ||
-                    !Number.isInteger(parsed.homepageNotice.widthPercent) ||
-                    parsed.homepageNotice.widthPercent < 40 ||
-                    parsed.homepageNotice.widthPercent > 100 ||
+                    (parsed.homepageNotice.widthPercent !== undefined &&
+                        (!Number.isInteger(parsed.homepageNotice.widthPercent) ||
+                            parsed.homepageNotice.widthPercent < 40 ||
+                            parsed.homepageNotice.widthPercent > 100)) ||
                     !['hero', 'games-before', 'games-after'].includes(parsed.homepageNotice.placement))) ||
             (parsed.paypalLink !== null &&
                 (typeof parsed.paypalLink !== 'string' ||
@@ -328,9 +334,6 @@ function recordDailyUsage(username, date) {
         if (users[key]) return false;
         users[key] = true;
         store.dailyUsage[date] = users;
-        for (const storedDate of Object.keys(store.dailyUsage)) {
-            if (storedDate < date) delete store.dailyUsage[storedDate];
-        }
         return true;
     });
 }

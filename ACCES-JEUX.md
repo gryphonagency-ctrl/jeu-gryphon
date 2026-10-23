@@ -10,7 +10,7 @@ Pour conserver la base des comptes, les jeux importés et les autres données lo
 GAME_DATA_FILE=/var/data/gryphon-accounts.json
 ```
 
-Sans disque persistant, les comptes et les identifiants de plans PayPal peuvent être perdus au prochain déploiement ou redémarrage. Ne place pas ce fichier dans le dépôt.
+Le serveur Render refuse de démarrer si `GAME_DATA_FILE` n'est pas défini dans ce disque persistant. Cela évite d'enregistrer des modifications dans le système de fichiers éphémère du service. Si des données existent déjà, copie d'abord le fichier de comptes actuel vers le disque, sans écraser une base plus récente. Ne place pas ce fichier dans le dépôt. Les droits de jeux, les membres manuels, les réglages de la vitrine, les liens et la disposition du tableau de bord sont conservés dans cette base après rechargement ou redémarrage.
 
 Le compte administrateur unique est `gryphon.agency`. Il doit être défini avec `GAME_USERS_JSON` si le compte n'a pas encore été créé par un abonnement PayPal :
 
@@ -38,7 +38,9 @@ Les panneaux du bureau administrateur ne peuvent pas être masqués. Fais-les gl
 
 La loupe verte indique le nombre de comptes authentifiés présents dans l'application. Le tableau de présence affiche les pages de jeu ouvertes, leur durée et le salon attribué. La présence est actualisée toutes les 15 secondes et considérée terminée après 45 secondes sans signal ; les durées en cours ne sont pas conservées après le redémarrage du serveur.
 
-Le panneau affiche aussi le nombre quotidien de comptes authentifiés distincts ayant ouvert l’accueil ou un jeu, selon le jour civil de Paris. Ce compteur est enregistré une seule fois par compte et par jour dans le stockage persistant, puis les journées précédentes sont supprimées. Le suivi commence après le déploiement de cette fonctionnalité : les visites antérieures ne peuvent pas être reconstituées.
+Le panneau affiche aussi le nombre quotidien de comptes authentifiés distincts ayant ouvert l’accueil ou un jeu, selon le jour civil de Paris. Ce compteur est enregistré une seule fois par compte et par jour dans le stockage persistant; les journées précédentes sont conservées. Le suivi commence après le déploiement de cette fonctionnalité : les visites antérieures ne peuvent pas être reconstituées.
+
+Les autorisations de jeux cochées et enregistrées pour un compte restent en place lors des actualisations, redémarrages et mises à jour de l'abonnement. La perte ou l'expiration de l'abonnement ne supprime pas les jeux attribués manuellement. Les droits ne changent que lorsqu'un administrateur les modifie, révoque le compte, retire le membre ou supprime explicitement un jeu.
 
 Pour utiliser le bouton **Enregistrer l’image**, crée un compte Cloudinary puis ajoute **soit** `CLOUDINARY_URL`, **soit** les trois variables séparées dans **Render > ton service > Environment**. Avec l'URL Cloudinary complète :
 

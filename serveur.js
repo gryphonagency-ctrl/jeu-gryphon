@@ -948,6 +948,7 @@ const server = http.createServer((req, res) => {
                 description: game.description
             };
         }
+        const savedHomepageNotice = store.getHomepageNotice();
         res.writeHead(200, {
             'Cache-Control': 'no-store',
             'Content-Type': 'application/json; charset=utf-8'
@@ -958,7 +959,9 @@ const server = http.createServer((req, res) => {
             metadata,
             hidden: access.isAdmin(req) ? [] : hiddenGames,
             allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
-            homepageNotice: store.getHomepageNotice() || defaultHomepageNotice,
+            homepageNotice: savedHomepageNotice
+                ? { ...savedHomepageNotice, widthPercent: savedHomepageNotice.widthPercent ?? 100 }
+                : defaultHomepageNotice,
             paypalLink: store.getPaypalLink()
         }));
         return;
