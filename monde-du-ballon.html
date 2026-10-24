@@ -238,6 +238,7 @@
     let balloons = [];
     let nextBalloonId = 0;
     let pendingShots = 0;
+    let shotProcessingTimer = 0;
     let totalShots = 0;
     let totalPopped = 0;
     let totalStars = 0;
@@ -346,6 +347,13 @@
 
     function sumPlayerStars(playerList) {
       return Object.values(playerList).reduce((total, player) => total + player.stars, 0);
+    }
+
+    function awardGlobalStars(username, amount) {
+      if (amount > 0 && window.ArcadeStars) {
+        window.ArcadeStars.award({ username, amount })
+          .catch(error => console.error('Impossible d’ajouter les étoiles du Monde du Ballon au solde global :', error));
+      }
     }
 
     function playerKeyFor(username) {
@@ -771,7 +779,7 @@
       balloon.node = node;
     }
 
-    function fillBalloonField(initial = false) {
+    function fillBalloonField(initial = false, render = true, synchronize = true) {
       if (!isRoomOwner) return;
       let startedNewRound = false;
       if (poolIndex >= pool.length && balloons.length === 0) {
@@ -787,8 +795,8 @@
         if (reward === null) break;
         balloons.push(createBalloon(reward, initial ? Math.random() * 88 + 4 : -8 - Math.random() * 18));
       }
-      renderBalloons();
-      synchronizeGameState(startedNewRound);
+      if (render) renderBalloons();
+      if (synchronize || startedNewRound) synchronizeGameState(startedNewRound);
     }
 
     function formatNumber(value, maximumFractionDigits = 0) {
@@ -826,7 +834,7 @@
       document.getElementById('setBalanceButton').disabled = !isRoomOwner;
     }
 
-    function fireShot(username = 'Spectateur', selectedBalloonId = null) {
+    function fireShot(username = 'Spectateur', selectedBalloonId = null, awardBatch = null) {
       if (!balloons.length) return false;
       const selectedIndex = selectedBalloonId === null
         ? -1
@@ -840,9 +848,14 @@
       player.shots++;
       player.stars += earnedStars;
       totalStars += earnedStars;
-      if (earnedStars > 0 && window.ArcadeStars) {
-        window.ArcadeStars.award({ username: playerName, amount: earnedStars })
-          .catch(error => console.error('Impossible d’ajouter les étoiles du Monde du Ballon au solde global :', error));
+      if (earnedStars > 0) {
+        if (awardBatch) {
+          const award = awardBatch.get(playerKey) || { username: playerName, amount: 0 };
+          award.amount += earnedStars;
+          awardBatch.set(playerKey, award);
+        } else {
+          awardGlobalStars(playerName, earnedStars);
+        }
       }
       totalShots++;
       totalPopped++;
@@ -925,25 +938,43 @@
     }
 
     function processShots() {
+      if (shotProcessingTimer) {
+        window.clearTimeout(shotProcessingTimer);
+        shotProcessingTimer = 0;
+      }
       let processed = 0;
-      while (pendingShots > 0 && processed < MAX_SHOTS_PER_FRAME) {
+      const globalAwards = new Map();
+      const now = performance.now();
+      shotEffects = shotEffects.filter(effect => now - effect.startedAt < 700);
+      while (pendingShots > 0 && processed < MAX_SHOTS_PER_FRAME &&
+          shotEffects.length < MAX_VISIBLE_SHOT_EFFECTS) {
         if (!balloons.length) {
-          fillBalloonField();
+          fillBalloonField(false, false, false);
           if (!balloons.length) break;
         }
         const currentGift = pendingGifts[0];
-        if (!currentGift || !fireShot(currentGift.username)) break;
+        if (!currentGift || !fireShot(currentGift.username, null, globalAwards)) break;
         pendingShots--;
         currentGift.remaining--;
         if (currentGift.remaining === 0) pendingGifts.shift();
         processed++;
-        fillBalloonField();
+        fillBalloonField(false, false, false);
       }
       renderBalloons();
       renderMetrics();
       if (processed) saveState();
+      globalAwards.forEach(award => awardGlobalStars(award.username, award.amount));
       if (processed) synchronizeGameState(pendingShots === 0);
-      if (pendingShots > 0) requestAnimationFrame(processShots);
+      if (pendingShots > 0) {
+        const oldestEffect = shotEffects[0];
+        const waitForEffects = shotEffects.length >= MAX_VISIBLE_SHOT_EFFECTS && oldestEffect
+          ? Math.max(16, 700 - (performance.now() - oldestEffect.startedAt))
+          : 16;
+        shotProcessingTimer = window.setTimeout(() => {
+          shotProcessingTimer = 0;
+          processShots();
+        }, waitForEffects);
+      }
     }
 
     function receiveTikTokGift(giftName, coinValue, username = 'Spectateur', avatarDataUri = '', avatarUrl = '') {
