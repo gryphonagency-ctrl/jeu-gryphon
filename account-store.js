@@ -276,6 +276,130 @@ function listTikTokPlayers() {
     return Object.values(readStore().tiktokPlayers);
 }
 
+function getTikTokStarTotals(store) {
+    const totals = new Map();
+    for (const transaction of Object.values(store.tiktokStarTransactions)) {
+        const playerTotals = totals.get(transaction.playerId) || { totalEarned: 0, totalSpent: 0 };
+        if (transaction.reason === 'game-reward' || transaction.reason === 'leaderboard-import-earned') {
+            playerTotals.totalEarned += transaction.delta;
+        } else if (transaction.reason === 'run' && transaction.delta < 0) {
+            playerTotals.totalSpent -= transaction.delta;
+        } else if (transaction.reason === 'leaderboard-import-spent') {
+            playerTotals.totalSpent += transaction.delta;
+        }
+        if (!Number.isSafeInteger(playerTotals.totalEarned) ||
+            !Number.isSafeInteger(playerTotals.totalSpent) ||
+            playerTotals.totalEarned < 0 || playerTotals.totalSpent < 0) {
+            throw new RangeError('Les totaux d’étoiles sont invalides.');
+        }
+        totals.set(transaction.playerId, playerTotals);
+    }
+    return totals;
+}
+
+function getTikTokPlayerStarTotals(totals, playerId) {
+    return totals.get(playerId) || { totalEarned: 0, totalSpent: 0 };
+}
+
+function getTikTokStarSummaryForAccount(username) {
+    const store = readStore();
+    const tiktokUsername = store.creatorSettings[username.toLowerCase()]?.tiktokUsername;
+    const playerId = tiktokUsername
+        ? store.tiktokPlayerAliases[tiktokUsername.toLowerCase()]
+        : null;
+    const player = playerId ? store.tiktokPlayers[playerId] : null;
+    if (!player) return null;
+    return {
+        username: player.username || player.uniqueId || tiktokUsername,
+        nickname: player.nickname || '',
+        ...getTikTokPlayerStarTotals(getTikTokStarTotals(store), player.id),
+        balance: player.stars
+    };
+}
+
+function listTikTokStarLeaderboard() {
+    const store = readStore();
+    const totals = getTikTokStarTotals(store);
+    return Object.values(store.tiktokPlayers)
+        .map(player => ({
+            playerId: player.id,
+            username: player.username || player.uniqueId || 'Joueur',
+            nickname: player.nickname || '',
+            ...getTikTokPlayerStarTotals(totals, player.id),
+            balance: player.stars
+        }))
+        .sort((left, right) =>
+            right.totalEarned - left.totalEarned ||
+            left.username.localeCompare(right.username, 'fr', { sensitivity: 'base' }));
+}
+
+function importTikTokStarLeaderboard(snapshot) {
+    if (!snapshot || snapshot.format !== 'gryphon-stars-leaderboard' ||
+        snapshot.version !== 1 || !Array.isArray(snapshot.players) ||
+        snapshot.players.length > 2000) {
+        throw new Error('Le fichier de classement est invalide ou incompatible.');
+    }
+    const seenPlayers = new Set();
+    for (const player of snapshot.players) {
+        if (!player || typeof player !== 'object' || Array.isArray(player) ||
+            typeof player.playerId !== 'string' ||
+            !/^(?:id:[A-Za-z0-9._:-]{1,128}|handle:[a-z0-9._]{1,32})$/.test(player.playerId) ||
+            seenPlayers.has(player.playerId) ||
+            ['totalEarned', 'totalSpent', 'balance'].some(field =>
+                !Number.isSafeInteger(player[field]) || player[field] < 0)) {
+            throw new Error('Le fichier contient des totaux invalides ou des joueurs en double.');
+        }
+        seenPlayers.add(player.playerId);
+    }
+
+    return updateStore(store => {
+        if (snapshot.players.some(player => !store.tiktokPlayers[player.playerId])) {
+            throw new Error('Le fichier contient un profil TikTok absent de cette base de données.');
+        }
+        const totals = getTikTokStarTotals(store);
+        const importId = crypto.randomUUID();
+        let updatedPlayers = 0;
+        for (const imported of snapshot.players) {
+            const player = store.tiktokPlayers[imported.playerId];
+            const currentTotals = getTikTokPlayerStarTotals(totals, player.id);
+            const adjustments = [
+                ['totalEarned', imported.totalEarned - currentTotals.totalEarned, 'leaderboard-import-earned'],
+                ['totalSpent', imported.totalSpent - currentTotals.totalSpent, 'leaderboard-import-spent'],
+                ['balance', imported.balance - player.stars, 'leaderboard-import-balance']
+            ];
+            for (const [kind, delta, reason] of adjustments) {
+                if (!delta) continue;
+                if (!Number.isSafeInteger(delta)) {
+                    throw new Error('Un écart du fichier dépasse la plage numérique prise en charge.');
+                }
+                const transactionId = `import:${importId}:${crypto.createHash('sha256')
+                    .update(player.id)
+                    .digest('hex')
+                    .slice(0, 16)}:${kind}`;
+                store.tiktokStarTransactions[transactionId] = {
+                    playerId: player.id,
+                    delta,
+                    gameId: 'leaderboard-import',
+                    reason,
+                    createdAt: new Date().toISOString()
+                };
+                if (kind === 'balance') {
+                    const balance = player.stars + delta;
+                    if (!Number.isSafeInteger(balance) || balance < 0) {
+                        throw new Error('Le solde importé est invalide.');
+                    }
+                    player.stars = balance;
+                } else {
+                    currentTotals[kind] += delta;
+                    totals.set(player.id, currentTotals);
+                }
+                updatedPlayers++;
+            }
+        }
+        return { updatedPlayers };
+    });
+}
+
 function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, reason }) {
     return updateStore(store => {
         const existingTransaction = store.tiktokStarTransactions[transactionId];
@@ -761,6 +885,9 @@ module.exports = {
     deleteGame,
     getAccount,
     applyTikTokStarTransaction,
+    getTikTokStarSummaryForAccount,
+    importTikTokStarLeaderboard,
+    listTikTokStarLeaderboard,
     getAccountLiveTts,
     isAccountTtsLinkRevoked,
     getAccountBySubscription,

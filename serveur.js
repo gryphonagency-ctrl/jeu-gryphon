@@ -87,6 +87,7 @@ const staticGameIds = [
     '/inedexd.html'
 ];
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
+store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
@@ -682,6 +683,57 @@ const server = http.createServer((req, res) => {
             'X-Content-Type-Options': 'nosniff'
         });
         fs.createReadStream(avatarPath).pipe(res);
+        return;
+    }
+    if (pathname === '/api/tiktok-stars/leaderboard' && req.method === 'GET') {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            return;
+        }
+        const query = new URL(req.url, 'http://localhost').searchParams;
+        try {
+            if (query.get('scope') === 'all') {
+                if (!access.isAdmin(req)) {
+                    res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Le classement complet est réservé à l’administrateur.' }));
+                    return;
+                }
+                const players = store.listTikTokStarLeaderboard();
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ scope: 'all', players }));
+                return;
+            }
+            const player = store.getTikTokStarSummaryForAccount(access.usernameForRequest(req));
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ scope: 'self', player }));
+        } catch (error) {
+            console.error('Impossible de calculer le récapitulatif personnel des étoiles :', error.message);
+            res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Impossible de calculer le récapitulatif des étoiles.' }));
+        }
+        return;
+    }
+    if (pathname === '/api/tiktok-stars/leaderboard/import' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'L’import du classement est réservé à l’administrateur.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const result = store.importTikTokStarLeaderboard(body);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    success: true,
+                    updatedPlayers: result.updatedPlayers,
+                    message: `Classement importé. ${result.updatedPlayers} correction(s) appliquée(s).`
+                }));
+            } catch (error) {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: error.message || 'Fichier de classement invalide.' }));
+            }
+        }, 1024 * 1024);
         return;
     }
     if (pathname === '/api/tiktok-stars' && req.method === 'GET') {
