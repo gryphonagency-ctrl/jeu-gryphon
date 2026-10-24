@@ -81,6 +81,11 @@ const staticGameIds = [
     '/coffres',
     '/inedexd.html'
 ];
+const fixedPreviewGameIds = new Set([
+    '/petits-chevaux-tiktok.html',
+    '/wish-lab.html',
+    '/qui-veut-gagner-des-etoiles.html'
+]);
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
@@ -513,6 +518,9 @@ async function saveAdminGame(body) {
     }
     if (body.action === 'image') {
         const gameId = typeof body.gameId === 'string' ? body.gameId : '';
+        if (fixedPreviewGameIds.has(gameId)) {
+            throw invalidAdminInput('L’aperçu de ce jeu est fixe et ne peut pas être remplacé.');
+        }
         if (!staticGameIds.includes(gameId) &&
             !store.listGames().some(game => game.id === gameId && game.uploaded)) {
             throw invalidAdminInput('Jeu à personnaliser introuvable.');
