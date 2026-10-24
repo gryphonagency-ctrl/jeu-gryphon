@@ -12,6 +12,40 @@ const avatarLookupTimes = new Map();
 const MAX_AVATAR_BYTES = 512 * 1024;
 const processedGiftMessageIds = new Set();
 
+function getTikTokGiftImageUrl(gift) {
+    const candidates = [
+        gift.giftImageUrl,
+        gift.giftPictureUrl,
+        gift.imageUrl,
+        gift.giftDetails?.giftPictureUrl,
+        gift.giftDetails?.giftImageUrl,
+        gift.giftDetails?.giftImage?.urlList,
+        gift.giftDetails?.giftImage?.url_list,
+        gift.giftDetails?.image?.urlList,
+        gift.giftDetails?.image?.url_list,
+        gift.gift?.giftPictureUrl,
+        gift.gift?.giftImage?.urlList,
+        gift.gift?.giftImage?.url_list,
+        gift.gift?.imageUrl,
+        gift.gift?.image?.urlList,
+        gift.gift?.image?.url_list,
+        gift.giftImage?.urlList,
+        gift.giftImage?.url_list,
+        gift.image?.urlList,
+        gift.image?.url_list
+    ];
+    for (const value of candidates.flat(Infinity)) {
+        if (typeof value !== 'string' || value.length > 2048) continue;
+        try {
+            const url = new URL(value);
+            if (url.protocol === 'https:') return url.href;
+        } catch {
+            continue;
+        }
+    }
+    return '';
+}
+
 function connectWebSocket() {
     ws = new WebSocket(wsUrl);
 
@@ -193,7 +227,8 @@ tiktokLiveConnection.on('gift', async gift => {
             giftType,
             repeatCount: appliedRepeatCount,
             coinCount,
-            giftName: gift.gift?.name || ''
+            giftName: gift.gift?.name || '',
+            giftImageUrl: getTikTokGiftImageUrl(gift)
         }
     });
 
