@@ -24,6 +24,19 @@ function getAvatarUrls(user) {
     ))];
 }
 
+function getTikTokIdentity(user) {
+    const username = String(user?.displayId || user?.nickname || '');
+    const uniqueId = String(user?.uniqueId || user?.displayId || '');
+    const rawUserId = user?.userId ?? user?.uid ?? user?.id;
+    return {
+        userId: rawUserId === undefined || rawUserId === null ? '' : String(rawUserId),
+        uniqueId,
+        username,
+        nickname: String(user?.nickname || ''),
+        avatarUrls: getAvatarUrls(user)
+    };
+}
+
 function getTikTokGiftImageUrl(gift) {
     const candidates = [
         gift.giftImageUrl,
@@ -80,7 +93,8 @@ async function getAvatarData(user, cache) {
             return image;
         }));
         return { avatarDataUri, avatarUrls };
-    } catch {
+    } catch (error) {
+        console.warn('Impossible de récupérer une photo de profil TikTok :', error.message);
         return { avatarDataUri: null, avatarUrls };
     }
 }
@@ -132,15 +146,13 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
             }
         }
 
-        const avatarUrls = getAvatarUrls(gift.user);
+        const identity = getTikTokIdentity(gift.user);
         send({
             type: 'gift',
             gift: {
                 messageId,
-                username: gift.user?.displayId || gift.user?.nickname || '',
-                nickname: gift.user?.nickname || '',
+                ...identity,
                 avatarDataUri: null,
-                avatarUrls,
                 coinValue,
                 giftType,
                 repeatCount: appliedRepeatCount,
@@ -154,7 +166,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
                 send({
                     type: 'viewer',
                     viewer: {
-                        username: gift.user?.displayId || gift.user?.nickname || '',
+                        ...identity,
                         avatarDataUri
                     }
                 });
@@ -165,13 +177,18 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     });
 
     connection.on('chat', message => {
-        const username = message.user?.displayId || message.user?.nickname || '';
+        const identity = getTikTokIdentity(message.user);
+        const username = identity.username;
         send({
             type: 'comment',
-            commentData: { username, comment: message.content || '' }
+            commentData: {
+                ...identity,
+                messageId: String(message.common?.msgId || ''),
+                comment: message.content || ''
+            }
         });
 
-        const viewerKey = String(message.user?.uniqueId || username).toLocaleLowerCase();
+        const viewerKey = String(identity.userId || identity.uniqueId || username).toLocaleLowerCase();
         const lastLookup = avatarLookupTimes.get(viewerKey) || 0;
         if (!viewerKey || Date.now() - lastLookup < 60000) return;
         avatarLookupTimes.set(viewerKey, Date.now());
@@ -180,7 +197,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         }
 
         getAvatarData(message.user, avatarCache).then(({ avatarDataUri }) => {
-            if (avatarDataUri) send({ type: 'viewer', viewer: { username, avatarDataUri } });
+            if (avatarDataUri) send({ type: 'viewer', viewer: { ...identity, avatarDataUri } });
         }).catch(error => {
             console.warn(`Impossible de charger l’avatar TikTok de ${username || 'un spectateur'} :`, error);
         });

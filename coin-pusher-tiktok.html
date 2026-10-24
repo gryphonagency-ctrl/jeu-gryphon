@@ -477,7 +477,7 @@
 
         <section class="panel">
           <h2>Activité récente</h2>
-          <p class="hint">Dans le chat : « étoile » affiche le total gagné. « RUN » rejoue tout le solde disponible; « RUN 30 » rejoue 30 étoiles.</p>
+          <p class="hint">Dans le chat : « étoile » affiche le solde global. Chaque « RUN » dépense tout le solde global disponible.</p>
           <div class="log-list" id="activityLog" aria-live="polite"><p class="hint">Cadeaux, messages et commandes `*` ou `étoile` apparaîtront ici.</p></div>
         </section>
       </aside>
@@ -1720,6 +1720,10 @@
       player.pendingCards.splice(pendingIndex, 1);
       const awardedCard = { name: reward.name, value: reward.value, at: Date.now() };
       player.cards.push(awardedCard);
+      if (awardedCard.value > 0 && window.ArcadeStars) {
+        window.ArcadeStars.award({ username: fallingCard.username, amount: awardedCard.value })
+          .catch(error => console.error('Impossible d’ajouter les étoiles du Coin Pusher au solde global :', error));
+      }
       logActivity(fallingCard.username, `a récupéré ${displayRewardName(reward.name)} · ${reward.value} ⭐ après sa chute`);
       render();
       saveGame();
@@ -1985,7 +1989,13 @@
         const player = turn.test ? null : getPlayer(turn.username);
         if (player) {
           player.pendingWheelTurns = Math.max(0, player.pendingWheelTurns - 1);
-          if (won) player.wheelStarsWon += prize;
+          if (won) {
+            player.wheelStarsWon += prize;
+            if (window.ArcadeStars) {
+              window.ArcadeStars.award({ username: turn.username, amount: prize })
+                .catch(error => console.error('Impossible d’ajouter le bonus de roue au solde global :', error));
+            }
+          }
           render();
           saveGame();
           logActivity('ROUE', won
@@ -2418,43 +2428,7 @@
         const username = safeName(chat.username || chat.uniqueId || data.username);
         registerActiveViewer(username, getAvatarSource(chat));
         const starCommand = comment.toLocaleLowerCase('fr-FR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        if (comment === '*' || /^etoiles?$/u.test(starCommand)) {
-          const player = getPlayer(username);
-          const stars = playerStars(player);
-          const cards = Array.isArray(player.cards) ? player.cards : [];
-          const balance = `${cards.length} carte${cards.length === 1 ? '' : 's'} · ${formatNumber(stars)} ⭐ gagnées · ${formatNumber(availableRunStars(player))} ⭐ disponibles pour RUN`;
-          document.getElementById('lastAction').textContent = `@${username} · ${formatNumber(stars)} ⭐`;
-          logActivity('ÉTOILE', `@${username} · ${balance}`);
-          showStarBalance(username, getAvatarSource(chat) || activeViewers.get(normalizedName(username))?.avatar || '', player);
-          saveGame();
-          return;
-        }
-        const runCommand = starCommand.match(/^run(?:\s+(\d+))?$/u);
-        if (runCommand) {
-          const player = getPlayer(username);
-          const available = availableRunStars(player);
-          const count = runCommand[1] ? Number(runCommand[1]) : available;
-          if (!runCommand[1] && available < 1) {
-            showToast(`@${username} · aucun solde à rejouer; gagne des étoiles avec les cartes.`);
-            return;
-          }
-          if (!Number.isSafeInteger(count) || count < 1) {
-            showToast(`@${username} · indique un nombre entier positif après RUN, ou écris RUN seul pour rejouer tout ton solde.`);
-            return;
-          }
-          if (count > available) {
-            showToast(`@${username} · ${formatNumber(available)} ⭐ disponibles; RUN ${formatNumber(count)} n’est pas possible.`);
-            logActivity('RUN', `@${username} · ${formatNumber(available)} ⭐ disponibles, demande de ${formatNumber(count)} pièces refusée`);
-            return;
-          }
-          player.runStarsSpent += count;
-          saveGame();
-          render();
-          logActivity('RUN', `@${username} · ${formatNumber(count)} ⭐ rejouées · ${formatNumber(count)} pièces de jeu relancées`);
-          showToast(`@${username} · RUN ${formatNumber(count)} · étoiles rejouées.`);
-          enqueueReplay(username, count, getAvatarSource(chat) || activeViewers.get(normalizedName(username))?.avatar || '');
-          return;
-        }
+        if (comment === '*' || /^!?\s*etoiles?$/u.test(starCommand) || /^!?\s*run(?:\s+\d+)?$/u.test(starCommand)) return;
         if (/^[1-6]$/u.test(comment) && activeLuckyWheel && activeLuckyWheel.key === normalizedName(username)) {
           if (activeLuckyWheel.test) {
             showToast('Cet essai est réservé à la démonstration; la roue live attend le choix du joueur concerné.');

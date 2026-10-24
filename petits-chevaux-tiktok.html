@@ -75,8 +75,10 @@
     .finish-line { stroke: #fff7dc; stroke-width: 9; stroke-dasharray: 10 5; }
     .track-label { fill: #fff3cb; font: 800 17px "Trebuchet MS", sans-serif; letter-spacing: .12em; }
     .horse-token { transition: transform 900ms cubic-bezier(.18,.72,.25,1); filter: drop-shadow(0 3px 3px #061009aa); }
-    .horse-token circle { stroke: #fff6dc; stroke-width: 2; }
-    .horse-token text { font-family: "Segoe UI Emoji", sans-serif; }
+    .horse-number-bubble { stroke: #fff6dc; stroke-width: 2; }
+    .horse-number-label { fill: #fff; stroke: #172018; stroke-width: 2px; paint-order: stroke; font: 900 12px "Trebuchet MS", sans-serif; }
+    .horse-token .horse-emoji, .horse-token .gift-fallback { font-family: "Segoe UI Emoji", sans-serif; }
+    .horse-gift-icon { filter: drop-shadow(0 1px 2px #071008cc); }
     .winner-banner { position: absolute; z-index: 3; inset: 50% auto auto 50%; display: none; width: min(760px, calc(100% - 32px)); padding: clamp(20px, 4vw, 42px); border: 2px solid var(--gold); background: #101c13ed; text-align: center; box-shadow: 0 12px 65px #080f0acc; transform: translate(-50%, -50%); backdrop-filter: blur(10px); }
     .winner-banner.show { display: block; animation: winner-pop .5s cubic-bezier(.2,.8,.25,1.2); }
     .winner-kicker { display: block; color: #f5edcf; font-size: clamp(13px, 2vw, 19px); font-weight: 800; letter-spacing: .24em; }
@@ -114,7 +116,7 @@
     .file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
     .file-label { display: grid; place-items: center; }
     .horse-list { display: grid; gap: 7px; max-height: 340px; overflow: auto; }
-    .horse-form { display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; align-items: center; gap: 6px; padding: 7px; border: 1px solid #e9e5c322; background: #0c17109c; }
+    .horse-form { display: grid; grid-template-columns: minmax(0, 1fr) 48px 30px 30px; align-items: center; gap: 6px; padding: 7px; border: 1px solid #e9e5c322; background: #0c17109c; }
     .horse-form input { height: 32px; padding: 0 5px; font-size: 11px; }
     .horse-form .horse-color { width: 30px; height: 30px; padding: 2px; }
     .remove-horse { width: 30px; height: 30px; padding: 0; border: 1px solid #e9978170; background: #36221e; color: #ffd1c7; cursor: pointer; }
@@ -139,7 +141,8 @@
     .custom-gift-form { display: grid; grid-template-columns: minmax(0,1fr) 55px minmax(0,1fr) auto; gap: 5px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
     .custom-gift-form .button { padding: 5px 8px; font-size: 10px; }
     .gift-list { display: grid; gap: 5px; max-height: 400px; overflow: auto; }
-    .gift-form { display: grid; grid-template-columns: minmax(0,1fr) 48px minmax(0,.9fr) 26px; gap: 4px; align-items: center; padding: 5px; border: 1px solid #e9e5c322; background: #0c17109c; }
+    .gift-form { display: grid; grid-template-columns: 34px minmax(0,1fr) 48px minmax(0,.9fr) 26px; gap: 4px; align-items: center; padding: 5px; border: 1px solid #e9e5c322; background: #0c17109c; }
+    .gift-form img { width: 32px; height: 32px; object-fit: contain; }
     .gift-remove { width: 26px; height: 28px; padding: 0; border: 1px solid #e9978170; background: #36221e; color: #ffd1c7; cursor: pointer; }
     .status { min-height: 30px; margin: 8px 0 0; color: #d9e5cf; font-size: 11px; line-height: 1.45; }
     .video-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
@@ -250,7 +253,7 @@
 
         <section class="panel horses-panel">
           <h2>Personnaliser les chevaux</h2>
-          <p class="muted">Règle le nom et la couleur des chevaux, puis ajoute ou retire des concurrents (8 à 10). Les pièces des cadeaux font progresser le cheval associé jusqu’à l’objectif.</p>
+          <p class="muted">Règle le nom, le numéro (1 à 99) et la couleur de chaque cheval, puis ajoute ou retire des concurrents (8 à 10). Les cadeaux configurés font avancer le cheval associé.</p>
           <div class="horse-list" id="horseList"></div>
           <button class="button add-horse" id="addHorseButton" type="button">＋ Ajouter un cheval</button>
           <div class="horse-legend" id="horseLegend" aria-label="Légende des chevaux"></div>
@@ -258,7 +261,7 @@
 
         <section class="panel gifts-panel">
           <h2>Cadeaux de la course</h2>
-          <p class="muted">Le catalogue reprend les cadeaux de tes photos. Les pièces de chaque cadeau créditent le cheval choisi. Modifie le nom ou la valeur sans plafond configuré, ou ajoute et retire des cadeaux.</p>
+          <p class="muted">Le catalogue reprend les cadeaux de tes photos. Au départ, chaque cheval reçoit son propre cadeau à 1 pièce. Modifie les valeurs ou l’association cadeau-cheval quand tu le souhaites.</p>
           <div class="gift-toolbar">
             <label class="sr-only" for="giftCatalogSelect">Choisir un cadeau du catalogue</label>
             <select id="giftCatalogSelect"></select>
@@ -320,38 +323,51 @@
     const HORSE_COLORS = ['#de6456', '#458cdb', '#e6ad42', '#72ae71', '#b179d0', '#ec7baf', '#54b6b5', '#c5c95c', '#e18343', '#8699df'];
     const DEFAULT_HORSES = [
       'Éclair', 'Caramel', 'Pistache', 'Tonnerre', 'Nuage', 'Pépito', 'Câlin', 'Galopin'
-    ].map((name, index) => ({ id: `horse-${index + 1}`, name, color: HORSE_COLORS[index], progress: 0 }));
+    ].map((name, index) => ({ id: `horse-${index + 1}`, name, number: index + 1, color: HORSE_COLORS[index], progress: 0 }));
     const GIFT_CATALOG = [
-      ['Enfin vendredi', 1], ['Piment', 1], ['GG', 1], ['Cœur de flamme', 1],
-      ['Œil pour œil', 1], ['White Dove', 1], ['TikTok', 1], ['Cœur nuage', 1],
-      ["Je t'adore", 1], ['Dolce Vita', 1], ['Le bisou', 1], ['Étoile de mer', 1],
-      ['Excellent', 1], ['À fond', 1], ['Pass été S', 1], ["Un éclat d'espoir", 1],
-      ['Basketball', 1], ['Pouce vers le haut', 2], ['Crème glacée', 5], ["Feux d'artifice vague", 5],
-      ['Missile', 5], ["Parfum d'amour", 5], ['Réaction excessive', 5], ['Tofu', 5],
-      ['Génial', 1], ['Mamma Mia', 1], ["Clin d'œil", 1], ['Arc-en-ciel', 1],
-      ['Bâton lumineux', 1], ['Rose blanche', 1], ['Éclair', 1], ['Steven Wingman', 1],
-      ['Café', 1], ['Cool', 1], ['Slay', 1], ['Ailes de fée', 1],
-      ["Ailes d'ange", 1], ['Mélodie du maté', 1], ['Fleur du matin', 1], ["Jus d'orange", 1],
-      ['Rythme de mirwas', 1], ['Tranche de gâteau', 1], ['Freestyle', 1], ['Classiques', 1],
-      ['Bienvenue Dallah', 1], ['Pop', 1], ['Vas-y !', 1], ['Tom la tomate', 1]
-    ].map(([name, coins]) => ({ name, coins }));
+      { name: 'TikTok', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/tiktok.png' },
+      { name: 'Piment', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/piment.png' },
+      { name: 'Cornet de crème glacée', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/cornet-creme-glacee.png' },
+      { name: 'Cœur nuage', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/coeur-nuage.png' },
+      { name: "Je t'adore", coins: 1, image: 'images-vitrine/petit-trot-cadeaux/je-tadore.png' },
+      { name: 'Le bisou', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/le-bisou.png' },
+      { name: 'White Dove', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/white-dove.png' },
+      { name: 'GG', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gg.png' },
+      { name: 'Café', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/cafe.png' },
+      { name: 'Étoile de mer', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/etoile-de-mer.png' },
+      { name: "Jus d'orange", coins: 1, image: 'images-vitrine/petit-trot-cadeaux/jus-orange.png' },
+      { name: 'Cœur de flamme', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/coeur-flamme.png' },
+      { name: 'Mamma Mia', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-1.png' },
+      { name: 'Rose blanche', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-2.png' },
+      { name: 'Arc-en-ciel', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-3.png' },
+      { name: 'Génial', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-4.png' },
+      { name: 'Slay', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-5.png' },
+      { name: 'Steven Wingman', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-6.png' },
+      { name: "Clin d'œil", coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-7.png' },
+      { name: 'Tranche de gâteau', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-8.png' },
+      { name: 'Ailes de fée', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-9.png' },
+      { name: 'Fleur du matin', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-10.png' },
+      { name: "Ailes d'ange", coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-11.png' },
+      { name: 'Tom la tomate', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-1-12.png' },
+      { name: 'Bâton lumineux', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-1.png' },
+      { name: 'Cool', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-2.png' },
+      { name: 'Dolce Vita', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-3.png' },
+      { name: 'Éclair', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-4.png' },
+      { name: 'Pop', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-5.png' },
+      { name: 'À fond', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-6.png' },
+      { name: 'Vas-y !', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-7.png' },
+      { name: 'Basketball', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-8.png' },
+      { name: 'Pass été S', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-9.png' },
+      { name: 'Classiques', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-10.png' },
+      { name: 'Freestyle', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/gift-2-11.png' },
+      { name: 'Pouce vers le haut', coins: 2, image: 'images-vitrine/petit-trot-cadeaux/gift-2-12.png' }
+    ];
 
     function makeDefaultGiftPresets(horses) {
-      const presets = GIFT_CATALOG.map((gift, index) => {
-        const horse = horses.find(item => item.giftName && normalize(item.giftName) === normalize(gift.name));
-        return { id: `gift-${index + 1}`, name: gift.name, coins: gift.coins, horseId: (horse || horses[index % horses.length]).id };
+      return horses.map((horse, index) => {
+        const gift = GIFT_CATALOG[index % GIFT_CATALOG.length];
+        return { id: `gift-${index + 1}`, name: gift.name, coins: 1, horseId: horse.id };
       });
-      horses.forEach((horse, index) => {
-        const legacyName = String(horse.giftName || '').trim().slice(0, 50);
-        if (!legacyName || presets.some(gift => normalize(gift.name) === normalize(legacyName))) return;
-        presets.push({
-          id: `legacy-gift-${index + 1}`,
-          name: legacyName,
-          coins: Number.isSafeInteger(Number(horse.coinValue)) && Number(horse.coinValue) > 0 ? Number(horse.coinValue) : 1,
-          horseId: horse.id
-        });
-      });
-      return presets;
     }
 
     function cleanGift(gift, index, horses) {
@@ -368,6 +384,9 @@
       return {
         id: typeof horse.id === 'string' && horse.id ? horse.id.slice(0, 40) : `horse-${index + 1}`,
         name: String(horse.name || `Cheval ${index + 1}`).trim().slice(0, 20) || `Cheval ${index + 1}`,
+        number: Number.isSafeInteger(Number(horse.number)) && Number(horse.number) >= 1 && Number(horse.number) <= 99
+          ? Number(horse.number)
+          : index + 1,
         color: /^#[0-9a-f]{6}$/i.test(horse.color) ? horse.color : HORSE_COLORS[index % HORSE_COLORS.length],
         progress: Math.max(0, Math.min(99.5, Number(horse.progress) || 0))
       };
@@ -528,8 +547,24 @@
         raceTrack.append(finishLabel);
         for (const horse of game.horses) {
           const marker = svgNode('g', { class: 'horse-token', 'data-horse-id': horse.id });
-          marker.append(svgNode('circle', { r: 22, fill: horse.color }));
-          const emoji = svgNode('text', { x: 0, y: 8, 'text-anchor': 'middle', 'font-size': 25, 'aria-hidden': 'true' });
+          marker.append(svgNode('circle', { class: 'horse-number-bubble', cx: -37, cy: 0, r: 14, fill: horse.color }));
+          const number = svgNode('text', { class: 'horse-number-label', x: -37, y: 4, 'text-anchor': 'middle' });
+          number.textContent = String(horse.number);
+          marker.append(number);
+          const gift = svgNode('image', {
+            class: 'horse-gift-icon',
+            x: 27,
+            y: -18,
+            width: 36,
+            height: 36,
+            preserveAspectRatio: 'xMidYMid meet',
+            'aria-hidden': 'true'
+          });
+          marker.append(gift);
+          const fallback = svgNode('text', { class: 'gift-fallback', x: 45, y: 7, 'text-anchor': 'middle', 'font-size': 22, 'aria-hidden': 'true' });
+          fallback.textContent = '🎁';
+          marker.append(fallback);
+          const emoji = svgNode('text', { class: 'horse-emoji', x: 0, y: 8, 'text-anchor': 'middle', 'font-size': 25, 'aria-hidden': 'true' });
           emoji.textContent = '🐎';
           marker.append(emoji);
           marker.append(svgNode('title'));
@@ -540,12 +575,26 @@
       const markers = raceTrack.querySelectorAll('.horse-token');
       for (const [index, horse] of game.horses.entries()) {
         const laneHeight = 430 / game.horses.length;
-        const x = 132 + horse.progress / 100 * 738;
+        const x = 152 + horse.progress / 100 * 675;
         const y = 113 + index * laneHeight + (laneHeight - 2) / 2;
         const marker = markers[index];
         marker.setAttribute('transform', `translate(${x} ${y})`);
-        marker.querySelector('circle').setAttribute('fill', horse.color);
-        marker.querySelector('title').textContent = `${horse.name} · ${formatCoins(raceTotals[horse.id] || 0)} / ${formatCoins(game.raceTarget)} · ${Math.floor(horse.progress)} %`;
+        marker.querySelector('.horse-number-bubble').setAttribute('fill', horse.color);
+        marker.querySelector('.horse-number-label').textContent = String(horse.number);
+        const gift = game.giftPresets.find(item => item.horseId === horse.id);
+        const catalogGift = gift && GIFT_CATALOG.find(item => normalize(item.name) === normalize(gift.name));
+        const giftImage = marker.querySelector('.horse-gift-icon');
+        const giftFallback = marker.querySelector('.gift-fallback');
+        if (catalogGift?.image) {
+          giftImage.setAttribute('href', catalogGift.image);
+          giftImage.style.display = '';
+          giftFallback.style.display = 'none';
+        } else {
+          giftImage.removeAttribute('href');
+          giftImage.style.display = 'none';
+          giftFallback.style.display = '';
+        }
+        marker.querySelector('title').textContent = `${horse.name} n° ${horse.number} · ${gift?.name || 'aucun cadeau'} · ${formatCoins(raceTotals[horse.id] || 0)} / ${formatCoins(game.raceTarget)} · ${Math.floor(horse.progress)} %`;
       }
       renderHorseLegend();
     }
@@ -573,6 +622,15 @@
         name.maxLength = 20;
         name.setAttribute('aria-label', `Nom du cheval ${index + 1}`);
         name.dataset.field = 'name';
+        const number = document.createElement('input');
+        number.type = 'number';
+        number.min = '1';
+        number.max = '99';
+        number.step = '1';
+        number.value = String(horse.number);
+        number.title = `Numéro de ${horse.name}`;
+        number.setAttribute('aria-label', `Numéro de ${horse.name} (1 à 99)`);
+        number.dataset.field = 'number';
         const color = document.createElement('input');
         color.type = 'color';
         color.value = horse.color;
@@ -587,7 +645,7 @@
         remove.title = `Retirer ${horse.name}`;
         remove.setAttribute('aria-label', `Retirer ${horse.name}`);
         remove.disabled = game.horses.length <= MIN_HORSES;
-        form.append(name, color, remove);
+        form.append(name, number, color, remove);
         horseList.append(form);
       });
       $('addHorseButton').disabled = game.horses.length >= MAX_HORSES;
@@ -636,6 +694,18 @@
         const row = document.createElement('div');
         row.className = 'gift-form';
         row.dataset.giftId = gift.id;
+        const giftImage = GIFT_CATALOG.find(item => normalize(item.name) === normalize(gift.name))?.image;
+        if (giftImage) {
+          const image = document.createElement('img');
+          image.src = giftImage;
+          image.alt = gift.name;
+          row.append(image);
+        } else {
+          const placeholder = document.createElement('span');
+          placeholder.setAttribute('aria-hidden', 'true');
+          placeholder.textContent = '🎁';
+          row.append(placeholder);
+        }
         const name = document.createElement('input');
         name.value = gift.name;
         name.maxLength = 50;
@@ -908,6 +978,10 @@
       player.username = username;
       player.wins += 1;
       player.stars += reward;
+      if (reward > 0 && window.ArcadeStars) {
+        window.ArcadeStars.award({ username, amount: reward })
+          .catch(error => console.error('Impossible d’ajouter les étoiles de Petit Trot au solde global :', error));
+      }
       game.players[playerKey] = player;
       $('raceStatus').textContent = `${horse.name} franchit la ligne !`;
       $('winnerNumber').textContent = String(game.horses.indexOf(horse) + 1).padStart(2, '0');
@@ -1068,8 +1142,17 @@
       if (!horse) return;
       if (field === 'name') horse.name = event.target.value.slice(0, 20);
       if (field === 'color' && /^#[0-9a-f]{6}$/i.test(event.target.value)) horse.color = event.target.value;
+      if (field === 'number') {
+        const number = Number(event.target.value);
+        if (!Number.isSafeInteger(number) || number < 1 || number > 99 ||
+            game.horses.some(item => item.id !== horse.id && item.number === number)) {
+          $('saveStatus').textContent = 'Choisis un numéro unique compris entre 1 et 99.';
+          return;
+        }
+        horse.number = number;
+      }
       renderHorseLegend();
-      if (field === 'color') renderTrack();
+      if (field === 'color' || field === 'number') renderTrack();
       saveGame();
     });
 
@@ -1106,6 +1189,7 @@
         gift.coins = Number(event.target.value);
       }
       if (field === 'horseId') gift.horseId = event.target.value;
+      renderTrack();
       saveGame();
     });
 
@@ -1194,6 +1278,7 @@
       game.horses.push(cleanHorse({
         id: `horse-${Date.now()}`,
         name: `Cheval ${index + 1}`,
+        number: Array.from({ length: 99 }, (_, number) => number + 1).find(number => !game.horses.some(horse => horse.number === number)),
         color: HORSE_COLORS[index % HORSE_COLORS.length],
         progress: 0
       }, index));

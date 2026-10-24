@@ -1965,6 +1965,10 @@
       else if (avatarUrl) playersData[username].avatarUrl = avatarUrl;
       playersData[username].stars = Math.max(0, Number(playersData[username].stars) || 0) + amount;
       totalGlobalStars += amount;
+      if (!testRunActive && amount > 0 && window.ArcadeStars) {
+        window.ArcadeStars.award({ username, amount })
+          .catch(error => console.error('Impossible d’ajouter les étoiles de l’Aquarium au solde global :', error));
+      }
       updateUI();
       if (!testRunActive) saveGame();
     }
@@ -2565,36 +2569,23 @@
       setPlayerActive(username, avatarUrl);
 
       if (/^[1-6]$/.test(cleanMsg) && resolveWheelChoice(username, Number(cleanMsg))) return;
-      if (cleanMsg === '*' || normalizedMessage === 'etoile' || normalizedMessage === 'etoiles') {
-        const stars = playersData[username]?.stars || 0;
-        showVictoryBanner(username, avatarUrl, stars, false, '', true);
-        showToast(`⭐ @${username} possède ${stars} étoile${stars === 1 ? '' : 's'}.`);
-        speakText(`${username}, tu as actuellement un solde de ${stars} étoile${stars === 1 ? '' : 's'}.`);
-        if (!playersData[username]) playersData[username] = { stars: 0, avatarUrl, giftCoins: 0, gifts: 0 };
-        updateUI();
-      } else {
-        const runCommand = normalizedMessage.match(/^run(?:\s+(\d+))?$/);
-        if (runCommand) {
-          const currentStars = playersData[username]?.stars || 0;
-          const starsToSpend = runCommand[1] ? Number(runCommand[1]) : currentStars;
-          if (!Number.isSafeInteger(starsToSpend) || starsToSpend < 1 || starsToSpend > currentStars) {
-            showToast(`❌ @${username} · solde insuffisant pour ce RUN.`);
-            speakText(`${username}, tu n'as pas assez d'étoiles pour ce RUN.`);
-          } else {
-            const shotsToFire = Math.min(200, starsToSpend * 2);
-            playersData[username].stars -= starsToSpend;
-            totalGlobalStars = Math.max(0, totalGlobalStars - starsToSpend);
-            addOrMergePlayerAvatar(username, avatarUrl, shotsToFire, true);
-            showToast(`🚀 @${username} rejoue ${starsToSpend} ⭐ · ${shotsToFire} tirs super.`);
-            speakText(`${username} rejoue ${starsToSpend} étoile${starsToSpend === 1 ? '' : 's'} en super tirs !`);
-            updateUI();
-            if (!testRunActive) saveGame();
-          }
-        } else {
-          speakText(`${username} dit : ${message}`);
-        }
-      }
+      if (cleanMsg === '*' || normalizedMessage === 'etoile' || normalizedMessage === 'etoiles' ||
+          /^!?\s*run(?:\s+\d+)?$/u.test(normalizedMessage)) return;
+      speakText(`${username} dit : ${message}`);
     }
+
+    window.addEventListener('arcade:wallet-run', event => {
+      const username = String(event.detail?.player?.username || '').trim();
+      const spent = Number(event.detail?.spent);
+      if (!username || !Number.isSafeInteger(spent) || spent < 1) return;
+      const avatarUrl = playersData[username]?.avatarUrl || viewerAvatars.get(username) || defaultAvatars[0];
+      const shotsToFire = Math.min(200, spent * 2);
+      addOrMergePlayerAvatar(username, avatarUrl, shotsToFire, true);
+      showToast(`🚀 @${username} dépense son solde global · ${shotsToFire} tirs super.`);
+      speakText(`${username} lance ${shotsToFire} tirs super avec son portefeuille global.`);
+      updateUI();
+      if (!testRunActive) saveGame();
+    });
 
     async function loadPokeballSkin(skin, blob) {
       const oldUrl = pokeballSkinUrls.get(skin.id);
@@ -3086,7 +3077,9 @@
       enqueueWheelTurns(username, avatarUrl, 1);
       updateUI();
       showToast('Test lancé · classement, étoiles, RUN, Poké Balls, tir et roue simulés.');
-      processTikTokChat(username, 'RUN 1', avatarUrl);
+      window.dispatchEvent(new CustomEvent('arcade:wallet-run', {
+        detail: { player: { username }, spent: 1 }
+      }));
       setTimeout(() => processTikTokChat(username, '3', avatarUrl), 2200);
       setTimeout(() => {
         const testStars = playersData[username]?.stars || 0;

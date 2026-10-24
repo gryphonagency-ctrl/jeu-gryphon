@@ -34,9 +34,11 @@ const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
+const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
+const coffersGameFile = path.join(__dirname, 'index.html');
 const plinkoFile = path.join(__dirname, 'plinko.html');
 const gryphonImage = path.join(__dirname, 'griffon-gauche.jpg');
 const gryphonSwordImage = path.join(__dirname, 'epee-fanfan-detouree.png');
@@ -44,6 +46,7 @@ const matterFile = path.join(__dirname, 'node_modules', 'matter-js', 'build', 'm
 const homepageFile = path.join(__dirname, 'accueil.html');
 const liveTtsFile = path.join(__dirname, 'live-tts.html');
 const presenceScriptFile = path.join(__dirname, 'arcade-presence.js');
+const arcadeStarsFile = path.join(__dirname, 'arcade-stars.js');
 const protectedRoutes = new Set([
     '/pousoire.html',
     '/pendu',
@@ -58,6 +61,7 @@ const protectedRoutes = new Set([
     '/aquarium-tiktok-live.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
+    '/monde-du-ballon.html',
     '/gryphon-plinko',
     '/index.html',
     '/plinko.html',
@@ -78,14 +82,11 @@ const staticGameIds = [
     '/qui-veut-gagner-des-etoiles.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
+    '/monde-du-ballon.html',
     '/coffres',
     '/inedexd.html'
 ];
-const fixedPreviewGameIds = new Set([
-    '/petits-chevaux-tiktok.html',
-    '/wish-lab.html',
-    '/qui-veut-gagner-des-etoiles.html'
-]);
+store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
@@ -96,7 +97,8 @@ const staticGameTitles = {
     '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/wish-lab.html': 'Wish Lab',
-    '/coffres': 'Coffres',
+    '/monde-du-ballon.html': 'Le Monde du Ballon',
+    '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
 const gameRouteIds = new Map([
@@ -109,6 +111,7 @@ const gameRouteIds = new Map([
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
     ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
+    ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -118,7 +121,7 @@ const gameRouteIds = new Map([
 ]);
 const defaultHomepageNotice = Object.freeze({
     label: 'Nouveautés de l’arcade',
-    text: 'Notre arcade propose plusieurs jeux interactifs, et de nouvelles expériences sont en préparation. Une idée de jeu ou une fonctionnalité vous intéresse ? Faites-nous part de vos suggestions : nous les étudierons avec attention pour enrichir la vitrine.',
+    text: 'Bienvenue dans l’univers de Griffon Arcade 🐉🎮 Découvrez nos jeux déjà disponibles : de nouvelles aventures arrivent bientôt ! 🚀 Une idée de jeu à créer ensemble ? Écrivez-moi en privé sur Snapchat 💬 L’abonnement inclut aussi le TTS : faites lire gratuitement tous vos commentaires en direct et donnez vie à vos lives 🎙️✨',
     fontSize: 11,
     widthPercent: 100,
     placement: 'hero'
@@ -154,9 +157,16 @@ function canUseCreatorTts(username) {
     return access.canUseCreatorService(username, 'tts');
 }
 
+function isManualAccountExpired(account, now = Date.now()) {
+    if (account?.accessMode !== 'MANUAL' || account.accessExpiresAt === undefined) return false;
+    const expiresAt = Date.parse(account.accessExpiresAt);
+    return !Number.isFinite(expiresAt) || expiresAt <= now;
+}
+
 function canUseCreatorRoom(username) {
     if (access.isAdminUser(username)) return true;
     const account = store.getAccount(username);
+    if (isManualAccountExpired(account)) return false;
     return account?.accessMode === 'MANUAL' ||
         access.hasConfiguredUser(username) ||
         access.hasActiveSubscription(account);
@@ -164,6 +174,7 @@ function canUseCreatorRoom(username) {
 
 function canManageCreatorAccess(username) {
     const account = store.getAccount(username);
+    if (isManualAccountExpired(account)) return false;
     return account?.accessMode === 'MANUAL' ||
         access.hasConfiguredUser(username) ||
         access.hasActiveSubscription(account);
@@ -197,6 +208,37 @@ function getGameCatalog() {
         uploaded: true
     }));
     return [...builtInGames, ...uploadedGames];
+}
+
+function getPublicTikTokPlayer(player) {
+    return {
+        playerId: player.id,
+        username: player.username,
+        uniqueId: player.uniqueId,
+        nickname: player.nickname,
+        stars: player.stars,
+        avatarUrl: player.avatarKey ? `/api/tiktok-avatars/${player.avatarKey}` : ''
+    };
+}
+
+function injectArcadeScripts(html) {
+    const insertBeforeDocumentEnd = (content, script) => {
+        if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${script}</body>`);
+        if (/<\/html>/i.test(content)) return content.replace(/<\/html>/i, `${script}</html>`);
+        return `${content}\n${script}`;
+    };
+    let content = html;
+    const walletScript = '<script src="/arcade-stars.js"></script>';
+    const presenceScript = '<script src="/arcade-presence.js" defer></script>';
+    if (!/<script\b[^>]*src=["']\/arcade-stars\.js["']/i.test(content)) {
+        content = /<head\b[^>]*>/i.test(content)
+            ? content.replace(/<head\b[^>]*>/i, match => `${match}${walletScript}`)
+            : insertBeforeDocumentEnd(content, walletScript);
+    }
+    if (!/<script\b[^>]*src=["']\/arcade-presence\.js["']/i.test(content)) {
+        content = insertBeforeDocumentEnd(content, presenceScript);
+    }
+    return content;
 }
 
 function normalizeAdminDashboardLayout(layout) {
@@ -322,6 +364,9 @@ function listCreatorAccounts() {
         const subscriptionExpiresAt = account?.subscriptionId && Number.isFinite(paidAt)
             ? new Date(paidAt + (account.plan === 'annuel' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString()
             : null;
+        const accessExpiresAt = manualAccount && Number.isFinite(Date.parse(account.accessExpiresAt || ''))
+            ? account.accessExpiresAt
+            : null;
         return {
             username,
             subscriptionStatus: account?.status === 'ACTIVE' && !subscriptionActive
@@ -331,6 +376,10 @@ function listCreatorAccounts() {
             hasSubscription: Boolean(account?.subscriptionId),
             subscriptionActive,
             subscriptionExpiresAt,
+            accessExpiresAt,
+            accessDurationDays: manualAccount && Number.isSafeInteger(account.durationDays)
+                ? account.durationDays
+                : null,
             protectedAdmin: access.isAdminUser(username),
             accessEnabled: access.isAdminUser(username) ||
                 (!store.isUserRevoked(username) &&
@@ -518,8 +567,8 @@ async function saveAdminGame(body) {
     }
     if (body.action === 'image') {
         const gameId = typeof body.gameId === 'string' ? body.gameId : '';
-        if (fixedPreviewGameIds.has(gameId)) {
-            throw invalidAdminInput('L’aperçu de ce jeu est fixe et ne peut pas être remplacé.');
+        if (gameId === '/petits-chevaux-tiktok.html') {
+            throw invalidAdminInput('L’image de Petit Trot est fixe et ne peut pas être personnalisée.');
         }
         if (!staticGameIds.includes(gameId) &&
             !store.listGames().some(game => game.id === gameId && game.uploaded)) {
@@ -607,6 +656,122 @@ async function saveAdminGame(body) {
 
 const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    const avatarMatch = pathname.match(/^\/api\/tiktok-avatars\/([a-f0-9]{64})$/);
+    if (avatarMatch && req.method === 'GET') {
+        if (!access.canAccessGames(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store' });
+            res.end();
+            return;
+        }
+        const avatarPath = store.getTikTokAvatarPath(avatarMatch[1]);
+        if (!avatarPath) {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end();
+            return;
+        }
+        const player = Object.values(store.listTikTokPlayers())
+            .find(item => item.avatarKey === avatarMatch[1]);
+        if (!player) {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end();
+            return;
+        }
+        res.writeHead(200, {
+            'Cache-Control': 'private, max-age=86400',
+            'Content-Type': player.avatarType,
+            'X-Content-Type-Options': 'nosniff'
+        });
+        fs.createReadStream(avatarPath).pipe(res);
+        return;
+    }
+    if (pathname === '/api/tiktok-stars' && req.method === 'GET') {
+        if (!access.canAccessGames(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            return;
+        }
+        const player = store.resolveTikTokPlayer(
+            new URL(req.url, 'http://localhost').searchParams.get('player')
+        );
+        if (!player) {
+            res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Profil TikTok introuvable sur un live connecté.' }));
+            return;
+        }
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ player: getPublicTikTokPlayer(player) }));
+        return;
+    }
+    if (pathname === '/api/tiktok-stars' && req.method === 'POST') {
+        if (!access.canAccessGames(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const gameId = typeof body.gameId === 'string' ? body.gameId : '';
+            const uploadedGameMatch = gameId.match(/^\/uploaded-games\/([a-f0-9-]{36})$/i);
+            const canonicalGameId = gameRouteIds.get(gameId) || uploadedGameMatch?.[1] || gameId;
+            if (body.action !== 'award' ||
+                !/^(?:\/[a-zA-Z0-9._/-]{1,100}|[a-f0-9-]{36})$/.test(canonicalGameId) ||
+                !access.canAccessGames(req, canonicalGameId)) {
+                res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Récompense non autorisée pour ce jeu.' }));
+                return;
+            }
+            const amount = Number(body.amount);
+            const transactionId = typeof body.transactionId === 'string' ? body.transactionId : '';
+            if (!Number.isSafeInteger(amount) || amount < 1 || amount > 250000 ||
+                !/^[a-zA-Z0-9._:-]{1,128}$/.test(transactionId)) {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Récompense invalide.' }));
+                return;
+            }
+            const player = store.resolveTikTokPlayer(body.playerId || body.username);
+            const accountName = access.usernameForRequest(req).toLowerCase();
+            const appearedOnOwnerLive = player && [...sessions.values()].some(session =>
+                session.isLive &&
+                session.seenPlayerIds?.has(player.id) &&
+                [...session.clients].some(client =>
+                    authenticatedClientUsernames.get(client)?.toLowerCase() === accountName));
+            if (!appearedOnOwnerLive) {
+                res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Le joueur doit apparaître sur un live TikTok connecté avant de recevoir des étoiles.' }));
+                return;
+            }
+            const result = store.applyTikTokStarTransaction({
+                transactionId,
+                playerId: player.id,
+                delta: amount,
+                gameId: canonicalGameId,
+                reason: 'game-reward'
+            });
+            if (!result.applied && !result.duplicate) {
+                res.writeHead(409, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'La récompense n’a pas pu être enregistrée.' }));
+                return;
+            }
+            const updatedPlayer = store.resolveTikTokPlayer(player.id);
+            const publicPlayer = getPublicTikTokPlayer(updatedPlayer);
+            for (const session of sessions.values()) {
+                const ownedByAccount = [...session.clients].some(client =>
+                    authenticatedClientUsernames.get(client)?.toLowerCase() === accountName);
+                if (ownedByAccount) {
+                    broadcastSessionMessage(session, {
+                        type: 'WALLET_BALANCE',
+                        player: publicPlayer
+                    });
+                }
+            }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                applied: result.applied,
+                duplicate: result.duplicate,
+                player: publicPlayer
+            }));
+        });
+        return;
+    }
     if (pathname === '/api/session' && req.method === 'GET') {
         const authenticated = access.isAuthenticated(req);
         const username = authenticated ? access.usernameForRequest(req) : '';
@@ -824,6 +989,7 @@ const server = http.createServer((req, res) => {
                         ? body.username.trim().toLowerCase()
                         : '';
                     const password = typeof body.password === 'string' ? body.password : '';
+                    const durationDays = Number(body.durationDays);
                     if (!/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
                         access.isAdminUser(username) ||
                         access.hasConfiguredUser(username) ||
@@ -833,7 +999,12 @@ const server = http.createServer((req, res) => {
                     if (password.length < 12 || password.length > 256) {
                         throw invalidAdminInput('Le mot de passe doit contenir de 12 à 256 caractères.');
                     }
+                    if (!Number.isSafeInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
+                        throw invalidAdminInput('La durée d’accès doit être un nombre entier de 1 à 3 650 jours.');
+                    }
                     const salt = crypto.randomBytes(16).toString('hex');
+                    const createdAt = new Date();
+                    const accessExpiresAt = new Date(createdAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
                     const created = store.createManualAccount(username, {
                         salt,
                         passwordHash: crypto.scryptSync(password, salt, 64).toString('hex'),
@@ -841,8 +1012,10 @@ const server = http.createServer((req, res) => {
                         subscriptionId: null,
                         plan: 'Accès manuel',
                         accessMode: 'MANUAL',
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
+                        createdAt: createdAt.toISOString(),
+                        accessExpiresAt: accessExpiresAt.toISOString(),
+                        durationDays,
+                        updatedAt: createdAt.toISOString()
                     });
                     if (!created) {
                         throw invalidAdminInput('Choisis un identifiant valide qui n’est pas déjà utilisé.');
@@ -850,7 +1023,12 @@ const server = http.createServer((req, res) => {
                     store.setCreatorServiceAccess(username, 'games', true);
                     store.setCreatorServiceAccess(username, 'tts', true);
                     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ success: true, username }));
+                    res.end(JSON.stringify({
+                        success: true,
+                        username,
+                        durationDays,
+                        accessExpiresAt: accessExpiresAt.toISOString()
+                    }));
                     return;
                 }
                 const username = typeof body.accountUsername === 'string'
@@ -1138,6 +1316,16 @@ const server = http.createServer((req, res) => {
             };
         }
         const savedHomepageNotice = store.getHomepageNotice();
+        const homepageNotice = savedHomepageNotice
+            ? {
+                ...savedHomepageNotice,
+                text: savedHomepageNotice.text === 'Notre arcade propose plusieurs jeux interactifs, et de nouvelles expériences sont en préparation. Une idée de jeu ou une fonctionnalité vous intéresse ? Faites-nous part de vos suggestions : nous les étudierons avec attention pour enrichir la vitrine.'
+                    ? defaultHomepageNotice.text
+                    : savedHomepageNotice.text,
+                fontSizeDoubled: savedHomepageNotice.fontSizeDoubled === true,
+                widthPercent: savedHomepageNotice.widthPercent ?? 100
+            }
+            : defaultHomepageNotice;
         res.writeHead(200, {
             'Cache-Control': 'no-store',
             'Content-Type': 'application/json; charset=utf-8'
@@ -1148,13 +1336,7 @@ const server = http.createServer((req, res) => {
             metadata,
             hidden: access.isAdmin(req) ? [] : hiddenGames,
             allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
-            homepageNotice: savedHomepageNotice
-                ? {
-                    ...savedHomepageNotice,
-                    fontSizeDoubled: savedHomepageNotice.fontSizeDoubled === true,
-                    widthPercent: savedHomepageNotice.widthPercent ?? 100
-                }
-                : defaultHomepageNotice,
+            homepageNotice,
             paypalLink: store.getPaypalLink()
         }));
         return;
@@ -1529,11 +1711,12 @@ const server = http.createServer((req, res) => {
     const routes = new Map([
         ['/', [homepageFile, 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
+        ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/pousoire.html', [gameFile, 'text/html; charset=utf-8']],
         ['/pendu', [hangmanFile, 'text/html; charset=utf-8']],
         ['/pendu.html', [hangmanFile, 'text/html; charset=utf-8']],
-        ['/coffres', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
-        ['/coffres.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
+        ['/coffres', [coffersGameFile, 'text/html; charset=utf-8']],
+        ['/coffres.html', [coffersGameFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok.html', [footballFile, 'text/html; charset=utf-8']],
         ['/qui-veut-gagner-des-etoiles.html', [starsGameFile, 'text/html; charset=utf-8']],
         ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
@@ -1542,6 +1725,7 @@ const server = http.createServer((req, res) => {
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
+        ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -1553,9 +1737,12 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
+        ['/images-vitrine/wish-lab.png', [path.join(__dirname, 'images-vitrine', 'wish-lab.png'), 'image/png']],
         ['/images-vitrine/coup-de-pied.png', [path.join(__dirname, 'images-vitrine', 'coup-de-pied.png'), 'image/png']],
         ['/images-vitrine/coffres.png', [path.join(__dirname, 'images-vitrine', 'coffres.png'), 'image/png']],
         ['/images-vitrine/six-boites.png', [path.join(__dirname, 'images-vitrine', 'six-boites.png'), 'image/png']],
+        ['/images-vitrine/petit-trot.png', [path.join(__dirname, 'images-vitrine', 'petit-trot.png'), 'image/png']],
+        ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
@@ -1597,10 +1784,7 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'no-store',
                 'Content-Type': 'text/html; charset=utf-8'
             });
-            res.end(content.toString('utf8').replace(
-                /<\/body>/i,
-                '<script src="/arcade-presence.js" defer></script></body>'
-            ));
+            res.end(injectArcadeScripts(content.toString('utf8')));
         });
         return;
     }
@@ -1655,10 +1839,7 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, headers);
             res.end(contentType.startsWith('text/html;')
-                ? content.toString('utf8').replace(
-                    /<\/body>/i,
-                    '<script src="/arcade-presence.js" defer></script></body>'
-                )
+                ? injectArcadeScripts(content.toString('utf8'))
                 : content);
         });
     } else {
@@ -1764,6 +1945,161 @@ setInterval(() => {
 
 const sessions = new Map();
 const clientSessions = new Map();
+const balloonShotRates = new WeakMap();
+const MAX_BALLOON_GAME_PLAYERS = 30;
+
+function getMessageProfile(messageData) {
+    if (messageData.type === 'gift') return messageData.gift || {};
+    if (messageData.type === 'comment') return messageData.commentData || {};
+    if (messageData.type === 'viewer') return messageData.viewer || {};
+    return null;
+}
+
+function updateSessionWalletProfile(session, messageData) {
+    const profileData = getMessageProfile(messageData);
+    if (!profileData) return null;
+    const userId = String(profileData.userId || '');
+    const username = String(profileData.username || '').trim().replace(/^@/, '').slice(0, 32);
+    const uniqueId = String(profileData.uniqueId || username).trim().replace(/^@/, '').slice(0, 32);
+    if ((userId && !/^[a-zA-Z0-9._:-]{1,128}$/.test(userId)) ||
+        !/^[a-zA-Z0-9._]{1,32}$/.test(uniqueId)) return null;
+
+    const identityKey = userId ? `id:${userId}` : `handle:${uniqueId.toLowerCase()}`;
+    const playerId = userId ? `id:${userId}` : `handle:${uniqueId.toLowerCase()}`;
+    const cached = session.walletProfiles.get(playerId);
+    let avatarKey = cached?.avatarKey || '';
+    let avatarType = cached?.avatarType || '';
+    let avatarSavedAt = cached?.avatarSavedAt || 0;
+    const avatarDataUri = typeof profileData.avatarDataUri === 'string'
+        ? profileData.avatarDataUri
+        : '';
+    if (avatarDataUri && Date.now() - avatarSavedAt >= 24 * 60 * 60 * 1000) {
+        const match = avatarDataUri.match(/^data:(image\/(?:jpeg|png|webp));base64,([a-zA-Z0-9+/]+=*)$/);
+        if (match && match[2].length <= 700000) {
+            const image = Buffer.from(match[2], 'base64');
+            if (image.length <= 512 * 1024) {
+                const saved = store.saveTikTokAvatar(identityKey, image, match[1]);
+                avatarKey = saved.avatarKey;
+                avatarType = saved.avatarType;
+                avatarSavedAt = Date.now();
+            }
+        }
+    }
+    const changed = !cached || cached.username !== username ||
+        cached.nickname !== String(profileData.nickname || '').slice(0, 80) ||
+        cached.uniqueId !== uniqueId ||
+        cached.avatarKey !== avatarKey;
+    let player = cached?.player || null;
+    if (changed) {
+        player = store.upsertTikTokPlayer({
+            userId,
+            uniqueId,
+            username,
+            nickname: String(profileData.nickname || '').slice(0, 80),
+            avatarKey,
+            avatarType
+        });
+    }
+    player ||= store.resolveTikTokPlayer(playerId);
+    if (!player) return null;
+    session.walletProfiles.set(player.id, {
+        player,
+        username,
+        nickname: player.nickname,
+        uniqueId,
+        avatarKey: player.avatarKey,
+        avatarType: player.avatarType,
+        avatarSavedAt
+    });
+    session.seenPlayerIds.add(player.id);
+    messageData.walletPlayer = getPublicTikTokPlayer(player);
+    if (messageData.type === 'viewer' && messageData.viewer) {
+        messageData.viewer.avatarUrl = messageData.walletPlayer.avatarUrl;
+    }
+    if (messageData.type === 'gift' && messageData.gift) {
+        messageData.gift.avatarUrl = messageData.walletPlayer.avatarUrl;
+    }
+    if (messageData.type === 'comment' && messageData.commentData) {
+        messageData.commentData.avatarUrl = messageData.walletPlayer.avatarUrl;
+    }
+    return player;
+}
+
+function broadcastSessionMessage(session, messageData) {
+    const encoded = JSON.stringify(messageData);
+    for (const client of session.clients) {
+        if (client.readyState === WebSocket.OPEN) client.send(encoded);
+    }
+}
+
+function processTikTokWalletCommand(session, messageData, player) {
+    if (messageData.type !== 'comment' || !player) return;
+    player = store.resolveTikTokPlayer(player.id) || player;
+    const commentData = messageData.commentData || {};
+    const comment = String(commentData.comment || '').trim();
+    if (/^!?\s*(?:étoile|etoile|star)s?$/iu.test(comment) || comment === '*') {
+        broadcastSessionMessage(session, {
+            type: 'WALLET_BALANCE',
+            player: getPublicTikTokPlayer(player),
+            messageId: commentData.messageId || ''
+        });
+    }
+    if (!/^!?\s*run(?:\s+\d+)?$/iu.test(comment)) return;
+    const amount = player.stars;
+    if (amount < 1) {
+        broadcastSessionMessage(session, {
+            type: 'WALLET_RUN_REJECTED',
+            player: getPublicTikTokPlayer(player),
+            message: `@${player.username}, ton solde est à zéro : aucune étoile n’a été débitée.`
+        });
+        return;
+    }
+    const sourceId = commentData.messageId || crypto.randomUUID();
+    const transactionId = crypto.createHash('sha256')
+        .update(`${session.username.toLowerCase()}:${sourceId}`)
+        .digest('hex');
+    const result = store.applyTikTokStarTransaction({
+        transactionId,
+        playerId: player.id,
+        delta: -amount,
+        gameId: 'all-games',
+        reason: 'run'
+    });
+    const updatedPlayer = store.resolveTikTokPlayer(player.id);
+    if (!result.applied) return;
+    broadcastSessionMessage(session, {
+        type: 'WALLET_RUN',
+        player: getPublicTikTokPlayer(updatedPlayer),
+        spent: amount,
+        messageId: sourceId
+    });
+}
+
+function sendBalloonGameRole(session, socket) {
+    socket.send(JSON.stringify({
+        type: 'BALLOON_GAME_ROLE',
+        owner: session.balloonOwner === socket,
+        players: session.balloonClients.size,
+        maxPlayers: MAX_BALLOON_GAME_PLAYERS,
+        state: session.balloonLastState
+    }));
+}
+
+function removeBalloonGameClient(session, socket) {
+    if (!session.balloonClients.delete(socket)) return;
+    if (session.balloonOwner === socket) {
+        session.balloonOwner = session.balloonClients.values().next().value || null;
+        if (session.balloonOwner) sendBalloonGameRole(session, session.balloonOwner);
+    }
+    const status = JSON.stringify({
+        type: 'BALLOON_GAME_PLAYERS',
+        players: session.balloonClients.size,
+        maxPlayers: MAX_BALLOON_GAME_PLAYERS
+    });
+    for (const client of session.balloonClients) {
+        if (client.readyState === WebSocket.OPEN) client.send(status);
+    }
+}
 
 function detachClient(socket) {
     const sessionKey = clientSessions.get(socket);
@@ -1771,6 +2107,7 @@ function detachClient(socket) {
     clientSessions.delete(socket);
     const session = sessions.get(sessionKey);
     if (!session) return;
+    removeBalloonGameClient(session, socket);
     session.clients.delete(socket);
     if (!session.clients.size) {
         sessions.delete(sessionKey);
@@ -1797,8 +2134,23 @@ function startTikTokSession(session) {
     session.isLive = false;
     session.disconnect = createTikTokSession(messageData => {
         if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+        let player = null;
+        try {
+            player = updateSessionWalletProfile(session, messageData);
+        } catch (error) {
+            console.warn('Impossible d’enregistrer le profil TikTok pour le portefeuille :', error.message);
+        }
+        try {
+            processTikTokWalletCommand(session, messageData, player);
+        } catch (error) {
+            console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
+        }
         const encoded = JSON.stringify(messageData);
         for (const client of session.clients) {
+            if (session.balloonClients.has(client) &&
+                client !== session.balloonOwner &&
+                messageData.type !== 'STATUS' &&
+                messageData.type !== 'viewer') continue;
             if (client.readyState === WebSocket.OPEN) client.send(encoded);
         }
     }, session.username, ({ connected, roomId }) => {
@@ -1841,6 +2193,59 @@ wss.on('connection', (socket, req) => {
             console.warn('Message reçu du jeu invalide :', error.message);
             return;
         }
+        if (request.action === 'BALLOON_GAME_SYNC') {
+            const session = sessions.get(clientSessions.get(socket));
+            if (!session || session.balloonOwner !== socket ||
+                !request.state || typeof request.state !== 'object' || Array.isArray(request.state)) return;
+            const encoded = JSON.stringify({
+                type: 'BALLOON_GAME_STATE',
+                state: request.state,
+                players: session.balloonClients.size,
+                maxPlayers: MAX_BALLOON_GAME_PLAYERS
+            });
+            if (Buffer.byteLength(encoded, 'utf8') > 256 * 1024) {
+                socket.send(JSON.stringify({
+                    type: 'BALLOON_GAME_ERROR',
+                    message: 'La sauvegarde synchronisée dépasse la taille autorisée.'
+                }));
+                return;
+            }
+            session.balloonLastState = request.state;
+            for (const client of session.balloonClients) {
+                if (client !== socket && client.readyState === WebSocket.OPEN) client.send(encoded);
+            }
+            return;
+        }
+        if (request.action === 'BALLOON_GAME_SHOOT') {
+            const session = sessions.get(clientSessions.get(socket));
+            if (!session?.balloonClients.has(socket) || !session.balloonOwner ||
+                session.balloonOwner === socket) return;
+            const now = Date.now();
+            let rate = balloonShotRates.get(socket);
+            if (!rate || now - rate.startedAt >= 1000) {
+                rate = { startedAt: now, count: 0, notified: false };
+                balloonShotRates.set(socket, rate);
+            }
+            if (rate.count >= 50) {
+                if (!rate.notified) {
+                    rate.notified = true;
+                    socket.send(JSON.stringify({
+                        type: 'BALLOON_GAME_ERROR',
+                        message: 'Limite de tirs atteinte : réessaie dans un instant.'
+                    }));
+                }
+                return;
+            }
+            rate.count++;
+            if (session.balloonOwner.readyState === WebSocket.OPEN) {
+                session.balloonOwner.send(JSON.stringify({
+                    type: 'BALLOON_GAME_SHOOT',
+                    balloonId: Number.isSafeInteger(request.balloonId) ? request.balloonId : null,
+                    username: String(request.username || 'Spectateur').replace(/^@/, '').slice(0, 32)
+                }));
+            }
+            return;
+        }
         if (request.action !== 'CONNECT_TIKTOK') return;
 
         const requestedUsername = String(request.username || '').trim().replace(/^@/, '');
@@ -1876,9 +2281,22 @@ wss.on('connection', (socket, req) => {
         }
 
         const sessionKey = username.toLocaleLowerCase();
+        const wantsBalloonGame = request.gameMode === 'balloon';
         const currentSessionKey = clientSessions.get(socket);
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
+            if (wantsBalloonGame && !currentSession.balloonClients.has(socket)) {
+                if (currentSession.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
+                    socket.send(JSON.stringify({
+                        type: 'BALLOON_GAME_ERROR',
+                        message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
+                    }));
+                    return;
+                }
+                currentSession.balloonClients.add(socket);
+                if (!currentSession.balloonOwner) currentSession.balloonOwner = socket;
+                sendBalloonGameRole(currentSession, socket);
+            }
             if (currentSession && !currentSession.isLive &&
                 /erreur de connexion tiktok|connexion tiktok interrompue/i.test(currentSession.statusMessage)) {
                 void currentSession.disconnect();
@@ -1904,12 +2322,44 @@ wss.on('connection', (socket, req) => {
         detachClient(socket);
         let session = sessions.get(sessionKey);
         if (!session) {
-            session = { username, clients: new Set(), disconnect: null, statusMessage: '', roomId: null, isLive: false };
+            session = {
+                username,
+                clients: new Set(),
+                balloonClients: new Set(),
+                balloonOwner: null,
+                balloonLastState: null,
+                seenPlayerIds: new Set(),
+                walletProfiles: new Map(),
+                disconnect: null,
+                statusMessage: '',
+                roomId: null,
+                isLive: false
+            };
             sessions.set(sessionKey, session);
             startTikTokSession(session);
         }
+        if (wantsBalloonGame && !session.balloonClients.has(socket) &&
+            session.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
+            socket.send(JSON.stringify({
+                type: 'BALLOON_GAME_ERROR',
+                message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
+            }));
+            return;
+        }
         session.clients.add(socket);
         clientSessions.set(socket, sessionKey);
+        if (wantsBalloonGame) {
+            session.balloonClients.add(socket);
+            if (!session.balloonOwner) session.balloonOwner = socket;
+            sendBalloonGameRole(session, socket);
+            for (const client of session.balloonClients) {
+                if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({
+                    type: 'BALLOON_GAME_PLAYERS',
+                    players: session.balloonClients.size,
+                    maxPlayers: MAX_BALLOON_GAME_PLAYERS
+                }));
+            }
+        }
         socket.send(JSON.stringify({
             type: 'STATUS',
             message: session.statusMessage || `Connexion TikTok en cours · @${username}`
@@ -1927,8 +2377,35 @@ wss.on('connection', (socket, req) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
+    sweepExpiredManualAccounts();
+    setInterval(() => {
+        try {
+            sweepExpiredManualAccounts();
+        } catch (error) {
+            console.error('Échec du nettoyage des comptes expirés :', error);
+        }
+    }, 60_000).unref();
     console.log(`Serveur lancé sur le port ${port}`);
     if (!access.hasUsers) {
         console.warn('Accès aux jeux fermé : configure au moins un compte dans GAME_USERS_JSON.');
     }
 });
+
+function sweepExpiredManualAccounts(now = Date.now()) {
+    for (const [username, account] of store.listAccounts()) {
+        if (account.accessMode !== 'MANUAL') continue;
+        if (account.accessExpiresAt === undefined) continue;
+        const expiresAt = Date.parse(account.accessExpiresAt || '');
+        if (Number.isFinite(expiresAt) && expiresAt > now) continue;
+        const removedSources = store.removeCreator(username);
+        access.revokeUserSessions(username);
+        for (const [clientId, session] of applicationPresence) {
+            if (session.username.toLowerCase() === username) applicationPresence.delete(clientId);
+        }
+        closeAuthenticatedSockets(username);
+        closeTtsControlSockets(username);
+        if (removedSources.ttsSource) closeLiveTtsSockets(removedSources.ttsSource.username);
+        if (removedSources.legacyTtsSource) closeLiveTtsSockets(removedSources.legacyTtsSource.username);
+        console.info(`Compte manuel ${username} et ses accès supprimés après expiration.`);
+    }
+}

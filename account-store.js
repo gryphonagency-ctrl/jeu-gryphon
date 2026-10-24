@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 
 const renderEnvironment = process.env.RENDER === 'true';
 const persistentDataDirectory = '/var/data';
@@ -41,7 +42,11 @@ function readStore() {
         parsed.serviceAccess ||= {};
         parsed.serviceRevocations ||= {};
         parsed.gameAccess ||= {};
+        parsed.gameAccessMigrations ||= {};
         parsed.adminDashboardLayouts ||= {};
+        parsed.tiktokPlayers ||= {};
+        parsed.tiktokPlayerAliases ||= {};
+        parsed.tiktokStarTransactions ||= {};
         if (typeof parsed.users !== 'object' || Array.isArray(parsed.users) ||
             typeof parsed.checkouts !== 'object' || Array.isArray(parsed.checkouts) ||
             typeof parsed.plans !== 'object' || Array.isArray(parsed.plans) ||
@@ -61,7 +66,32 @@ function readStore() {
                 Object.entries(services).some(([service, revoked]) =>
                     !['games', 'tts'].includes(service) || revoked !== true)) ||
             typeof parsed.gameAccess !== 'object' || Array.isArray(parsed.gameAccess) ||
+            typeof parsed.gameAccessMigrations !== 'object' || Array.isArray(parsed.gameAccessMigrations) ||
+            Object.entries(parsed.gameAccessMigrations).some(([gameId, migrated]) =>
+                !/^\/[a-zA-Z0-9._/-]{1,79}$/.test(gameId) || migrated !== true) ||
             typeof parsed.adminDashboardLayouts !== 'object' || Array.isArray(parsed.adminDashboardLayouts) ||
+            typeof parsed.tiktokPlayers !== 'object' || Array.isArray(parsed.tiktokPlayers) ||
+            typeof parsed.tiktokPlayerAliases !== 'object' || Array.isArray(parsed.tiktokPlayerAliases) ||
+            typeof parsed.tiktokStarTransactions !== 'object' || Array.isArray(parsed.tiktokStarTransactions) ||
+            Object.entries(parsed.tiktokPlayers).some(([playerKey, player]) =>
+                !/^(?:id:[A-Za-z0-9._:-]{1,128}|handle:[a-z0-9._]{1,32})$/.test(playerKey) ||
+                !player || typeof player !== 'object' || Array.isArray(player) ||
+                player.id !== playerKey ||
+                !Number.isSafeInteger(player.stars) || player.stars < 0 ||
+                ['username', 'nickname', 'userId', 'uniqueId', 'avatarKey', 'avatarType', 'updatedAt']
+                    .some(field => typeof player[field] !== 'string') ||
+                (player.avatarKey !== '' && !/^[a-f0-9]{64}$/.test(player.avatarKey)) ||
+                !['', 'image/jpeg', 'image/png', 'image/webp'].includes(player.avatarType)) ||
+            Object.entries(parsed.tiktokPlayerAliases).some(([alias, playerKey]) =>
+                !/^[a-z0-9._]{1,32}$/.test(alias) ||
+                typeof playerKey !== 'string' || !Object.hasOwn(parsed.tiktokPlayers, playerKey)) ||
+            Object.entries(parsed.tiktokStarTransactions).some(([transactionId, transaction]) =>
+                !/^[a-zA-Z0-9._:-]{1,128}$/.test(transactionId) ||
+                !transaction || typeof transaction !== 'object' || Array.isArray(transaction) ||
+                typeof transaction.playerId !== 'string' ||
+                !Object.hasOwn(parsed.tiktokPlayers, transaction.playerId) ||
+                !Number.isSafeInteger(transaction.delta) || transaction.delta === 0 ||
+                ['gameId', 'reason', 'createdAt'].some(field => typeof transaction[field] !== 'string')) ||
             Object.entries(parsed.adminDashboardLayouts).some(([username, layout]) =>
                 !/^[a-zA-Z0-9._@-]{1,64}$/.test(username) ||
                 !layout || typeof layout !== 'object' || Array.isArray(layout) ||
@@ -166,7 +196,11 @@ function readStore() {
             serviceAccess: {},
             serviceRevocations: {},
             gameAccess: {},
-            adminDashboardLayouts: {}
+            gameAccessMigrations: {},
+            adminDashboardLayouts: {},
+            tiktokPlayers: {},
+            tiktokPlayerAliases: {},
+            tiktokStarTransactions: {}
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -190,6 +224,122 @@ function updateStore(mutator) {
 function getAccount(username) {
     const store = readStore();
     return store.users[username.toLowerCase()] || null;
+}
+
+function upsertTikTokPlayer(profile) {
+    return updateStore(store => {
+        const playerKey = profile.userId
+            ? `id:${profile.userId}`
+            : `handle:${profile.uniqueId.toLowerCase()}`;
+        const existing = store.tiktokPlayers[playerKey] || {
+            id: playerKey,
+            stars: 0,
+            avatarKey: '',
+            avatarType: ''
+        };
+        const player = {
+            ...existing,
+            userId: profile.userId || existing.userId || '',
+            uniqueId: profile.uniqueId || existing.uniqueId || '',
+            username: profile.username || existing.username || '',
+            nickname: profile.nickname || existing.nickname || '',
+            updatedAt: new Date().toISOString()
+        };
+        if (profile.avatarKey) {
+            player.avatarKey = profile.avatarKey;
+            player.avatarType = profile.avatarType;
+        }
+        store.tiktokPlayers[playerKey] = player;
+        for (const alias of new Set([profile.username, profile.uniqueId]
+            .filter(Boolean)
+            .map(value => value.toLowerCase()))) {
+            store.tiktokPlayerAliases[alias] = playerKey;
+        }
+        return player;
+    });
+}
+
+function resolveTikTokPlayer(identifier) {
+    const value = String(identifier || '').trim().replace(/^@/, '');
+    if (!value) return null;
+    const store = readStore();
+    const normalized = value.toLowerCase();
+    const playerKey = store.tiktokPlayers[value]
+        ? value
+        : store.tiktokPlayers[`id:${value}`]
+            ? `id:${value}`
+            : store.tiktokPlayerAliases[normalized];
+    return playerKey ? store.tiktokPlayers[playerKey] || null : null;
+}
+
+function listTikTokPlayers() {
+    return Object.values(readStore().tiktokPlayers);
+}
+
+function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, reason }) {
+    return updateStore(store => {
+        const existingTransaction = store.tiktokStarTransactions[transactionId];
+        if (existingTransaction) {
+            const existingPlayer = store.tiktokPlayers[existingTransaction.playerId];
+            return { applied: false, duplicate: true, balance: existingPlayer?.stars || 0 };
+        }
+        const player = store.tiktokPlayers[playerId];
+        if (!player) return { applied: false, duplicate: false, balance: 0 };
+        const balance = player.stars + delta;
+        if (!Number.isSafeInteger(balance) || balance < 0) {
+            return { applied: false, duplicate: false, balance: player.stars };
+        }
+        player.stars = balance;
+        player.updatedAt = new Date().toISOString();
+        store.tiktokStarTransactions[transactionId] = {
+            playerId,
+            delta,
+            gameId,
+            reason,
+            createdAt: player.updatedAt
+        };
+        return { applied: true, duplicate: false, balance };
+    });
+}
+
+function saveTikTokAvatar(identity, content, contentType) {
+    const extensions = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp'
+    };
+    const extension = extensions[contentType];
+    if (!extension || !Buffer.isBuffer(content) || content.length < 1 || content.length > 512 * 1024) {
+        throw new Error('Avatar TikTok invalide.');
+    }
+    const directory = path.join(path.dirname(storeFile), 'tiktok-avatars');
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const avatarKey = crypto.createHash('sha256')
+        .update(identity)
+        .update('\0')
+        .update(content)
+        .digest('hex');
+    const destination = path.join(directory, `${avatarKey}.${extension}`);
+    if (fs.existsSync(destination)) return { avatarKey, avatarType: contentType };
+    const temporaryFile = `${destination}.${crypto.randomUUID()}.tmp`;
+    fs.writeFileSync(temporaryFile, content, { mode: 0o600 });
+    try {
+        fs.renameSync(temporaryFile, destination);
+    } catch (error) {
+        fs.rmSync(temporaryFile, { force: true });
+        throw error;
+    }
+    return { avatarKey, avatarType: contentType };
+}
+
+function getTikTokAvatarPath(avatarKey) {
+    if (!/^[a-f0-9]{64}$/.test(avatarKey)) return null;
+    const directory = path.join(path.dirname(storeFile), 'tiktok-avatars');
+    for (const extension of ['jpg', 'png', 'webp']) {
+        const filename = path.join(directory, `${avatarKey}.${extension}`);
+        if (fs.existsSync(filename)) return filename;
+    }
+    return null;
 }
 
 function listAccounts() {
@@ -299,6 +449,17 @@ function setCreatorGameAccess(username, gameIds) {
         store.gameAccess[username.toLowerCase()] = gameIds === null
             ? null
             : [...new Set(gameIds)];
+    });
+}
+
+function grantGameAccessToExistingCreators(gameId) {
+    return updateStore(store => {
+        if (store.gameAccessMigrations[gameId]) return false;
+        for (const gameIds of Object.values(store.gameAccess)) {
+            if (Array.isArray(gameIds) && !gameIds.includes(gameId)) gameIds.push(gameId);
+        }
+        store.gameAccessMigrations[gameId] = true;
+        return true;
     });
 }
 
@@ -432,6 +593,7 @@ function createManualAccount(username, account) {
         delete store.serviceRevocations[key];
         delete store.revokedTtsLinks[key];
         delete store.revokedUsers[key];
+        delete store.removedUsers[key];
         return true;
     });
 }
@@ -598,16 +760,19 @@ module.exports = {
     deleteCheckout,
     deleteGame,
     getAccount,
+    applyTikTokStarTransaction,
     getAccountLiveTts,
     isAccountTtsLinkRevoked,
     getAccountBySubscription,
     getCheckout,
     getCreatorGameAccess,
+    grantGameAccessToExistingCreators,
     getCreatorSettings,
     getAdminDashboardLayout,
     getCreatorServiceAccess,
     getDailyUsageCount,
     getGameFilesDirectory,
+    getTikTokAvatarPath,
     getGameImage,
     getHiddenGames,
     getHomepageNotice,
@@ -619,8 +784,10 @@ module.exports = {
     isCreatorGameAllowed,
     listGames,
     listAccounts,
+    listTikTokPlayers,
     listAccountLiveTtsSources,
     getPlans,
+    resolveTikTokPlayer,
     hasAccounts,
     saveGame,
     saveGameImage,
@@ -630,6 +797,7 @@ module.exports = {
     savePaypalLink,
     saveLiveTtsSource,
     saveAccountLiveTts,
+    saveTikTokAvatar,
     setAccountTtsLinkRevoked,
     saveAdminDashboardLayout,
     recordDailyUsage,
@@ -647,5 +815,6 @@ module.exports = {
     createManualAccount,
     reserveCheckout,
     savePlans,
-    setSubscriptionStatus
+    setSubscriptionStatus,
+    upsertTikTokPlayer
 };

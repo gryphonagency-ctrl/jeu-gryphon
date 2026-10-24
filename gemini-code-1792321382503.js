@@ -214,6 +214,10 @@ function triggerBoxAnimation(boxIndex, isWin, username, giftCount, fromLive, isS
         // Enregistrement du score
         gameState.players[username] = (gameState.players[username] || 0) + reward;
         if (fromLive) {
+          if (window.ArcadeStars) {
+            window.ArcadeStars.award({ username, amount: reward })
+              .catch(error => console.error('Impossible d’ajouter les étoiles des Six Boîtes au solde global :', error));
+          }
           gameState.liveStats.rewardCount += 1;
           gameState.liveStats.rewardStars += reward;
           gameState.history.push({
@@ -405,17 +409,7 @@ function handleTikTokMessage(data) {
     const message = data.commentData || data;
     const username = String(message.username || message.uniqueId || 'Spectateur').trim();
     const comment = String(message.comment || message.content || message.text || '').trim();
-    if (/^(?:!\s*)?(?:étoile|etoile)s?$/iu.test(comment)) {
-      const usernameKey = username.toLocaleLowerCase('fr-FR');
-      const playerName = Object.keys(gameState.players).find(name =>
-        name.toLocaleLowerCase('fr-FR') === usernameKey
-      );
-      const stars = playerName ? Number(gameState.players[playerName]) || 0 : 0;
-      const balanceMessage = `@${username}, tu as remporté ${stars} étoiles.`;
-      document.getElementById('gameStatus').textContent = balanceMessage;
-      addChatMessage('Solde', balanceMessage);
-      return;
-    }
+    if (/^(?:!?\s*(?:étoile|etoile|star)s?|\*)$/iu.test(comment)) return;
 
     if (/^spin\s+100$/i.test(comment)) {
       const userKey = username.toLocaleLowerCase('fr-FR');

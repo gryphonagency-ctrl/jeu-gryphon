@@ -93,6 +93,10 @@ function canUseCreatorService(username, service) {
     if (store.isCreatorRemoved(username) || store.isUserRevoked(username)) return false;
 
     if (account?.accessMode === 'MANUAL') {
+        if (account.accessExpiresAt !== undefined) {
+            const accessExpiresAt = Date.parse(account.accessExpiresAt);
+            if (!Number.isFinite(accessExpiresAt) || accessExpiresAt <= Date.now()) return false;
+        }
         return store.isCreatorServiceEnabled(username, service) &&
             store.getCreatorServiceAccess(username, service) === true;
     }
