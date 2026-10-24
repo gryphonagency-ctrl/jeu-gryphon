@@ -42,6 +42,7 @@
     .balloon { position: absolute; width: clamp(43px, 5.5vw, 72px); aspect-ratio: .82; display: grid; place-items: center; border: 2px solid #ffffffb0; border-radius: 50% 50% 48% 48% / 42% 42% 58% 58%; box-shadow: inset -9px -9px 14px #0003, inset 7px 6px 12px #fff4, 0 6px 10px #2d455344; transform: translate(-50%, -50%); transition: left .08s linear, top .08s linear; cursor: crosshair; padding: 0; }
     .balloon::after { position: absolute; bottom: -8px; left: 50%; width: 10px; height: 10px; background: inherit; clip-path: polygon(50% 0, 0 100%, 100% 100%); content: ""; transform: translateX(-50%); }
     .balloon::before { position: absolute; bottom: -41px; left: 50%; width: 1px; height: 36px; background: #fff9e3b0; content: ""; }
+    .effects-canvas { position: absolute; z-index: 8; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .projectile { position: absolute; z-index: 7; width: 40px; height: 40px; overflow: hidden; border: 2px solid #fff; border-radius: 50%; background: #f5d36b; box-shadow: 0 0 16px #fff7; pointer-events: none; transform: translate(-50%, -50%); }
     .projectile img { width: 100%; height: 100%; object-fit: cover; }
     .projectile span { display: grid; width: 100%; height: 100%; place-items: center; color: #443117; font-size: 10px; font-weight: 900; }
@@ -137,6 +138,7 @@
         <div class="scene" id="scene">
           <span class="sun"></span><span class="cloud"></span><span class="cloud cloud-two"></span>
           <div class="balloon-field" id="balloonField" aria-label="Ballons à éclater"></div>
+          <canvas class="effects-canvas" id="effectsCanvas" aria-hidden="true"></canvas>
           <div class="ground"></div>
         </div>
       </section>
@@ -200,7 +202,7 @@
           <h3>Classement des étoiles</h3>
           <ol id="leaderboard"><li>Les gains apparaîtront ici.</li></ol>
         </section>
-        <p class="demo-note">Chaque pièce d’un cadeau crée exactement un tir. Un ballon gagnant rapporte le nombre exact d’étoiles de son lot ; un ballon vide ne rapporte rien. Les commandes !etoile et !star affichent le solde ; RUN dépense 1 étoile pour tirer.</p>
+        <p class="demo-note">Chaque pièce d’un cadeau crée exactement un tir, lancé avec les autres tirs de la salve. Chaque ballon touché éclate à l’écran. Un ballon gagnant rapporte les étoiles exactes de son lot ; un ballon vide ne rapporte rien. Les commandes !etoile et !star affichent le solde ; RUN dépense 1 étoile pour tirer.</p>
       </aside>
       <button class="button restore-panel" id="restorePanelButton" type="button" hidden>Afficher le direct et les réglages</button>
     </div>
@@ -214,11 +216,15 @@
     const MAX_POOL_SIZE = 100000;
     const MAX_BALLOONS = 75;
     const INITIAL_BALLOONS = 35;
-    const MAX_SHOTS_PER_FRAME = 200;
+    const MAX_SHOTS_PER_FRAME = 1000;
+    const MAX_VISIBLE_SHOT_EFFECTS = 3000;
     const MAX_BALLOON_GAME_PLAYERS = 30;
     const COLORS = ['#ff5252', '#66bb6a', '#42a5f5', '#ab47bc', '#ffa726', '#26a69a', '#ec407a'];
     let poolAverage = 1;
     const field = document.getElementById('balloonField');
+    const scene = document.getElementById('scene');
+    const effectsCanvas = document.getElementById('effectsCanvas');
+    const effectsContext = effectsCanvas.getContext('2d');
     const statusLine = document.getElementById('starMessage');
     const connection = document.getElementById('connectionStatus');
     const usernameInput = document.getElementById('tiktokUsername');
@@ -244,8 +250,8 @@
     let avatars = new Map();
     let lastGameSync = 0;
     let lastFrameAt = 0;
-    let currentProjectile = null;
-    let projectileNode = null;
+    let shotEffects = [];
+    let lastRemoteShotId = 0;
     let panelPointer = null;
     let remotePoolKey = '';
 
@@ -440,13 +446,9 @@
         giftCount,
         players,
         message: statusLine.textContent,
-        projectile: currentProjectile && {
-          username: currentProjectile.username,
-          avatarUrl: currentProjectile.avatarUrl || '',
-          x: currentProjectile.x,
-          y: currentProjectile.y,
-          shotId: totalShots
-        }
+        effects: shotEffects.slice(-MAX_SHOTS_PER_FRAME).map(({ shotId, username, x, y, earnedStars, color }) => ({
+          shotId, username, x, y, earnedStars, color
+        }))
       };
     }
 
@@ -499,14 +501,39 @@
       players = normalizePlayers(state.players);
       totalStars = sumPlayerStars(players);
       if (typeof state.message === 'string') statusLine.textContent = state.message.slice(0, 240);
-      if (state.projectile && Number.isSafeInteger(state.projectile.shotId) &&
-          state.projectile.shotId > (currentProjectile?.shotId || 0)) {
-        currentProjectile = {
-          ...state.projectile,
-          avatarDataUri: state.projectile.avatarUrl ||
-            avatars.get(`user:${String(state.projectile.username || '').toLocaleLowerCase('fr-FR')}`) || '',
-          startedAt: performance.now()
-        };
+      if (Array.isArray(state.effects)) {
+        state.effects
+          .filter(effect => effect && Number.isSafeInteger(effect.shotId) &&
+            effect.shotId > lastRemoteShotId && Number.isFinite(effect.x) && Number.isFinite(effect.y))
+          .slice(-MAX_SHOTS_PER_FRAME)
+          .forEach(effect => {
+            shotEffects.push({
+              shotId: effect.shotId,
+              username: typeof effect.username === 'string' ? effect.username.slice(0, 32) : 'Spectateur',
+              x: Math.max(1, Math.min(99, effect.x)),
+              y: Math.max(-12, Math.min(100, effect.y)),
+              earnedStars: Number.isSafeInteger(effect.earnedStars) ? Math.max(0, effect.earnedStars) : 0,
+              color: COLORS[effect.shotId % COLORS.length],
+              startedAt: performance.now()
+            });
+            lastRemoteShotId = Math.max(lastRemoteShotId, effect.shotId);
+          });
+        if (shotEffects.length > MAX_VISIBLE_SHOT_EFFECTS) {
+          shotEffects.splice(0, shotEffects.length - MAX_VISIBLE_SHOT_EFFECTS);
+        }
+      } else if (state.projectile && Number.isSafeInteger(state.projectile.shotId) &&
+          state.projectile.shotId > lastRemoteShotId && Number.isFinite(state.projectile.x) &&
+          Number.isFinite(state.projectile.y)) {
+        shotEffects.push({
+          shotId: state.projectile.shotId,
+          username: typeof state.projectile.username === 'string' ? state.projectile.username.slice(0, 32) : 'Spectateur',
+          x: state.projectile.x,
+          y: state.projectile.y,
+          earnedStars: 0,
+          color: COLORS[state.projectile.shotId % COLORS.length],
+          startedAt: performance.now() - 150
+        });
+        lastRemoteShotId = state.projectile.shotId;
       }
       renderBalloons();
       renderMetrics();
@@ -637,37 +664,78 @@
     }
 
     function renderProjectile(timestamp) {
-      if (!currentProjectile || !Number.isFinite(currentProjectile.startedAt)) return;
-      const duration = 650;
-      const progress = Math.min(1, (timestamp - currentProjectile.startedAt) / duration);
-      if (progress >= 1) {
-        projectileNode?.remove();
-        projectileNode = null;
-        currentProjectile = null;
-        return;
+      const width = scene.clientWidth;
+      const height = scene.clientHeight;
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      const canvasWidth = Math.round(width * pixelRatio);
+      const canvasHeight = Math.round(height * pixelRatio);
+      if (effectsCanvas.width !== canvasWidth || effectsCanvas.height !== canvasHeight) {
+        effectsCanvas.width = canvasWidth;
+        effectsCanvas.height = canvasHeight;
       }
-      if (!projectileNode) {
-        projectileNode = document.createElement('div');
-        projectileNode.className = 'projectile';
-        projectileNode.setAttribute('aria-hidden', 'true');
-        const avatar = currentProjectile.avatarDataUri || currentProjectile.avatarUrl || '';
-        if (/^(?:https:\/\/|data:image\/(?:png|jpeg|webp|gif);base64,)/i.test(avatar)) {
-          const image = document.createElement('img');
-          image.src = avatar;
-          image.alt = '';
-          projectileNode.append(image);
+      effectsContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      effectsContext.clearRect(0, 0, width, height);
+      shotEffects = shotEffects.filter(effect => timestamp - effect.startedAt < 700);
+      shotEffects.forEach(effect => {
+        const age = Math.max(0, timestamp - effect.startedAt);
+        const targetX = width * (0.01 + effect.x * 0.0098);
+        const targetY = height * (0.01 + effect.y * 0.0087);
+        const travel = Math.min(1, age / 300);
+        const easedTravel = travel * travel;
+        const x = width * 0.5 + (targetX - width * 0.5) * easedTravel;
+        const y = height * 0.93 + (targetY - height * 0.93) * easedTravel;
+        effectsContext.save();
+        if (age < 300) {
+          effectsContext.globalAlpha = 1 - travel * 0.35;
+          effectsContext.strokeStyle = '#fff4b8';
+          effectsContext.lineWidth = 3;
+          effectsContext.beginPath();
+          effectsContext.moveTo(x, y + 13);
+          effectsContext.lineTo(x, y - 17);
+          effectsContext.stroke();
+          effectsContext.fillStyle = '#fff1a8';
+          effectsContext.shadowColor = '#fff';
+          effectsContext.shadowBlur = 14;
+          effectsContext.beginPath();
+          effectsContext.arc(x, y, 9, 0, Math.PI * 2);
+          effectsContext.fill();
+          effectsContext.fillStyle = '#473117';
+          effectsContext.font = 'bold 8px Arial';
+          effectsContext.textAlign = 'center';
+          effectsContext.textBaseline = 'middle';
+          effectsContext.fillText(String(effect.username || '??').slice(0, 2).toUpperCase(), x, y);
         } else {
-          const fallback = document.createElement('span');
-          fallback.textContent = currentProjectile.username.slice(0, 2).toUpperCase();
-          projectileNode.append(fallback);
+          const burst = Math.min(1, (age - 300) / 360);
+          const radius = 9 + burst * 30;
+          effectsContext.globalAlpha = 1 - burst;
+          effectsContext.strokeStyle = effect.color;
+          effectsContext.lineWidth = 3 * (1 - burst) + 1;
+          effectsContext.beginPath();
+          effectsContext.arc(targetX, targetY, radius, 0, Math.PI * 2);
+          effectsContext.stroke();
+          effectsContext.fillStyle = '#fff6a8';
+          for (let particle = 0; particle < 8; particle++) {
+            const angle = (Math.PI * 2 * particle) / 8 + effect.shotId;
+            const distance = 7 + burst * 34;
+            effectsContext.beginPath();
+            effectsContext.arc(
+              targetX + Math.cos(angle) * distance,
+              targetY + Math.sin(angle) * distance,
+              Math.max(1.5, 4 * (1 - burst)),
+              0,
+              Math.PI * 2
+            );
+            effectsContext.fill();
+          }
+          if (effect.earnedStars > 0) {
+            effectsContext.fillStyle = '#fff9d2';
+            effectsContext.font = 'bold 12px Arial';
+            effectsContext.textAlign = 'center';
+            effectsContext.fillText(`+${formatNumber(effect.earnedStars)} ⭐`, targetX, targetY - 18 - burst * 20);
+          }
         }
-        document.getElementById('scene').append(projectileNode);
-      }
-      const fromX = 50;
-      const fromY = 94;
-      const ease = progress * progress;
-      projectileNode.style.left = `${fromX + (currentProjectile.x - fromX) * ease}%`;
-      projectileNode.style.top = `${fromY + (currentProjectile.y - fromY) * ease}%`;
+        effectsContext.restore();
+      });
     }
 
     function storeAvatar(username, avatarDataUri) {
@@ -758,21 +826,7 @@
       document.getElementById('setBalanceButton').disabled = !isRoomOwner;
     }
 
-    function showPopEffect(balloon, earnedStars) {
-      const node = balloon.node;
-      if (!node) return;
-      const sceneBounds = document.getElementById('scene').getBoundingClientRect();
-      const balloonBounds = node.getBoundingClientRect();
-      const effect = document.createElement('span');
-      effect.className = 'pop-effect';
-      effect.textContent = earnedStars > 0 ? `+${formatNumber(earnedStars)} ⭐` : '💥';
-      effect.style.left = `${balloonBounds.left + balloonBounds.width / 2 - sceneBounds.left}px`;
-      effect.style.top = `${balloonBounds.top + balloonBounds.height / 2 - sceneBounds.top}px`;
-      document.getElementById('scene').append(effect);
-      window.setTimeout(() => effect.remove(), 800);
-    }
-
-    function fireShot(username = 'Spectateur', selectedBalloonId = null, showEffect = true, profile = '') {
+    function fireShot(username = 'Spectateur', selectedBalloonId = null) {
       if (!balloons.length) return false;
       const selectedIndex = selectedBalloonId === null
         ? -1
@@ -780,7 +834,6 @@
       const index = selectedIndex >= 0 ? selectedIndex : Math.floor(Math.random() * balloons.length);
       const [balloon] = balloons.splice(index, 1);
       const earnedStars = balloon.reward;
-      if (showEffect) showPopEffect(balloon, earnedStars);
       const playerName = String(username || 'Spectateur').trim().replace(/^@/, '').slice(0, 32) || 'Spectateur';
       const playerKey = `user:${playerName.toLocaleLowerCase('fr-FR')}`;
       const player = players[playerKey] || (players[playerKey] = { username: playerName, stars: 0, shots: 0 });
@@ -794,22 +847,22 @@
       totalShots++;
       totalPopped++;
       balloon.node?.remove();
+      shotEffects.push({
+        shotId: totalShots,
+        username: playerName,
+        x: balloon.x,
+        y: balloon.y,
+        earnedStars,
+        color: COLORS[index % COLORS.length],
+        startedAt: performance.now()
+      });
+      if (shotEffects.length > MAX_VISIBLE_SHOT_EFFECTS) {
+        shotEffects.splice(0, shotEffects.length - MAX_VISIBLE_SHOT_EFFECTS);
+      }
       const exactStars = formatNumber(earnedStars);
       statusLine.textContent = balloon.reward
         ? `🎯 @${playerName} gagne exactement ${exactStars} étoile${earnedStars === 1 ? '' : 's'} !`
         : `💥 @${playerName} éclate un ballon vide.`;
-      const avatar = avatars.get(playerKey) || '';
-      projectileNode?.remove();
-      projectileNode = null;
-      const projectileAvatar = profile || avatar;
-      currentProjectile = {
-        username: playerName,
-        avatarDataUri: projectileAvatar,
-        avatarUrl: /^https:\/\//i.test(projectileAvatar) ? projectileAvatar : '',
-        x: balloon.x,
-        y: balloon.y,
-        startedAt: performance.now()
-      };
       return true;
     }
 
@@ -879,7 +932,7 @@
           if (!balloons.length) break;
         }
         const currentGift = pendingGifts[0];
-        if (!currentGift || !fireShot(currentGift.username, null, processed === 0, currentGift.avatarDataUri || '')) break;
+        if (!currentGift || !fireShot(currentGift.username)) break;
         pendingShots--;
         currentGift.remaining--;
         if (currentGift.remaining === 0) pendingGifts.shift();
@@ -889,7 +942,7 @@
       renderBalloons();
       renderMetrics();
       if (processed) saveState();
-      if (processed) synchronizeGameState();
+      if (processed) synchronizeGameState(pendingShots === 0);
       if (pendingShots > 0) requestAnimationFrame(processShots);
     }
 
