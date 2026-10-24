@@ -28,6 +28,7 @@ const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
 const gameFile = path.join(__dirname, 'pousoire.html');
 const hangmanFile = path.join(__dirname, 'pendu.html');
 const footballFile = path.join(__dirname, 'jeu-foot-tiktok.html');
+const starsGameFile = path.join(__dirname, 'qui-veut-gagner-des-etoiles.html');
 const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
@@ -50,6 +51,7 @@ const protectedRoutes = new Set([
     '/coffres',
     '/coffres.html',
     '/jeu-foot-tiktok.html',
+    '/qui-veut-gagner-des-etoiles.html',
     '/inedexd.html',
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
@@ -73,6 +75,7 @@ const staticGameIds = [
     '/aquarium-tiktok-live.html',
     '/coin-pusher-tiktok.html',
     '/jeu-foot-tiktok.html',
+    '/qui-veut-gagner-des-etoiles.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
     '/coffres',
@@ -85,6 +88,7 @@ const staticGameTitles = {
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
+    '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/wish-lab.html': 'Wish Lab',
     '/coffres': 'Coffres',
@@ -98,6 +102,7 @@ const gameRouteIds = new Map([
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
+    ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -1522,6 +1527,7 @@ const server = http.createServer((req, res) => {
         ['/coffres', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/coffres.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok.html', [footballFile, 'text/html; charset=utf-8']],
+        ['/qui-veut-gagner-des-etoiles.html', [starsGameFile, 'text/html; charset=utf-8']],
         ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
