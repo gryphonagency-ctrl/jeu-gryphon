@@ -56,6 +56,19 @@
         .broadcast-answer.eliminated { opacity: 0.42; text-decoration: line-through; }
         .broadcast-prompt { margin: 0; color: #cbd5e1; font-size: 18px; font-weight: 800; text-align: center; }
         .broadcast-survivors { margin: 0; color: #a5f3fc; font-size: 16px; font-weight: 800; text-align: center; }
+        .progress-celebration { position: fixed; inset: 0; z-index: 105; display: grid; place-items: center; padding: 18px; background: radial-gradient(ellipse at 50% 15%, rgba(161, 98, 7, 0.6), rgba(2, 3, 8, 0.98) 70%); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 220ms ease, visibility 220ms ease; }
+        .progress-celebration.visible { opacity: 1; visibility: visible; }
+        .progress-celebration-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; width: min(100%, 980px); height: min(94vh, 900px); padding: 12px; border: 2px solid rgba(251, 191, 36, 0.88); border-radius: 16px; background: rgba(8, 12, 28, 0.94); box-shadow: 0 0 48px rgba(245, 158, 11, 0.36); }
+        .progress-celebration-title { margin: 0; color: #fbbf24; font-size: 30px; font-weight: 900; text-align: center; text-transform: uppercase; }
+        .progress-celebration-subtitle { margin: 0; color: #e2e8f0; font-size: 17px; font-weight: 750; text-align: center; }
+        .progress-ladder-list { display: flex; min-height: 0; flex-direction: column; justify-content: stretch; gap: 2px; overflow: hidden; padding: 2px; }
+        .progress-ladder-step { display: grid; flex: 1 1 0; grid-template-columns: 44px minmax(0, 1fr) 92px; align-items: center; align-self: center; gap: 10px; min-height: 0; padding: 0 12px; border: 1px solid rgba(100, 116, 139, 0.55); border-radius: 7px; background: rgba(15, 23, 42, 0.94); color: #cbd5e1; font-size: clamp(9px, 1.6vh, 13px); line-height: 1; white-space: nowrap; }
+        .progress-ladder-step strong:last-child { color: #fbbf24; text-align: right; }
+        .progress-ladder-step.completed { border-color: rgba(34, 197, 94, 0.48); color: #86efac; }
+        .progress-ladder-step.completed strong:last-child { color: #86efac; }
+        .progress-ladder-step.current { min-height: 0; border: 2px solid #fde68a; background: linear-gradient(90deg, #b45309, #78350f); color: #fff; box-shadow: 0 0 20px rgba(251, 191, 36, 0.62); font-size: clamp(10px, 1.9vh, 16px); font-weight: 900; }
+        .progress-ladder-step.current strong:last-child { color: #fff7ad; }
+        @media (max-width: 640px) { .progress-celebration { padding: 8px; } .progress-celebration-panel { gap: 6px; height: 96vh; padding: 8px 6px; } .progress-celebration-title { font-size: 22px; } .progress-celebration-subtitle { font-size: 13px; } .progress-ladder-list { gap: 1px; } .progress-ladder-step { grid-template-columns: 28px minmax(0, 1fr) 64px; gap: 5px; min-height: 0; padding: 0 5px; font-size: clamp(8px, 1.8vh, 11px); } .progress-ladder-step.current { min-height: 0; font-size: clamp(9px, 2vh, 13px); } }
         @keyframes countdown-pulse { to { transform: scale(1.08); text-shadow: 0 0 24px rgba(251, 113, 133, 0.9); } }
         @media (max-width: 640px) { .broadcast-panel { gap: 15px; padding: 18px; border-radius: 14px; } .broadcast-meta { font-size: 14px; } .broadcast-countdown { min-width: 82px; font-size: 54px; } .broadcast-question { font-size: 26px; } .broadcast-answers { grid-template-columns: minmax(0, 1fr); gap: 8px; } .broadcast-answer { grid-template-columns: 36px minmax(0, 1fr); min-height: 56px; padding: 10px 12px; font-size: 18px; } .broadcast-answer strong { font-size: 20px; } .broadcast-prompt { font-size: 14px; } }
         .game-topbar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; overflow: hidden; padding: 14px 18px; border: 1px solid rgba(103, 232, 249, 0.38); border-radius: 14px; background: linear-gradient(110deg, rgba(4, 12, 34, 0.96), rgba(20, 20, 57, 0.94) 60%, rgba(39, 12, 46, 0.92)); box-shadow: 0 8px 32px rgba(2, 6, 23, 0.5), inset 0 1px rgba(255, 255, 255, 0.12); }
@@ -186,6 +199,13 @@
             <p id="broadcastPrompt" class="broadcast-prompt">Répondez A, B, C ou D dans le chat.</p>
             <p id="broadcastSurvivors" class="broadcast-survivors">Le plateau est prêt.</p>
             <p id="broadcastVipBadge" class="hidden rounded-full border border-amber-300 px-4 py-2 text-sm font-black text-amber-200">CHALLENGER VIP · 100 PIÈCES VALIDÉES</p>
+        </section>
+    </div>
+    <div id="progressCelebration" class="progress-celebration" aria-hidden="true" aria-live="polite">
+        <section class="progress-celebration-panel" aria-label="Progression dans la pyramide des étoiles">
+            <h2 class="progress-celebration-title">Palier validé !</h2>
+            <p id="progressCelebrationSubtitle" class="progress-celebration-subtitle"></p>
+            <div id="progressLadderList" class="progress-ladder-list"></div>
         </section>
     </div>
     <header class="game-topbar max-w-7xl mx-auto w-full mb-4">
@@ -1200,6 +1220,7 @@
 
         function showWelcomeScreen(message) {
             clearQuestionTimers();
+            hideProgressCelebration();
             if ('speechSynthesis' in window) window.speechSynthesis.cancel();
             document.getElementById('gameApp').hidden = true;
             document.getElementById('welcomeScreen').hidden = false;
@@ -1257,6 +1278,7 @@
 
         function loadQuestion() {
             clearQuestionTimers();
+            hideProgressCelebration();
             currentQuestionObj = gameQuestions[currentLevelIndex];
             markQuestionAsUsed(currentQuestionObj.id);
 
@@ -1318,7 +1340,7 @@
                 answerAnnouncementCallback = callback;
                 return;
             }
-            autoAdvanceTimer = window.setTimeout(callback, 1500);
+            autoAdvanceTimer = window.setTimeout(callback, 2500);
         }
 
         function finishAnswerAnnouncement() {
@@ -1326,7 +1348,45 @@
             if (!answerAnnouncementCallback) return;
             const callback = answerAnnouncementCallback;
             answerAnnouncementCallback = null;
-            autoAdvanceTimer = window.setTimeout(callback, 1000);
+            autoAdvanceTimer = window.setTimeout(callback, 2500);
+        }
+
+        function renderProgressCelebration() {
+            const currentLadderIndex = LADDER.length - 1 - currentLevelIndex;
+            const currentStep = LADDER[currentLadderIndex];
+            const ladder = document.getElementById('progressLadderList');
+            ladder.replaceChildren();
+            let highlightedStep = null;
+            LADDER.forEach((step, index) => {
+                const row = document.createElement('div');
+                row.className = 'progress-ladder-step';
+                row.style.width = `${42 + index * 2.75}%`;
+                if (index > currentLadderIndex) row.classList.add('completed');
+                if (index === currentLadderIndex) {
+                    row.classList.add('current');
+                    highlightedStep = row;
+                }
+                row.innerHTML = `<span>${step.level}</span><span>${index === currentLadderIndex ? 'ÉTAGE VALIDÉ' : 'ÉTAGE'}</span><strong>${step.stars}⭐</strong>`;
+                ladder.append(row);
+            });
+            highlightedStep?.scrollIntoView({ block: 'center', inline: 'nearest' });
+            document.getElementById('progressCelebrationSubtitle').textContent = `Question ${currentLevelIndex + 1} sur ${QUESTIONS_PER_GAME} validée · étage ${currentStep.level} sur 20 · ${currentStep.stars} étoiles`;
+        }
+
+        function showProgressCelebration() {
+            renderProgressCelebration();
+            const overlay = document.getElementById('progressCelebration');
+            document.body.style.overflow = 'hidden';
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function hideProgressCelebration() {
+            const overlay = document.getElementById('progressCelebration');
+            if (!overlay) return;
+            document.body.style.overflow = '';
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
         }
 
         function updateBroadcastStatus(message) {
@@ -1544,6 +1604,7 @@
             }
 
             if (isCorrect) {
+                showProgressCelebration();
                 if (!chatPlayers.size) playSoundEffect('bell');
                 if (typeof confetti === 'function') confetti({ particleCount: 50 });
                 if (currentLevelIndex === LADDER.length - 1) {
