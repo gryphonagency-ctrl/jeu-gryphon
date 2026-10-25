@@ -4,12 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0d021a">
-    <title>Astra-Push 3D | Aperçu</title>
+    <title>Astra-Push | Aperçu</title>
     <style>
         :root { color-scheme: dark; font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #0d021a; color: #fff; }
         * { box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; margin: 0; }
-        body { background: radial-gradient(ellipse at 50% 28%, #261044 0, #0d021a 58%, #05020d 100%); }
+        body { background: #000; }
+        #background-video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        #background-video[hidden] { display: none; }
         #canvas-container { position: fixed; inset: 0; }
         #canvas-container canvas { display: block; width: 100%; height: 100%; }
         .ui-overlay { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); pointer-events: none; }
@@ -24,7 +26,6 @@
         .score-panel span { display: block; color: #ff65b5; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
         .score-panel strong { display: block; margin-top: 2px; color: #fff08c; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgba(255,234,0,.45); }
         .score-panel small { display: block; margin-top: 2px; color: #b9eff5; font-size: 8px; font-weight: 700; }
-        .marquee-label { position: fixed; top: 98px; left: 50%; z-index: 3; width: max-content; max-width: calc(100vw - 24px); transform: translateX(-50%); padding: 7px 14px; border: 1px solid rgba(255,34,170,.82); border-radius: 6px; background: rgba(7,5,17,.88); box-shadow: 0 0 17px rgba(255,34,170,.36), inset 0 0 12px rgba(0,234,255,.08); color: #a7fbff; font-family: "Courier New", monospace; font-size: clamp(9px, 1.45vw, 15px); font-weight: 900; letter-spacing: .06em; text-align: center; text-shadow: 0 0 9px #00eaff; }
         .live-connect { display: grid; min-width: 230px; gap: 5px; padding: 8px; border: 1px solid rgba(255,34,170,.55); border-radius: 10px; background: rgba(7,3,20,.82); box-shadow: 0 0 17px rgba(255,34,170,.12); backdrop-filter: blur(8px); pointer-events: auto; }
         .live-row { display: flex; gap: 6px; }
         .live-row input { width: 125px; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid rgba(0,234,255,.45); border-radius: 7px; background: #10091e; color: #fff; font: inherit; font-size: 11px; }
@@ -37,8 +38,19 @@
         .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; pointer-events: auto; }
         .control { min-height: 44px; padding: 0 18px; border: 1px solid #fff; border-radius: 999px; background: linear-gradient(135deg, #fa167c, #a300e8); box-shadow: 0 0 20px rgba(255,0,127,.45), inset 0 1px rgba(255,255,255,.35); color: #fff; font: inherit; font-size: 13px; font-weight: 900; text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
         .control.secondary { border-color: #00f3ff; background: rgba(0,70,92,.88); box-shadow: 0 0 16px rgba(0,243,255,.22), inset 0 1px rgba(255,255,255,.14); color: #9dfaff; }
+        .control.tertiary { border-color: #ffd179; background: linear-gradient(135deg, #ffac4c, #f15fb8 42%, #8218f7 100%); box-shadow: 0 0 18px rgba(255,208,98,.35), inset 0 1px rgba(255,255,255,.35); color: #fff8ea; }
+        .control.danger { border-color: #ff8d87; background: #541b27; box-shadow: inset 0 1px rgba(255,255,255,.12); color: #ffd9d6; }
         .control[aria-pressed="true"] { background: #00d9ec; color: #07121b; }
         .control:hover { filter: brightness(1.12); }
+        .operator-panel { pointer-events: auto; }
+        .operator-panel-handle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,.14); color: #8df6ff; font-size: 11px; font-weight: 900; cursor: grab; touch-action: none; user-select: none; }
+        .operator-panel.dragging .operator-panel-handle { cursor: grabbing; }
+        .panel-grip { color: rgba(255,255,255,.55); font-size: 16px; line-height: 1; }
+        .panel-visibility-button { display: grid; width: 30px; height: 28px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(0,243,255,.42); border-radius: 6px; background: rgba(0,70,92,.35); color: #9dfaff; font: inherit; font-size: 17px; line-height: 1; cursor: pointer; touch-action: manipulation; pointer-events: auto; }
+        .panel-visibility-button[aria-expanded="false"] { border-color: rgba(255,138,201,.6); color: #ff9bd2; }
+        .sound-toggle { display: grid; width: 30px; height: 28px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(0,243,255,.42); border-radius: 6px; background: rgba(0,70,92,.35); color: #9dfaff; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; touch-action: manipulation; pointer-events: auto; }
+        .sound-toggle[aria-pressed="true"] { border-color: rgba(255,138,201,.6); color: #ff9bd2; }
+        .control-panel-content[hidden], .card-manager-content[hidden] { display: none !important; }
         .status { position: fixed; right: 12px; bottom: 12px; z-index: 3; max-width: min(440px, calc(100vw - 24px)); padding: 9px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 8px; background: rgba(10,5,24,.86); color: #dceaf6; font-size: 11px; line-height: 1.45; }
         .status[hidden] { display: none; }
         .winner-overlay { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 18px; background: rgba(5,2,14,.78); opacity: 0; visibility: hidden; transition: opacity .2s ease, visibility .2s ease; pointer-events: none; }
@@ -57,10 +69,6 @@
         .confetti-piece { position: absolute; top: -8%; left: var(--x); width: var(--size); height: calc(var(--size) * 1.8); border-radius: 2px; background: var(--color); opacity: .95; animation: confetti-fall var(--duration) linear var(--delay) forwards; }
         @keyframes confetti-fall { to { transform: translate3d(var(--drift), 115vh, 0) rotate(900deg); opacity: .5; } }
         @keyframes reward-card-drop { from { opacity: 0; transform: translateY(-38vh) rotateX(52deg) scale(.72); } to { opacity: 1; transform: translateY(0) rotateX(0) scale(1); } }
-        .coin-owner-tag { position: fixed; z-index: 1; display: flex; align-items: center; gap: 5px; max-width: 165px; padding: 3px 7px 3px 3px; border: 1px solid rgba(0,234,255,.72); border-radius: 999px; background: rgba(6,5,18,.9); box-shadow: 0 0 11px rgba(0,234,255,.42); color: #fff; font-size: 10px; font-weight: 850; pointer-events: none; white-space: nowrap; }
-        .coin-owner-tag img, .coin-owner-tag i { width: 22px; height: 22px; flex: 0 0 22px; border: 1px solid #ff77c8; border-radius: 50%; object-fit: cover; }
-        .coin-owner-tag i { display: grid; place-items: center; background: #26163d; color: #ffe47b; font-style: normal; }
-        .coin-owner-tag span { overflow: hidden; text-overflow: ellipsis; }
         .card-manager { position: fixed; z-index: 4; left: 20px; top: 50%; width: min(270px, calc(100vw - 24px)); max-height: min(72vh, 620px); overflow: auto; transform: translateY(-50%); border: 1px solid rgba(0,234,255,.46); border-radius: 11px; background: rgba(7,4,19,.94); box-shadow: 0 12px 35px rgba(0,0,0,.46), 0 0 18px rgba(0,234,255,.12); backdrop-filter: blur(10px); pointer-events: auto; }
         .card-manager-handle { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.12); color: #8df6ff; font-size: 11px; font-weight: 900; cursor: grab; touch-action: none; user-select: none; }
         .card-manager.dragging .card-manager-handle { cursor: grabbing; }
@@ -90,62 +98,98 @@
             .brand { align-self: center; }
             .live-connect { width: min(100%, 340px); align-self: center; }
             .live-row input { flex: 1; width: auto; }
-            .scores { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); width: min(100%, 340px); justify-content: center; }
-            .score-panel { min-width: 0; width: auto; text-align: center; }
-            .score-panel strong { font-size: 19px; }
-            .marquee-label { top: 211px; font-size: 10px; }
+            .scores { display: grid; grid-template-columns: 1fr; width: auto; justify-content: start; }
+            .stats-panel { position: fixed; z-index: 4; top: 72px; left: 8px; width: min(175px, 42vw); max-height: 38vh; overflow: auto; transform: none; gap: 5px; }
+            .score-panel { min-width: 0; width: auto; padding: 6px 8px; text-align: left; }
+            .score-panel strong { font-size: 16px; }
             .control { min-height: 42px; padding: 0 14px; font-size: 11px; }
             .hint { max-width: 96vw; font-size: 10px; }
-            .card-manager { left: 10px; top: auto; bottom: 112px; width: min(255px, calc(100vw - 20px)); max-height: 36vh; transform: none; }
+            .bottom-area { position: fixed; z-index: 4; top: auto; right: 8px; bottom: 8px; width: min(270px, 55vw); max-height: 48vh; overflow: auto; justify-items: stretch; gap: 7px; padding: 8px; border: 1px solid rgba(0,243,255,.38); border-radius: 10px; background: rgba(7,3,20,.9); pointer-events: auto; }
+            .controls { flex-direction: column; }
+            .control { width: 100%; min-height: 38px; padding: 5px 8px; }
+            .card-manager { left: 8px; top: auto; right: auto; bottom: 8px; width: min(220px, 42vw); max-height: 30vh; transform: none; }
             .card-manager-content { gap: 5px; padding: 7px; }
             .card-inventory th, .card-inventory td { padding: 3px; }
         }
+        @media (min-width: 561px) and (max-width: 899px) {
+            .stats-panel { position: fixed; z-index: 4; top: 64px; left: 14px; width: 190px; max-height: 60vh; overflow: auto; transform: none; display: grid; grid-template-columns: 1fr; }
+            .bottom-area { position: fixed; z-index: 4; top: 50%; right: 14px; bottom: auto; width: 245px; max-height: 75vh; overflow: auto; transform: translateY(-50%); justify-items: stretch; padding: 12px; border: 1px solid rgba(0,243,255,.38); border-radius: 12px; background: rgba(7,3,20,.88); pointer-events: auto; }
+            .controls { flex-direction: column; }
+            .control { width: 100%; }
+            .card-manager { left: 14px; top: auto; bottom: 14px; width: 220px; max-height: 30vh; transform: none; }
+        }
         @media (min-width: 900px) {
             .ui-overlay { padding: 18px 26px 22px; }
-            .topbar { width: min(100%, 1680px); align-items: center; gap: 18px; }
+            .topbar { width: min(100%, 1680px); align-items: center; justify-content: center; gap: 18px; }
             .brand { min-width: 210px; }
-            .live-connect { width: min(320px, 25vw); }
-            .scores { justify-self: end; }
-            .marquee-label { top: 98px; }
+            .stats-panel { position: fixed; z-index: 4; top: 18px; left: max(18px, 2vw); width: min(235px, 19vw); max-height: min(54vh, 500px); overflow: auto; transform: none; display: grid; grid-template-columns: 1fr; }
+            .score-panel { min-width: 0; }
+            .live-connect { width: 100%; min-width: 0; }
             .bottom-area { position: fixed; top: 50%; right: max(24px, 3vw); bottom: auto; width: min(270px, 24vw); transform: translateY(-50%); justify-items: stretch; gap: 12px; padding: 14px; border: 1px solid rgba(0,243,255,.38); border-radius: 13px; background: rgba(7,3,20,.82); box-shadow: 0 0 24px rgba(0,234,255,.14); backdrop-filter: blur(9px); pointer-events: auto; }
             .hint { border: 1px solid rgba(255,34,170,.25); border-radius: 8px; font-size: 12px; line-height: 1.5; }
             .controls { flex-direction: column; }
             .control { width: 100%; min-height: 48px; }
+            .card-manager { left: max(18px, 2vw); top: auto; bottom: 18px; width: min(235px, 19vw); max-height: 34vh; transform: none; }
         }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 <body>
-    <div id="canvas-container" aria-label="Machine Coin Pusher 3D"></div>
-    <div class="marquee-label">ASTRA-PUSH · COIN PUSHER 3D</div>
+    <video id="background-video" hidden muted loop playsinline autoplay></video>
+    <div id="canvas-container" aria-label="Machine Coin Pusher"></div>
     <main class="ui-overlay">
         <header class="topbar">
-            <div class="brand"><span class="brand-mark" aria-hidden="true">G</span><div class="brand-copy"><span>Aperçu interactif</span><strong>Astra-Push 3D</strong></div></div>
-            <section class="live-connect" aria-label="Connexion au direct TikTok">
-                <div class="live-row"><input id="live-username" type="text" maxlength="32" autocomplete="off" placeholder="Pseudo TikTok" aria-label="Pseudo TikTok du direct"><button id="connect-live" type="button">Connecter le live</button></div>
-                <p id="live-status" class="live-status" role="status" aria-live="polite">Le relais TikTok est prêt.</p>
-            </section>
-            <div class="scores" aria-live="polite">
-                <div class="score-panel"><span>Pièces restantes</span><strong id="coin-count">50</strong></div>
-                <div class="score-panel"><span>Score / gain</span><strong id="score-count">0</strong></div>
-                <div class="score-panel"><span>Cartes restantes</span><strong id="card-count">1 000</strong><small id="card-detail">541 valeurs définies · 459 mystère</small></div>
-                <div class="score-panel"><span>Jetons distribués</span><strong id="tokens-used">0</strong><small>sur 10 000 · sans valeur monétaire</small></div>
-            </div>
         </header>
-        <div class="bottom-area">
-            <p class="hint">Clique ou touche la machine pour lâcher une pièce</p>
-            <div class="controls">
-                <button class="control" id="drop-button" type="button">Lâcher une pièce</button>
-                <button class="control secondary" id="auto-button" type="button" aria-pressed="false">Auto-drop : OFF</button>
+        <aside id="stats-panel" class="scores stats-panel operator-panel" aria-label="Statistiques du jeu" aria-live="polite">
+            <header id="stats-panel-handle" class="operator-panel-handle"><span>Statistiques</span><span class="panel-grip" aria-hidden="true">↕</span></header>
+            <div class="score-panel"><span>Jetons restants</span><strong id="coin-count">50</strong></div>
+            <div class="score-panel"><span>Gains</span><strong id="score-count">0</strong></div>
+            <div class="score-panel"><span>Cartes restantes</span><strong id="card-count">1 000</strong><small id="card-detail">541 valeurs définies · 459 mystère</small></div>
+            <div class="score-panel"><span>Pièces sur la table</span><strong id="coins-on-table">0</strong></div>
+            <div class="score-panel"><span>Jetons distribués</span><strong id="tokens-used">0</strong><small>sur 10 000 · sans valeur monétaire</small></div>
+        </aside>
+        <aside id="control-panel" class="bottom-area operator-panel" aria-label="Panneau de contrôle">
+            <header id="control-panel-handle" class="operator-panel-handle">
+                <span>Panneau de contrôle</span>
+                <button id="sound-toggle" class="sound-toggle" type="button" aria-label="Couper les effets sonores" aria-pressed="false" title="Couper les effets sonores"><span aria-hidden="true">&#128266;</span></button>
+                <button id="control-panel-visibility" class="panel-visibility-button" type="button" aria-label="Masquer les commandes" aria-expanded="true" title="Masquer les commandes"><span aria-hidden="true">&#128065;</span></button>
+                <span class="panel-grip" aria-hidden="true">↕</span>
+            </header>
+            <div id="control-panel-content" class="control-panel-content">
+                <section class="live-connect" aria-label="Connexion au direct TikTok">
+                    <div class="live-row"><input id="live-username" type="text" maxlength="32" autocomplete="off" placeholder="Pseudo TikTok" aria-label="Pseudo TikTok du direct"><button id="connect-live" type="button">Connecter le live</button></div>
+                    <p id="live-status" class="live-status" role="status" aria-live="polite">Le relais TikTok est prêt.</p>
+                </section>
+                <p class="hint">Clique ou touche la machine pour lâcher une pièce</p>
+                <div class="controls">
+                    <button class="control" id="drop-button" type="button">Lâcher une pièce</button>
+                    <button class="control tertiary" id="drop-hundred-button" type="button">Lâcher 100 pièces</button>
+                    <button class="control tertiary" id="drop-card-button" type="button">Lâcher une carte</button>
+                    <button class="control secondary" id="auto-button" type="button" aria-pressed="false">Auto-drop : OFF</button>
+                    <button class="control danger" id="clear-coins-button" type="button" title="Retirer immédiatement toutes les pièces du plateau">Vider les pièces</button>
+                </div>
+                <div class="controls" aria-label="Vidéos">
+                    <label class="control tertiary" style="display:inline-flex;align-items:center;justify-content:center">Vidéo d'arrière-plan<input type="file" accept="video/*" id="background-video-input" hidden></label>
+                </div>
             </div>
-        </div>
+        </aside>
     </main>
     <div id="confetti-layer" class="confetti-layer" hidden aria-hidden="true"></div>
     <section id="card-manager" class="card-manager" aria-label="Gestion du stock des cartes">
-        <header id="card-manager-handle" class="card-manager-handle"><span>Stock de récompenses</span><span aria-hidden="true">↕</span></header>
-        <div class="card-manager-content">
+        <header id="card-manager-handle" class="card-manager-handle">
+            <span>Stock de récompenses</span>
+            <button id="card-manager-visibility" class="panel-visibility-button" type="button" aria-label="Masquer le stock de récompenses" aria-expanded="true" title="Masquer le stock de récompenses"><span aria-hidden="true">&#128065;</span></button>
+            <span aria-hidden="true">↕</span>
+        </header>
+        <div id="card-manager-content" class="card-manager-content">
             <table class="card-inventory">
                 <thead><tr><th>Récompense</th><th>Cartes</th></tr></thead>
                 <tbody>
@@ -190,25 +234,25 @@
 
             const container = document.getElementById('canvas-container');
             const coinCount = document.getElementById('coin-count');
+            const coinsOnTableDisplay = document.getElementById('coins-on-table');
             const scoreCount = document.getElementById('score-count');
             const cardCountDisplay = document.getElementById('card-count');
             const tokensUsedDisplay = document.getElementById('tokens-used');
             const dropButton = document.getElementById('drop-button');
             const autoButton = document.getElementById('auto-button');
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color('#0d021a');
-            scene.fog = new THREE.FogExp2('#0d021a', 0.012);
             const camera = new THREE.PerspectiveCamera(49, innerWidth / innerHeight, 0.1, 100);
             function fitCamera() {
                 const wide = innerWidth >= 900;
                 camera.fov = wide ? 47 : innerWidth < 650 ? 52 : 49;
-                camera.position.set(0, wide ? 10.2 : innerWidth < 650 ? 11.2 : 10.8, wide ? 17.4 : innerWidth < 650 ? 20.5 : 17.8);
-                camera.lookAt(0, wide ? 3.5 : 4.2, -.25);
+                camera.position.set(0, wide ? 11.4 : innerWidth < 650 ? 12.2 : 11.8, wide ? 21.4 : innerWidth < 650 ? 24.5 : 21.8);
+                camera.lookAt(0, wide ? 2.9 : 3.5, 0);
                 camera.aspect = innerWidth / innerHeight;
                 camera.updateProjectionMatrix();
             }
             fitCamera();
-            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setClearColor(0x000000, 0);
             renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
             renderer.setSize(innerWidth, innerHeight);
             renderer.shadowMap.enabled = true;
@@ -216,16 +260,40 @@
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.12;
             container.append(renderer.domElement);
+            let composer = null;
+            const bloomReady = () => false;
 
             const world = new CANNON.World();
             world.gravity.set(0, -18, 0);
             world.broadphase = new CANNON.NaiveBroadphase();
-            world.solver.iterations = 8;
+            world.solver.iterations = 40;
+            world.solver.tolerance = .001;
             world.allowSleep = true;
             const coinMaterial = new CANNON.Material('coin');
+            const cardMaterial = new CANNON.Material('card');
             const tableMaterial = new CANNON.Material('table');
-            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, tableMaterial, { friction: .34, restitution: .12 }));
-            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, coinMaterial, { friction: .24, restitution: .1 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, tableMaterial, { friction: .3, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, coinMaterial, { friction: .1, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, tableMaterial, { friction: .08, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, cardMaterial, { friction: .12, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, cardMaterial, { friction: .22, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
+            // Vitesse de chute plafonnée : les pièces se posent sans rebondir sur le tas
+            const maxFallSpeed = 7;
+            // Les pièces empilées en hauteur glissent vers l'avant et s'étalent en un tapis qui pousse les autres
+            const spreadHeightY = 2.0;
+            const spreadForce = 5;
+            world.addEventListener('preStep', () => {
+                for (const body of world.bodies) {
+                    if (body.type === CANNON.Body.DYNAMIC && body.velocity.y < -maxFallSpeed) body.velocity.y = -maxFallSpeed;
+                }
+                for (const coin of coins) {
+                    const body = coin.body;
+                    if (body.position.y > spreadHeightY && body.position.y < 3 && body.position.z > -3.5 && body.position.z < 4.2) {
+                        body.wakeUp();
+                        body.force.z += spreadForce * body.mass;
+                    }
+                }
+            });
 
             scene.add(new THREE.HemisphereLight('#badcff', '#160721', 1.8));
             const keyLight = new THREE.SpotLight('#fff0d0', 2.4, 40, Math.PI / 4, .45, 1.4);
@@ -234,21 +302,27 @@
             keyLight.castShadow = true;
             keyLight.shadow.mapSize.set(1024, 1024);
             scene.add(keyLight, keyLight.target);
-            const pinkLight = new THREE.PointLight('#ff168d', 2.2, 17);
-            pinkLight.position.set(-4.5, 6.2, -2.8);
-            const cyanLight = new THREE.PointLight('#00eaff', 2.6, 18);
-            cyanLight.position.set(4.4, 5.8, 1.4);
-            const goldLight = new THREE.PointLight('#ffd37a', 2.1, 17);
-            goldLight.position.set(0, 5.5, 3.8);
-            scene.add(pinkLight, cyanLight, goldLight);
+
+            const envScene = new THREE.Scene();
+            envScene.background = new THREE.Color('#05060a');
+            for (const [ex, ey, ez, ew, eh, color] of [[0, 12, 4, 14, .5, '#ffffff'], [-10, 5, 0, .5, 8, '#ff2fb0'], [10, 5, 0, .5, 8, '#00eaff'], [0, 4, 12, 12, 3, '#ffd9a0'], [0, 6, -12, 14, 6, '#4a2f80']]) {
+                const panel = new THREE.Mesh(new THREE.BoxGeometry(ew, eh, ew > 1 && eh < 1 ? 14 : ew > 1 ? .5 : 14), new THREE.MeshBasicMaterial({ color }));
+                panel.position.set(ex, ey, ez);
+                envScene.add(panel);
+            }
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            scene.environment = pmrem.fromScene(envScene, .04).texture;
+            pmrem.dispose();
 
             const mats = {
-                dark: new THREE.MeshStandardMaterial({ color: '#12151b', metalness: .76, roughness: .34 }),
-                steel: new THREE.MeshStandardMaterial({ color: '#bcc5c7', metalness: .58, roughness: .3 }),
-                steelDark: new THREE.MeshStandardMaterial({ color: '#586166', metalness: .52, roughness: .34 }),
+                dark: new THREE.MeshStandardMaterial({ color: '#08041a', metalness: .5, roughness: .45, envMapIntensity: .35 }),
+                steel: new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 }),
+                steelDark: new THREE.MeshStandardMaterial({ color: '#160a30', metalness: .4, roughness: .45, envMapIntensity: .35 }),
                 glass: new THREE.MeshPhysicalMaterial({ color: '#73ecff', metalness: .08, roughness: .12, transparent: true, opacity: .13, transmission: .32 }),
-                neonPink: new THREE.MeshBasicMaterial({ color: '#ff22aa' }),
-                neonCyan: new THREE.MeshBasicMaterial({ color: '#00eaff' })
+                legBlack: new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 }),
+                floorRed: new THREE.MeshStandardMaterial({ color: '#050505', metalness: .05, roughness: .85 }),
+                neonPink: new THREE.MeshBasicMaterial({ color: '#b04dff' }),
+                neonCyan: new THREE.MeshBasicMaterial({ color: '#3d7bff' })
             };
 
             function box(parent, size, position, material, options = {}) {
@@ -302,107 +376,461 @@
                     ctx.fill();
                 }
             });
-            const galaxy = new THREE.Mesh(new THREE.PlaneGeometry(8, 8.7), new THREE.MeshBasicMaterial({ map: galaxyTexture, side: THREE.DoubleSide }));
+            const galaxyBase = galaxyTexture.image;
+            const galaxyCanvas = document.createElement('canvas');
+            galaxyCanvas.width = galaxyBase.width;
+            galaxyCanvas.height = galaxyBase.height;
+            const galaxyAnimTexture = new THREE.CanvasTexture(galaxyCanvas);
+            galaxyAnimTexture.colorSpace = THREE.SRGBColorSpace;
+            const galaxyCoins = Array.from({ length: 26 }, () => ({
+                x: 30 + Math.random() * (galaxyBase.width - 60),
+                offset: Math.random(),
+                speed: .12 + Math.random() * .12,
+                r: 26 + Math.random() * 16,
+                spin: Math.random() * 6
+            }));
+            function drawGalaxy(time) {
+                const ctx = galaxyCanvas.getContext('2d');
+                const height = galaxyCanvas.height;
+                ctx.drawImage(galaxyBase, 0, 0);
+                for (const coin of galaxyCoins) {
+                    const y = -coin.r + (((time * coin.speed + coin.offset) % 1) * (height + coin.r * 2));
+                    const w = coin.r * (.25 + .75 * Math.abs(Math.cos(time * 2 + coin.spin)));
+                    ctx.fillStyle = '#c98a2b';
+                    ctx.beginPath();
+                    ctx.ellipse(coin.x, y, w, coin.r, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffd36a';
+                    ctx.beginPath();
+                    ctx.ellipse(coin.x, y, w * .7, coin.r * .7, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                galaxyAnimTexture.needsUpdate = true;
+            }
+            drawGalaxy(0);
+            const galaxy = new THREE.Mesh(new THREE.PlaneGeometry(8, 8.7), new THREE.MeshBasicMaterial({ map: galaxyAnimTexture, side: THREE.DoubleSide }));
             galaxy.position.set(0, 5.6, -4.25);
             scene.add(galaxy);
 
             const machine = new THREE.Group();
             scene.add(machine);
-            box(machine, [8.8, .6, 8.8], [0, .3, -.15], mats.dark);
-            box(machine, [8.45, .3, 7.65], [0, 1.02, -.35], mats.steelDark);
-            box(machine, [7.95, .23, 7.05], [0, 1.2, -.45], mats.steel);
-            box(machine, [7.7, .1, 6.78], [0, 1.37, -.48], new THREE.MeshStandardMaterial({ color: '#24333c', metalness: .32, roughness: .4 }));
+            box(machine, [8.8, .6, 6.1], [0, .3, -.15], mats.dark);
+            box(machine, [8.45, .3, 6.5], [0, 1.02, -.35], mats.steelDark);
             const deckBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.9, .12, 3.4)));
-            deckBody.position.set(0, 1.25, -.48);
+            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85, .025, 3.93)));
+            deckBody.position.set(0, 1.395, .07);
             world.addBody(deckBody);
-            box(machine, [.42, 9.2, 8.65], [-4.25, 5.05, -.42], mats.steelDark);
-            box(machine, [.42, 9.2, 8.65], [4.25, 5.05, -.42], mats.steelDark);
-            box(machine, [.15, 8.2, .12], [-4.12, 5.3, -.12], mats.neonCyan, { castShadow: false });
-            box(machine, [.15, 8.2, .12], [4.12, 5.3, -.12], mats.neonCyan, { castShadow: false });
-            box(machine, [.16, 8.2, .15], [-4.25, 5.2, -4.25], mats.neonPink, { castShadow: false });
-            box(machine, [.16, 8.2, .15], [4.25, 5.2, -4.25], mats.neonPink, { castShadow: false });
+            const rearEdgeZ = -3.86;
+            const rearRimBody = new CANNON.Body({ mass: 0, material: tableMaterial });
+            rearRimBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85, .17, .09)));
+            rearRimBody.position.set(0, 1.59, rearEdgeZ + .04);
+            world.addBody(rearRimBody);
+            box(machine, [7.7, .34, .18], [0, 1.59, rearEdgeZ + .04], mats.steel);
 
-            for (const x of [-4.02, 4.02]) {
-                const glassPanel = new THREE.Mesh(new THREE.BoxGeometry(.035, 7.25, 7.25), mats.glass);
-                glassPanel.position.set(x, 5.25, -.4);
-                glassPanel.castShadow = false;
-                machine.add(glassPanel);
+            const pillarSteel = new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 });
+            for (const side of [-1, 1]) {
+                const pillarPoints = [
+                    [4.45, 9.3, .3], [4.45, 6.5, .3], [4.5, 4.2, .55], [4.8, 2.2, 1.4], [5.2, .5, 2.6], [5.3, -2.6, 3.2]
+                ].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz));
+                const pillarCurve = new THREE.CatmullRomCurve3(pillarPoints);
+                const pillar = new THREE.Mesh(new THREE.TubeGeometry(pillarCurve, 60, .24, 12, false), pillarSteel);
+                pillar.castShadow = true;
+                machine.add(pillar);
+                // Pied noir sous le tapis rouge
+                const legCurve = new THREE.CatmullRomCurve3([[5.2, .5, 2.6], [5.25, -1, 2.9], [5.3, -2.83, 3.2]].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz)));
+                const leg = new THREE.Mesh(new THREE.TubeGeometry(legCurve, 30, .27, 12, false), mats.legBlack);
+                leg.castShadow = true;
+                machine.add(leg);
+                const innerPoints = pillarPoints.map(point => new THREE.Vector3(point.x - side * .2, point.y, point.z + .05));
+                machine.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(innerPoints), 60, .07, 8, false), mats.neonCyan));
             }
+            box(machine, [8.9, .22, .3], [0, 8.2, -4.2], mats.steelDark);
+            box(machine, [.2, 7.8, .2], [-4.45, 4.3, -4.25], mats.steelDark);
+            box(machine, [.2, 7.8, .2], [4.45, 4.3, -4.25], mats.steelDark);
 
+            const videoScreens = {};
+            const videoUrls = {};
+            function setVideoScreen(key, file) {
+                const screen = videoScreens[key];
+                if (!screen || !file || !file.type.startsWith('video/')) return;
+                if (videoUrls[key]) URL.revokeObjectURL(videoUrls[key]);
+                if (screen.material.map) {
+                    screen.material.map.image.pause();
+                    screen.material.map.dispose();
+                }
+                videoUrls[key] = URL.createObjectURL(file);
+                const video = document.createElement('video');
+                video.src = videoUrls[key];
+                video.loop = true;
+                video.muted = true;
+                video.playsInline = true;
+                video.play().catch(() => {});
+                const texture = new THREE.VideoTexture(video);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                if (key === 'banner') {
+                    // Recadre la vidéo pour remplir la zone sans la déformer
+                    video.addEventListener('loadedmetadata', () => {
+                        const zoneRatio = bannerZone.width / bannerZone.height;
+                        const videoRatio = video.videoWidth / video.videoHeight;
+                        if (videoRatio > zoneRatio) {
+                            texture.repeat.set(zoneRatio / videoRatio, 1);
+                            texture.offset.set((1 - zoneRatio / videoRatio) / 2, 0);
+                        } else {
+                            texture.repeat.set(1, videoRatio / zoneRatio);
+                            texture.offset.set(0, (1 - videoRatio / zoneRatio) / 2);
+                        }
+                    });
+                }
+                screen.material.needsUpdate = true;
+                screen.visible = true;
+            }
+            function makeVideoScreen(key, geometry, position, rotation) {
+                const screen = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+                screen.position.set(...position);
+                screen.rotation.set(...rotation);
+                screen.visible = false;
+                screen.castShadow = false;
+                machine.add(screen);
+                videoScreens[key] = screen;
+            }
+            const bannerZone = { width: 8.6, height: 8.6 * 9 / 16 };
+            makeVideoScreen('banner', new THREE.PlaneGeometry(bannerZone.width, bannerZone.height), [0, 8.3 - bannerZone.height / 2, -4.1], [0, 0, 0]);
+
+            const pusherStart = -2.1;
+            const pusherTravel = 1.25;
+            const pusherLipOffset = .63;
+            const pusherLipHalfDepth = .06;
+            const coinRadius = .44;
+            const dropLanes = [-2.4, 0, 2.4];
+            const dropPointZ = pusherStart + pusherTravel + pusherLipOffset + pusherLipHalfDepth + coinRadius + .12;
             const header = new THREE.Group();
-            header.position.set(0, 9.05, -3.85);
+            header.position.set(0, 9.55, dropPointZ);
             machine.add(header);
-            box(header, [8.4, 1.5, .68], [0, 0, 0], mats.dark);
-            const headerFace = new THREE.Mesh(new THREE.PlaneGeometry(7.9, 1.12), new THREE.MeshBasicMaterial({ map: canvasTexture(1200, 220, (ctx, width, height) => {
-                ctx.fillStyle = '#070812';
+            box(header, [8.8, 2.5, .68], [0, 0, 0], mats.dark);
+            const headerCanvas = document.createElement('canvas');
+            headerCanvas.width = 1400;
+            headerCanvas.height = 358;
+            const headerTexture = new THREE.CanvasTexture(headerCanvas);
+            headerTexture.colorSpace = THREE.SRGBColorSpace;
+            function drawHeader() {
+                const ctx = headerCanvas.getContext('2d');
+                const width = headerCanvas.width;
+                const height = headerCanvas.height;
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#0a0a22';
                 ctx.fillRect(0, 0, width, height);
-                ctx.strokeStyle = '#ff22a7';
+                ctx.strokeStyle = '#ff2fd0';
                 ctx.lineWidth = 11;
-                ctx.shadowColor = '#ff22a7';
+                ctx.shadowColor = '#ff2fd0';
                 ctx.shadowBlur = 25;
-                ctx.strokeRect(13, 13, width - 26, height - 26);
+                ctx.beginPath();
+                ctx.roundRect(15, 15, width - 30, height - 30, 28);
+                ctx.stroke();
                 ctx.shadowBlur = 0;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.font = '900 68px monospace';
-                ctx.fillStyle = '#a7fbff';
-                ctx.shadowColor = '#00eaff';
+                ctx.font = '700 150px "Courier New", monospace';
+                ctx.fillStyle = '#9fd8ff';
+                ctx.shadowColor = '#4fb4ff';
                 ctx.shadowBlur = 18;
-                ctx.fillText('ASTRA-PUSH', width / 2, height / 2 - 29);
-                ctx.font = 'bold 32px monospace';
-                ctx.fillStyle = '#ff93d0';
-                ctx.fillText('COIN PUSHER 3D', width / 2, height / 2 + 42);
-            }) }), mats.dark);
+                ctx.fillText('ASTRA-PUSH', width / 2, height * .36);
+                ctx.font = '600 100px "Courier New", monospace';
+                ctx.fillText('COIN PUSHER', width / 2, height * .72);
+                const drawStar = (cx, cy, outer, inner) => {
+                    ctx.beginPath();
+                    for (let i = 0; i < 10; i++) {
+                        const r = i % 2 === 0 ? outer : inner;
+                        const a = -Math.PI / 2 + i * Math.PI / 5;
+                        ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                };
+                ctx.fillStyle = '#ffd23c';
+                ctx.shadowColor = '#ffb800';
+                ctx.shadowBlur = 25;
+                drawStar(105, height / 2, 80, 34);
+                drawStar(width - 105, height / 2, 80, 34);
+                ctx.shadowBlur = 0;
+                headerTexture.needsUpdate = true;
+            }
+            drawHeader(0);
+            const headerFace = new THREE.Mesh(new THREE.PlaneGeometry(8.2, 2.1), new THREE.MeshBasicMaterial({ map: headerTexture }));
             headerFace.position.z = .36;
             header.add(headerFace);
-            box(header, [8.48, .08, .76], [0, .8, 0], mats.neonCyan, { castShadow: false });
-            box(header, [8.48, .08, .76], [0, -.8, 0], mats.neonPink, { castShadow: false });
+            box(header, [8.88, .08, .76], [0, 1.3, 0], mats.steel, { castShadow: false });
+            box(header, [8.88, .08, .76], [0, -1.3, 0], mats.steel, { castShadow: false });
+            for (const barX of [-2.9, 2.9]) {
+                box(header, [2.5, .12, .5], [barX, -1.4, .05], mats.neonCyan, { castShadow: false });
+            }
 
-            const gryphonPanel = new THREE.Mesh(new THREE.PlaneGeometry(7.8, 1.28), new THREE.MeshBasicMaterial({ map: canvasTexture(1024, 240, (ctx, width, height) => {
-                ctx.fillStyle = '#080a11';
+            const plateTopY = 1.42;
+            const plateStartZ = -3.86;
+            const flatPlateEndZ = 4;
+            const plateThickness = .28;
+            const rampScale = .1;
+            const rampHorizontalLength = (7.3 - flatPlateEndZ) * rampScale;
+            const rampVerticalDrop = (plateTopY - -2.83) * rampScale;
+            const rampStartZ = flatPlateEndZ;
+            const rampEndZ = rampStartZ + rampHorizontalLength;
+            const rampEndY = plateTopY - rampVerticalDrop;
+            const rampAngle = Math.atan2(rampVerticalDrop, rampHorizontalLength);
+            const rampLength = Math.hypot(rampHorizontalLength, rampVerticalDrop);
+            const flatPlateLength = flatPlateEndZ - plateStartZ;
+            const rampOrientation = new CANNON.Quaternion();
+            rampOrientation.setFromEuler(rampAngle, 0, 0);
+            deckBody.addShape(
+                new CANNON.Box(new CANNON.Vec3(3.85, plateThickness / 2, rampLength / 2)),
+                new CANNON.Vec3(
+                    0,
+                    (plateTopY + rampEndY) / 2 - Math.cos(rampAngle) * plateThickness / 2 - deckBody.position.y,
+                    (rampStartZ + rampEndZ) / 2 - Math.sin(rampAngle) * plateThickness / 2 - deckBody.position.z
+                ),
+                rampOrientation
+            );
+
+            const plateProfile = new THREE.Shape();
+            plateProfile.moveTo(0, plateTopY);
+            plateProfile.lineTo(flatPlateLength, plateTopY);
+            plateProfile.lineTo(flatPlateLength + rampHorizontalLength, rampEndY);
+            plateProfile.lineTo(flatPlateLength + rampHorizontalLength - Math.sin(rampAngle) * plateThickness, rampEndY - Math.cos(rampAngle) * plateThickness);
+            plateProfile.lineTo(flatPlateLength - Math.sin(rampAngle) * plateThickness, plateTopY - Math.cos(rampAngle) * plateThickness);
+            plateProfile.lineTo(0, plateTopY - plateThickness);
+            plateProfile.closePath();
+            const plateGeometry = new THREE.ExtrudeGeometry(plateProfile, { depth: 7.7, bevelEnabled: false });
+            const plateMesh = new THREE.Mesh(plateGeometry, mats.steel);
+            plateMesh.rotation.y = -Math.PI / 2;
+            plateMesh.position.set(3.85, 0, plateStartZ);
+            machine.add(plateMesh);
+            makeVideoScreen('table', new THREE.PlaneGeometry(7.7, flatPlateLength), [0, plateTopY + .006, (plateStartZ + flatPlateEndZ) / 2], [-Math.PI / 2, 0, 0]);
+
+            const circuitTexture = canvasTexture(1024, 900, (ctx, width, height) => {
+                ctx.fillStyle = '#070b17';
                 ctx.fillRect(0, 0, width, height);
-                ctx.strokeStyle = '#00eaff';
-                ctx.lineWidth = 4;
-                ctx.shadowColor = '#00eaff';
-                ctx.shadowBlur = 12;
-                for (let i = 0; i < 20; i++) {
-                    const x = Math.random() * width;
-                    const y = Math.random() * height;
+                ctx.lineCap = 'round';
+                for (let i = 0; i < 90; i++) {
+                    let x = Math.random() * width;
+                    let y = Math.random() * height;
+                    ctx.strokeStyle = i % 3 ? 'rgba(0,200,255,.55)' : 'rgba(190,60,255,.55)';
+                    ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(x, y);
-                    ctx.lineTo(x + 75, y);
-                    ctx.lineTo(x + 100, y + 40);
+                    for (let s = 0; s < 4; s++) {
+                        if (Math.random() < .5) x += (Math.random() - .5) * 220; else y += (Math.random() - .5) * 220;
+                        ctx.lineTo(x, y);
+                    }
                     ctx.stroke();
-                    ctx.fillStyle = '#ff28a4';
-                    ctx.fillRect(x - 4, y - 4, 8, 8);
+                    ctx.fillStyle = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 5, 0, Math.PI * 2);
+                    ctx.fill();
                 }
-                ctx.shadowBlur = 14;
                 ctx.textAlign = 'center';
-                ctx.font = '900 72px "Trebuchet MS", sans-serif';
-                ctx.fillStyle = '#ff46b6';
-                ctx.fillText('Gryphon', width / 2, height / 2 + 12);
-                ctx.font = '800 36px "Trebuchet MS", sans-serif';
-                ctx.fillStyle = '#52f3ff';
-                ctx.fillText('AGENCY', width / 2, height / 2 + 62);
-            }) }), mats.dark);
-            gryphonPanel.position.set(0, .96, 4.12);
-            machine.add(gryphonPanel);
-            box(machine, [8.4, .12, .2], [0, 1.65, 4.03], mats.neonPink, { castShadow: false });
+                ctx.textBaseline = 'middle';
+                ctx.font = 'italic 900 210px Arial, sans-serif';
+                ctx.shadowColor = '#ff22d8';
+                ctx.shadowBlur = 40;
+                ctx.strokeStyle = '#ff6af0';
+                ctx.lineWidth = 9;
+                ctx.strokeText('Gryphon', width / 2, height * .52);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(70,10,110,.55)';
+                ctx.fillText('Gryphon', width / 2, height * .52);
+            });
+            const circuitFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({ map: circuitTexture }));
+            circuitFloor.rotation.x = -Math.PI / 2;
+            circuitFloor.position.set(0, plateTopY + .003, (plateStartZ + flatPlateEndZ) / 2);
+            machine.add(circuitFloor);
 
-            const chute = new THREE.Mesh(new THREE.CylinderGeometry(.65, .82, 1.8, 24, 1, true), mats.steel);
-            chute.position.set(0, 7.5, -1.55);
-            chute.rotation.x = .15;
+            const gryphonText = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({
+                map: canvasTexture(1024, 900, (ctx, width, height) => {
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = 'italic 900 210px Arial, sans-serif';
+                    ctx.shadowColor = '#ff22d8';
+                    ctx.shadowBlur = 40;
+                    ctx.strokeStyle = '#ff6af0';
+                    ctx.lineWidth = 9;
+                    ctx.strokeText('Gryphon', width / 2, height * .52);
+                }),
+                transparent: true,
+                depthWrite: false
+            }));
+            gryphonText.rotation.x = -Math.PI / 2;
+            gryphonText.position.set(0, plateTopY + .01, (plateStartZ + flatPlateEndZ) / 2);
+            machine.add(gryphonText);
+            for (const side of [-1, 1]) {
+                const railProfile = new THREE.Shape();
+                railProfile.moveTo(plateStartZ, plateTopY);
+                railProfile.lineTo(flatPlateEndZ + .45, plateTopY);
+                railProfile.lineTo(flatPlateEndZ + .45, plateTopY + .22);
+                railProfile.lineTo(plateStartZ + 1.2, plateTopY + 1.05);
+                railProfile.lineTo(plateStartZ, plateTopY + 1.05);
+                railProfile.closePath();
+                const rail = new THREE.Mesh(new THREE.ExtrudeGeometry(railProfile, { depth: .5, bevelEnabled: false }), mats.steel);
+                rail.rotation.y = -Math.PI / 2;
+                rail.position.set(side > 0 ? 4.35 : -3.85, 0, 0);
+                rail.castShadow = true;
+                machine.add(rail);
+                box(machine, [.06, .06, 6.6], [side * 4.1, plateTopY + 1.0, -.2], mats.neonCyan, { castShadow: false });
+            }
+            box(machine, [10, .14, 12], [0, -2.9, 4], mats.floorRed, { castShadow: false });
+            const rugCanvas = document.createElement('canvas');
+            rugCanvas.width = 1024;
+            rugCanvas.height = 512;
+            const rugCtx = rugCanvas.getContext('2d');
+            rugCtx.textAlign = 'center';
+            rugCtx.textBaseline = 'middle';
+            rugCtx.lineJoin = 'round';
+            const rugStar = (cx, cy, outer, rot) => {
+                rugCtx.beginPath();
+                for (let i = 0; i < 10; i++) {
+                    const r = i % 2 === 0 ? outer : outer * .42;
+                    const a = rot - Math.PI / 2 + i * Math.PI / 5;
+                    rugCtx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+                }
+                rugCtx.closePath();
+                rugCtx.fillStyle = '#ffd23c';
+                rugCtx.shadowColor = '#ffb800';
+                rugCtx.shadowBlur = 16;
+                rugCtx.lineWidth = 6;
+                rugCtx.strokeStyle = '#000';
+                rugCtx.stroke();
+                rugCtx.fill();
+            };
+            const rugBolt = (cx, cy, size, rot) => {
+                rugCtx.save();
+                rugCtx.translate(cx, cy);
+                rugCtx.rotate(rot);
+                rugCtx.scale(size, size);
+                rugCtx.beginPath();
+                [[.1, -1], [-.55, .1], [-.05, .1], [-.3, 1], [.55, -.25], [.05, -.25], [.4, -1]].forEach(([x, y]) => rugCtx.lineTo(x, y));
+                rugCtx.closePath();
+                rugCtx.restore();
+                rugCtx.fillStyle = '#fff04a';
+                rugCtx.shadowColor = '#00e5ff';
+                rugCtx.shadowBlur = 18;
+                rugCtx.lineWidth = 6;
+                rugCtx.strokeStyle = '#000';
+                rugCtx.stroke();
+                rugCtx.fill();
+            };
+            [[90, 70, 46, .2], [940, 90, 40, -.3], [60, 430, 42, .4], [960, 440, 50, -.2], [330, 60, 30, .1], [720, 450, 34, .3], [200, 465, 28, 0], [850, 50, 28, .5], [500, 470, 30, -.3]].forEach(s => rugStar(...s));
+            [[150, 200, 70, -.2], [880, 300, 75, .25], [880, 160, 55, .3], [150, 330, 58, .2]].forEach(b => rugBolt(...b));
+            rugCtx.save();
+            rugCtx.translate(512, 256);
+            rugCtx.rotate(-.06);
+            rugCtx.font = 'italic 900 120px "Impact", "Marker Felt", "Comic Sans MS", fantasy';
+            rugCtx.lineWidth = 20;
+            rugCtx.strokeStyle = '#000';
+            rugCtx.strokeText('Gryphon Agency', 0, 0);
+            rugCtx.shadowColor = '#ffb800';
+            rugCtx.shadowBlur = 22;
+            rugCtx.fillStyle = '#ffd23c';
+            rugCtx.fillText('Gryphon Agency', 0, 0);
+            rugCtx.shadowBlur = 0;
+            rugCtx.lineWidth = 3;
+            rugCtx.strokeStyle = '#fff2a8';
+            rugCtx.strokeText('Gryphon Agency', -3, -4);
+            rugCtx.restore();
+            const rugTexture = new THREE.CanvasTexture(rugCanvas);
+            rugTexture.colorSpace = THREE.SRGBColorSpace;
+            const rugText = new THREE.Mesh(            new THREE.PlaneGeometry(8, 4), new THREE.MeshBasicMaterial({ map: rugTexture, transparent: true }));
+            rugText.rotation.x = -Math.PI / 2;
+                        rugText.position.set(0, -2.82, 3.2);
+            machine.add(rugText);
+            const groundBody = new CANNON.Body({ mass: 0, material: tableMaterial });
+            groundBody.addShape(new CANNON.Box(new CANNON.Vec3(5, .07, 6)));
+            groundBody.position.set(0, -2.9, 4);
+            world.addBody(groundBody);
+
+            const chute = new THREE.Group();
+            chute.position.set(0, 7.8, dropPointZ);
+            const chuteWidth = 6.6;
+            const chuteHeight = 1;
+            const outletWidth = 1.5;
+            const outletGap = (chuteWidth - dropLanes.length * outletWidth) / (dropLanes.length + 1);
+            box(chute, [chuteWidth, chuteHeight, .1], [0, 0, .55], mats.steel);
+            box(chute, [chuteWidth, chuteHeight, .1], [0, 0, -.55], mats.steelDark);
+            box(chute, [.1, chuteHeight, 1.2], [-chuteWidth / 2, 0, 0], mats.steel);
+            box(chute, [.1, chuteHeight, 1.2], [chuteWidth / 2, 0, 0], mats.steel);
+            box(chute, [chuteWidth, .1, 1.2], [0, chuteHeight / 2, 0], mats.steel);
+            // Le fond est fermé entre les sorties, qui restent ouvertes
+            let gapStart = -chuteWidth / 2;
+            for (const lane of dropLanes) {
+                const outletStart = lane - outletWidth / 2;
+                if (outletStart > gapStart + .01) box(chute, [outletStart - gapStart, .1, 1.2], [(gapStart + outletStart) / 2, -chuteHeight / 2, 0], mats.steelDark);
+                gapStart = lane + outletWidth / 2;
+            }
+            if (chuteWidth / 2 > gapStart + .01) box(chute, [chuteWidth / 2 - gapStart, .1, 1.2],             [(gapStart + chuteWidth / 2) / 2, -chuteHeight / 2, 0], mats.steelDark);
+                        for (const lane of dropLanes) box(chute, [outletWidth, .06, .06], [lane, -chuteHeight / 2 - .05, .6], mats.neonCyan, { castShadow: false });
+            const chuteLabel = new THREE.Mesh(new THREE.PlaneGeometry(chuteWidth - .3, chuteHeight - .2), new THREE.MeshBasicMaterial({ map: canvasTexture(1320, 200, (ctx, width, height) => {
+                ctx.fillStyle = '#0a0a22';
+                ctx.fillRect(0, 0, width, height);
+                ctx.strokeStyle = '#ff2fd0';
+                ctx.lineWidth = 8;
+                ctx.strokeRect(8, 8, width - 16, height - 16);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '700 110px "Courier New", monospace';
+                ctx.fillStyle = '#9fd8ff';
+                ctx.shadowColor = '#4fb4ff';
+                ctx.shadowBlur = 16;
+                ctx.fillText('GRYPHON AGENCY', width / 2, height / 2 + 4);
+            }) }));
+            chuteLabel.position.set(0, 0, .606);
+            chute.add(chuteLabel);
             machine.add(chute);
-            const chuteLight = new THREE.PointLight('#ffce58', 1.1, 5);
-            chuteLight.position.set(0, 6.6, -1.25);
-            scene.add(chuteLight);
+            function randomDropLane() {
+                return dropLanes[Math.floor(Math.random() * dropLanes.length)];
+            }
 
-            const pusherMesh = box(machine, [7.62, .5, 1.15], [0, 2.03, -2.14], mats.steel);
+            const pusherMesh = box(machine, [7.62, .5, 1.15], [0, 1.68, pusherStart + pusherTravel], mats.steel);
             box(pusherMesh, [7.3, .12, .12], [0, .08, .57], mats.neonCyan, { castShadow: false });
+            const lipTopY = 1.66;
+            const lipHeight = lipTopY + .25;
+            const lipCenterY = (lipTopY - .25) / 2;
+            box(pusherMesh, [7.5, lipHeight, pusherLipHalfDepth * 2], [0, lipCenterY, pusherLipOffset], mats.steel);
+            box(pusherMesh, [7.48, .06, .14], [0, lipTopY, pusherLipOffset], mats.neonCyan, { castShadow: false });
+            const lipFace = new THREE.Mesh(new THREE.PlaneGeometry(6.6, .75), new THREE.MeshBasicMaterial({ map: canvasTexture(1100, 250, (ctx, width, height) => {
+                ctx.fillStyle = '#4a5560';
+                ctx.fillRect(0, 0, width, height);
+                ctx.strokeStyle = '#fff3c4';
+                ctx.shadowColor = '#ffd36a';
+                ctx.shadowBlur = 22;
+                ctx.lineWidth = 12;
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(60, 40);
+                ctx.lineTo(300, 40);
+                ctx.lineTo(380, 150);
+                ctx.lineTo(720, 150);
+                ctx.lineTo(800, 40);
+                ctx.lineTo(1040, 40);
+                ctx.stroke();
+            }) }));
+            lipFace.position.set(0, lipTopY - .45, pusherLipOffset + pusherLipHalfDepth + .005);
+            pusherMesh.add(lipFace);
+            for (const hingeX of [-3.62, 3.62]) {
+                const hinge = new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .3, 24), mats.steelDark);
+                hinge.rotation.z = Math.PI / 2;
+                hinge.position.set(hingeX, lipTopY - .5, pusherLipOffset + .2);
+                pusherMesh.add(hinge);
+            }
             const pusherBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, material: tableMaterial });
             pusherBody.addShape(new CANNON.Box(new CANNON.Vec3(3.81, .25, .575)));
-            pusherBody.position.set(0, 2.03, -2.14);
+            pusherBody.addShape(
+                new CANNON.Box(new CANNON.Vec3(3.75, lipHeight / 2, pusherLipHalfDepth)),
+                new CANNON.Vec3(0, lipCenterY, pusherLipOffset)
+            );
+            const pushBlockSize = [7.5, .6, .6];
+            const pushBlockPosition = [0, -.25 + pushBlockSize[1] / 2, pusherLipOffset + pusherLipHalfDepth + pushBlockSize[2] / 2];
+            box(pusherMesh, pushBlockSize, pushBlockPosition, mats.steel);
+            pusherBody.addShape(
+                new CANNON.Box(new CANNON.Vec3(pushBlockSize[0] / 2 - .05, pushBlockSize[1] / 2, pushBlockSize[2] / 2)),
+                new CANNON.Vec3(...pushBlockPosition)
+            );
+            pusherBody.position.set(0, 1.68, pusherStart + pusherTravel);
             world.addBody(pusherBody);
 
             const rearStopBody = new CANNON.Body({ mass: 0, material: tableMaterial });
@@ -412,20 +840,18 @@
             box(machine, [7.8, .9, .2], [0, 2.83, -2.9], mats.steelDark, { castShadow: false });
             box(machine, [7.72, .08, .12], [0, 3.3, -2.9], mats.neonPink, { castShadow: false });
 
+            const sideWallTopY = 1.95;
+            const sideWallBottomY = plateTopY;
+            const sideWallStartZ = plateStartZ;
+            const sideWallEndZ = flatPlateEndZ + .1;
             for (const x of [-3.93, 3.93]) {
                 const sideRail = new CANNON.Body({ mass: 0, material: tableMaterial });
-                sideRail.addShape(new CANNON.Box(new CANNON.Vec3(.12, .18, 3.7)));
-                sideRail.position.set(x, 1.55, -.42);
+                sideRail.addShape(new CANNON.Box(new CANNON.Vec3(.12, (sideWallTopY - sideWallBottomY) / 2, (sideWallEndZ - sideWallStartZ) / 2)));
+                sideRail.position.set(x, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2);
                 world.addBody(sideRail);
-                box(machine, [.23, .32, 7.45], [x, 1.61, -.42], mats.steel, { castShadow: false });
+                box(machine, [.23, sideWallTopY - sideWallBottomY, sideWallEndZ - sideWallStartZ], [x, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2], mats.steel, { castShadow: false });
+                box(machine, [.25, .05, sideWallEndZ - sideWallStartZ], [x, sideWallTopY + .02, (sideWallEndZ + sideWallStartZ) / 2], mats.neonCyan, { castShadow: false });
             }
-            for (const x of [-3.55, 3.55]) {
-                box(machine, [.48, 3.1, .48], [x, -1.15, 3.25], mats.steelDark);
-            }
-            box(machine, [8.1, .35, 1.1], [0, -.8, 3.4], mats.dark);
-            box(machine, [8.2, .12, .16], [0, -.57, 3.0], mats.neonPink, { castShadow: false });
-            box(machine, [8.1, .18, 1.1], [0, -2.7, 3.4], mats.steelDark);
-
             const coinTexture = canvasTexture(256, 256, (ctx, width, height) => {
                 const gradient = ctx.createRadialGradient(82, 72, 8, 128, 128, 124);
                 gradient.addColorStop(0, '#fff9bd');
@@ -457,9 +883,146 @@
                 ctx.closePath();
                 ctx.fill();
             });
+            const coinAvatarTextures = new Map();
+            function drawProfileBadge(ctx, x, y, radius, avatarDataUri, label) {
+                const drawFallback = () => {
+                    const gradient = ctx.createRadialGradient(x - radius * .2, y - radius * .3, 10, x, y, radius * 1.25);
+                    gradient.addColorStop(0, '#ffe7ff');
+                    gradient.addColorStop(.4, '#ff7ec9');
+                    gradient.addColorStop(1, '#5d1f7c');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+                    ctx.fillStyle = '#fff4c5';
+                    ctx.font = '700 100px "Trebuchet MS", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, x, y + 8);
+                };
+                if (avatarDataUri) {
+                    const image = new Image();
+                    image.crossOrigin = 'anonymous';
+                    image.onload = () => {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(x, y, radius, 0, Math.PI * 2);
+                        ctx.clip();
+                        ctx.drawImage(image, x - radius, y - radius, radius * 2, radius * 2);
+                        ctx.restore();
+                    };
+                    image.src = avatarDataUri;
+                    if (image.complete && image.naturalWidth) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(x, y, radius, 0, Math.PI * 2);
+                        ctx.clip();
+                        ctx.drawImage(image, x - radius, y - radius, radius * 2, radius * 2);
+                        ctx.restore();
+                    } else {
+                        drawFallback();
+                    }
+                } else {
+                    drawFallback();
+                }
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = '#fff0a6';
+                ctx.stroke();
+            }
+            function createCoinTextureWithAvatar(owner = null) {
+                const key = owner?.key || playerKey(owner?.username);
+                if (!coinAvatarTextures.has(key)) coinAvatarTextures.set(key, createCoinFaceTexture(owner));
+                return coinAvatarTextures.get(key);
+            }
+            function createCoinFaceTexture(owner = null) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                let texture = null;
+                const avatarImage = owner && typeof owner.avatarDataUri === 'string' && owner.avatarDataUri ? owner.avatarDataUri : '';
+                const radius = 236;
+                const drawFallback = () => {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(256, 256, radius, 0, Math.PI * 2);
+                    ctx.clip();
+                    const gradient = ctx.createRadialGradient(180, 150, 30, 256, 256, 340);
+                    gradient.addColorStop(0, '#ffe7ff');
+                    gradient.addColorStop(.42, '#ff62b7');
+                    gradient.addColorStop(1, '#512274');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(20, 20, 472, 472);
+                    ctx.fillStyle = '#fff7d1';
+                    ctx.font = '700 220px "Trebuchet MS", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(String(owner?.username || '•').trim().charAt(0).toUpperCase(), 256, 266);
+                    ctx.restore();
+                };
+                const drawAvatar = image => {
+                    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+                    const sourceX = (image.naturalWidth - sourceSize) / 2;
+                    const sourceY = (image.naturalHeight - sourceSize) / 2;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(256, 256, radius, 0, Math.PI * 2);
+                    ctx.clip();
+                    ctx.fillStyle = '#21132f';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 20, 20, 472, 472);
+                    ctx.restore();
+                };
+                const drawAvatarFrame = () => {
+                    ctx.beginPath();
+                    ctx.arc(256, 256, 246, 0, Math.PI * 2);
+                    ctx.lineWidth = 12;
+                    ctx.strokeStyle = '#9dfaff';
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(256, 256, 226, 0, Math.PI * 2);
+                    ctx.lineWidth = 5;
+                    ctx.strokeStyle = '#ff78c4';
+                    ctx.stroke();
+                };
+                ctx.fillStyle = '#21132f';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(256, 256, radius, 0, Math.PI * 2);
+                ctx.clip();
+                if (avatarImage) {
+                    const image = new Image();
+                    image.crossOrigin = 'anonymous';
+                    image.onload = () => {
+                        drawAvatar(image);
+                        drawAvatarFrame();
+                        if (texture) texture.needsUpdate = true;
+                    };
+                    image.onerror = () => {
+                        drawFallback();
+                        drawAvatarFrame();
+                        if (texture) texture.needsUpdate = true;
+                    };
+                    image.src = avatarImage;
+                    if (image.complete && image.naturalWidth) {
+                        drawAvatar(image);
+                    } else drawFallback();
+                } else {
+                    drawFallback();
+                }
+                ctx.restore();
+                drawAvatarFrame();
+                texture = new THREE.CanvasTexture(canvas);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                return texture;
+            }
             const coinMaterialThree = new THREE.MeshStandardMaterial({ map: coinTexture, color: '#ffe78a', metalness: .52, roughness: .34, side: THREE.DoubleSide });
-            const coinGeometry = new THREE.CylinderGeometry(.44, .44, .13, 32, 1);
-            const coinShape = new CANNON.Cylinder(.44, .44, .13, 20);
+            const coinScale = .9;
+            const coinGeometry = new THREE.CylinderGeometry(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 32, 1);
+            const coinShape = new CANNON.Cylinder(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 20);
+            const coinShapeOrientation = new CANNON.Quaternion();
+            coinShapeOrientation.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
             const TOTAL_GAME_TOKENS = 10000;
             const TOTAL_REWARD_CARDS = 1000;
             function createRewardDeck() {
@@ -502,22 +1065,107 @@
                 return true;
             }
             const coins = [];
+            const fallingRewardCards = [];
+            const pushableBodies = new WeakSet();
+            const lastPairPushAt = new WeakMap();
             let score = 0;
             let coinBalance = TOTAL_GAME_TOKENS;
             let tokensUsed = 0;
             let cardsRemaining = TOTAL_REWARD_CARDS;
             let autoDropActive = false;
             let autoDropInterval = 0;
+            let soundEnabled = true;
             let soundContext = null;
+            const gradualDropDelay = 250;
+            const dropHundredButton = document.getElementById('drop-hundred-button');
+            let gradualDropTimer = 0;
+            let gradualDropRun = 0;
             let liveSocket = null;
             let liveUsername = '';
             let currentDropPlayer = { username: 'Gryphon Agency', avatarDataUri: '' };
+            const playerStarTotals = new Map();
             let currentWinnerKey = '';
             const playersByName = new Map();
             let announcementTimer = 0;
             let lastCollisionSound = 0;
 
+            function removeCoinMesh(mesh) {
+                scene.remove(mesh);
+                const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                materials.forEach(material => material.dispose());
+            }
+
+            function removeRewardCardMesh(mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.map?.dispose();
+                mesh.material.dispose();
+            }
+
+            function registerPushableBody(body) {
+                pushableBodies.add(body);
+                body.addEventListener('collide', event => {
+                    const otherBody = event.body;
+                    if (!pushableBodies.has(otherBody)) return;
+                    const sourceBody = body.velocity.z > otherBody.velocity.z ? body : otherBody;
+                    const targetBody = sourceBody === body ? otherBody : body;
+                    const relativeForwardSpeed = sourceBody.velocity.z - targetBody.velocity.z;
+                    if (sourceBody.velocity.z < .1 || relativeForwardSpeed < .2) return;
+
+                    let bodyPairs = lastPairPushAt.get(body);
+                    if (!bodyPairs) {
+                        bodyPairs = new WeakMap();
+                        lastPairPushAt.set(body, bodyPairs);
+                    }
+                    let otherPairs = lastPairPushAt.get(otherBody);
+                    if (!otherPairs) {
+                        otherPairs = new WeakMap();
+                        lastPairPushAt.set(otherBody, otherPairs);
+                    }
+                    const now = performance.now();
+                    const lastPushAt = Math.max(bodyPairs.get(otherBody) || 0, otherPairs.get(body) || 0);
+                    if (now - lastPushAt < 40) return;
+                    bodyPairs.set(otherBody, now);
+                    otherPairs.set(body, now);
+
+                    const impulseStrength = Math.min(.5, sourceBody.mass * relativeForwardSpeed * .35);
+                    targetBody.wakeUp();
+                    targetBody.applyImpulse(
+                        new CANNON.Vec3(0, impulseStrength * .03, impulseStrength),
+                        new CANNON.Vec3(0, 0, 0)
+                    );
+                });
+            }
+
+            function collectCoin(coin) {
+                if (coin.collected) return;
+                coin.collected = true;
+                score += 1;
+                updateHud();
+                playTone(540, 1080, .42, 'sine', .14);
+            }
+
+            function collectRewardCard(rewardCard) {
+                if (rewardCard.resolved) return;
+                rewardCard.resolved = true;
+                const earned = Number.isFinite(rewardCard.card.stars) ? rewardCard.card.stars : 0;
+                score += earned;
+                const ownerKey = playerKey(rewardCard.player.username);
+                playerStarTotals.set(ownerKey, (playerStarTotals.get(ownerKey) || 0) + earned);
+                updateHud();
+                if (rewardCard.card.stars) playTone(620, rewardCard.card.stars >= 90 ? 1480 : 980, rewardCard.card.stars >= 90 ? .7 : .4, 'sine', rewardCard.card.stars >= 90 ? .2 : .12);
+            }
+
+            function returnUncollectedCard(rewardCard) {
+                if (rewardCard.resolved) return;
+                rewardCard.resolved = true;
+                rewardDeck.cards.push(rewardCard.card);
+                rewardDeck.cards.sort((first, second) => second.stars - first.stars);
+                updateHud();
+            }
+
             function playTone(frequency, endFrequency, duration, type = 'sine', volume = .12) {
+                if (!soundEnabled) return;
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContextClass) return;
                 soundContext ||= new AudioContextClass();
@@ -569,6 +1217,7 @@
                     document.querySelector(`[data-card-group="${group}"]`).textContent = count.toLocaleString('fr-FR');
                 }
                 tokensUsedDisplay.textContent = tokensUsed.toLocaleString('fr-FR');
+                coinsOnTableDisplay.textContent = coins.reduce((count, coin) => count + Number(!coin.collected), 0).toLocaleString('fr-FR');
             }
 
             function playerKey(username) {
@@ -580,10 +1229,14 @@
                 const key = playerKey(cleanUsername);
                 const player = playersByName.get(key) || { key, username: cleanUsername, avatarDataUri: '' };
                 player.username = cleanUsername;
-                if (typeof avatarDataUri === 'string' && avatarDataUri.startsWith('data:image/')) player.avatarDataUri = avatarDataUri;
+                if (typeof avatarDataUri === 'string' && /^(data:image\/|https?:\/\/)/i.test(avatarDataUri) && player.avatarDataUri !== avatarDataUri) {
+                    coinAvatarTextures.get(key)?.dispose();
+                    coinAvatarTextures.delete(key);
+                    player.avatarDataUri = avatarDataUri;
+                }
                 playersByName.set(key, player);
                 coins.forEach(coin => {
-                    if (coin.owner?.key === key) updateCoinOwnerTag(coin);
+                    if (coin.owner?.key === key) updateCoinAvatar(coin);
                 });
                 if (currentWinnerKey === key && player.avatarDataUri) {
                     const winnerAvatar = document.getElementById('winner-avatar');
@@ -594,54 +1247,39 @@
                 return player;
             }
 
-            function updateCoinOwnerTag(coin) {
-                if (!coin.ownerTag || !coin.owner) return;
-                const ownerName = String(coin.owner.username || 'Spectateur');
-                const image = coin.ownerTag.querySelector('img');
-                const fallback = coin.ownerTag.querySelector('i');
-                const name = coin.ownerTag.querySelector('span');
-                name.textContent = `@${ownerName}`;
-                if (coin.owner.avatarDataUri) {
-                    image.src = coin.owner.avatarDataUri;
-                    image.hidden = false;
-                    fallback.hidden = true;
-                } else {
-                    image.hidden = true;
-                    fallback.hidden = false;
-                    fallback.textContent = ownerName.slice(0, 1).toUpperCase();
+            function updateCoinAvatar(coin) {
+                if (!coin.owner || !coin.mesh.material[1]) return;
+                const texture = createCoinTextureWithAvatar(coin.owner);
+                for (const faceMaterial of coin.mesh.material.slice(1)) {
+                    faceMaterial.map = texture;
+                    faceMaterial.needsUpdate = true;
                 }
             }
 
-            function createCoinOwnerTag(coin) {
-                if (!coin.owner) return null;
-                const tag = document.createElement('div');
-                tag.className = 'coin-owner-tag';
-                tag.setAttribute('aria-hidden', 'true');
-                const avatar = document.createElement('img');
-                avatar.alt = '';
-                avatar.hidden = true;
-                const fallback = document.createElement('i');
-                const name = document.createElement('span');
-                tag.append(avatar, fallback, name);
-                document.body.append(tag);
-                coin.ownerTag = tag;
-                updateCoinOwnerTag(coin);
-                return tag;
-            }
-
             function createCoin(x, y, z, velocity = null, owner = null) {
-                const mesh = new THREE.Mesh(coinGeometry, coinMaterialThree);
+                const material = owner ? [
+                    new THREE.MeshStandardMaterial({ color: '#442354', metalness: .28, roughness: .46 }),
+                    ...Array.from({ length: 2 }, () => new THREE.MeshStandardMaterial({
+                        map: createCoinTextureWithAvatar(owner),
+                        color: '#ffffff',
+                        metalness: .08,
+                        roughness: .58,
+                        side: THREE.DoubleSide
+                    }))
+                ] : coinMaterialThree.clone();
+                const mesh = new THREE.Mesh(coinGeometry, material);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 mesh.position.set(x, y, z);
                 scene.add(mesh);
-                const body = new CANNON.Body({ mass: .72, material: coinMaterial, linearDamping: .2, angularDamping: .32, allowSleep: true, sleepTimeLimit: 1.4 });
-                body.addShape(coinShape);
+                const body = new CANNON.Body({ mass: .72, material: coinMaterial, linearDamping: .08, angularDamping: .25, allowSleep: true, sleepSpeedLimit: .08, sleepTimeLimit: 1.4 });
+                body.addShape(coinShape, new CANNON.Vec3(), coinShapeOrientation);
                 body.position.set(x, y, z);
                 if (velocity) {
                     body.velocity.set(velocity.x, velocity.y, velocity.z);
                     body.angularVelocity.set((Math.random() - .5) * 4, (Math.random() - .5) * 5, (Math.random() - .5) * 4);
                 }
+                registerPushableBody(body);
                 world.addBody(body);
                 body.addEventListener('collide', event => {
                     const impact = Math.abs(event.contact.getImpactVelocityAlongNormal());
@@ -651,25 +1289,14 @@
                         playTone(1100 + Math.random() * 600, 520, .045, 'triangle', .045);
                     }
                 });
-                const coin = { mesh, body, collected: false, owner, ownerTag: null };
-                if (owner) createCoinOwnerTag(coin);
+                const coin = { mesh, body, collected: false, owner };
+                body.addEventListener('collide', event => {
+                    if (event.body === groundBody) collectCoin(coin);
+                });
                 coins.push(coin);
             }
 
-            function seedCoins() {
-                for (let layer = 0; layer < 2; layer++) {
-                    for (let row = 0; row < 5; row++) {
-                        for (let column = 0; column < 8; column++) {
-                            const x = -3.08 + column * .88 + (Math.random() - .5) * .1 + layer * .08;
-                            const z = -.05 + row * .52 + (Math.random() - .5) * .08 - layer * .12;
-                            const y = 1.82 + layer * .16 + (column % 2) * .025;
-                            createCoin(x, y, z);
-                        }
-                    }
-                }
-            }
-
-            function dropCoin(owner = currentDropPlayer) {
+            function dropCoin(owner = currentDropPlayer, { sound = true, refreshHud = true, lane = null } = {}) {
                 if (!owner || typeof owner.username !== 'string') owner = currentDropPlayer;
                 if (coinBalance <= 0) {
                     status.hidden = false;
@@ -684,11 +1311,92 @@
                 }
                 coinBalance--;
                 tokensUsed++;
-                updateHud();
-                playTone(1320, 440, .09, 'sine', .12);
-                if (tokensUsed % 10 === 0) awardNextCard(owner || currentDropPlayer);
-                createCoin((Math.random() - .5) * .5, 6.15, pusherBody.position.z, { x: (Math.random() - .5) * .16, y: -1.5, z: 1.15 }, owner);
+                if (refreshHud) updateHud();
+                if (sound) playTone(1320, 440, .09, 'sine', .12);
+                if (tokensUsed % 10 === 0) {
+                    const rewardPlayer = owner || currentDropPlayer;
+                    if (rewardPlayer && rewardDeck.cards.length) awardNextCard(rewardPlayer, refreshHud);
+                }
+                createCoin(
+                    lane ?? randomDropLane(),
+                    7.8,
+                    dropPointZ,
+                    { x: (Math.random() - .5) * .16, y: -1.5, z: .8 },
+                    owner
+                );
+                if (refreshHud) updateHud();
                 return true;
+            }
+
+            function dropGiftCoins(owner, requestedCount) {
+                const dropCount = Math.min(requestedCount, coinBalance);
+                if (dropCount <= 0) return 0;
+                const firstLaneIndex = Math.floor(Math.random() * dropLanes.length);
+                for (let index = 0; index < dropCount; index++) {
+                    const lane = dropLanes[(firstLaneIndex + index) % dropLanes.length];
+                    if (!dropCoin(owner, { sound: false, refreshHud: false, lane })) break;
+                }
+                updateHud();
+                playTone(1320, 440, .12, 'sine', .16);
+                if (coinBalance <= 0 && autoDropActive) {
+                    autoDropActive = false;
+                    autoButton.setAttribute('aria-pressed', 'false');
+                    autoButton.textContent = 'Auto-drop : OFF';
+                    window.clearInterval(autoDropInterval);
+                }
+                return dropCount;
+            }
+
+            function dropGiftCoinsGradually(owner, requestedCount) {
+                const dropCount = Math.min(requestedCount, coinBalance);
+                if (dropCount <= 0) return 0;
+                const run = ++gradualDropRun;
+                const firstLaneIndex = Math.floor(Math.random() * dropLanes.length);
+                let launched = 0;
+                dropHundredButton.disabled = true;
+
+                const launchNextCoin = () => {
+                    gradualDropTimer = 0;
+                    if (run !== gradualDropRun) return;
+                    const lane = dropLanes[(firstLaneIndex + launched) % dropLanes.length];
+                    if (!dropCoin(owner, { sound: false, refreshHud: false, lane })) {
+                        dropHundredButton.disabled = false;
+                        return;
+                    }
+                    launched++;
+                    updateHud();
+                    if (launched >= dropCount) {
+                        dropHundredButton.disabled = false;
+                        playTone(1320, 440, .12, 'sine', .16);
+                        status.textContent = `${launched.toLocaleString('fr-FR')} pièces lâchées progressivement.`;
+                        return;
+                    }
+                    status.textContent = `Lâcher progressif : ${launched}/${dropCount} pièces.`;
+                    gradualDropTimer = window.setTimeout(launchNextCoin, gradualDropDelay);
+                };
+
+                status.hidden = false;
+                status.textContent = `${dropCount.toLocaleString('fr-FR')} pièces en cours de lâcher · une toutes les ${gradualDropDelay} ms.`;
+                launchNextCoin();
+                return dropCount;
+            }
+
+            function clearTableCoins() {
+                window.clearTimeout(gradualDropTimer);
+                gradualDropTimer = 0;
+                gradualDropRun++;
+                dropHundredButton.disabled = false;
+                const removedCount = coins.length;
+                for (const coin of coins) {
+                    world.removeBody(coin.body);
+                    scene.remove(coin.mesh);
+                }
+                coins.length = 0;
+                updateHud();
+                status.hidden = false;
+                status.textContent = removedCount
+                    ? `${removedCount.toLocaleString('fr-FR')} pièce${removedCount > 1 ? 's' : ''} retirée${removedCount > 1 ? 's' : ''} du plateau.`
+                    : 'Aucune pièce à retirer du plateau.';
             }
 
             function showConfetti() {
@@ -720,11 +1428,11 @@
                 currentWinnerKey = playerKey(player.username);
                 winnerCard.classList.toggle('mystery', Boolean(card?.mystery));
                 document.getElementById('winner-kicker').textContent = isStarCommand
-                    ? 'Commande étoile détectée'
+                    ? 'Total de tes étoiles'
                     : card?.mystery ? `Carte ${card.id} · mystère` : `Carte ${card?.id} tombée`;
                 name.textContent = `@${player.username}`;
                 prize.textContent = isStarCommand
-                    ? 'UNE PIÈCE LÂCHÉE'
+                    ? `${playerStarTotals.get(playerKey(player.username)) || 0} ⭐`
                     : card?.mystery ? 'CARTE MYSTÈRE · 0 ⭐' : `${card.stars} ⭐`;
                 if (player.avatarDataUri) {
                     avatar.src = player.avatarDataUri;
@@ -745,14 +1453,122 @@
                 if (!isStarCommand && !card?.mystery && card.stars >= 90 && card.stars <= 100) showConfetti();
             }
 
-            function awardNextCard(player) {
+            function createRewardCardTexture(player, card) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 1536;
+                const ctx = canvas.getContext('2d');
+                const glow = ctx.createRadialGradient(canvas.width / 2, 180, 40, canvas.width / 2, 180, 420);
+                glow.addColorStop(0, 'rgba(255,213,95,.85)');
+                glow.addColorStop(.3, 'rgba(255,125,206,.48)');
+                glow.addColorStop(1, 'rgba(255,125,206,0)');
+                ctx.fillStyle = '#0b0714';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = glow;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                const base = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                base.addColorStop(0, '#1b0e2a');
+                base.addColorStop(.22, '#31124e');
+                base.addColorStop(.72, '#120a18');
+                base.addColorStop(1, '#090510');
+                ctx.fillStyle = base;
+                ctx.fillRect(64, 64, canvas.width - 128, canvas.height - 128);
+                ctx.strokeStyle = 'rgba(255,214,109,.9)';
+                ctx.lineWidth = 18;
+                ctx.strokeRect(88, 88, canvas.width - 176, canvas.height - 176);
+                ctx.shadowColor = 'rgba(255,201,78,.8)';
+                ctx.shadowBlur = 30;
+                ctx.fillStyle = '#ff82d6';
+                ctx.fillRect(110, 110, canvas.width - 220, 110);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fffaf0';
+                ctx.font = '900 58px "Trebuchet MS", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('TIKTOK DELUXE', canvas.width / 2, 180);
+                ctx.fillStyle = '#ffe388';
+                ctx.font = '900 100px "Trebuchet MS", sans-serif';
+                ctx.fillText('PREMIUM', canvas.width / 2, 300);
+                const avatarImage = player && typeof player.avatarDataUri === 'string' && player.avatarDataUri ? player.avatarDataUri : '';
+                const fallback = String(player?.username || 'G').trim().charAt(0).toUpperCase() || 'G';
+                const avatarX = canvas.width / 2;
+                const avatarY = 650;
+                const avatarRadius = 190;
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+                ctx.clip();
+                if (avatarImage) {
+                    const avatar = new Image();
+                    avatar.crossOrigin = 'anonymous';
+                    avatar.onload = () => ctx.drawImage(avatar, avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+                    avatar.src = avatarImage;
+                    if (avatar.complete && avatar.naturalWidth) {
+                        ctx.drawImage(avatar, avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+                    }
+                } else {
+                    const avatarGradient = ctx.createRadialGradient(avatarX - 80, avatarY - 80, 20, avatarX, avatarY, avatarRadius * 1.5);
+                    avatarGradient.addColorStop(0, '#fff7d2');
+                    avatarGradient.addColorStop(.34, '#ff9ad4');
+                    avatarGradient.addColorStop(1, '#6f2b97');
+                    ctx.fillStyle = avatarGradient;
+                    ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '900 170px "Trebuchet MS", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(fallback, avatarX, avatarY + 48);
+                }
+                ctx.restore();
+                ctx.beginPath();
+                ctx.arc(avatarX, avatarY, avatarRadius + 10, 0, Math.PI * 2);
+                ctx.lineWidth = 18;
+                ctx.strokeStyle = '#ffd965';
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.font = '900 72px "Trebuchet MS", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`@${String(player?.username || 'gagnant')}`, canvas.width / 2, 980);
+                const rewardLabel = card && !card.mystery ? `${card.stars} ⭐` : 'MYSTÈRE';
+                ctx.fillStyle = '#ffe388';
+                ctx.font = '900 150px "Trebuchet MS", sans-serif';
+                ctx.fillText(rewardLabel, canvas.width / 2, 1180);
+                ctx.fillStyle = '#8fe9ff';
+                ctx.font = '700 42px "Trebuchet MS", sans-serif';
+                ctx.fillText('Carte gagnée • Premium reward', canvas.width / 2, 1290);
+                ctx.fillStyle = '#fde4a0';
+                ctx.fillRect(150, 1340, canvas.width - 300, 8);
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                return texture;
+            }
+            function spawnRewardCard(player, card) {
+                if (!player || !card) return;
+                const texture = createRewardCardTexture(player, card);
+                const material = new THREE.MeshStandardMaterial({ map: texture, emissive: '#220d30', emissiveIntensity: .4, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, .06), material);
+                mesh.position.set(randomDropLane(), 7.8, dropPointZ);
+                scene.add(mesh);
+                const body = new CANNON.Body({ mass: .7, material: cardMaterial, linearDamping: .05, angularDamping: .16 });
+                body.addShape(new CANNON.Box(new CANNON.Vec3(.6, .85, .03)));
+                body.position.copy(mesh.position);
+                body.velocity.set(0, -3.6, .8);
+                body.angularVelocity.set((Math.random() - .5) * 2, 0, 0);
+                body.fixedRewardX = mesh.position.x;
+                registerPushableBody(body);
+                world.addBody(body);
+                const rewardCard = { mesh, body, player, card, resolved: false };
+                body.addEventListener('collide', event => {
+                    if (event.body === groundBody) collectRewardCard(rewardCard);
+                });
+                fallingRewardCards.push(rewardCard);
+                return rewardCard;
+            }
+            function awardNextCard(player, refreshHud = true) {
                 if (!rewardDeck.cards.length) return;
                 const card = rewardDeck.cards.pop();
                 cardsRemaining--;
-                score += card.stars;
-                updateHud();
-                showWinnerBanner(player, card);
-                if (card.stars) playTone(620, card.stars >= 90 ? 1480 : 980, card.stars >= 90 ? .7 : .4, 'sine', card.stars >= 90 ? .2 : .12);
+                if (refreshHud) updateHud();
+                spawnRewardCard(player, card);
+                return card;
             }
 
             function setLiveStatus(message, state = '') {
@@ -779,7 +1595,8 @@
                     if (/^(?:!\s*)?(?:étoile|etoile|⭐)$/iu.test(comment)) {
                         const player = rememberPlayer(commentData.username || commentData.uniqueId || 'Spectateur', commentData.avatarDataUri || '');
                         currentDropPlayer = player;
-                        if (dropCoin(player)) showWinnerBanner(player, null, true);
+                        dropCoin(player);
+                        showWinnerBanner(player, null, true);
                     }
                     return;
                 }
@@ -790,8 +1607,7 @@
                 if (!Number.isFinite(coinCount) || coinCount < 1) return;
                 const player = rememberPlayer(username, gift.avatarDataUri || '');
                 currentDropPlayer = player;
-                const drops = Math.min(20, coinCount);
-                for (let index = 0; index < drops; index++) window.setTimeout(() => dropCoin(player), index * 115);
+                const drops = dropGiftCoins(player, coinCount);
                 setLiveStatus(`@${username} · cadeau reçu · ${drops} pièce${drops === 1 ? '' : 's'} lâchée${drops === 1 ? '' : 's'}.`, 'online');
             }
 
@@ -832,10 +1648,78 @@
             }
             renderer.domElement.addEventListener('pointerdown', onPointerDown);
             dropButton.addEventListener('click', () => dropCoin());
+            dropHundredButton.addEventListener('click', () => {
+                const dropped = dropGiftCoinsGradually(currentDropPlayer, 100);
+                status.hidden = false;
+                status.textContent = dropped
+                    ? `${dropped.toLocaleString('fr-FR')} pièces en cours de lâcher · une toutes les ${gradualDropDelay} ms.`
+                    : 'Aucun jeton disponible.';
+            });
+            const soundToggle = document.getElementById('sound-toggle');
+            function updateSoundToggle() {
+                soundToggle.setAttribute('aria-pressed', String(!soundEnabled));
+                soundToggle.setAttribute('aria-label', soundEnabled ? 'Couper les effets sonores' : 'Activer les effets sonores');
+                soundToggle.title = soundEnabled ? 'Couper les effets sonores' : 'Activer les effets sonores';
+                soundToggle.querySelector('span').innerHTML = soundEnabled ? '&#128266;' : '&#128263;';
+            }
+            soundToggle.addEventListener('click', () => {
+                soundEnabled = !soundEnabled;
+                updateSoundToggle();
+            });
+            updateSoundToggle();
+            document.getElementById('clear-coins-button').addEventListener('click', clearTableCoins);
+            let backgroundVideoUrl = null;
+            document.getElementById('background-video-input').addEventListener('change', event => {
+                const file = event.target.files[0];
+                event.target.value = '';
+                if (!file || !file.type.startsWith('video/')) return;
+                if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+                backgroundVideoUrl = URL.createObjectURL(file);
+                const video = document.getElementById('background-video');
+                video.src = backgroundVideoUrl;
+                video.hidden = false;
+                video.play().catch(() => {});
+            });
+            document.querySelectorAll('[data-video-screen]').forEach(input => {
+                input.addEventListener('change', () => {
+                    setVideoScreen(input.dataset.videoScreen, input.files[0]);
+                    input.value = '';
+                });
+            });
+            const panelTogglePairs = [
+                { button: document.getElementById('control-panel-visibility'), content: document.getElementById('control-panel-content'), label: 'les commandes' },
+                { button: document.getElementById('card-manager-visibility'), content: document.getElementById('card-manager-content'), label: 'le stock de récompenses' }
+            ];
+            function setPanelContentExpanded(pair, expanded) {
+                pair.content.hidden = !expanded;
+                pair.button.setAttribute('aria-expanded', String(expanded));
+                pair.button.setAttribute('aria-label', `${expanded ? 'Masquer' : 'Afficher'} ${pair.label}`);
+                pair.button.title = `${expanded ? 'Masquer' : 'Afficher'} ${pair.label}`;
+            }
+            for (const pair of panelTogglePairs) {
+                pair.button.addEventListener('click', () => {
+                    setPanelContentExpanded(pair, pair.content.hidden);
+                });
+            }
+            document.addEventListener('keydown', event => {
+                if (event.key !== 'F2') return;
+                event.preventDefault();
+                const expand = panelTogglePairs.some(pair => pair.content.hidden);
+                panelTogglePairs.forEach(pair => setPanelContentExpanded(pair, expand));
+            });
             const connectLiveButton = document.getElementById('connect-live');
+            const dropCardButton = document.getElementById('drop-card-button');
             connectLiveButton.addEventListener('click', connectLive);
             document.getElementById('live-username').addEventListener('keydown', event => {
                 if (event.key === 'Enter') connectLive();
+            });
+            dropCardButton.addEventListener('click', () => {
+                if (!rewardDeck.cards.length) {
+                    status.hidden = false;
+                    status.textContent = 'Aucune carte restante dans le deck premium.';
+                    return;
+                }
+                awardNextCard(currentDropPlayer);
             });
             autoButton.addEventListener('click', () => {
                 autoDropActive = !autoDropActive;
@@ -847,9 +1731,65 @@
 
             const cardManager = document.getElementById('card-manager');
             const cardManagerHandle = document.getElementById('card-manager-handle');
+            function makePanelDraggable(panel, handle, storageKey) {
+                const clampPanel = () => {
+                    const rect = panel.getBoundingClientRect();
+                    panel.style.left = `${Math.max(8, Math.min(innerWidth - rect.width - 8, rect.left))}px`;
+                    panel.style.top = `${Math.max(8, Math.min(innerHeight - rect.height - 8, rect.top))}px`;
+                    panel.style.right = 'auto';
+                    panel.style.bottom = 'auto';
+                    panel.style.transform = 'none';
+                };
+                try {
+                    const savedPosition = JSON.parse(localStorage.getItem(storageKey) || 'null');
+                    if (Number.isFinite(savedPosition?.left) && Number.isFinite(savedPosition?.top)) {
+                        panel.style.left = `${savedPosition.left}px`;
+                        panel.style.top = `${savedPosition.top}px`;
+                        panel.style.right = 'auto';
+                        panel.style.bottom = 'auto';
+                        panel.style.transform = 'none';
+                        clampPanel();
+                    }
+                } catch (error) {}
+                let drag = null;
+                handle.addEventListener('pointerdown', event => {
+                    if (event.button !== 0 && event.pointerType === 'mouse') return;
+                    if (event.target.closest('button, input, a')) return;
+                    const rect = panel.getBoundingClientRect();
+                    panel.style.left = `${rect.left}px`;
+                    panel.style.top = `${rect.top}px`;
+                    panel.style.right = 'auto';
+                    panel.style.bottom = 'auto';
+                    panel.style.transform = 'none';
+                    drag = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+                    panel.classList.add('dragging');
+                    handle.setPointerCapture(event.pointerId);
+                    event.preventDefault();
+                });
+                handle.addEventListener('pointermove', event => {
+                    if (!drag) return;
+                    const rect = panel.getBoundingClientRect();
+                    panel.style.left = `${Math.max(8, Math.min(innerWidth - rect.width - 8, event.clientX - drag.offsetX))}px`;
+                    panel.style.top = `${Math.max(8, Math.min(innerHeight - rect.height - 8, event.clientY - drag.offsetY))}px`;
+                });
+                const endDrag = () => {
+                    if (!drag) return;
+                    drag = null;
+                    panel.classList.remove('dragging');
+                    const rect = panel.getBoundingClientRect();
+                    try { localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top })); }
+                    catch (error) {}
+                };
+                handle.addEventListener('pointerup', endDrag);
+                handle.addEventListener('pointercancel', endDrag);
+                window.addEventListener('resize', clampPanel);
+            }
+            makePanelDraggable(document.getElementById('stats-panel'), document.getElementById('stats-panel-handle'), 'astra-push-stats-position');
+            makePanelDraggable(document.getElementById('control-panel'), document.getElementById('control-panel-handle'), 'astra-push-control-position');
             let cardManagerDrag = null;
             cardManagerHandle.addEventListener('pointerdown', event => {
                 if (event.button !== 0 && event.pointerType === 'mouse') return;
+                if (event.target.closest('button, input, a')) return;
                 const rect = cardManager.getBoundingClientRect();
                 cardManager.style.left = `${rect.left}px`;
                 cardManager.style.top = `${rect.top}px`;
@@ -878,24 +1818,40 @@
                 if (event.key === 'Enter') applyCardStock(event.currentTarget.value);
             });
 
-            for (let row = 0; row < 5; row++) {
-                const trim = box(machine, [7.72, .035, .025], [0, 1.51 + row * .01, -.03 + row * .34], mats.neonCyan, { castShadow: false });
-                trim.material = row % 2 ? mats.neonPink : mats.neonCyan;
-            }
-            seedCoins();
             updateHud();
 
             const clock = new THREE.Clock();
             let elapsed = 0;
             let accumulator = 0;
             const fixedStep = 1 / 60;
-            const pusherStart = -2.1;
-            const pusherTravel = 1.25;
-            let previousPusherZ = pusherStart;
+            let previousPusherZ = pusherStart + pusherTravel;
+            function seedTable() {
+                const tints = ['#d28a5a', '#e2e6ee', '#d28a5a', '#c9ced8'];
+                let count = 0;
+                for (let layer = 0; layer < 3; layer++) {
+                    for (let row = 0; row < 3; row++) {
+                        for (let col = 0; col < 7; col++) {
+                            const x = -3 + col + (layer % 2) * .35 + (Math.random() - .5) * .1;
+                            const z = .75 + row * .95 + (layer % 2) * .3;
+                            createCoin(x, 1.62 + layer * .2, z);
+                            coins[coins.length - 1].mesh.material.color.set(tints[count++ % tints.length]);
+                        }
+                    }
+                }
+            }
+            seedTable();
+            updateHud();
+
+            if (bloomReady()) {
+                composer = new THREE.EffectComposer(renderer);
+                composer.addPass(new THREE.RenderPass(scene, camera));
+                composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .12, .35, .98));
+            }
 
             function resize() {
                 fitCamera();
                 renderer.setSize(innerWidth, innerHeight);
+                if (composer) composer.setSize(innerWidth, innerHeight);
             }
             window.addEventListener('resize', resize);
 
@@ -903,8 +1859,9 @@
                 requestAnimationFrame(animate);
                 const delta = Math.min(clock.getDelta(), .04);
                 elapsed += delta;
+                drawGalaxy(elapsed);
                 accumulator += delta;
-                const phase = (Math.sin(elapsed * 1.55) + 1) * .5;
+                const phase = (Math.cos(elapsed * 2.3) + 1) * .5;
                 const pusherZ = pusherStart + phase * pusherTravel;
                 pusherBody.position.z = pusherZ;
                 pusherBody.velocity.z = (pusherZ - previousPusherZ) / Math.max(delta, .001);
@@ -918,37 +1875,43 @@
                     const coin = coins[index];
                     coin.mesh.position.copy(coin.body.position);
                     coin.mesh.quaternion.copy(coin.body.quaternion);
-                    if (coin.ownerTag) {
-                        const inFlight = coin.body.position.y > 2.45 || Math.abs(coin.body.velocity.y) > .8;
-                        if (!inFlight) {
-                            coin.ownerTag.hidden = true;
-                        } else {
-                            const projected = new THREE.Vector3(coin.body.position.x, coin.body.position.y + .58, coin.body.position.z).project(camera);
-                            const screenX = (projected.x * .5 + .5) * innerWidth;
-                            const screenY = (-projected.y * .5 + .5) * innerHeight;
-                            coin.ownerTag.style.left = `${screenX}px`;
-                            coin.ownerTag.style.top = `${screenY}px`;
-                            coin.ownerTag.style.transform = 'translate(-50%, -50%)';
-                            coin.ownerTag.hidden = projected.z > 1 || screenX < 0 || screenX > innerWidth || screenY < 0 || screenY > innerHeight;
-                        }
-                    }
-                    if (!coin.collected && coin.body.position.z > 3.35 && coin.body.position.y < 1.25) {
-                        coin.collected = true;
-                        score += 1;
+                    if (coin.collected) {
+                        world.removeBody(coin.body);
+                        removeCoinMesh(coin.mesh);
+                        coins.splice(index, 1);
+                    } else if (coin.body.position.y < -4 || Math.abs(coin.body.position.x) > 4.1 || coin.body.position.z < rearEdgeZ - .3) {
+                        removeCoinMesh(coin.mesh);
+                        world.removeBody(coin.body);
+                        coins.splice(index, 1);
                         updateHud();
-                        playTone(540, 1080, .42, 'sine', .14);
-                        scene.remove(coin.mesh);
-                        world.removeBody(coin.body);
-                        coin.ownerTag?.remove();
-                        coins.splice(index, 1);
-                    } else if (coin.body.position.y < -4 || Math.abs(coin.body.position.x) > 7) {
-                        scene.remove(coin.mesh);
-                        world.removeBody(coin.body);
-                        coin.ownerTag?.remove();
-                        coins.splice(index, 1);
                     }
                 }
-                renderer.render(scene, camera);
+                for (let index = fallingRewardCards.length - 1; index >= 0; index--) {
+                    const rewardCard = fallingRewardCards[index];
+                    // La carte ne peut avancer que vers le joueur : pas de dérive latérale ni de rotation en lacet/roulis.
+                    rewardCard.body.position.x = rewardCard.body.fixedRewardX;
+                    rewardCard.body.velocity.x = 0;
+                    rewardCard.body.angularVelocity.y = 0;
+                    rewardCard.body.angularVelocity.z = 0;
+                    const cardMinZ = pusherZ + pusherLipOffset + pusherLipHalfDepth + .05;
+                    if (rewardCard.body.position.z < cardMinZ) {
+                        rewardCard.body.position.z = cardMinZ;
+                        rewardCard.body.velocity.z = Math.max(rewardCard.body.velocity.z, pusherBody.velocity.z);
+                    }
+                    rewardCard.mesh.position.copy(rewardCard.body.position);
+                    rewardCard.mesh.quaternion.copy(rewardCard.body.quaternion);
+                    if (rewardCard.resolved) {
+                        world.removeBody(rewardCard.body);
+                        removeRewardCardMesh(rewardCard.mesh);
+                        fallingRewardCards.splice(index, 1);
+                    } else if (rewardCard.body.position.y < -4 || Math.abs(rewardCard.body.position.x) > 4.1 || rewardCard.body.position.z < rearEdgeZ - .3) {
+                        returnUncollectedCard(rewardCard);
+                        removeRewardCardMesh(rewardCard.mesh);
+                        world.removeBody(rewardCard.body);
+                        fallingRewardCards.splice(index, 1);
+                    }
+                }
+                if (composer) composer.render(); else renderer.render(scene, camera);
             }
             animate();
         })();

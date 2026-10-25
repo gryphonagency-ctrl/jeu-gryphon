@@ -328,6 +328,7 @@
       </div>
     </header>
 
+    <nav class="floating-tools-dock" aria-label="Panneau de contrôle">
           <button class="button edit-layout-button" id="editFloatingPanelsButton" type="button" aria-pressed="false" aria-label="Activer le déplacement et le redimensionnement des panneaux" title="Déplacer un panneau par son en-tête et le redimensionner par le coin">✎</button>
           <button class="button" id="toggleQuickActionsPanelButton" type="button" aria-controls="quickActionsOverlay" aria-expanded="true">Direct</button>
           <button class="button" id="toggleVideoPanelButton" type="button" aria-controls="videoControlsPanel" aria-expanded="false">Vidéos</button>
@@ -335,8 +336,10 @@
           <button class="button" id="toggleReservePanelButton" type="button" aria-controls="reserveControlsPanel" aria-expanded="false">Réserve</button>
           <button class="button" id="toggleWheelPanelButton" type="button" aria-controls="wheelControlsPanel" aria-expanded="false">Roue</button>
           <button class="button" id="togglePendingPlayersPanelButton" type="button" aria-controls="pendingPlayersPanel" aria-expanded="false">Joueurs</button>
+          <button class="button" id="drop100CoinsButton" type="button" title="Lâcher 100 pièces avec le pseudo et l’avatar de la commande de simulation">100 pièces</button>
+          <button class="button" id="effectsMuteButton" type="button" aria-pressed="false">Son actif</button>
         </nav>
-      </div>
+    <section class="scorebar" aria-label="Scores de la partie">
       <div class="score"><span>Cartes gagnées</span><strong id="totalCards">0</strong></div>
       <div class="score"><span>Pièces générées</span><strong id="totalCoins">0</strong></div>
       <span id="circuitCoins" hidden>0</span>
@@ -676,6 +679,7 @@
             ),
             pusherTravelScale: 100,
             dropSpeed: bounded(savedControls.dropSpeed, 1, .4, 3),
+            effectsMuted: savedControls.effectsMuted !== false,
             rankingPosition: savedControls.rankingPosition && Number.isFinite(savedControls.rankingPosition.x) && Number.isFinite(savedControls.rankingPosition.y)
               ? { x: savedControls.rankingPosition.x, y: savedControls.rankingPosition.y }
               : null,
@@ -732,7 +736,7 @@
           cards: DEFAULT_CARDS.map(card => ({ ...card, remaining: card.stock })),
           circuitCoins: 0, totalCoins: 0, giftEvents: 0, rtp: 20, rtpEnabled: true, agencyName: '', profileAvatarUrl: '',
           controls: {
-            zoom: 1, pusherSpeed: 1, pusherTravel: DEFAULT_PUSHER_TRAVEL, pusherTravelScale: 100, dropSpeed: 1, rankingPosition: null,
+            zoom: 1, pusherSpeed: 1, pusherTravel: DEFAULT_PUSHER_TRAVEL, pusherTravelScale: 100, dropSpeed: 1, effectsMuted: true, rankingPosition: null,
             quickActions: { x: null, y: null, width: 290, height: 532, pinned: false, visible: true },
             videoPanel: { x: null, y: null, width: 320, height: 350, visible: true },
             pusherPanel: { x: null, y: null, width: 330, height: 410, visible: false },
@@ -2134,6 +2138,15 @@
       return requested;
     }
 
+    function clearCoinTable() {
+      queuedCoinDrops.length = 0;
+      queuedCoinDropsByPlayer.clear();
+      pendingPlayerDrops.clear();
+      nextCoinDropAt = 0;
+      for (const coin of coins.splice(0)) MatterComposite.remove(physicsEngine.world, coin.body);
+      updatePendingPlayerDrops();
+    }
+
     function launchQueuedCoinDrop(timestamp) {
       if (!queuedCoinDrops.length || timestamp < nextCoinDropAt) return;
       const airborneCount = coins.filter(coin => coin.airborne).length;
@@ -2504,16 +2517,33 @@
     document.getElementById('tiktokUsername').addEventListener('keydown', event => {
       if (event.key === 'Enter') document.getElementById('connectButton').click();
     });
-    document.getElementById('demoButton').addEventListener('click', () => {
+    function triggerDemoCoinDrop(requestedCount = null) {
       const username = document.getElementById('demoUsername').value;
-      const count = Number(document.getElementById('demoCount').value);
+      const count = requestedCount ?? Number(document.getElementById('demoCount').value);
       if (!Number.isSafeInteger(count) || count < 1 || count > 1000) {
         showToast('Indique une quantité entre 1 et 1 000 pièces.');
         return;
       }
       const avatar = selectedProfileAvatar || activeViewers.get(normalizedName(username))?.avatar || '';
       enqueueGift(username, count, avatar);
+    }
+    document.getElementById('demoButton').addEventListener('click', () => triggerDemoCoinDrop());
+    document.getElementById('drop100CoinsButton').addEventListener('click', () => triggerDemoCoinDrop(100));
+    const effectsMuteButton = document.getElementById('effectsMuteButton');
+    function updateEffectsMuteButton() {
+      effectsMuteButton.textContent = state.controls.effectsMuted ? 'Son coupé' : 'Son actif';
+      effectsMuteButton.setAttribute('aria-pressed', String(state.controls.effectsMuted));
+      effectsMuteButton.setAttribute('aria-label', state.controls.effectsMuted ? 'Activer les effets sonores' : 'Couper les effets sonores');
+      effectsMuteButton.title = state.controls.effectsMuted ? 'Activer les effets sonores' : 'Couper les effets sonores';
+      document.querySelectorAll('audio').forEach(audio => { audio.muted = state.controls.effectsMuted; });
+      for (const video of videoLayers.values()) video.muted = state.controls.effectsMuted;
+    }
+    effectsMuteButton.addEventListener('click', () => {
+      state.controls.effectsMuted = !state.controls.effectsMuted;
+      updateEffectsMuteButton();
+      saveGame();
     });
+    updateEffectsMuteButton();
     document.getElementById('demoAvatarFile').addEventListener('change', event => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -2666,12 +2696,14 @@
         card.stock = updatedStocks[index];
         card.remaining = updatedStocks[index];
       });
+      clearCoinTable();
       state.circuitCoins = 0;
       render();
       saveGame();
       showToast('Lots enregistrés · nouveau circuit prêt.');
     });
     document.getElementById('resetCircuit').addEventListener('click', () => {
+      clearCoinTable();
       state.circuitCoins = 0;
       state.cards.forEach(card => { card.remaining = card.stock; });
       render();
@@ -2761,7 +2793,7 @@
       const url = URL.createObjectURL(file);
       const video = document.createElement('video');
       video.className = 'video-layer';
-      video.muted = true;
+      video.muted = state.controls.effectsMuted;
       video.loop = true;
       video.playsInline = true;
       video.preload = 'auto';

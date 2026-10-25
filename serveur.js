@@ -31,6 +31,7 @@ const footballFile = path.join(__dirname, 'jeu-foot-tiktok.html');
 const starsGameFile = path.join(__dirname, 'qui-veut-gagner-des-etoiles.html');
 const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
+const astraPush3dFile = path.join(__dirname, 'coin-pusher-3d-preview.html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
@@ -58,6 +59,7 @@ const protectedRoutes = new Set([
     '/inedexd.html',
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
+    '/coin-pusher-3d-preview.html',
     '/aquarium-tiktok-live.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
@@ -78,6 +80,7 @@ const staticGameIds = [
     '/plinko.html',
     '/aquarium-tiktok-live.html',
     '/coin-pusher-tiktok.html',
+    '/coin-pusher-3d-preview.html',
     '/jeu-foot-tiktok.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/petits-chevaux-tiktok.html',
@@ -88,12 +91,14 @@ const staticGameIds = [
 ];
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
+store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
     '/plinko.html': 'Gryphon Plinko',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
+    '/coin-pusher-3d-preview.html': 'Astra Push 3D',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
     '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
@@ -109,6 +114,7 @@ const gameRouteIds = new Map([
     ['/plinko.html', '/plinko.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
+    ['/coin-pusher-3d-preview.html', '/coin-pusher-3d-preview.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
     ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
@@ -1774,6 +1780,7 @@ const server = http.createServer((req, res) => {
         ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
+        ['/coin-pusher-3d-preview.html', [astraPush3dFile, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
@@ -1789,6 +1796,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
+        ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/wish-lab.png', [path.join(__dirname, 'images-vitrine', 'wish-lab.png'), 'image/png']],
         ['/images-vitrine/coup-de-pied.png', [path.join(__dirname, 'images-vitrine', 'coup-de-pied.png'), 'image/png']],
         ['/images-vitrine/coffres.png', [path.join(__dirname, 'images-vitrine', 'coffres.png'), 'image/png']],
