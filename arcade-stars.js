@@ -159,6 +159,54 @@
     window.addEventListener('online', flushPending);
     window.addEventListener('DOMContentLoaded', () => window.setTimeout(flushPending, 2000));
 
+    // Admin : envoie au portefeuille serveur les étoiles déjà gagnées et gardées dans ce navigateur (sans double comptage).
+    let collecting = false;
+    async function autoCollectLocalStars() {
+        if (collecting || readJson(PENDING_KEY, []).length) return;
+        collecting = true;
+        try {
+            const found = new Map();
+            const add = (gameId, name, stars) => {
+                const handle = String(name || '').trim().replace(/^@/, '').toLowerCase();
+                const value = Math.floor(Number(stars) || 0);
+                if (!/^[a-z0-9._]{1,32}$/.test(handle) || value < 1) return;
+                found.set(`${gameId}|${handle}`, { gameId, username: handle, local: value });
+            };
+            for (const [key, viewer] of Object.entries(readJson('cw-viewers', {}))) add('/roue-du-cirque.html', viewer?.name || key, viewer?.stars);
+            for (const [key, viewer] of Object.entries(readJson('aprendre-viewers', {}))) add('/a-prendre-ou-a-laisser.html', viewer?.name || viewer?.username || key, viewer?.stars);
+            for (const [storageKey, gameId] of [['peluches-mutantes-save', '/peluches-mutantes.html'], ['bouteilles-colorees-save', '/bouteilles-colorees.html']]) {
+                for (const viewer of (readJson(storageKey, {}).viewers || [])) add(gameId, viewer?.username, viewer?.stars);
+            }
+            const sent = readJson(SENT_KEY, {});
+            const entries = [];
+            for (const [key, item] of found) {
+                const amount = item.local - Math.floor(sent[key] || 0);
+                if (amount >= 1) entries.push({ key, amount, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
+            }
+            if (!entries.length) return;
+            const response = await fetch('/api/admin/stars-collect', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entries: entries.map(({ key, ...rest }) => rest) })
+            });
+            if (!response.ok) return;
+            const result = await response.json();
+            const latest = readJson(SENT_KEY, {});
+            entries.forEach((entry, index) => {
+                if (result.results?.[index]) latest[entry.key] = (latest[entry.key] || 0) + entry.amount;
+            });
+            writeJson(SENT_KEY, latest);
+            if (typeof refreshOwedTotal === 'function') refreshOwedTotal();
+        } catch {
+            // Réessai au prochain passage.
+        } finally {
+            collecting = false;
+        }
+    }
+    window.addEventListener('DOMContentLoaded', () => window.setTimeout(autoCollectLocalStars, 4000));
+    window.setInterval(autoCollectLocalStars, 60000);
+
     window.ArcadeStars = Object.freeze({
         record,
         async getBalance(player) {

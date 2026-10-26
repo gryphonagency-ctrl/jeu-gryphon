@@ -231,6 +231,21 @@ function upsertTikTokPlayer(profile) {
         const playerKey = profile.userId
             ? `id:${profile.userId}`
             : `handle:${profile.uniqueId.toLowerCase()}`;
+        // Un joueur créé par pseudo (étoiles récupérées des jeux) est fusionné quand son vrai profil TikTok apparaît.
+        const handleKey = profile.uniqueId ? `handle:${profile.uniqueId.toLowerCase()}` : '';
+        if (profile.userId && handleKey && store.tiktokPlayers[handleKey]) {
+            const legacy = store.tiktokPlayers[handleKey];
+            const target = store.tiktokPlayers[playerKey] || { ...legacy, id: playerKey, stars: 0 };
+            target.stars = (Number(target.stars) || 0) + (Number(legacy.stars) || 0);
+            store.tiktokPlayers[playerKey] = target;
+            for (const transaction of Object.values(store.tiktokStarTransactions || {})) {
+                if (transaction.playerId === handleKey) transaction.playerId = playerKey;
+            }
+            delete store.tiktokPlayers[handleKey];
+            for (const [alias, key] of Object.entries(store.tiktokPlayerAliases || {})) {
+                if (key === handleKey) store.tiktokPlayerAliases[alias] = playerKey;
+            }
+        }
         const existing = store.tiktokPlayers[playerKey] || {
             id: playerKey,
             stars: 0,

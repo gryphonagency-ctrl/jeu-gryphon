@@ -891,6 +891,23 @@ const server = http.createServer((req, res) => {
                 session.seenPlayerIds?.has(player.id) &&
                 [...session.clients].some(client =>
                     authenticatedClientUsernames.get(client)?.toLowerCase() === accountName));
+            if (!appearedOnOwnerLive && access.isAdmin(req)) {
+                const credit = store.creditBrowserStars({
+                    username: body.username || body.playerId,
+                    amount,
+                    gameId: canonicalGameId,
+                    transactionId
+                });
+                const creditedPlayer = store.resolveTikTokPlayer(body.username || body.playerId);
+                if (credit.skipped || !creditedPlayer || (!credit.applied && !credit.duplicate)) {
+                    res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Pseudo TikTok non valide pour le portefeuille.' }));
+                    return;
+                }
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ applied: credit.applied, duplicate: credit.duplicate, player: getPublicTikTokPlayer(creditedPlayer) }));
+                return;
+            }
             if (!appearedOnOwnerLive) {
                 res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ message: 'Le joueur doit apparaître sur un live TikTok connecté avant de recevoir des étoiles.' }));
