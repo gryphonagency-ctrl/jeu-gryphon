@@ -34,17 +34,17 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #banner img, #banner .ph { width: 26vh; height: 26vh; border-radius: 50%; border: 1vh solid #fbbf24; object-fit: cover; box-shadow: 0 0 5vh rgba(251,191,36,.8); margin: 1vh auto; display: grid; place-items: center; font: 900 12vh Arial; }
 #banner .name { font: 900 clamp(26px, 7vh, 80px) Arial; }
 #banner .podium { margin-top: 1.5vh; font-size: 3vh; color: #cbd5e1; }
-.tk { position: fixed; top: 1.2vh; right: 1.2vw; z-index: 10; width: min(460px, 94vw); background: rgba(10,16,32,.92); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1.2vw; font-size: 2vh; }
+.tk { grid-column: 1 / -1; background: rgba(15,23,42,.9); border: .2vh solid #334c7a; border-radius: 1vh; padding: 1vh .8vw; font-size: 1.8vh; }
 .tk header { display: flex; align-items: center; gap: .8vw; margin-bottom: .8vh; font-weight: 800; }
 .dot { width: 1.4vh; height: 1.4vh; border-radius: 50%; background: #10b981; box-shadow: 0 0 1vh #10b981; flex: none; }
 .dot.off { background: #6b7280; box-shadow: none; } .dot.wait { background: #f59e0b; box-shadow: 0 0 1vh #f59e0b; }
 .tk .row { display: flex; gap: .5vw; }
-.tk input { flex: 1; min-width: 0; padding: 1.1vh 1vw; border-radius: .8vh; border: .2vh solid #475569; background: #0f172a; color: #fff; font-size: 2.4vh; font-weight: 700; }
+.tk input { flex: 1; min-width: 0; padding: .9vh .6vw; border-radius: .8vh; border: .2vh solid #475569; background: #0f172a; color: #fff; font-size: 2vh; font-weight: 700; }
 .tk small { display: block; margin-top: .6vh; color: #94a3b8; }
 button { cursor: pointer; border: none; border-radius: .8vh; padding: 1vh 1.2vw; font: 800 2vh Arial; background: #38bdf8; color: #06202e; }
 button.alt { background: #334155; color: #fff; }
 button:active { transform: scale(.96); }
-#panel { position: fixed; z-index: 10; right: 1.2vw; bottom: 6vh; width: min(300px, 70vw); background: rgba(10,16,32,.94); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1vw; display: grid; grid-template-columns: 1fr 1fr; gap: .8vh; }
+#panel { position: fixed; z-index: 10; right: 1.2vw; bottom: 6vh; width: min(380px, 80vw); background: rgba(10,16,32,.94); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1vw; display: grid; grid-template-columns: 1fr 1fr; gap: .8vh; }
 #panel h5 { grid-column: 1 / -1; margin: 0; color: #fbbf24; font-size: 2vh; cursor: move; user-select: none; }
 #panel button { font-size: 1.8vh; }
 #panel .wide { grid-column: 1 / -1; }
@@ -64,6 +64,9 @@ button:active { transform: scale(.96); }
 <div class="hud" id="big"></div>
 <div id="banner"><div class="box"><h2>🏁 FINISH !</h2><div id="banner-pic"></div><div class="name" id="banner-name"></div><div class="podium" id="banner-podium"></div></div></div>
 
+
+<div id="panel">
+    <h5 id="panel-handle">⚙ Contrôle (déplaçable)</h5>
 <div class="tk" id="tk">
     <header><span class="dot off" id="dot"></span><span>TikTok Live</span></header>
     <div class="row">
@@ -73,9 +76,6 @@ button:active { transform: scale(.96); }
     </div>
     <small id="ttstatus">Non connecté.</small>
 </div>
-
-<div id="panel">
-    <h5 id="panel-handle">⚙ Contrôle (déplaçable)</h5>
     <button id="b-go" class="wide" type="button">🚦 Lancer le départ</button>
     <button id="b-add" class="alt" type="button">+1 bille</button>
     <button id="b-add10" class="alt" type="button">+10 billes</button>
@@ -109,7 +109,7 @@ const R = 26;
 
 /* Réglages modifiables depuis le panneau de commande (course-de-billes-controle.html) */
 const DEFAULTS = {
-    gravity: 2.2, maxSpeed: 44, levels: 16, spacing: 520, rampAngle: 0.11,
+    gravity: 2.2, maxSpeed: 50, levels: 16, spacing: 520, rampAngle: 0.11,
     mud: true, mudSlow: 0.9, pegs: true, spinners: true, spinSpeed: 0.04,
     likePower: 1, likesJoin: true, giftBoost: 14, videoUrl: '', videoDim: 0.35, bgFx: true
 };
@@ -317,6 +317,7 @@ function physicsStep(now) {
             if (phase === 'race') Body.setVelocity(b, { x: b.velocity.x, y: b.velocity.y + Math.min(m.like, 30) * 0.02 });
             m.like *= 0.992;
         } else m.like = 0;
+        if (phase === 'race' && b.velocity.y > 0.5 && !boosted) Body.setVelocity(b, { x: b.velocity.x * 1.004, y: b.velocity.y * 1.008 });
         if (phase !== 'lobby' || b.position.y > 0) for (const z of mudZones) {
             if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * CFG.mudSlow, y: b.velocity.y * CFG.mudSlow });
         }
@@ -681,7 +682,7 @@ addEventListener('keydown', e => {
     h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (e.clientX - ox) + 'px'; p.style.top = (e.clientY - oy) + 'px'; p.style.right = 'auto'; p.style.bottom = 'auto'; });
     h.addEventListener('pointerup', () => { on = false; });
 })();
-$('start-btn').onclick = () => { $('start').remove(); say('Course de billes prête.'); if ('speechSynthesis' in window) speechSynthesis.getVoices(); };
+$('start-btn').onclick = () => { $('start').remove(); openControl(); say('Course de billes prête.'); if ('speechSynthesis' in window) speechSynthesis.getVoices(); };
 
 /* ---------- Démarrage ---------- */
 let last = performance.now(), acc = 0;
@@ -711,7 +712,7 @@ function applyConfig(next) {
     }
 }
 const control = 'BroadcastChannel' in window ? new BroadcastChannel('cb-control') : null;
-function runCommand(cmd) {
+function runCommand(cmd, extra) {
     if (cmd === 'start') startCountdown();
     else if (cmd === 'reset') resetRace();
     else if (cmd === 'add10') for (let i = 0; i < 10; i++) testMarble();
@@ -720,19 +721,22 @@ function runCommand(cmd) {
     else if (cmd === 'like') { const m = randomMarble(); onLike(m.id, m.name, 20); }
     else if (cmd === 'view') setView(!topView);
     else if (cmd === 'mute') setMuted(!muted);
+    else if (cmd === 'connect') { if (extra && extra.username) $('username').value = extra.username; connect(); }
+    else if (cmd === 'disconnect') disconnect();
 }
 if (control) {
     control.onmessage = ev => {
         const d = ev.data || {};
         if (d.type === 'config') applyConfig(d.cfg);
-        else if (d.type === 'cmd') runCommand(d.cmd);
+        else if (d.type === 'cmd') runCommand(d.cmd, d);
         else if (d.type === 'hello') control.postMessage({ type: 'config', cfg: CFG, state: true });
     };
-    setInterval(() => control.postMessage({ type: 'state', phase, marbles: marbles.size, racers: racers().length, topView, muted }), 1000);
+    setInterval(() => control.postMessage({ type: 'state', phase, marbles: marbles.size, racers: racers().length, topView, muted, live: $('ttstatus').textContent, user: $('username').value, on: $('dot').className === 'dot ' }), 1000);
 }
 applyVideo();
 $('b-like').onclick = () => runCommand('like');
-$('b-ctrl').onclick = () => window.open('course-de-billes-controle.html', 'cb-control', 'width=480,height=820');
+function openControl() { try { window.open('course-de-billes-controle.html', 'cb-control', 'width=480,height=820'); } catch (e) { /* popup bloqué */ } }
+$('b-ctrl').onclick = openControl;
 
 window.__game = { onLike, applyConfig, get CFG() { return CFG; }, get FINISH() { return FINISH; }, marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); drawWorld(performance.now()); updateHud(performance.now()); }, get phase() { return phase; }, cam };
 </script>

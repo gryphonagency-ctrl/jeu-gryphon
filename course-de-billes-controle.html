@@ -34,6 +34,16 @@ small { color: #94a3b8; display: block; margin-top: 4px; }
 <div class="state"><span class="dot" id="dot"></span><span id="state">Jeu non détecté… ouvre course-de-billes.html</span></div>
 
 <fieldset>
+    <legend>Connexion TikTok Live</legend>
+    <div style="display:flex;gap:8px">
+        <input id="tkUser" type="text" placeholder="@pseudo TikTok" autocomplete="off">
+        <button class="green" id="tkGo" style="white-space:nowrap">Connecter</button>
+        <button class="alt" id="tkOff">✕</button>
+    </div>
+    <small id="tkStatus">Non connecté.</small>
+</fieldset>
+
+<fieldset>
     <legend>Commandes</legend>
     <div class="btns">
         <button class="green" data-cmd="start">🚦 Lancer le départ</button>
@@ -87,7 +97,7 @@ small { color: #94a3b8; display: block; margin-top: 4px; }
 
 <script>
 const DEFAULTS = {
-    gravity: 2.2, maxSpeed: 44, levels: 16, spacing: 520, rampAngle: 0.11,
+    gravity: 2.2, maxSpeed: 50, levels: 16, spacing: 520, rampAngle: 0.11,
     mud: true, mudSlow: 0.9, pegs: true, spinners: true, spinSpeed: 0.04,
     likePower: 1, likesJoin: true, giftBoost: 14, videoUrl: '', videoDim: 0.35, bgFx: true
 };
@@ -118,6 +128,10 @@ for (const k of Object.keys(DEFAULTS)) {
     });
 }
 $('defaults').onclick = () => { cfg = { ...DEFAULTS }; show(); push(); };
+const tkConnect = () => { const u = $('tkUser').value.trim().replace(/^@/, ''); if (u && chan) chan.postMessage({ type: 'cmd', cmd: 'connect', username: u }); };
+$('tkGo').onclick = tkConnect;
+$('tkUser').addEventListener('keydown', e => { if (e.key === 'Enter') tkConnect(); });
+$('tkOff').onclick = () => chan && chan.postMessage({ type: 'cmd', cmd: 'disconnect' });
 document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => chan && chan.postMessage({ type: 'cmd', cmd: b.dataset.cmd }));
 
 let lastSeen = 0;
@@ -128,6 +142,8 @@ if (chan) {
             lastSeen = Date.now();
             const names = { lobby: 'En attente', count: 'Compte à rebours', race: 'Course en cours', done: 'Arrivée' };
             $('state').textContent = `${names[d.phase] || d.phase} · ${d.marbles} bille(s) · ${d.racers} en piste`;
+            $('tkStatus').textContent = (d.on ? '🟢 ' : '⚪ ') + (d.live || '');
+            if (d.user && document.activeElement !== $('tkUser') && !$('tkUser').value) $('tkUser').value = d.user;
         }
     };
     chan.postMessage({ type: 'hello' });
