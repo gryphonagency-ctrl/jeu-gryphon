@@ -81,6 +81,8 @@ button:active { transform: scale(.96); }
     <button id="b-add10" class="alt" type="button">+10 billes</button>
     <button id="b-g1" type="button">🎁 1 pièce</button>
     <button id="b-g5" type="button">🎁 5 pièces</button>
+    <button id="b-like" class="alt" type="button">❤ +20 likes</button>
+    <button id="b-ctrl" class="alt" type="button">🎛 Panneau de commande</button>
     <button id="b-view" class="wide" type="button">🛰 Vue du dessus (V)</button>
     <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
     <button id="b-reset" class="alt" type="button">↺ Reset</button>
@@ -101,10 +103,21 @@ const $ = id => document.getElementById(id);
 const WS_URL = 'wss://jeu6boite.onrender.com';
 
 /* ---------- Parcours ---------- */
-const W = 2000, FINISH = 9300, WALL_TOP = -1800, LEVELS = 16;
+const W = 2000, WALL_TOP = -1800;
+let FINISH = 9300;
 const R = 26;
+
+/* Réglages modifiables depuis le panneau de commande (course-de-billes-controle.html) */
+const DEFAULTS = {
+    gravity: 2.2, maxSpeed: 44, levels: 16, spacing: 520, rampAngle: 0.11,
+    mud: true, mudSlow: 0.9, pegs: true, spinners: true, spinSpeed: 0.04,
+    likePower: 1, likesJoin: true, giftBoost: 14, videoUrl: '', videoDim: 0.35, bgFx: true
+};
+let CFG = { ...DEFAULTS };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('cb-config') || '{}')); } catch (e) { /* réglages ignorés */ }
+
 const engine = Engine.create();
-engine.gravity.y = 2.2;
+engine.gravity.y = CFG.gravity;
 const world = engine.world;
 const statics = [];   // { body, kind }
 const spinners = [];
@@ -118,27 +131,31 @@ function addStatic(body, kind, opts = {}) {
     return body;
 }
 function buildTrack() {
+    for (const s of statics) Composite.remove(world, s.body);
+    statics.length = 0; spinners.length = 0; mudZones.length = 0;
+    const lv = Math.max(4, Math.min(40, Math.round(CFG.levels)));
+    FINISH = 700 + (lv - 1) * CFG.spacing + 800;
     const wallH = FINISH + 700 - WALL_TOP;
     const wallY = WALL_TOP + wallH / 2;
     addStatic(Bodies.rectangle(-20, wallY, 40, wallH), 'wall');
     addStatic(Bodies.rectangle(W + 20, wallY, 40, wallH), 'wall');
     addStatic(Bodies.rectangle(W / 2, FINISH + 700, W + 80, 60), 'wall');
-    for (let i = 0; i < LEVELS; i++) {
-        const y = 700 + i * 520;
+    for (let i = 0; i < lv; i++) {
+        const y = 700 + i * CFG.spacing;
         const left = i % 2 === 0;
-        addStatic(Bodies.rectangle(left ? 840 : 1160, y, 1680, 30, { angle: left ? 0.11 : -0.11 }), 'ramp');
-        if (i % 3 === 1) {
+        addStatic(Bodies.rectangle(left ? 840 : 1160, y, 1680, 30, { angle: left ? CFG.rampAngle : -CFG.rampAngle }), 'ramp');
+        if (CFG.mud && i % 3 === 1) {
             mudZones.push({ x: 0, y: y + 230, w: W, h: 120 });
         }
-        if (i % 3 === 2) {
+        if (CFG.pegs && i % 3 === 2) {
             for (let k = 0; k < 12; k++) {
                 const px = 150 + k * 160 + (k % 2 ? 50 : 0);
                 addStatic(Bodies.circle(px, y + 290, 17), 'peg', { restitution: 1 });
             }
         }
-        if (i % 2 === 0) {
+        if (CFG.spinners && i % 2 === 0) {
             const sp = addStatic(Bodies.rectangle(left ? 1840 : 160, y + 330, 260, 18), 'spinner');
-            spinners.push({ body: sp, speed: left ? 0.04 : -0.04 });
+            spinners.push({ body: sp, speed: left ? CFG.spinSpeed : -CFG.spinSpeed });
         }
     }
 }
@@ -187,7 +204,7 @@ function addMarble(id, name, pic) {
     const body = Bodies.circle(40 + Math.random() * (W - 80), -50 - Math.random() * 300, R, {
         restitution: 0.35, friction: 0.02, frictionAir: 0.002, density: 0.0012, label: 'marble'
     });
-    m = { id, name, body, h: hue(id), boostUntil: 0, finished: false, ejected: false, ejectedAt: 0, rank: 0, stuck: 0, trail: [] };
+    m = { id, name, body, h: hue(id), boostUntil: 0, finished: false, ejected: false, ejectedAt: 0, rank: 0, stuck: 0, trail: [], like: 0 };
     marbles.set(id, m);
     Composite.add(world, body);
     toast(`${name} entre en piste`);
@@ -205,7 +222,7 @@ function allActive() { return [...marbles.values()].filter(m => !m.ejected); }
 function boost(m, times = 1) {
     if (!m || m.ejected || m.finished) return;
     m.boostUntil = Math.max(performance.now(), m.boostUntil) + 2500 * Math.min(times, 5);
-    if (phase === 'race') Body.setVelocity(m.body, { x: m.body.velocity.x, y: m.body.velocity.y + 14 });
+    if (phase === 'race') Body.setVelocity(m.body, { x: m.body.velocity.x, y: m.body.velocity.y + CFG.giftBoost });
     toast(`🚀 ${m.name} accélère !`, 'boost');
 }
 function eject(by) {
@@ -225,9 +242,24 @@ function onGift(info, coins, repeat) {
     if (coins >= 5) { for (let i = 0; i < Math.min(repeat, 3); i++) eject(m); }
     else boost(m, repeat);
 }
+// Chaque tapotement (like) charge l'énergie de la bille ; elle se vide progressivement
+let lastLikeToast = 0;
+function onLike(id, name, count) {
+    let m = marbles.get(id);
+    if (!m || m.ejected) {
+        if (!CFG.likesJoin || phase === 'race' || phase === 'done') return;
+        m = addMarble(id, name, '');
+    }
+    if (m.finished) return;
+    m.like = Math.min(60, m.like + count * CFG.likePower);
+    fxPulse = Math.min(1, fxPulse + 0.15);
+    const now = performance.now();
+    if (now - lastLikeToast > 1500) { lastLikeToast = now; toast(`❤️ ${m.name} tapote : +${count} likes`, 'boost'); }
+}
 
 /* ---------- Phases ---------- */
 let phase = 'lobby';       // lobby | count | race | done
+let trackDirty = false;
 let autoStartAt = 0, winnerTimer = 0, raceStartedAt = 0;
 function scheduleAutoStart() {
     if (phase !== 'lobby' || autoStartAt || marbles.size < 2) return;
@@ -265,6 +297,7 @@ function updateBanner() {
     $('banner-podium').textContent = finishedList.slice(0, 3).map((m, i) => ['🥇', '🥈', '🥉'][i] + ' ' + m.name).join('   ');
 }
 function resetRace() {
+    if (trackDirty) { buildTrack(); trackDirty = false; }
     for (const m of [...marbles.values()]) removeMarble(m);
     finishedList = [];
     if (!gateOn) { Composite.add(world, gate); gateOn = true; }
@@ -280,10 +313,14 @@ function physicsStep(now) {
         if (m.ejected) { if (now - m.ejectedAt > 3500) removeMarble(m); continue; }
         const boosted = now < m.boostUntil;
         if (boosted) Body.setVelocity(b, { x: b.velocity.x * 1.01, y: b.velocity.y * 1.03 + 0.3 });
+        if (m.like > 0.05) {
+            if (phase === 'race') Body.setVelocity(b, { x: b.velocity.x, y: b.velocity.y + Math.min(m.like, 30) * 0.02 });
+            m.like *= 0.992;
+        } else m.like = 0;
         if (phase !== 'lobby' || b.position.y > 0) for (const z of mudZones) {
-            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * 0.9, y: b.velocity.y * 0.9 });
+            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * CFG.mudSlow, y: b.velocity.y * CFG.mudSlow });
         }
-        const cap = boosted ? 60 : 44;
+        const cap = (boosted ? CFG.maxSpeed * 1.4 : CFG.maxSpeed) + Math.min(m.like, 30) * 0.4;
         const sp = Math.hypot(b.velocity.x, b.velocity.y);
         if (sp > cap) Body.setVelocity(b, { x: b.velocity.x * cap / sp, y: b.velocity.y * cap / sp });
         if (phase === 'race' && !m.finished) {
@@ -324,20 +361,76 @@ function poly(body) {
     body.vertices.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y));
     ctx.closePath();
 }
+/* ---------- Fond dynamique (animation générée, ou vidéo choisie dans le panneau) ---------- */
+let fxPulse = 0, fxSpeed = 0;
+const bgParticles = Array.from({ length: 160 }, (_, i) => ({ x: Math.random(), y: Math.random(), l: i % 3, s: Math.random() }));
+const bgVideo = document.createElement('video');
+Object.assign(bgVideo, { muted: true, loop: true, playsInline: true, autoplay: true });
+bgVideo.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;display:none';
+document.body.prepend(bgVideo);
+cv.style.position = 'fixed'; cv.style.zIndex = '1';
+function bgVideoOn() { return !!CFG.videoUrl && bgVideo.style.display !== 'none' && !bgVideo.error; }
+function applyVideo() {
+    if (!CFG.videoUrl) { bgVideo.pause(); bgVideo.removeAttribute('src'); bgVideo.style.display = 'none'; return; }
+    if (bgVideo.getAttribute('src') !== CFG.videoUrl) { bgVideo.src = CFG.videoUrl; }
+    bgVideo.onerror = () => { bgVideo.style.display = 'none'; };
+    bgVideo.onloadeddata = () => { bgVideo.style.display = 'block'; bgVideo.play().catch(() => {}); };
+}
+function drawBackground(now) {
+    const t = now / 1000;
+    const lead = allActive().reduce((mx, m) => Math.max(mx, Math.hypot(m.body.velocity.x, m.body.velocity.y)), 0);
+    fxSpeed += ((phase === 'race' ? lead / CFG.maxSpeed : 0.15) - fxSpeed) * 0.08;
+    fxPulse *= 0.94;
+    if (bgVideoOn()) { ctx.clearRect(0, 0, vw, vh); ctx.fillStyle = `rgba(5,8,18,${CFG.videoDim})`; ctx.fillRect(0, 0, vw, vh); }
+    else {
+        const hue = 225 + Math.sin(t * 0.15) * 25 + fxSpeed * 20;
+        const g = ctx.createLinearGradient(0, 0, 0, vh);
+        g.addColorStop(0, `hsl(${hue} 60% 14%)`); g.addColorStop(1, `hsl(${hue + 45} 55% 8%)`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+    }
+    if (!CFG.bgFx) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // faisceaux lumineux qui balaient l'écran
+    for (let i = 0; i < 3; i++) {
+        const x = (Math.sin(t * (0.21 + i * 0.07) + i * 2) * 0.5 + 0.5) * vw;
+        const bg = ctx.createLinearGradient(x - vw * 0.12, 0, x + vw * 0.12, 0);
+        const c = `hsla(${200 + i * 50},90%,60%,`;
+        bg.addColorStop(0, c + '0)'); bg.addColorStop(.5, c + (0.05 + fxSpeed * 0.07 + fxPulse * 0.1) + ')'); bg.addColorStop(1, c + '0)');
+        ctx.fillStyle = bg; ctx.save(); ctx.translate(x, 0); ctx.rotate(-0.35 + i * 0.3); ctx.translate(-x, 0); ctx.fillRect(x - vw * 0.12, -vh, vw * 0.24, vh * 3); ctx.restore();
+    }
+    // particules en parallaxe : elles filent vers le haut quand les billes descendent
+    const speed = 0.4 + fxSpeed * 3;
+    for (const p of bgParticles) {
+        const depth = 0.25 + p.l * 0.4;
+        const span = vh + 200;
+        let y = ((p.y * span - cam.y * cam.z * depth - t * 40 * depth * speed) % span + span) % span - 100;
+        const x = ((p.x + Math.sin(t * 0.3 + p.s * 6) * 0.01) % 1) * vw;
+        const len = 4 + fxSpeed * 60 * depth;
+        ctx.strokeStyle = `hsla(${Math.round(190 + p.s * 80)},90%,75%,${0.12 + depth * 0.3})`;
+        ctx.lineWidth = 1 + depth * 2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + len); ctx.stroke();
+    }
+    ctx.restore();
+    // vignette qui pulse quand des likes ou des cadeaux arrivent
+    const vg = ctx.createRadialGradient(vw / 2, vh / 2, vh * 0.35, vw / 2, vh / 2, vw * 0.7);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(${fxPulse > 0.05 ? '120,20,70' : '0,0,10'},${0.5 + fxPulse * 0.3})`);
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, vw, vh);
+}
+
 function drawWorld(now) {
     const z = cam.z;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const g = ctx.createLinearGradient(0, 0, 0, vh);
-    g.addColorStop(0, '#101a3a'); g.addColorStop(1, '#1a1030');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+    drawBackground(now);
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - W / 2 * z), dpr * (vh * 0.45 - cam.y * z));
     const top = cam.y - vh * 0.45 / z - 100, bottom = cam.y + vh * 0.55 / z + 100;
     const left = -(vw / 2 - W / 2 * z) / z - 50, right = left + vw / z + 100;
 
-    const fl = ctx.createLinearGradient(0, 0, W, 0); fl.addColorStop(0, '#0a1126'); fl.addColorStop(.5, '#132044'); fl.addColorStop(1, '#0a1126'); ctx.fillStyle = fl; ctx.fillRect(0, top, W, bottom - top);
+    const fa = bgVideoOn() ? 0.55 : 0.8;
+    const fl = ctx.createLinearGradient(0, 0, W, 0); fl.addColorStop(0, `rgba(10,17,38,${fa})`); fl.addColorStop(.5, `rgba(19,32,68,${fa})`); fl.addColorStop(1, `rgba(10,17,38,${fa})`); ctx.fillStyle = fl; ctx.fillRect(0, top, W, bottom - top);
     ctx.strokeStyle = 'rgba(148,163,184,.08)'; ctx.lineWidth = 2;
     for (let y = Math.floor(top / 100) * 100; y < bottom; y += 100) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-    ctx.fillStyle = '#070b17'; ctx.fillRect(left, top, -left, bottom - top); ctx.fillRect(W, top, right - W, bottom - top);
+    ctx.fillStyle = 'rgba(7,11,23,.35)'; ctx.fillRect(left, top, -left, bottom - top); ctx.fillRect(W, top, right - W, bottom - top);
 
     ctx.font = '900 40px Arial'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.textAlign = 'left';
     for (let y = Math.max(0, Math.ceil(top / 1000) * 1000); y < bottom && y < FINISH; y += 1000) ctx.fillText(`${Math.round((FINISH - y) / 10)} m`, 20, y);
@@ -393,6 +486,7 @@ function drawWorld(now) {
         if (m.ejected) ctx.globalAlpha = Math.max(0.2, 1 - (now - m.ejectedAt) / 3500);
         ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.beginPath(); ctx.ellipse(R * .35, R * .85, R * .95, R * .38, 0, 0, 7); ctx.fill();
         if (boosted) { ctx.fillStyle = 'rgba(251,146,60,.45)'; ctx.beginPath(); ctx.arc(0, 0, R + 9, 0, 7); ctx.fill(); }
+        if (m.like > 2 && !m.ejected) { ctx.fillStyle = `rgba(244,63,94,${Math.min(.55, m.like / 40)})`; ctx.beginPath(); ctx.arc(0, 0, R + 6 + Math.min(m.like, 30) * 0.4, 0, 7); ctx.fill(); }
         ctx.save(); ctx.rotate(b.angle);
         ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.save(); ctx.clip();
         const img = avatarCache.get(m.id);
@@ -513,6 +607,10 @@ function handleMessage(data) {
         const coins = Number(g.coinValue ?? g.diamondCount ?? 1) || 1;
         const repeat = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
         onGift({ id, name: g.nickname || g.username || id, pic: pickPic(g) }, coins, repeat);
+    } else if (data.type === 'like' && data.likeData) {
+        const l = data.likeData;
+        const id = String(l.username || l.nickname || '');
+        if (id) onLike(id, l.nickname || l.username || id, Math.max(1, Math.floor(Number(l.likeCount) || 1)));
     } else if (data.type === 'viewer' && data.viewer) {
         const v = data.viewer;
         const id = String(v.uniqueId || v.userId || v.username || '');
@@ -598,7 +696,45 @@ function frame(now) {
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); drawWorld(performance.now()); updateHud(performance.now()); }, get phase() { return phase; }, cam };
+/* ---------- Panneau de commande (fenêtre séparée, invisible sur l'écran de jeu) ---------- */
+const TRACK_KEYS = ['levels', 'spacing', 'rampAngle', 'mud', 'pegs', 'spinners', 'spinSpeed'];
+const trackSig = c => TRACK_KEYS.map(k => c[k]).join('|');
+function applyConfig(next) {
+    const before = trackSig(CFG);
+    CFG = { ...DEFAULTS, ...next };
+    try { localStorage.setItem('cb-config', JSON.stringify(CFG)); } catch (e) { /* stockage indisponible */ }
+    engine.gravity.y = CFG.gravity;
+    applyVideo();
+    if (trackSig(CFG) !== before) {
+        if (phase === 'lobby') buildTrack();
+        else { trackDirty = true; toast('Nouveau parcours à la prochaine course'); }
+    }
+}
+const control = 'BroadcastChannel' in window ? new BroadcastChannel('cb-control') : null;
+function runCommand(cmd) {
+    if (cmd === 'start') startCountdown();
+    else if (cmd === 'reset') resetRace();
+    else if (cmd === 'add10') for (let i = 0; i < 10; i++) testMarble();
+    else if (cmd === 'gift1') $('b-g1').click();
+    else if (cmd === 'gift5') $('b-g5').click();
+    else if (cmd === 'like') { const m = randomMarble(); onLike(m.id, m.name, 20); }
+    else if (cmd === 'view') setView(!topView);
+    else if (cmd === 'mute') setMuted(!muted);
+}
+if (control) {
+    control.onmessage = ev => {
+        const d = ev.data || {};
+        if (d.type === 'config') applyConfig(d.cfg);
+        else if (d.type === 'cmd') runCommand(d.cmd);
+        else if (d.type === 'hello') control.postMessage({ type: 'config', cfg: CFG, state: true });
+    };
+    setInterval(() => control.postMessage({ type: 'state', phase, marbles: marbles.size, racers: racers().length, topView, muted }), 1000);
+}
+applyVideo();
+$('b-like').onclick = () => runCommand('like');
+$('b-ctrl').onclick = () => window.open('course-de-billes-controle.html', 'cb-control', 'width=480,height=820');
+
+window.__game = { onLike, applyConfig, get CFG() { return CFG; }, get FINISH() { return FINISH; }, marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); drawWorld(performance.now()); updateHud(performance.now()); }, get phase() { return phase; }, cam };
 </script>
 </body>
 </html>

@@ -41,6 +41,7 @@ const plushGameFile = path.join(__dirname, 'peluches-mutantes.html');
 const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
 const trueFalseGameFile = path.join(__dirname, 'vrai-ou-faux.html');
 const marbleRaceGameFile = path.join(__dirname, 'course-de-billes.html');
+const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
@@ -74,6 +75,7 @@ const protectedRoutes = new Set([
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
+    '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
     '/plinko.html',
@@ -1820,6 +1822,7 @@ const server = http.createServer((req, res) => {
         ['/a-prendre-ou-a-laisser.html', [dealGameFile, 'text/html; charset=utf-8']],
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
         ['/course-de-billes.html', [marbleRaceGameFile, 'text/html; charset=utf-8']],
+        ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
