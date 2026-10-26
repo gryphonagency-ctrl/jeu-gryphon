@@ -751,6 +751,21 @@ const server = http.createServer((req, res) => {
         }
         const query = new URL(req.url, 'http://localhost').searchParams;
         try {
+            if (query.get('scope') === 'total') {
+                if (!access.isAdmin(req)) {
+                    res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Le total des étoiles est réservé à l’administrateur.' }));
+                    return;
+                }
+                const players = store.listTikTokStarLeaderboard();
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    scope: 'total',
+                    totalOwed: players.reduce((sum, player) => sum + Math.max(0, Number(player.balance) || 0), 0),
+                    playerCount: players.filter(player => player.balance > 0).length
+                }));
+                return;
+            }
             if (query.get('scope') === 'all') {
                 if (!access.isAdmin(req)) {
                     res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
