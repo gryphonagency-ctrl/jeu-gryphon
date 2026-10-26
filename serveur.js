@@ -39,6 +39,7 @@ const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
 const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
 const plushGameFile = path.join(__dirname, 'peluches-mutantes.html');
+const bottleGameFile = path.join(__dirname, 'bouteilles-colorees.html');
 const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
 const trueFalseGameFile = path.join(__dirname, 'vrai-ou-faux.html');
 const marbleRaceGameFile = path.join(__dirname, 'course-de-billes.html');
@@ -75,6 +76,7 @@ const protectedRoutes = new Set([
     '/wish-lab.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
+    '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
@@ -106,6 +108,7 @@ const staticGameIds = [
     '/wish-lab.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
+    '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
@@ -119,6 +122,7 @@ store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
+store.grantGameAccessToExistingCreators('/bouteilles-colorees.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
@@ -138,6 +142,7 @@ const staticGameTitles = {
     '/wish-lab.html': 'Wish Lab',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
+    '/bouteilles-colorees.html': 'Le Jeu des Bouteilles Colorées',
     '/a-prendre-ou-a-laisser.html': 'À prendre ou à laisser',
     '/vrai-ou-faux.html': 'Vrai ou Faux',
     '/course-de-billes.html': 'Course de Billes',
@@ -160,6 +165,7 @@ const gameRouteIds = new Map([
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
+    ['/bouteilles-colorees.html', '/bouteilles-colorees.html'],
     ['/a-prendre-ou-a-laisser.html', '/a-prendre-ou-a-laisser.html'],
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/course-de-billes.html', '/course-de-billes.html'],
@@ -1833,6 +1839,7 @@ const server = http.createServer((req, res) => {
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
+        ['/bouteilles-colorees.html', [bottleGameFile, 'text/html; charset=utf-8']],
         ['/a-prendre-ou-a-laisser.html', [dealGameFile, 'text/html; charset=utf-8']],
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
         ['/course-de-billes.html', [marbleRaceGameFile, 'text/html; charset=utf-8']],
@@ -1860,6 +1867,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/petit-trot.png', [path.join(__dirname, 'images-vitrine', 'petit-trot.png'), 'image/png']],
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
+        ['/images-vitrine/bouteilles-colorees-apercu.png', [path.join(__dirname, 'images-vitrine', 'bouteilles-colorees-apercu.png'), 'image/png']],
         ['/images-vitrine/a-prendre-ou-a-laisser-apercu.png', [path.join(__dirname, 'images-vitrine', 'a-prendre-ou-a-laisser-apercu.png'), 'image/png']],
         ['/images-vitrine/vrai-ou-faux-apercu.png', [path.join(__dirname, 'images-vitrine', 'vrai-ou-faux-apercu.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.png', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.png'), 'image/png']],
