@@ -350,6 +350,7 @@
         <div class="machine-lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class="machine-stage">
           <canvas id="machineCanvas" aria-label="Animation de la machine à pièces"></canvas>
+          <button id="viewToggle" type="button" style="position:absolute;left:8px;bottom:8px;z-index:4;padding:4px 8px;font:600 11px sans-serif;color:#ffe39a;background:#120d0acc;border:1px solid #f0b94d88;border-radius:6px;cursor:pointer">Vue du dessus</button>
           <div class="machine-score-panel">
             <div class="coin-rain" aria-hidden="true">
               <i style="--coin-x: 3%; --coin-duration: 1.5s; --coin-delay: -.8s"></i>
@@ -610,6 +611,7 @@
   </section>
   <div class="toast" id="toast" role="status"></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="./node_modules/matter-js/build/matter.min.js"></script>
   <script>
     const CIRCUIT_LIMIT = 10000;
@@ -4133,8 +4135,345 @@
 
       ctx.restore();
 
+      render3D(width, height);
       requestAnimationFrame(drawMachine);
     }
+
+    // Vue 3D de face (Three.js) : dessine la même simulation que le canvas 2D, vue depuis le public.
+    const view3d = { enabled: false, ready: false, failed: false };
+    try { view3d.enabled = localStorage.getItem('coin-pusher-view') !== 'top'; } catch (error) { view3d.enabled = true; }
+
+    function setView3dEnabled(on) {
+      view3d.enabled = on;
+      try { localStorage.setItem('coin-pusher-view', on ? 'front' : 'top'); } catch (error) { /* stockage indisponible */ }
+      const toggle = document.getElementById('viewToggle');
+      if (toggle) toggle.textContent = on ? 'Vue du dessus' : 'Vue de face 3D';
+      canvas.style.visibility = on && !view3d.failed ? 'hidden' : 'visible';
+      if (view3d.renderer) view3d.renderer.domElement.style.display = on ? 'block' : 'none';
+    }
+
+    function makeCanvasTexture(drawFn, w, h) {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      drawFn(c.getContext('2d'), w, h);
+      const texture = new THREE.CanvasTexture(c);
+      texture.encoding = THREE.sRGBEncoding;
+      texture.anisotropy = 4;
+      return texture;
+    }
+
+    function drawCoinFace(g, size, avatar, tint) {
+      const image = getProfileImage(avatar);
+      const c = size / 2;
+      g.fillStyle = '#21132f';
+      g.fillRect(0, 0, size, size);
+      g.save();
+      g.beginPath();
+      g.arc(c, c, c * .9, 0, Math.PI * 2);
+      g.clip();
+      if (image) {
+        const side = Math.min(image.naturalWidth, image.naturalHeight);
+        g.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+      } else {
+        const gradient = g.createRadialGradient(c * .7, c * .6, 2, c, c, c * 1.3);
+        gradient.addColorStop(0, tint ? '#fff3a6' : '#e7fbff');
+        gradient.addColorStop(.5, tint ? '#ffd43b' : '#74d7e8');
+        gradient.addColorStop(1, tint ? '#b8860b' : '#2d5d8a');
+        g.fillStyle = gradient;
+        g.fillRect(0, 0, size, size);
+      }
+      g.restore();
+      g.lineWidth = size * .07;
+      g.strokeStyle = '#9dfaff';
+      g.beginPath();
+      g.arc(c, c, c * .94, 0, Math.PI * 2);
+      g.stroke();
+      g.lineWidth = size * .03;
+      g.strokeStyle = '#ff78c4';
+      g.beginPath();
+      g.arc(c, c, c * .83, 0, Math.PI * 2);
+      g.stroke();
+    }
+
+    function drawCardFace(g, w, h, card) {
+      g.fillStyle = '#efeaff';
+      g.fillRect(0, 0, w, h);
+      g.lineWidth = 8;
+      g.strokeStyle = '#b38aff';
+      g.strokeRect(4, 4, w - 8, h - 8);
+      const image = getProfileImage(card.avatar);
+      const radius = w * .22;
+      g.save();
+      g.beginPath();
+      g.arc(w / 2, h * .27, radius, 0, Math.PI * 2);
+      g.clip();
+      if (image) {
+        const side = Math.min(image.naturalWidth, image.naturalHeight);
+        g.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, w / 2 - radius, h * .27 - radius, radius * 2, radius * 2);
+      } else {
+        g.fillStyle = '#6946bb';
+        g.fillRect(0, 0, w, h);
+      }
+      g.restore();
+      g.textAlign = 'center';
+      g.fillStyle = '#42197b';
+      g.font = `bold ${Math.round(w * .24)}px Trebuchet MS, sans-serif`;
+      g.fillText(formatNumber(card.value), w / 2, h * .62, w * .86);
+      g.fillStyle = '#a033d2';
+      g.font = `bold ${Math.round(w * .09)}px Trebuchet MS, sans-serif`;
+      g.fillText('★ ÉTOILES', w / 2, h * .72, w * .86);
+      g.fillStyle = '#4c426d';
+      g.font = `${Math.round(w * .075)}px Trebuchet MS, sans-serif`;
+      g.fillText(displayRewardName(card.name).slice(0, 18), w / 2, h * .85, w * .88);
+      g.fillStyle = '#21486a';
+      g.font = `${Math.round(w * .065)}px Trebuchet MS, sans-serif`;
+      g.fillText(`@${safeName(card.username).slice(0, 14)}`, w / 2, h * .94, w * .88);
+    }
+
+    function initView3d() {
+      if (typeof THREE === 'undefined') {
+        view3d.failed = true;
+        setView3dEnabled(false);
+        return false;
+      }
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setClearColor(0x07050c, 1);
+      const el = renderer.domElement;
+      el.id = 'machine3d';
+      el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none';
+      canvas.insertAdjacentElement('afterend', el);
+      const scene = new THREE.Scene();
+      scene.add(new THREE.AmbientLight(0xffffff, .75));
+      const sun = new THREE.DirectionalLight(0xffffff, .85);
+      sun.position.set(3, 12, 9);
+      scene.add(sun);
+      const warm = new THREE.PointLight(0xffc36b, .9, 30);
+      warm.position.set(0, 6, -2);
+      scene.add(warm);
+      Object.assign(view3d, {
+        renderer, scene,
+        camera: new THREE.PerspectiveCamera(50, .52, .1, 120),
+        staticGroup: new THREE.Group(),
+        staticKey: '',
+        coinMeshes: new Map(),
+        cardMeshes: new Map(),
+        topFaceMaterials: new Map(),
+        coinGeometry: new THREE.CylinderGeometry(1, 1, 1, 32, 1),
+        boxGeometry: new THREE.BoxGeometry(1, 1, 1),
+        sideMaterial: new THREE.MeshStandardMaterial({ color: 0x5b2a86, roughness: .45, metalness: .35 }),
+        cardEdgeMaterial: new THREE.MeshStandardMaterial({ color: 0xd8d1ff, roughness: .6 }),
+        pusher: null,
+        signKey: null,
+        size: ''
+      });
+      scene.add(view3d.staticGroup);
+      view3d.ready = true;
+      setView3dEnabled(view3d.enabled);
+      return true;
+    }
+
+    function buildStatic3d(W, H) {
+      const v = view3d;
+      while (v.staticGroup.children.length) {
+        const old = v.staticGroup.children.pop();
+        old.traverse(node => {
+          if (node.geometry && node.geometry !== v.boxGeometry) node.geometry.dispose();
+        });
+      }
+      const k = 10 / W;
+      const X = x => (x - W / 2) * k;
+      const Z = y => (y - .55 * H) * k;
+      const box = (w, h, d, color, x, y, z, options = {}) => {
+        const mesh = new THREE.Mesh(v.boxGeometry, new THREE.MeshStandardMaterial({ color, roughness: .55, metalness: .2, ...options }));
+        mesh.scale.set(w, h, d);
+        mesh.position.set(x, y, z);
+        v.staticGroup.add(mesh);
+        return mesh;
+      };
+      const left = X(W * .12);
+      const right = X(W * .88);
+      const backZ = Z(H * .23);
+      const frontZ = Z(H * coinTableEdgePosition);
+      const tableWidth = right - left;
+      const tableDepth = frontZ - backZ;
+      const tableCenterZ = (backZ + frontZ) / 2;
+      box(tableWidth, 3, tableDepth, 0x2a1646, 0, -1.5, tableCenterZ);
+      box(tableWidth, .06, .12, 0xffc14d, 0, .02, frontZ, { emissive: 0xffa31a, emissiveIntensity: .6 });
+      for (const sign of [-1, 1]) {
+        box(.35, 1.6, tableDepth + .4, 0x6b3f1e, sign * (tableWidth / 2 + .17), .8, tableCenterZ);
+        box(.14, .14, tableDepth + .4, 0xffc14d, sign * (tableWidth / 2 + .17), 1.65, tableCenterZ, { emissive: 0xffa31a, emissiveIntensity: .5 });
+      }
+      box(tableWidth + .7, 7, .3, 0x3a2216, 0, 3.5, backZ - .15);
+      const sign = box(tableWidth * .9, 2.2, .05, 0xffffff, 0, 3.6, backZ + .02, { roughness: .8, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0 });
+      v.signMesh = sign;
+      v.signKey = null;
+      const pusherLeft = X(W * ((1 - pusherWidthScale) / 2));
+      const pusherRight = -pusherLeft;
+      const deckBottomZ = Z(Math.max(H * .23, H * (pusherHomePosition - pusherHalfHeight - pusherLipDepth * .35)));
+      box(pusherRight - pusherLeft, .3, deckBottomZ - backZ, 0x5a3a20, 0, .15, (backZ + deckBottomZ) / 2);
+      const slab = box(pusherRight - pusherLeft, .36, 1, 0xd8a24a, 0, .18, 0, { roughness: .35, metalness: .6 });
+      const lip = box(pusherRight - pusherLeft, .1, .12, 0xffc14d, 0, .36, 0, { emissive: 0xffa31a, emissiveIntensity: .8 });
+      v.pusher = { slab, lip, backZ };
+      v.staticKey = `${W}x${H}`;
+    }
+
+    function updateSign3d(W) {
+      const v = view3d;
+      const text = state.agencyName || 'COIN PUSHER';
+      if (v.signKey === text || !v.signMesh) return;
+      v.signKey = text;
+      const texture = makeCanvasTexture((g, w, h) => {
+        g.fillStyle = '#120d0a';
+        g.fillRect(0, 0, w, h);
+        g.lineWidth = 10;
+        g.strokeStyle = '#f0b94d';
+        g.strokeRect(8, 8, w - 16, h - 16);
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.font = '700 84px Georgia, serif';
+        g.fillStyle = '#ffd777';
+        g.shadowColor = '#f59b2b';
+        g.shadowBlur = 24;
+        g.fillText(text, w / 2, h / 2, w * .86);
+      }, 1024, 256);
+      if (v.signMesh.material.map) v.signMesh.material.map.dispose();
+      v.signMesh.material.map = texture;
+      v.signMesh.material.emissiveMap = texture;
+      v.signMesh.material.emissiveIntensity = .9;
+      v.signMesh.material.needsUpdate = true;
+    }
+
+    function topFaceMaterial3d(avatar, tint) {
+      const ready = !!getProfileImage(avatar);
+      const key = `${avatar || ''}|${tint ? 1 : 0}|${ready ? 1 : 0}`;
+      let material = view3d.topFaceMaterials.get(key);
+      if (!material) {
+        material = new THREE.MeshStandardMaterial({
+          map: makeCanvasTexture(g => drawCoinFace(g, 128, avatar, tint), 128, 128),
+          roughness: .35,
+          metalness: .25
+        });
+        view3d.topFaceMaterials.set(key, material);
+      }
+      return { key, material };
+    }
+
+    function render3D(W, H) {
+      const v = view3d;
+      if (!v.enabled || v.failed) return;
+      if (!v.ready && !initView3d()) return;
+      const k = 10 / W;
+      const X = x => (x - W / 2) * k;
+      const Z = y => (y - .55 * H) * k;
+      if (v.size !== `${W}x${H}`) {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        v.renderer.setPixelRatio(ratio);
+        v.renderer.setSize(W, H, false);
+        v.size = `${W}x${H}`;
+        const aspect = W / H;
+        v.camera.aspect = aspect;
+        const distance = Math.max(15, 10.6 / (2 * Math.tan(25 * Math.PI / 180) * aspect));
+        const elevation = 30 * Math.PI / 180;
+        v.camera.position.set(0, 1.5 + distance * Math.sin(elevation), -.3 + distance * Math.cos(elevation));
+        v.camera.lookAt(0, 1.5, -.3);
+        v.camera.updateProjectionMatrix();
+      }
+      if (v.staticKey !== `${W}x${H}`) buildStatic3d(W, H);
+      updateSign3d(W);
+
+      const pusherTopY = pusherBody.position.y - H * pusherLipDepth / 2 - H * pusherHalfHeight;
+      const pusherLipY = pusherBody.position.y - H * pusherLipDepth / 2 + H * pusherHalfHeight + H * pusherLipDepth;
+      const slabBack = v.pusher.backZ + .05;
+      const slabFront = Z(pusherLipY);
+      v.pusher.slab.scale.z = Math.max(.2, slabFront - slabBack);
+      v.pusher.slab.position.z = (slabBack + slabFront) / 2;
+      v.pusher.lip.position.z = slabFront;
+
+      const seenCoins = new Set();
+      for (const coin of coins) {
+        seenCoins.add(coin);
+        let mesh = v.coinMeshes.get(coin);
+        const r = coin.radius * k;
+        const t = r * .32;
+        const { key, material } = topFaceMaterial3d(coin.avatar, coin.tint);
+        if (!mesh) {
+          mesh = new THREE.Mesh(v.coinGeometry, [v.sideMaterial, material, material]);
+          mesh.userData.key = key;
+          v.scene.add(mesh);
+          v.coinMeshes.set(coin, mesh);
+        } else if (mesh.userData.key !== key) {
+          mesh.material[1] = material;
+          mesh.material[2] = material;
+          mesh.userData.key = key;
+        }
+        const px = coin.body.position.x;
+        const py = coin.body.position.y;
+        mesh.scale.set(r, t, r);
+        mesh.rotation.set(0, -coin.body.angle, 0);
+        if (coin.airborne) {
+          mesh.position.set(X(px), (coin.landingY - py) * k + t / 2, Z(coin.landingY));
+          mesh.rotation.x = coin.wobble;
+        } else if (coin.leftTable) {
+          mesh.position.set(X(px), t / 2 - (py - H * coinTableEdgePosition) * k * 1.6, Z(py));
+        } else {
+          mesh.position.set(X(px), (coin.stackLevel || 0) * t + t / 2, Z(py));
+        }
+        mesh.visible = py < H * playfieldExitPosition;
+      }
+      for (const [coin, mesh] of v.coinMeshes) {
+        if (!seenCoins.has(coin)) {
+          v.scene.remove(mesh);
+          v.coinMeshes.delete(coin);
+        }
+      }
+
+      const seenCards = new Set();
+      const cardWidth = W * rewardCardWidthScale * k;
+      const cardHeight = H * rewardCardHeightScale * k;
+      for (const card of fallingCards) {
+        seenCards.add(card);
+        let mesh = v.cardMeshes.get(card);
+        const ready = !!getProfileImage(card.avatar);
+        if (!mesh) {
+          mesh = new THREE.Mesh(v.boxGeometry, [v.cardEdgeMaterial, v.cardEdgeMaterial, v.cardEdgeMaterial, v.cardEdgeMaterial, v.cardEdgeMaterial, v.cardEdgeMaterial]);
+          mesh.userData.ready = null;
+          v.scene.add(mesh);
+          v.cardMeshes.set(card, mesh);
+        }
+        if (mesh.userData.ready !== ready) {
+          if (mesh.material[2].map) mesh.material[2].map.dispose();
+          mesh.material[2] = new THREE.MeshStandardMaterial({
+            map: makeCanvasTexture((g, w, h) => drawCardFace(g, w, h, card), 192, 240),
+            roughness: .5
+          });
+          mesh.userData.ready = ready;
+        }
+        const px = card.body.position.x;
+        const py = card.body.position.y;
+        mesh.scale.set(cardWidth, .05, cardHeight);
+        mesh.rotation.set(0, -card.body.angle, 0);
+        if (card.phase === 'entering') {
+          mesh.position.set(X(px), (card.landingY - py) * k + .05, Z(card.landingY));
+          mesh.rotation.x = Math.min(.5, (card.landingY - py) * k * .08);
+        } else if (py > H * coinTableEdgePosition) {
+          mesh.position.set(X(px), .05 - (py - H * coinTableEdgePosition) * k * 1.6, Z(py));
+        } else {
+          mesh.position.set(X(px), .06, Z(py));
+        }
+        mesh.visible = py < H * playfieldExitPosition;
+      }
+      for (const [card, mesh] of v.cardMeshes) {
+        if (!seenCards.has(card)) {
+          v.scene.remove(mesh);
+          v.cardMeshes.delete(card);
+        }
+      }
+      v.renderer.render(v.scene, v.camera);
+    }
+
+    document.getElementById('viewToggle')?.addEventListener('click', () => setView3dEnabled(!view3d.enabled));
 
     restorePendingRewardCards();
     buildLuckyWheel();
