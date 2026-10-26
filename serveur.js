@@ -840,6 +840,41 @@ const server = http.createServer((req, res) => {
         }, 1024 * 1024);
         return;
     }
+    if (pathname === '/api/admin/stars-adjust' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Réservé à l’administrateur.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const send = (status, payload) => {
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(payload));
+            };
+            const handle = String(body.username || '').trim().replace(/^@/, '').toLowerCase();
+            const target = Number(body.balance);
+            if (!/^[a-z0-9._]{1,32}$/.test(handle)) return send(400, { message: 'Pseudo invalide.' });
+            if (!Number.isSafeInteger(target) || target < 0 || target > 10000000) return send(400, { message: 'Solde invalide.' });
+            let player = store.resolveTikTokPlayer(handle);
+            if (!player) {
+                if (target === 0) return send(200, { balance: 0, changed: false });
+                store.creditBrowserStars({ username: handle, amount: target, gameId: '/ajustement-admin', transactionId: `adjust:${crypto.randomUUID()}` });
+                player = store.resolveTikTokPlayer(handle);
+                return send(200, { balance: player ? player.stars : target, changed: true });
+            }
+            const delta = target - player.stars;
+            if (delta === 0) return send(200, { balance: player.stars, changed: false });
+            const result = store.applyTikTokStarTransaction({
+                transactionId: `adjust:${crypto.randomUUID()}`,
+                playerId: player.id,
+                delta,
+                gameId: '/ajustement-admin',
+                reason: delta > 0 ? 'game-reward' : 'run'
+            });
+            send(result.applied ? 200 : 409, { balance: result.balance, changed: result.applied });
+        }, 4096);
+        return;
+    }
     if (pathname === '/api/admin/stars-collect' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
