@@ -43,10 +43,6 @@
         .control[aria-pressed="true"] { background: #00d9ec; color: #07121b; }
         .control:hover { filter: brightness(1.12); }
         .operator-panel { pointer-events: auto; }
-        .pusher-settings { display: grid; gap: 4px; width: 100%; padding: 8px 10px; border: 1px solid rgba(0,243,255,.3); border-radius: 10px; background: rgba(0,70,92,.25); }
-        .pusher-settings label { display: flex; justify-content: space-between; color: #9dfaff; font-size: 11px; font-weight: 800; }
-        .pusher-settings output { color: #fff08c; font-variant-numeric: tabular-nums; }
-        .pusher-settings input[type="range"] { width: 100%; margin: 0 0 6px; accent-color: #ff65b5; cursor: pointer; }
         .operator-panel-handle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,.14); color: #8df6ff; font-size: 11px; font-weight: 900; cursor: grab; touch-action: none; user-select: none; }
         .operator-panel.dragging .operator-panel-handle { cursor: grabbing; }
         .panel-grip { color: rgba(255,255,255,.55); font-size: 16px; line-height: 1; }
@@ -195,12 +191,6 @@
                     <button class="control tertiary" id="drop-card-button" type="button">Lâcher une carte</button>
                     <button class="control secondary" id="auto-button" type="button" aria-pressed="false">Auto-drop : OFF</button>
                     <button class="control danger" id="clear-coins-button" type="button" title="Retirer immédiatement toutes les pièces du plateau">Vider les pièces</button>
-                </div>
-                <div class="pusher-settings" aria-label="Réglages du poussoir">
-                    <label for="pusher-distance">Distance du poussoir <output id="pusher-distance-value">100%</output></label>
-                    <input id="pusher-distance" type="range" min="20" max="200" step="5" value="100">
-                    <label for="pusher-speed">Vitesse du poussoir <output id="pusher-speed-value">100%</output></label>
-                    <input id="pusher-speed" type="range" min="20" max="300" step="5" value="100">
                 </div>
                 <div class="controls" aria-label="Vidéos">
                     <label class="control tertiary" style="display:inline-flex;align-items:center;justify-content:center">Vidéo d'arrière-plan<input type="file" accept="video/*" id="background-video-input" hidden></label>
@@ -1921,30 +1911,6 @@
             let accumulator = 0;
             const fixedStep = 1 / 60;
             let previousPusherZ = pusherStart + pusherTravel;
-            let pusherCycle = 0;
-            let pusherDistanceFactor = 1;
-            let pusherSpeedFactor = 1;
-            for (const [id, apply] of [
-                ['pusher-distance', value => { pusherDistanceFactor = value; }],
-                ['pusher-speed', value => { pusherSpeedFactor = value; }]
-            ]) {
-                const input = document.getElementById(id);
-                const output = document.getElementById(`${id}-value`);
-                const storageKey = `coin-pusher-${id}`;
-                const refresh = () => {
-                    apply(Number(input.value) / 100);
-                    output.textContent = `${input.value}%`;
-                };
-                try {
-                    const saved = Number(localStorage.getItem(storageKey));
-                    if (saved >= Number(input.min) && saved <= Number(input.max)) input.value = String(saved);
-                } catch (error) { /* stockage indisponible */ }
-                refresh();
-                input.addEventListener('input', () => {
-                    refresh();
-                    try { localStorage.setItem(storageKey, input.value); } catch (error) { /* ignoré */ }
-                });
-            }
             function seedTable() {
                 for (let layer = 0; layer < 3; layer++) {
                     for (let row = 0; row < 3; row++) {
@@ -1978,9 +1944,8 @@
                 elapsed += delta;
                 drawGalaxy(elapsed);
                 accumulator += delta;
-                pusherCycle += delta * 2.3 * pusherSpeedFactor;
-                const phase = (Math.cos(pusherCycle) + 1) * .5;
-                const pusherZ = pusherStart + phase * pusherTravel * pusherDistanceFactor;
+                const phase = (Math.cos(elapsed * 2.3) + 1) * .5;
+                const pusherZ = pusherStart + phase * pusherTravel;
                 pusherBody.position.z = pusherZ;
                 pusherBody.velocity.z = (pusherZ - previousPusherZ) / Math.max(delta, .001);
                 pusherMesh.position.z = pusherZ;

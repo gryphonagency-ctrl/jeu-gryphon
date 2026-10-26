@@ -88,7 +88,12 @@
                 radial-gradient(ellipse at 50% 100%, rgba(108,66,194,.22), transparent 62%),
                 linear-gradient(180deg, rgba(12,14,34,.65), rgba(26,24,54,.74));
         }
-        .stage svg { width: min(300px, 76%); height: 250px; overflow: visible; }
+        .stage { position: relative; }
+        .stage svg.hangman { width: min(300px, 76%); height: 250px; overflow: visible; }
+        .stage svg.tiktok-rose { position: absolute; bottom: 12px; left: 14px; width: 62px; height: 97px; filter: drop-shadow(0 0 10px rgba(244,63,94,.45)); }
+        .stage-clue { position: absolute; z-index: 1; top: 10px; right: 10px; max-width: min(46%, 260px); padding: 8px 11px; border: 1px solid rgba(192,132,252,.35); border-radius: 12px; background: rgba(16,17,38,.82); text-align: right; }
+        .stage-clue-label { color: #9c9ab5; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+        .stage-clue .clue { min-height: 0; margin: 3px 0 0; font-size: clamp(12px, 2.2vw, 15px); line-height: 1.35; text-align: right; }
         .gallows { fill: none; stroke: #a5a4c3; stroke-linecap: round; stroke-linejoin: round; stroke-width: 7; }
         .person { fill: none; stroke: #fb7185; stroke-linecap: round; stroke-linejoin: round; stroke-width: 6; filter: drop-shadow(0 0 7px rgba(251,113,133,.35)); }
         .person .head { fill: rgba(251,113,133,.1); }
@@ -220,7 +225,7 @@
             .side-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .difficulty-section, .rose-card, .connection-section { grid-column: 1 / -1; }
             .stage { min-height: 230px; }
-            .stage svg { height: 215px; }
+            .stage svg.hangman { height: 215px; }
             .winners-panel, .winners-restore { top: 76px; }
             .winners-body { max-height: 180px; }
         }
@@ -286,7 +291,20 @@
                     <div id="difficulty-badge" class="badge">Mode progressif</div>
                 </div>
                 <div class="stage">
-                    <svg viewBox="0 0 240 220" role="img" aria-label="Dessin du pendu">
+                    <div class="stage-clue" aria-live="polite">
+                        <span class="stage-clue-label">Indice</span>
+                        <p id="clue" class="clue">Lancez la première manche pour découvrir l'indice.</p>
+                    </div>
+                    <svg class="tiktok-rose" viewBox="0 0 64 100" role="img" aria-label="Rose TikTok">
+                        <path d="M32 52C31 68 34 82 32 98" fill="none" stroke="#22c55e" stroke-width="4" stroke-linecap="round" />
+                        <path d="M32 78c-12-2-18-10-18-18 12 0 18 7 18 18z" fill="#16a34a" />
+                        <path d="M32 68c10-1 16-8 16-15-10 0-16 6-16 15z" fill="#22c55e" />
+                        <path d="M32 52C16 52 8 40 12 26 16 12 28 6 32 6s16 6 20 20c4 14-4 26-20 26z" fill="#e11d48" />
+                        <path d="M32 46c-9 0-14-7-12-15 2-7 8-11 12-11s10 4 12 11c2 8-3 15-12 15z" fill="#fb7185" />
+                        <path d="M32 38c-5 0-8-4-7-8 1-4 4-6 7-6s6 2 7 6c1 4-2 8-7 8z" fill="#be123c" />
+                        <path d="M28 30c1-3 7-3 8 0" fill="none" stroke="#fda4af" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                    <svg class="hangman" viewBox="0 0 240 220" role="img" aria-label="Dessin du pendu">
                         <path class="gallows" d="M38 202h166M66 202V24h102v27m0-27h-28" />
                         <g class="person">
                             <circle class="head" data-part="0" cx="168" cy="70" r="18" />
@@ -298,8 +316,6 @@
                         </g>
                     </svg>
                 </div>
-                <p class="clue-label">Indice</p>
-                <p id="clue" class="clue">Lancez la première manche pour découvrir l'indice.</p>
                 <div id="word" class="word" aria-label="Lettres du mot secret"></div>
                 <p id="feedback" class="feedback" role="status" aria-live="polite">
                     Choisissez une difficulté ou démarrez en mode progressif.
@@ -333,6 +349,8 @@
                 </div>
 
                 <button id="next-round" class="action-button" type="button">Lancer le round 1</button>
+                <button id="voice-toggle" class="action-button" type="button" aria-pressed="false">🔇 Activer la voix de l'IA</button>
+                <button id="replay-clue" class="action-button" type="button">🔊 Relire l'indice</button>
 
                 <section class="connection-section">
                     <h2 class="section-title">Connexion TikTok</h2>
@@ -649,7 +667,7 @@
             document.getElementById('rose-count').textContent = String(pendingHints);
             parts.forEach((part, index) =>
                 part.classList.toggle('is-visible', index < mistakes));
-            document.querySelector('.stage svg').setAttribute(
+            document.querySelector('.stage svg.hangman').setAttribute(
                 'aria-label',
                 `Dessin du pendu : ${mistakes} erreur${mistakes > 1 ? 's' : ''} sur 6`
             );
@@ -666,20 +684,75 @@
             renderWord();
         }
 
+        let nextRoundTimer = null;
+
+        let voiceEnabled = false;
+        let pendingSpeech = '';
+        let lastSpeech = '';
+
+        function speakNow(text) {
+            const synth = window.speechSynthesis;
+            synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'fr-FR';
+            utterance.rate = 0.95;
+            const voice = synth.getVoices().find(v => v.lang.toLowerCase().startsWith('fr'));
+            if (voice) utterance.voice = voice;
+            // Contournement d'un bug de Chrome où la synthèse reste en pause
+            setTimeout(() => { synth.resume(); synth.speak(utterance); }, 80);
+        }
+
+        function speak(text) {
+            if (!('speechSynthesis' in window)) return;
+            lastSpeech = text;
+            if (!voiceEnabled) {
+                pendingSpeech = text;
+                return;
+            }
+            speakNow(text);
+        }
+
+        function enableVoice() {
+            if (!('speechSynthesis' in window)) {
+                document.getElementById('notice').textContent =
+                    'La synthèse vocale n’est pas disponible dans ce navigateur.';
+                return;
+            }
+            voiceEnabled = true;
+            const toggle = document.getElementById('voice-toggle');
+            toggle.textContent = '🔊 Voix de l\'IA activée';
+            toggle.setAttribute('aria-pressed', 'true');
+            speakNow(pendingSpeech || lastSpeech || 'Voix activée.');
+            pendingSpeech = '';
+        }
+
+        document.getElementById('voice-toggle').addEventListener('click', enableVoice);
+        document.getElementById('replay-clue').addEventListener('click', () => {
+            if (!voiceEnabled) enableVoice();
+            else if (lastSpeech) speakNow(lastSpeech);
+        });
+        // Toute première interaction sur la page débloque la voix automatiquement
+        document.addEventListener('pointerdown', () => { if (!voiceEnabled) enableVoice(); }, { once: true });
+        document.addEventListener('keydown', () => { if (!voiceEnabled) enableVoice(); }, { once: true });
+        if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
+
         function finishRound(won, winnerName = '') {
             if (gameOver) return;
             gameOver = true;
+            clearTimeout(nextRoundTimer);
             if (won) {
                 solved += 1;
                 recordWinner(winnerName || 'Joueur (clavier)');
                 setFeedback('Bravo, le chat a trouvé la réponse ! 🎉', 'good');
             } else {
                 revealAnswer();
-                setFeedback(`Plus de tentatives ! La réponse était : ${puzzle.answer}.`, 'bad');
+                setFeedback(`Perdu ! La réponse était : ${puzzle.answer}. Retour à la manche 1…`, 'bad');
+                round = 0;
             }
             nextButton.disabled = round >= 100;
-            nextButton.textContent = round >= 100 ? 'Les 100 rounds sont terminés !' : 'Round suivant →';
+            nextButton.textContent = round >= 100 ? 'Les 100 rounds sont terminés !' : 'Lancement automatique…';
             updateDisplay();
+            if (round < 100) nextRoundTimer = setTimeout(startNextRound, won ? 4000 : 6000);
         }
 
         function guess(rawValue, username = '') {
@@ -738,6 +811,7 @@
         }
 
         function startNextRound() {
+            clearTimeout(nextRoundTimer);
             if (round >= 100) return;
             round += 1;
             const difficulty = currentDifficulty();
@@ -758,6 +832,7 @@
             mistakes = 0;
             gameOver = false;
             clueDisplay.textContent = puzzle.clue;
+            speak(`Manche ${round}. Indice : ${puzzle.clue}`);
             setFeedback('À vous de jouer : choisissez une lettre ou répondez dans le chat.');
             nextButton.disabled = true;
             nextButton.textContent = round === 100 ? 'Dernier round en cours' : 'Manche en cours…';
