@@ -2944,7 +2944,61 @@
       ctx.restore();
     }
 
-    function drawCoin(x, y, radius, alpha = 1, rotation = 0, avatar = '', tint = 0) {
+    // Pièce épaisse façon Astra Push : tranche violette, anneaux cyan et rose,
+    // photo du spectateur sur la face ; elle se retourne pendant la chute.
+    function drawCoin(x, y, radius, alpha = 1, rotation = 0, avatar = '', tint = 0, spin = 0) {
+      const flip = Math.max(.16, Math.abs(Math.cos(spin)));
+      const thickness = radius * (.28 + .4 * (1 - flip));
+      const image = getProfileImage(avatar);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      ctx.beginPath();
+      ctx.ellipse(radius * .08, thickness + radius * .18, radius * 1.02, radius * flip, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#00000055';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, thickness, radius, radius * flip, 0, 0, Math.PI * 2);
+      ctx.rect(-radius, 0, radius * 2, thickness);
+      ctx.fillStyle = '#5b2a86';
+      ctx.fill();
+      ctx.scale(1, flip);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#21132f';
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * .92, 0, Math.PI * 2);
+      ctx.clip();
+      if (image) {
+        const side = Math.min(image.naturalWidth, image.naturalHeight);
+        ctx.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side,
+          -radius, -radius, radius * 2, radius * 2);
+      } else {
+        const gradient = ctx.createRadialGradient(-radius * .3, -radius * .4, 2, 0, 0, radius * 1.3);
+        gradient.addColorStop(0, tint ? '#fff3a6' : '#e7fbff');
+        gradient.addColorStop(.5, tint ? '#ffd43b' : '#74d7e8');
+        gradient.addColorStop(1, tint ? '#b8860b' : '#2d5d8a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+      }
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(0, 0, radius - 1.5, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(2, radius * .12);
+      ctx.strokeStyle = '#9dfaff';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * .88, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, radius * .06);
+      ctx.strokeStyle = '#ff78c4';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawClassicCoin(x, y, radius, alpha = 1, rotation = 0, avatar = '', tint = 0) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(x, y);
@@ -3598,7 +3652,7 @@
             y: coin.body.mass * .0012 * state.controls.dropSpeed
           });
         }
-        if (coin.airborne) coin.wobble += .002 * frameScale;
+        if (coin.airborne) coin.wobble += .012 * frameScale;
         if (coin.body.position.y - coin.radius > height * playfieldExitPosition ||
           coin.body.position.x < -width * .05 || coin.body.position.x > width * 1.05) {
           pendingDropsChanged = markPlayerCoinLanded(coin) || pendingDropsChanged;
@@ -3875,8 +3929,7 @@
       }
 
       for (const coin of orderedCoins) {
-        const wobble = coin.airborne ? Math.sin(coin.wobble) : 0;
-        drawCoin(coin.body.position.x + wobble * width * .002, coin.body.position.y, coin.radius, .98, wobble * .08, coin.avatar, coin.tint);
+        drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, coin.airborne ? coin.wobble : 0);
       }
 
       while (queuedCardDrops.length > 0 && timestamp >= nextCardDropAt) {
