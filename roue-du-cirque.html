@@ -21,7 +21,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #starcard b{display:block;font:900 3.6vh Georgia,serif;color:#fff2a8;text-shadow:0 2px 4px #000;max-width:26vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #starcard em{display:block;font:900 5.6vh Georgia,serif;font-style:normal;color:#ffd24a;text-shadow:0 3px 6px #000}
 @keyframes scpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
-#queueBox{position:fixed;z-index:3;width:12vw;min-width:110px;padding:.8vh 1vh;border-radius:14px;background:rgba(40,8,18,.78);border:2px solid #ffc93c;box-shadow:0 0 16px rgba(255,190,40,.4);pointer-events:none;display:none}
+#queueBox{position:fixed;z-index:3;width:12vw;min-width:110px;padding:.8vh 1vh;border-radius:14px;background:rgba(40,8,18,.78);border:2px solid #ffc93c;box-shadow:0 0 16px rgba(255,190,40,.4);cursor:move;touch-action:none;user-select:none}
+#qeye{position:fixed;right:58px;top:10px;z-index:30;width:40px;height:40px;border-radius:50%;border:1px solid #ffc93c88;background:#1a0d22cc;color:#fff;font-size:20px;cursor:pointer}
 #queueBox h5{margin:0 0 .5vh;font:900 1.7vh Arial;letter-spacing:.14em;color:#ffd86a;text-align:center}
 #queueBox div.q{display:flex;align-items:center;gap:.6vh;margin:.35vh 0;font:800 1.9vh Arial;color:#fff2a8;white-space:nowrap;overflow:hidden}
 #queueBox div.q i{flex:none;width:2.8vh;height:2.8vh;border-radius:50%;background:#5a2a7a center/cover;border:1.5px solid #fff;display:grid;place-items:center;font:900 1.5vh Arial;font-style:normal;color:#fff}
@@ -67,6 +68,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 <div id="starcard" hidden></div>
 <div id="queueBox"></div>
 <div id="banner"><span id="bannerText"></span></div>
+<button id="qeye" aria-label="Afficher ou masquer la file d'attente">🙈</button>
 <button id="eye" title="Afficher / masquer le panneau (H)" aria-label="Afficher ou masquer le panneau de commande">🙈</button>
 
 <aside id="panel" aria-label="Panneau de commande">
@@ -475,7 +477,6 @@ function renderQueue() {
   const sig = queue.map(j => j.name).join('|');
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
-  box.style.display = queue.length ? 'block' : 'none';
   box.innerHTML = '';
   const h = document.createElement('h5'); h.textContent = `EN ATTENTE (${queue.length})`; box.appendChild(h);
   queue.slice(0, MAX).forEach(j => {
@@ -529,7 +530,9 @@ function render() {
   const sp = $('spinner'); sp.style.left = (ox + 985 * sc) + 'px'; sp.style.top = (oy + 8 * sc) + 'px';
   sp.classList.toggle('on', state === 'spin' || state === 'show');
   // file d'attente à gauche du clown, bannière étoiles au niveau du clown
-  const qb = $('queueBox'); qb.style.left = (ox + 12 * sc) + 'px'; qb.style.top = (oy + 70 * sc) + 'px';
+  const qb = $('queueBox');
+  qb.style.left = qPos ? qPos.x + 'px' : (ox + 12 * sc) + 'px'; qb.style.top = qPos ? qPos.y + 'px' : (oy + 70 * sc) + 'px';
+  qb.style.display = queue.length && !qHidden ? 'block' : 'none';
   const sc2 = $('starcard'); sc2.style.left = (ox + 400 * sc) + 'px'; sc2.style.top = (oy + 470 * sc) + 'px'; sc2.style.translate = '-50% 0';
   renderQueue();
 } 
@@ -625,6 +628,21 @@ buildSectors(); applyVideo();
   h.addEventListener('pointerdown', e => { on = true; sx = e.clientX; sy = e.clientY; const r = p.getBoundingClientRect(); px = r.left; py = r.top; h.setPointerCapture(e.pointerId); });
   h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (px + e.clientX - sx) + 'px'; p.style.top = (py + e.clientY - sy) + 'px'; p.style.right = 'auto'; });
   h.addEventListener('pointerup', () => { on = false; });
+})();
+/* File d'attente : déplaçable (position mémorisée) et masquable par son propre œil */
+let qPos = null, qHidden = false;
+try { qPos = JSON.parse(localStorage.getItem('cw-qpos') || 'null'); qHidden = localStorage.getItem('cw-qhide') === '1'; } catch (e) {}
+function syncQEye() { $('qeye').textContent = qHidden ? '👁' : '🙈'; $('qeye').title = qHidden ? 'Afficher la file d\'attente' : 'Masquer la file d\'attente'; }
+$('qeye').onclick = () => { qHidden = !qHidden; try { localStorage.setItem('cw-qhide', qHidden ? '1' : '0'); } catch (e) {} syncQEye(); };
+syncQEye();
+(function dragQueue() {
+  const b = $('queueBox'); let sx, sy, px, py, on = false;
+  b.addEventListener('pointerdown', e => { on = true; sx = e.clientX; sy = e.clientY; const r = b.getBoundingClientRect(); px = r.left; py = r.top; b.setPointerCapture(e.pointerId); });
+  b.addEventListener('pointermove', e => {
+    if (!on) return;
+    qPos = { x: Math.max(0, Math.min(innerWidth - 60, px + e.clientX - sx)), y: Math.max(0, Math.min(innerHeight - 40, py + e.clientY - sy)) };
+  });
+  b.addEventListener('pointerup', () => { on = false; if (qPos) try { localStorage.setItem('cw-qpos', JSON.stringify(qPos)); } catch (e) {} });
 })();
 window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
