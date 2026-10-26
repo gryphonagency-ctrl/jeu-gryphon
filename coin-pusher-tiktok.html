@@ -1263,6 +1263,7 @@
     let physicsWidth = 0;
     let physicsHeight = 0;
     let pusherBody = null;
+    let pusherCommandedY = null;
     const videoLayers = new Map();
     const videoUrls = new Map();
     const imageLayers = new Map();
@@ -3225,6 +3226,7 @@
       // Masse énorme : les pièces ne peuvent ni freiner ni faire trembler le poussoir.
       MatterBody.setMass(pusherBody, 1e7);
       MatterComposite.add(physicsEngine.world, [...boundaries, pusherBody]);
+      pusherCommandedY = null;
       queuePendingRewardCards();
     }
 
@@ -3592,17 +3594,20 @@
       const pusherTravel = getPusherTravel();
       const frameScale = lastMachineFrame === null ? 1 : Math.min(2, Math.max(.5, (timestamp - lastMachineFrame) / 16.67));
       const delta = lastMachineFrame === null ? 16.666 : Math.min(16.666, timestamp - lastMachineFrame);
+      const pusherDelta = lastMachineFrame === null ? 16.666 : Math.min(60, Math.max(1, timestamp - lastMachineFrame));
       const pusherLipOffset = height * pusherLipDepth / 2;
-      const previousPusherY = pusherBody.position.y - pusherLipOffset;
+      // Position de référence propre au poussoir : le moteur physique ne peut plus la fausser ni le freiner.
+      const previousPusherY = pusherCommandedY ?? (pusherBody.position.y - pusherLipOffset);
       const targetPusherY = height * (pusherHomePosition + pushCycle * pusherTravel);
       const maxPusherStep = Math.min(
-        height * .22 * state.controls.pusherSpeed * delta / 1000,
-        width * .05 * .75
+        height * .22 * state.controls.pusherSpeed * pusherDelta / 1000,
+        width * .05 * .75 * Math.max(1, pusherDelta / 16.666)
       );
       const pusherY = previousPusherY + Math.max(
         -maxPusherStep,
         Math.min(maxPusherStep, targetPusherY - previousPusherY)
       );
+      pusherCommandedY = pusherY;
       const pusherMovingForward = pusherY > previousPusherY;
       pusherBody.collisionFilter.mask = pusherMovingForward ? coinCollisionCategory : 0;
       MatterBody.setPosition(pusherBody, { x: width * .5, y: pusherY + pusherLipOffset }, true);
@@ -3769,6 +3774,10 @@
         }
       }
       MatterEngine.update(physicsEngine, delta);
+      // Le poussoir revient exactement à sa position commandée, quoi qu'ait fait la résolution des contacts.
+      MatterBody.setPosition(pusherBody, { x: width * .5, y: pusherCommandedY + height * pusherLipDepth / 2 }, false);
+      MatterBody.setAngle(pusherBody, 0);
+      MatterBody.setAngularVelocity(pusherBody, 0);
       const movingCoins = [
         ...coins.filter(coin => coin.onConveyor).map(coin => coin.body),
         ...fallingCards.filter(card => card.phase === 'on-conveyor').map(card => card.body)
@@ -3980,6 +3989,22 @@
         if (coin.leftTable) {
           const span = height * (playfieldExitPosition - coinTableEdgePosition);
           fade = Math.max(0, .98 * (1 - (coin.body.position.y - height * coinTableEdgePosition) / span));
+        }
+        const coinFade = fade;
+        if (coin.airborne) {
+          // Une pièce en chute ne s'affiche jamais sur le plateau du poussoir : elle reparaît devant lui.
+          const bandTop = height * .125;
+          const bandBottom = pusherLipBottom + height * pusherContactMargin;
+          if (coin.body.position.y + coin.radius > bandTop && coin.body.position.y - coin.radius < bandBottom) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, width, bandTop);
+            ctx.rect(0, bandBottom, width, height - bandBottom);
+            ctx.clip();
+            drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, coinFade, 0, coin.avatar, coin.tint, coin.wobble);
+            ctx.restore();
+            continue;
+          }
         }
         drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, fade, 0, coin.avatar, coin.tint, coin.airborne ? coin.wobble : 0);
       }
