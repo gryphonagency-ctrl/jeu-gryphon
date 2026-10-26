@@ -12,8 +12,21 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #banner{position:fixed;left:0;right:0;bottom:7vh;z-index:3;text-align:center;pointer-events:none;opacity:0;transform:translateY(14px) scale(.9);transition:.35s}
 #banner.on{opacity:1;transform:none}
 #banner span{display:inline-block;padding:1.2vh 3vw;border-radius:60px;background:rgba(40,8,18,.88);border:3px solid #ffc93c;box-shadow:0 0 30px rgba(255,190,40,.55);font:900 clamp(18px,4vh,44px) Georgia,serif;color:#ffe08a;text-shadow:0 2px 4px #000}
-#starcard{position:fixed;left:50%;top:14vh;transform:translateX(-50%);z-index:4;padding:1.2vh 2.4vw;border-radius:18px;background:rgba(20,6,40,.92);border:3px solid #ffc93c;box-shadow:0 0 30px rgba(255,190,40,.55);color:#ffe08a;font:900 clamp(16px,3.4vh,36px) Georgia,serif;text-align:center;pointer-events:none}
-#starcard small{display:block;font:700 .55em Arial,sans-serif;color:#ffd0a0;letter-spacing:.08em}
+#starcard{position:fixed;z-index:5;display:flex;align-items:center;gap:1.6vh;padding:1.2vh 2.4vh 1.2vh 1.2vh;border-radius:22px;background:linear-gradient(#8a1e3c,#4a0c20);border:4px solid #ffc93c;box-shadow:0 0 0 3px #7a1630,0 0 34px rgba(255,190,40,.7),0 10px 24px rgba(0,0,0,.6);pointer-events:none;animation:scpop .45s cubic-bezier(.2,1.6,.4,1)}
+#starcard[hidden]{display:none}
+#starcard::before,#starcard::after{content:"";position:absolute;left:12px;right:12px;height:6px;background:repeating-linear-gradient(90deg,#fff2a8 0 6px,transparent 6px 18px);opacity:.9}
+#starcard::before{top:-2px}#starcard::after{bottom:-2px}
+#starcard .av{width:11vh;height:11vh;flex:none;border-radius:50%;border:4px solid #ffc93c;background:#5a2a7a center/cover;display:grid;place-items:center;font:900 5vh Arial;color:#fff;box-shadow:0 0 14px rgba(0,0,0,.6)}
+#starcard small{display:block;font:800 1.9vh Arial,sans-serif;color:#ffd0a0;letter-spacing:.12em}
+#starcard b{display:block;font:900 3.6vh Georgia,serif;color:#fff2a8;text-shadow:0 2px 4px #000;max-width:26vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#starcard em{display:block;font:900 5.6vh Georgia,serif;font-style:normal;color:#ffd24a;text-shadow:0 3px 6px #000}
+@keyframes scpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+#queueBox{position:fixed;z-index:3;width:12vw;min-width:110px;padding:.8vh 1vh;border-radius:14px;background:rgba(40,8,18,.78);border:2px solid #ffc93c;box-shadow:0 0 16px rgba(255,190,40,.4);pointer-events:none;display:none}
+#queueBox h5{margin:0 0 .5vh;font:900 1.7vh Arial;letter-spacing:.14em;color:#ffd86a;text-align:center}
+#queueBox div.q{display:flex;align-items:center;gap:.6vh;margin:.35vh 0;font:800 1.9vh Arial;color:#fff2a8;white-space:nowrap;overflow:hidden}
+#queueBox div.q i{flex:none;width:2.8vh;height:2.8vh;border-radius:50%;background:#5a2a7a center/cover;border:1.5px solid #fff;display:grid;place-items:center;font:900 1.5vh Arial;font-style:normal;color:#fff}
+#queueBox div.q span{overflow:hidden;text-overflow:ellipsis}
+#queueBox div.more{font:700 1.6vh Arial;color:#ffd0a0;text-align:center;margin-top:.4vh}
 #banner.win span{background:linear-gradient(#7a1630,#3a0a18);color:#fff2a8}
 #spinner{position:fixed;z-index:3;display:flex;align-items:center;gap:.8vh;padding:.6vh 1.4vh .6vh .6vh;border-radius:60px;background:rgba(40,8,18,.9);border:2px solid #ffc93c;box-shadow:0 0 18px rgba(255,190,40,.5);opacity:0;transition:opacity .3s;pointer-events:none;max-width:24vw}
 #spinner.on{opacity:1}
@@ -52,6 +65,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 <div id="spinner"><div class="av" id="spAv"></div><div><b id="spName"></b><small id="spSub"></small></div></div>
 <div id="whoNow"></div>
 <div id="starcard" hidden></div>
+<div id="queueBox"></div>
 <div id="banner"><span id="bannerText"></span></div>
 <button id="eye" title="Afficher / masquer le panneau (H)" aria-label="Afficher ou masquer le panneau de commande">🙈</button>
 
@@ -440,12 +454,37 @@ const saveViewers = () => { try { localStorage.setItem('cw-viewers', JSON.string
 function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
 function addStars(name, n) { viewer(name).stars += n; saveViewers(); }
 let starTimer = 0;
+function setAvatar(el, name, url) {
+  const ok = /^(https?:|data:image\/)/.test(url || '');
+  el.style.backgroundImage = ok ? `url("${url.replace(/"/g, '%22')}")` : 'none';
+  el.textContent = ok ? '' : (String(name).trim()[0] || '?').toUpperCase();
+}
 function showStars(name, note) {
   const v = viewer(name), c = $('starcard');
   c.innerHTML = '';
-  const s = document.createElement('small'); s.textContent = note || "TOTAL D'ÉTOILES GAGNÉES"; c.appendChild(s);
-  c.appendChild(document.createTextNode(`${v.name} : ⭐ ${v.stars}`));
+  const av = document.createElement('div'); av.className = 'av'; setAvatar(av, v.name, v.avatar); c.appendChild(av);
+  const box = document.createElement('div');
+  const s = document.createElement('small'); s.textContent = note || "TOTAL D'ÉTOILES GAGNÉES";
+  const b = document.createElement('b'); b.textContent = v.name;
+  const e = document.createElement('em'); e.textContent = `⭐ ${v.stars}`;
+  box.append(s, b, e); c.appendChild(box);
   c.hidden = false; clearTimeout(starTimer); starTimer = setTimeout(() => { c.hidden = true; }, 5000);
+}
+function renderQueue() {
+  const box = $('queueBox'), MAX = 10;
+  const sig = queue.map(j => j.name).join('|');
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.style.display = queue.length ? 'block' : 'none';
+  box.innerHTML = '';
+  const h = document.createElement('h5'); h.textContent = `EN ATTENTE (${queue.length})`; box.appendChild(h);
+  queue.slice(0, MAX).forEach(j => {
+    const row = document.createElement('div'); row.className = 'q';
+    const i = document.createElement('i'); setAvatar(i, j.name, j.avatar || (viewers[vkey(j.name)] || {}).avatar);
+    const sp = document.createElement('span'); sp.textContent = j.name;
+    row.append(i, sp); box.appendChild(row);
+  });
+  if (queue.length > MAX) { const m = document.createElement('div'); m.className = 'more'; m.textContent = `+ ${queue.length - MAX} autres`; box.appendChild(m); }
 }
 function runStars(name, wanted) {
   const v = viewer(name);
@@ -489,6 +528,10 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const sp = $('spinner'); sp.style.left = (ox + 985 * sc) + 'px'; sp.style.top = (oy + 8 * sc) + 'px';
   sp.classList.toggle('on', state === 'spin' || state === 'show');
+  // file d'attente à gauche du clown, bannière étoiles au niveau du clown
+  const qb = $('queueBox'); qb.style.left = (ox + 12 * sc) + 'px'; qb.style.top = (oy + 70 * sc) + 'px';
+  const sc2 = $('starcard'); sc2.style.left = (ox + 400 * sc) + 'px'; sc2.style.top = (oy + 470 * sc) + 'px'; sc2.style.translate = '-50% 0';
+  renderQueue();
 } 
 let last = performance.now();
 function frame(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); render(); requestAnimationFrame(frame); }
