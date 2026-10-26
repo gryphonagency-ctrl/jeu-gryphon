@@ -916,7 +916,24 @@ function setSubscriptionStatus(subscriptionId, status, updates = {}) {
     });
 }
 
+// Crédite des étoiles gagnées dans un jeu (récupérées dans le navigateur de l'admin), même si le joueur n'est pas en live.
+function creditBrowserStars({ username, amount, gameId, transactionId }) {
+    const handle = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9._]{1,32}$/.test(handle)) return { applied: false, skipped: true };
+    let player = resolveTikTokPlayer(handle);
+    if (!player) player = upsertTikTokPlayer({ uniqueId: handle, username: handle });
+    const result = applyTikTokStarTransaction({
+        transactionId,
+        playerId: player.id,
+        delta: amount,
+        gameId,
+        reason: 'game-reward'
+    });
+    return { applied: result.applied, duplicate: result.duplicate, skipped: false };
+}
+
 module.exports = {
+    creditBrowserStars,
     deleteCheckout,
     deleteGame,
     getAccount,

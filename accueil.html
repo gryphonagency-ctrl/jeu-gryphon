@@ -760,6 +760,7 @@
                     <p class="checkout-status success" data-stars-owed style="font-size:1.1rem;font-weight:800">⭐ Total dû aux joueurs : — </p>
                     <div class="admin-actions">
                         <button id="stars-export-button" class="button button-primary" type="button">Exporter le classement</button>
+                        <button id="stars-collect-button" class="button button-primary" type="button">Récupérer les étoiles des jeux (ce navigateur)</button>
                         <button id="stars-import-button" class="button button-secondary" type="button">Importer un classement</button>
                         <input id="stars-import-file" type="file" accept="application/json,.json" hidden>
                     </div>
@@ -3602,6 +3603,73 @@
                 status.textContent = error.message || 'Impossible d’exporter le classement.';
             } finally {
                 starsExportButton.disabled = false;
+            }
+        });
+
+        document.getElementById('stars-collect-button').addEventListener('click', async event => {
+            const button = event.currentTarget;
+            const status = document.querySelector('[data-stars-admin-status]');
+            const readJson = (key, fallback) => {
+                try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+            };
+            const found = new Map();
+            const add = (gameId, name, stars) => {
+                const handle = String(name || '').trim().replace(/^@/, '').toLowerCase();
+                const value = Math.floor(Number(stars) || 0);
+                if (!handle || value < 1) return;
+                found.set(`${gameId}|${handle}`, { gameId, username: handle, local: value });
+            };
+            for (const [key, viewer] of Object.entries(readJson('cw-viewers', {}))) {
+                add('/roue-du-cirque.html', viewer?.name || key, viewer?.stars);
+            }
+            for (const [key, viewer] of Object.entries(readJson('aprendre-viewers', {}))) {
+                add('/a-prendre-ou-a-laisser.html', viewer?.name || viewer?.username || key, viewer?.stars);
+            }
+            for (const [storageKey, gameId] of [
+                ['peluches-mutantes-save', '/peluches-mutantes.html'],
+                ['bouteilles-colorees-save', '/bouteilles-colorees.html']
+            ]) {
+                for (const viewer of readJson(storageKey, {}).viewers || []) add(gameId, viewer?.username, viewer?.stars);
+            }
+            const sent = readJson('arcade-stars-sent', {});
+            const entries = [];
+            for (const [key, item] of found) {
+                const amount = item.local - Math.floor(sent[key] || 0);
+                if (amount < 1) continue;
+                entries.push({ key, amount, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
+            }
+            if (!entries.length) {
+                status.className = 'checkout-status';
+                status.textContent = 'Rien de nouveau à récupérer dans ce navigateur (tout est déjà enregistré).';
+                return;
+            }
+            const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+            if (!window.confirm(`Ajouter ${total.toLocaleString('fr-FR')} étoiles (${entries.length} gain(s) de joueurs) au classement ? Les étoiles déjà envoyées ne seront pas comptées deux fois.`)) return;
+            button.disabled = true;
+            status.className = 'checkout-status';
+            status.textContent = 'Récupération en cours…';
+            try {
+                const response = await fetch('/api/admin/stars-collect', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entries: entries.map(({ key, ...rest }) => rest) })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Récupération impossible.');
+                entries.forEach((entry, index) => {
+                    if (result.results?.[index]) sent[entry.key] = (sent[entry.key] || 0) + entry.amount;
+                });
+                localStorage.setItem('arcade-stars-sent', JSON.stringify(sent));
+                status.className = 'checkout-status success';
+                status.textContent = `${result.applied} gain(s) ajoutés (${Number(result.total).toLocaleString('fr-FR')} étoiles)` +
+                    (result.skipped ? ` · ${result.skipped} ignoré(s) (pseudo non valide pour le classement).` : '.');
+                await refreshAdminStarsLeaderboard();
+            } catch (error) {
+                status.className = 'checkout-status error';
+                status.textContent = error.message || 'Récupération impossible.';
+            } finally {
+                button.disabled = false;
             }
         });
 

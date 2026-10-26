@@ -809,6 +809,38 @@ const server = http.createServer((req, res) => {
         }, 1024 * 1024);
         return;
     }
+    if (pathname === '/api/admin/stars-collect' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Réservé à l’administrateur.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const entries = Array.isArray(body.entries) ? body.entries.slice(0, 5000) : [];
+            let applied = 0;
+            let skipped = 0;
+            let total = 0;
+            const results = [];
+            for (const entry of entries) {
+                const amount = Number(entry?.amount);
+                const gameId = typeof entry?.gameId === 'string' ? entry.gameId : '';
+                const transactionId = typeof entry?.transactionId === 'string' ? entry.transactionId : '';
+                if (!Number.isSafeInteger(amount) || amount < 1 || amount > 250000 ||
+                    !/^\/[a-zA-Z0-9._/-]{1,100}$/.test(gameId) ||
+                    !/^[a-zA-Z0-9._:-]{1,128}$/.test(transactionId)) {
+                    skipped += 1;
+                    results.push(false);
+                    continue;
+                }
+                const result = store.creditBrowserStars({ username: entry.username, amount, gameId, transactionId });
+                if (result.applied) { applied += 1; total += amount; } else { skipped += 1; }
+                results.push(Boolean(result.applied));
+            }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ applied, skipped, total, results }));
+        }, 1024 * 1024);
+        return;
+    }
     if (pathname === '/api/tiktok-stars' && req.method === 'GET') {
         if (!access.canAccessGames(req)) {
             res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });

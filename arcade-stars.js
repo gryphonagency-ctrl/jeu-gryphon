@@ -87,6 +87,7 @@
     // Enregistre un gain local d'un jeu dans le portefeuille serveur (total dû). Les erreurs ne gênent jamais le jeu.
     const PENDING_KEY = 'arcade-stars-pending';
     const CARRY_KEY = 'arcade-stars-carry';
+    const SENT_KEY = 'arcade-stars-sent';
     const readJson = (key, fallback) => {
         try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
     };
@@ -111,12 +112,18 @@
                             action: 'award',
                             username: entry.username,
                             amount: entry.amount,
-                            gameId: window.location.pathname,
+                            gameId: entry.gameId || window.location.pathname,
                             transactionId: entry.id
                         })
                     });
                     // Réseau ou serveur indisponible : on réessaiera plus tard.
                     if (response.status >= 500 || response.status === 429) drop = false;
+                    else if (response.ok) {
+                        const sent = readJson(SENT_KEY, {});
+                        const sentKey = `${entry.gameId || window.location.pathname}|${String(entry.username).toLowerCase()}`;
+                        sent[sentKey] = (sent[sentKey] || 0) + entry.amount;
+                        writeJson(SENT_KEY, sent);
+                    }
                 } catch {
                     drop = false;
                 }
@@ -145,7 +152,7 @@
         writeJson(CARRY_KEY, carry);
         if (whole < 1) return;
         const queue = readJson(PENDING_KEY, []);
-        queue.push({ id: crypto.randomUUID(), username: name, amount: Math.min(whole, 250000) });
+        queue.push({ id: crypto.randomUUID(), username: name, amount: Math.min(whole, 250000), gameId: window.location.pathname });
         writeJson(PENDING_KEY, queue);
         flushPending();
     }
