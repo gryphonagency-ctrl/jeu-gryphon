@@ -1246,6 +1246,7 @@
     const pusherLipDepth = .012;
     const playfieldSurfacePosition = .35;
     const playfieldExitPosition = .94;
+    const coinTableEdgePosition = .8;
     const pusherContactMargin = .006;
     const pusherPushClearance = .006;
     const coinDropLaneWidthScale = .68;
@@ -3673,6 +3674,21 @@
         if (!coin.airborne && coin.onConveyor) {
           MatterSleeping.set(coin.body, false);
         }
+        if (!coin.airborne && coin.body.position.y > height * coinTableEdgePosition) {
+          // Hors de la table : la pièce tombe dans le fond noir puis disparaît.
+          if (!coin.leftTable) {
+            coin.leftTable = true;
+            coin.onConveyor = true;
+            coin.waitingForPusher = false;
+            coin.body.collisionFilter.mask = 0;
+            MatterBody.setStatic(coin.body, false);
+          }
+          MatterSleeping.set(coin.body, false);
+          MatterBody.setVelocity(coin.body, {
+            x: coin.body.velocity.x * .9,
+            y: Math.min(height * .02, Math.max(coin.body.velocity.y, height * .002) * 1.08)
+          });
+        }
         if (coin.airborne) coin.wobble += .012 * frameScale;
         if (coin.body.position.y - coin.radius > height * playfieldExitPosition ||
           coin.body.position.x < -width * .05 || coin.body.position.x > width * 1.05) {
@@ -3939,19 +3955,12 @@
       }
 
       for (const coin of orderedCoins) {
-        if (coin.airborne) {
-          // Une pièce en chute n'est visible que devant le poussoir, jamais au-dessus de son plateau.
-          const visibleFrom = getPusherFront();
-          if (coin.body.position.y + coin.radius <= visibleFrom) continue;
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(0, visibleFrom, width, height - visibleFrom);
-          ctx.clip();
-          drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, coin.wobble);
-          ctx.restore();
-          continue;
+        let fade = .98;
+        if (coin.leftTable) {
+          const span = height * (playfieldExitPosition - coinTableEdgePosition);
+          fade = Math.max(0, .98 * (1 - (coin.body.position.y - height * coinTableEdgePosition) / span));
         }
-        drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, 0);
+        drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, fade, 0, coin.avatar, coin.tint, coin.airborne ? coin.wobble : 0);
       }
 
       while (queuedCardDrops.length > 0 && timestamp >= nextCardDropAt) {
