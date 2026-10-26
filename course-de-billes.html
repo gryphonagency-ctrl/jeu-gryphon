@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Course de Billes — TikTok Live</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; color: #fff; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hud { position: fixed; z-index: 5; pointer-events: none; }
+#board { left: 1.2vw; top: 1.2vh; width: min(300px, 40vw); background: rgba(10,16,32,.82); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1vh 1vw; font-size: 2vh; }
+#board h4 { margin: 0 0 .6vh; color: #fbbf24; letter-spacing: .08em; font-size: 2vh; }
+#board .r { display: flex; align-items: center; gap: .7vw; padding: .3vh 0; white-space: nowrap; overflow: hidden; }
+#board .r b { width: 2.4vh; color: #94a3b8; }
+#board .r img, #board .r i { width: 3.2vh; height: 3.2vh; border-radius: 50%; object-fit: cover; flex: none; font-style: normal; display: grid; place-items: center; font-weight: 800; font-size: 1.8vh; }
+#board .r span { overflow: hidden; text-overflow: ellipsis; }
+#status { left: 50%; top: 1.4vh; transform: translateX(-50%); font: 900 clamp(16px, 3.4vh, 38px) Impact, Arial; letter-spacing: .08em; text-shadow: 0 .3vh 1vh #000; text-align: center; max-width: 36vw; }
+#status small { display: block; font: 600 2vh 'Segoe UI', Arial; letter-spacing: 0; color: #cbd5e1; }
+#progress { right: 1.6vw; top: 24vh; bottom: 14vh; width: 1.2vh; background: rgba(255,255,255,.15); border-radius: 1vh; }
+#progress div { position: absolute; left: 50%; width: 1.6vh; height: 1.6vh; margin: -.8vh 0 0 -.8vh; border-radius: 50%; transition: top .3s; }
+#progress::before { content: '🏁'; position: absolute; bottom: -3.4vh; left: 50%; transform: translateX(-50%); font-size: 2.6vh; }
+#feed { left: 1.2vw; bottom: 1.5vh; width: min(420px, 60vw); display: flex; flex-direction: column; gap: .6vh; }
+#feed div { background: rgba(10,16,32,.85); border-left: .6vh solid #38bdf8; border-radius: .8vh; padding: .7vh 1vw; font-size: 2.1vh; animation: pop .3s; }
+#feed .boost { border-color: #f59e0b; } #feed .eject { border-color: #ef4444; }
+@keyframes pop { from { transform: translateX(-30px); opacity: 0; } }
+#big { left: 0; right: 0; top: 30vh; text-align: center; font: 900 clamp(60px, 26vh, 320px) Impact, Arial; color: #fff; text-shadow: 0 0 4vh #38bdf8, 0 .6vh 0 #000; display: none; }
+#big.show { display: block; animation: bigpop .9s; }
+@keyframes bigpop { from { transform: scale(2.2); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1); } }
+#banner { position: fixed; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(5,8,18,.72); }
+#banner.show { display: grid; }
+#banner .box { text-align: center; animation: bigpop .7s; }
+#banner h2 { margin: 0; font: 900 clamp(40px, 12vh, 140px) Impact, Arial; color: #fbbf24; text-shadow: 0 0 4vh rgba(251,191,36,.7); }
+#banner img, #banner .ph { width: 26vh; height: 26vh; border-radius: 50%; border: 1vh solid #fbbf24; object-fit: cover; box-shadow: 0 0 5vh rgba(251,191,36,.8); margin: 1vh auto; display: grid; place-items: center; font: 900 12vh Arial; }
+#banner .name { font: 900 clamp(26px, 7vh, 80px) Arial; }
+#banner .podium { margin-top: 1.5vh; font-size: 3vh; color: #cbd5e1; }
+.tk { position: fixed; top: 1.2vh; right: 1.2vw; z-index: 10; width: min(460px, 94vw); background: rgba(10,16,32,.92); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1.2vw; font-size: 2vh; }
+.tk header { display: flex; align-items: center; gap: .8vw; margin-bottom: .8vh; font-weight: 800; }
+.dot { width: 1.4vh; height: 1.4vh; border-radius: 50%; background: #10b981; box-shadow: 0 0 1vh #10b981; flex: none; }
+.dot.off { background: #6b7280; box-shadow: none; } .dot.wait { background: #f59e0b; box-shadow: 0 0 1vh #f59e0b; }
+.tk .row { display: flex; gap: .5vw; }
+.tk input { flex: 1; min-width: 0; padding: 1.1vh 1vw; border-radius: .8vh; border: .2vh solid #475569; background: #0f172a; color: #fff; font-size: 2.4vh; font-weight: 700; }
+.tk small { display: block; margin-top: .6vh; color: #94a3b8; }
+button { cursor: pointer; border: none; border-radius: .8vh; padding: 1vh 1.2vw; font: 800 2vh Arial; background: #38bdf8; color: #06202e; }
+button.alt { background: #334155; color: #fff; }
+button:active { transform: scale(.96); }
+#panel { position: fixed; z-index: 10; right: 1.2vw; bottom: 6vh; width: min(300px, 70vw); background: rgba(10,16,32,.94); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1vw; display: grid; grid-template-columns: 1fr 1fr; gap: .8vh; }
+#panel h5 { grid-column: 1 / -1; margin: 0; color: #fbbf24; font-size: 2vh; cursor: move; user-select: none; }
+#panel button { font-size: 1.8vh; }
+#panel .wide { grid-column: 1 / -1; }
+#eye { position: fixed; z-index: 11; right: 1.2vw; bottom: 1.2vh; width: 4.4vh; height: 4.4vh; padding: 0; font-size: 2.6vh; background: #334155; }
+#start { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgba(5,8,18,.9); }
+#start button { font-size: 4vh; padding: 2.4vh 4vw; background: #f43f5e; color: #fff; }
+#start p { color: #cbd5e1; font-size: 2.4vh; text-align: center; max-width: 70vw; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="hud" id="board"><h4>🏆 CLASSEMENT</h4><div id="board-list"></div></div>
+<div class="hud" id="status">EN ATTENTE<small>Envoyez un cadeau pour entrer en piste</small></div>
+<div class="hud" id="progress"></div>
+<div class="hud" id="feed"></div>
+<div class="hud" id="big"></div>
+<div id="banner"><div class="box"><h2>🏁 FINISH !</h2><div id="banner-pic"></div><div class="name" id="banner-name"></div><div class="podium" id="banner-podium"></div></div></div>
+
+<div class="tk" id="tk">
+    <header><span class="dot off" id="dot"></span><span>TikTok Live</span></header>
+    <div class="row">
+        <input id="username" type="text" placeholder="@pseudo TikTok" autocomplete="off" aria-label="Pseudo TikTok">
+        <button id="connect" type="button">Connecter</button>
+        <button id="disconnect" class="alt" type="button">✕</button>
+    </div>
+    <small id="ttstatus">Non connecté.</small>
+</div>
+
+<div id="panel">
+    <h5 id="panel-handle">⚙ Contrôle (déplaçable)</h5>
+    <button id="b-go" class="wide" type="button">🚦 Lancer le départ</button>
+    <button id="b-add" class="alt" type="button">+1 bille</button>
+    <button id="b-add10" class="alt" type="button">+10 billes</button>
+    <button id="b-g1" type="button">🎁 1 pièce</button>
+    <button id="b-g5" type="button">🎁 5 pièces</button>
+    <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
+    <button id="b-reset" class="alt" type="button">↺ Reset</button>
+</div>
+<button id="eye" type="button" title="Masquer / afficher le panneau (H)">👁</button>
+
+<div id="start"><div style="text-align:center"><h1 style="font:900 7vh Impact;color:#38bdf8;margin:0 0 2vh">COURSE DE BILLES</h1><p>1 pièce = la bille accélère · 5 pièces = la bille en tête est éjectée.<br>La voix de l'IA annonce le départ et l'arrivée.</p><button id="start-btn" type="button">▶ LANCER</button></div></div>
+
+<script src="/matter.min.js"></script>
+<script>
+if (typeof Matter === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"><\/script>');
+}
+</script>
+<script>
+const { Engine, Bodies, Body, Composite } = Matter;
+const $ = id => document.getElementById(id);
+const WS_URL = 'wss://jeu6boite.onrender.com';
+
+/* ---------- Parcours ---------- */
+const W = 1000, FINISH = 9300, WALL_TOP = -1800, LEVELS = 16;
+const R = 21;
+const engine = Engine.create();
+engine.gravity.y = 1;
+const world = engine.world;
+const statics = [];   // { body, kind }
+const spinners = [];
+const mudZones = [];
+
+function addStatic(body, kind, opts = {}) {
+    body.isStatic = true;
+    Body.set(body, { restitution: opts.restitution ?? 0.3, friction: 0.05 });
+    Composite.add(world, body);
+    statics.push({ body, kind });
+    return body;
+}
+function buildTrack() {
+    const wallH = FINISH + 700 - WALL_TOP;
+    const wallY = WALL_TOP + wallH / 2;
+    addStatic(Bodies.rectangle(-20, wallY, 40, wallH), 'wall');
+    addStatic(Bodies.rectangle(W + 20, wallY, 40, wallH), 'wall');
+    addStatic(Bodies.rectangle(W / 2, FINISH + 700, W + 80, 60), 'wall');
+    for (let i = 0; i < LEVELS; i++) {
+        const y = 700 + i * 520;
+        const left = i % 2 === 0;
+        addStatic(Bodies.rectangle(left ? 410 : 590, y, 820, 28, { angle: left ? 0.14 : -0.14 }), 'ramp');
+        if (i % 3 === 1) {
+            mudZones.push({ x: 0, y: y + 190, w: W, h: 110 });
+        }
+        if (i % 3 === 2) {
+            for (let k = 0; k < 6; k++) {
+                const px = 120 + k * 150 + (k % 2 ? 40 : 0);
+                addStatic(Bodies.circle(px, y + 250, 15), 'peg', { restitution: 1 });
+            }
+        }
+        if (i % 2 === 0) {
+            const sp = addStatic(Bodies.rectangle(left ? 905 : 95, y + 300, 150, 16), 'spinner');
+            spinners.push({ body: sp, speed: left ? 0.04 : -0.04 });
+        }
+    }
+}
+buildTrack();
+const gate = Bodies.rectangle(W / 2, 20, W, 30, { isStatic: true });
+Composite.add(world, gate);
+let gateOn = true;
+
+/* ---------- Voix ---------- */
+let muted = false;
+function say(text) {
+    if (muted || !('speechSynthesis' in window)) return;
+    try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'fr-FR'; u.rate = 1.05;
+        const v = speechSynthesis.getVoices().find(v => /^fr/i.test(v.lang));
+        if (v) u.voice = v;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+    } catch (e) { /* voix indisponible */ }
+}
+function setMuted(m) { muted = m; $('b-mute').textContent = muted ? '🔇 Voix coupée (M)' : '🔊 Voix (M)'; if (muted && 'speechSynthesis' in window) speechSynthesis.cancel(); }
+
+/* ---------- Billes ---------- */
+const marbles = new Map(); // id -> marble
+const avatarCache = new Map(); // id -> Image
+let finishedList = [];
+function hue(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+function loadAvatar(id, src) {
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => avatarCache.set(id, img);
+    img.src = src;
+}
+function toast(text, cls = '') {
+    const d = document.createElement('div');
+    d.className = cls; d.textContent = text;
+    $('feed').appendChild(d);
+    while ($('feed').children.length > 4) $('feed').firstChild.remove();
+    setTimeout(() => d.remove(), 6000);
+}
+function addMarble(id, name, pic) {
+    if (pic) loadAvatar(id, pic);
+    let m = marbles.get(id);
+    if (m && !m.ejected) return m;
+    const body = Bodies.circle(40 + Math.random() * (W - 80), -50 - Math.random() * 300, R, {
+        restitution: 0.35, friction: 0.02, frictionAir: 0.006, density: 0.0012, label: 'marble'
+    });
+    m = { id, name, body, h: hue(id), boostUntil: 0, finished: false, ejected: false, ejectedAt: 0, rank: 0, stuck: 0 };
+    marbles.set(id, m);
+    Composite.add(world, body);
+    toast(`${name} entre en piste`);
+    scheduleAutoStart();
+    return m;
+}
+function removeMarble(m) {
+    Composite.remove(world, m.body);
+    marbles.delete(m.id);
+}
+const racers = () => [...marbles.values()].filter(m => !m.ejected && !m.finished);
+function allActive() { return [...marbles.values()].filter(m => !m.ejected); }
+
+/* ---------- Cadeaux ---------- */
+function boost(m, times = 1) {
+    if (!m || m.ejected || m.finished) return;
+    m.boostUntil = Math.max(performance.now(), m.boostUntil) + 2500 * Math.min(times, 5);
+    if (phase === 'race') Body.setVelocity(m.body, { x: m.body.velocity.x, y: m.body.velocity.y + 8 });
+    toast(`🚀 ${m.name} accélère !`, 'boost');
+}
+function eject(by) {
+    const cand = racers().filter(m => m !== by).sort((a, b) => b.body.position.y - a.body.position.y);
+    const t = cand[0];
+    if (!t) return;
+    t.ejected = true; t.ejectedAt = performance.now();
+    t.body.collisionFilter.mask = 0;
+    const dir = t.body.position.x < W / 2 ? -1 : 1;
+    Body.setVelocity(t.body, { x: dir * 26, y: -24 });
+    Body.setAngularVelocity(t.body, dir * 0.5);
+    toast(`💥 ${t.name} est éjecté${by ? ' par ' + by.name : ''} !`, 'eject');
+    say(`${t.name} est éjecté !`);
+}
+function onGift(info, coins, repeat) {
+    const m = addMarble(info.id, info.name, info.pic);
+    if (coins >= 5) { for (let i = 0; i < Math.min(repeat, 3); i++) eject(m); }
+    else boost(m, repeat);
+}
+
+/* ---------- Phases ---------- */
+let phase = 'lobby';       // lobby | count | race | done
+let autoStartAt = 0, winnerTimer = 0, raceStartedAt = 0;
+function scheduleAutoStart() {
+    if (phase !== 'lobby' || autoStartAt || marbles.size < 2) return;
+    autoStartAt = performance.now() + 30000;
+}
+function startCountdown() {
+    if (phase !== 'lobby' || marbles.size < 1) { toast('Il faut au moins 1 bille.'); return; }
+    phase = 'count'; autoStartAt = 0;
+    let n = 3;
+    const step = () => {
+        if (phase !== 'count') return;
+        if (n > 0) { showBig(String(n)); say(String(n)); n--; setTimeout(step, 1000); }
+        else { showBig('GO !'); say('Go !'); Composite.remove(world, gate); gateOn = false; phase = 'race'; raceStartedAt = performance.now(); }
+    };
+    step();
+}
+function showBig(t) { const b = $('big'); b.textContent = t; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); setTimeout(() => b.classList.remove('show'), 900); }
+function finishMarble(m) {
+    m.finished = true; m.rank = finishedList.length + 1; finishedList.push(m);
+    if (m.rank === 1) {
+        phase = 'done'; winnerTimer = performance.now() + 14000;
+        say(`Finish ! Bravo ${m.name} !`);
+    }
+    updateBanner();
+}
+function avatarHtml(m) {
+    const img = avatarCache.get(m.id);
+    return img ? `<img src="${img.src}" alt="">` : `<div class="ph" style="background:hsl(${m.h} 70% 45%)">${(m.name[0] || '?').toUpperCase()}</div>`;
+}
+function updateBanner() {
+    const w = finishedList[0];
+    $('banner').classList.add('show');
+    $('banner-pic').innerHTML = avatarHtml(w);
+    $('banner-name').textContent = '@' + w.name;
+    $('banner-podium').textContent = finishedList.slice(0, 3).map((m, i) => ['🥇', '🥈', '🥉'][i] + ' ' + m.name).join('   ');
+}
+function resetRace() {
+    for (const m of [...marbles.values()]) removeMarble(m);
+    finishedList = [];
+    if (!gateOn) { Composite.add(world, gate); gateOn = true; }
+    phase = 'lobby'; autoStartAt = 0;
+    $('banner').classList.remove('show');
+}
+
+/* ---------- Boucle physique ---------- */
+function physicsStep(now) {
+    for (const s of spinners) Body.setAngle(s.body, s.body.angle + s.speed);
+    for (const m of marbles.values()) {
+        const b = m.body;
+        if (m.ejected) { if (now - m.ejectedAt > 3500) removeMarble(m); continue; }
+        const boosted = now < m.boostUntil;
+        if (boosted) Body.setVelocity(b, { x: b.velocity.x * 1.01, y: b.velocity.y * 1.03 + 0.15 });
+        if (phase !== 'lobby' || b.position.y > 0) for (const z of mudZones) {
+            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * 0.93, y: b.velocity.y * 0.93 });
+        }
+        const cap = boosted ? 36 : 25;
+        const sp = Math.hypot(b.velocity.x, b.velocity.y);
+        if (sp > cap) Body.setVelocity(b, { x: b.velocity.x * cap / sp, y: b.velocity.y * cap / sp });
+        if (phase === 'race' && !m.finished) {
+            m.stuck = sp < 0.25 ? m.stuck + 1 : 0;
+            if (m.stuck > 150) { Body.applyForce(b, b.position, { x: (Math.random() - .5) * 0.05, y: -0.03 }); m.stuck = 0; }
+            if (b.position.y > FINISH) finishMarble(m);
+        }
+    }
+    Engine.update(engine, 1000 / 60);
+}
+
+/* ---------- Rendu ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let vw = 0, vh = 0, dpr = 1;
+function resize() { dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight; cv.width = vw * dpr; cv.height = vh * dpr; }
+addEventListener('resize', resize); resize();
+const cam = { y: -200, z: 0.8 };
+function updateCamera() {
+    const list = phase === 'lobby' || phase === 'count' ? [] : allActive().filter(m => !m.finished || phase === 'done');
+    let ty = -250, tz = Math.min(vw / 1100, 1.2) || 0.8;
+    if (phase === 'done' && finishedList[0]) { ty = finishedList[0].body.position.y - 100; tz = 1; }
+    else if (list.length) {
+        const ys = list.map(m => m.body.position.y).sort((a, b) => b - a);
+        const top = ys[0], bottom = ys[Math.min(ys.length - 1, Math.floor(ys.length * 0.6))];
+        ty = (top + bottom) / 2 + 150;
+        tz = vh / (top - bottom + 650);
+    }
+    const zMin = Math.min(vw / 1100, 1.2), zMax = 1.4;
+    tz = Math.max(zMin, Math.min(zMax, tz));
+    cam.y += (ty - cam.y) * 0.15;
+    cam.z += (tz - cam.z) * 0.05;
+}
+function poly(body) {
+    ctx.beginPath();
+    body.vertices.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y));
+    ctx.closePath();
+}
+function drawWorld(now) {
+    const z = cam.z;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const g = ctx.createLinearGradient(0, 0, 0, vh);
+    g.addColorStop(0, '#101a3a'); g.addColorStop(1, '#1a1030');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - W / 2 * z), dpr * (vh * 0.45 - cam.y * z));
+    const top = cam.y - vh * 0.45 / z - 100, bottom = cam.y + vh * 0.55 / z + 100;
+    const left = -(vw / 2 - W / 2 * z) / z - 50, right = left + vw / z + 100;
+
+    ctx.fillStyle = '#0d1428'; ctx.fillRect(0, top, W, bottom - top);
+    ctx.strokeStyle = 'rgba(148,163,184,.08)'; ctx.lineWidth = 2;
+    for (let y = Math.floor(top / 100) * 100; y < bottom; y += 100) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.fillStyle = '#070b17'; ctx.fillRect(left, top, -left, bottom - top); ctx.fillRect(W, top, right - W, bottom - top);
+
+    ctx.font = '900 40px Arial'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.textAlign = 'left';
+    for (let y = Math.max(0, Math.ceil(top / 1000) * 1000); y < bottom && y < FINISH; y += 1000) ctx.fillText(`${Math.round((FINISH - y) / 10)} m`, 20, y);
+
+    for (const z2 of mudZones) {
+        if (z2.y > bottom || z2.y + z2.h < top) continue;
+        ctx.fillStyle = 'rgba(120,80,30,.55)'; ctx.fillRect(z2.x, z2.y, z2.w, z2.h);
+        ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '800 30px Arial'; ctx.textAlign = 'center'; ctx.fillText('🟤 BOUE — ralentit', W / 2, z2.y + z2.h / 2 + 10);
+    }
+
+    // ligne de départ
+    ctx.fillStyle = '#fff'; for (let i = 0; i < 50; i++) { ctx.fillStyle = i % 2 ? '#fff' : '#000'; ctx.fillRect(i * 20, 34, 20, 14); ctx.fillStyle = i % 2 ? '#000' : '#fff'; ctx.fillRect(i * 20, 48, 20, 14); }
+    ctx.fillStyle = '#f43f5e'; ctx.font = '900 46px Impact'; ctx.textAlign = 'center'; ctx.fillText('DÉPART', W / 2, 100);
+    // arrivée
+    if (FINISH > top - 100 && FINISH < bottom + 100) {
+        for (let i = 0; i < 50; i++) { ctx.fillStyle = i % 2 ? '#fff' : '#000'; ctx.fillRect(i * 20, FINISH, 20, 16); ctx.fillStyle = i % 2 ? '#000' : '#fff'; ctx.fillRect(i * 20, FINISH + 16, 20, 16); }
+        ctx.fillStyle = '#fbbf24'; ctx.font = '900 70px Impact'; ctx.fillText('ARRIVÉE', W / 2, FINISH - 20);
+    }
+
+    for (const s of statics) {
+        const b = s.body;
+        if (b.bounds.max.y < top || b.bounds.min.y > bottom) continue;
+        if (s.kind === 'wall') ctx.fillStyle = '#334155';
+        else if (s.kind === 'ramp') ctx.fillStyle = '#38bdf8';
+        else if (s.kind === 'peg') ctx.fillStyle = '#f472b6';
+        else ctx.fillStyle = '#fbbf24';
+        poly(b); ctx.fill();
+        if (s.kind === 'ramp') { ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 3; ctx.stroke(); }
+    }
+    if (gateOn) { ctx.fillStyle = 'rgba(244,63,94,.85)'; poly(gate); ctx.fill(); }
+
+    const ranked = allActive().sort((a, b) => b.body.position.y - a.body.position.y);
+    const showNames = ranked.length <= 30;
+    for (const m of marbles.values()) {
+        const b = m.body, p = b.position;
+        if (p.y < top - 60 || p.y > bottom + 60) continue;
+        const boosted = now < m.boostUntil && !m.ejected;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        if (m.ejected) ctx.globalAlpha = Math.max(0.2, 1 - (now - m.ejectedAt) / 3500);
+        if (boosted) { ctx.fillStyle = 'rgba(251,146,60,.45)'; ctx.beginPath(); ctx.arc(0, 0, R + 9, 0, 7); ctx.fill(); }
+        ctx.rotate(b.angle);
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.save(); ctx.clip();
+        const img = avatarCache.get(m.id);
+        if (img) ctx.drawImage(img, -R, -R, R * 2, R * 2);
+        else { ctx.fillStyle = `hsl(${m.h} 70% 45%)`; ctx.fillRect(-R, -R, R * 2, R * 2); ctx.fillStyle = '#fff'; ctx.font = '900 24px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText((m.name[0] || '?').toUpperCase(), 0, 1); }
+        ctx.restore();
+        ctx.lineWidth = 4; ctx.strokeStyle = ranked[0] === m ? '#fbbf24' : `hsl(${m.h} 80% 65%)`; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.stroke();
+        ctx.restore();
+        if (showNames || ranked.indexOf(m) < 6) {
+            ctx.save(); ctx.globalAlpha = m.ejected ? 0.4 : 1;
+            ctx.font = '800 15px Arial'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
+            const label = m.name.slice(0, 14);
+            ctx.strokeText(label, p.x, p.y - R - 8); ctx.fillText(label, p.x, p.y - R - 8);
+            ctx.restore();
+        }
+    }
+}
+
+/* ---------- HUD ---------- */
+function updateHud(now) {
+    const ranked = allActive().sort((a, b) => (a.finished === b.finished ? b.body.position.y - a.body.position.y : a.finished ? -1 : 1));
+    const fin = finishedList.filter(m => !m.ejected);
+    const order = [...fin, ...ranked.filter(m => !m.finished)];
+    $('board-list').innerHTML = order.slice(0, 6).map((m, i) => {
+        const img = avatarCache.get(m.id);
+        const av = img ? `<img src="${img.src}" alt="">` : `<i style="background:hsl(${m.h} 70% 45%)">${(m.name[0] || '?').toUpperCase()}</i>`;
+        return `<div class="r"><b>${i + 1}</b>${av}<span>${m.name.replace(/[<>&]/g, '')}</span></div>`;
+    }).join('') || '<div class="r" style="color:#94a3b8">Aucune bille</div>';
+
+    let st = 'EN ATTENTE', sub = 'Envoyez un cadeau pour entrer en piste';
+    if (phase === 'lobby') {
+        sub = `${marbles.size} bille(s) au départ`;
+        if (autoStartAt) sub += ` · départ dans ${Math.max(0, Math.ceil((autoStartAt - now) / 1000))} s`;
+    } else if (phase === 'count') { st = 'PRÊTS ?'; sub = ''; }
+    else if (phase === 'race') { st = 'COURSE !'; sub = `${racers().length} en piste`; }
+    else { st = 'ARRIVÉE'; sub = 'Prochaine course dans quelques secondes'; }
+    const stEl = $('status');
+    const html = `${st}<small>${sub}</small>`;
+    if (stEl.dataset.h !== html) { stEl.innerHTML = html; stEl.dataset.h = html; }
+
+    const prog = $('progress');
+    const list = allActive();
+    while (prog.children.length < list.length) prog.appendChild(document.createElement('div'));
+    while (prog.children.length > list.length) prog.lastChild.remove();
+    list.forEach((m, i) => {
+        const d = prog.children[i];
+        d.style.top = Math.max(0, Math.min(100, m.body.position.y / FINISH * 100)) + '%';
+        d.style.background = ranked[0] === m ? '#fbbf24' : `hsl(${m.h} 80% 60%)`;
+    });
+}
+
+/* ---------- Connexion TikTok ---------- */
+let socket = null, wantLive = false, reconnectTimer = null;
+function setLive(state) { $('dot').className = 'dot ' + (state === 'on' ? '' : state === 'wait' ? 'wait' : 'off'); }
+function setStatus(m) { $('ttstatus').textContent = m; }
+function pickPic(g) { return g.profilePictureUrl || (Array.isArray(g.avatarUrls) ? g.avatarUrls.find(Boolean) : '') || g.avatarDataUri || ''; }
+function handleMessage(data) {
+    if (data.type === 'STATUS') { setStatus(data.message || 'Statut reçu.'); return; }
+    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+        const g = data.gift ?? data;
+        const id = String(g.uniqueId || g.userId || g.username || g.nickname || 'inconnu');
+        const coins = Number(g.coinValue ?? g.diamondCount ?? 1) || 1;
+        const repeat = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
+        onGift({ id, name: g.nickname || g.username || id, pic: pickPic(g) }, coins, repeat);
+    } else if (data.type === 'viewer' && data.viewer) {
+        const v = data.viewer;
+        const id = String(v.uniqueId || v.userId || v.username || '');
+        if (id && v.avatarDataUri) loadAvatar(id, v.avatarDataUri);
+    }
+}
+function connect() {
+    const name = $('username').value.trim().replace(/^@/, '');
+    if (!name) { setStatus('Entre un pseudo TikTok.'); return; }
+    localStorage.setItem('cb-user', name);
+    wantLive = true; clearTimeout(reconnectTimer);
+    if (socket) { socket.onclose = null; socket.close(); }
+    try { socket = new WebSocket(WS_URL); } catch (e) { setStatus('Connexion impossible.'); return; }
+    const active = socket;
+    setLive('wait'); setStatus(`Connexion au live de @${name}…`);
+    active.addEventListener('open', () => active.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: name })));
+    active.addEventListener('message', ev => {
+        try {
+            const data = JSON.parse(ev.data);
+            if (data.type === 'STATUS' && /connect|live|rejoint|en direct/i.test(data.message || '') && !/impossible|erreur|invalide|pas en direct|hors/i.test(data.message || '')) setLive('on');
+            if (data.type === 'comment' || data.type === 'gift') setLive('on');
+            handleMessage(data);
+        } catch (e) { /* message ignoré */ }
+    });
+    active.addEventListener('error', () => { setLive('off'); setStatus('Connexion impossible.'); });
+    active.addEventListener('close', () => {
+        if (socket !== active) return;
+        setLive('off');
+        if (!wantLive) return;
+        setStatus('Connexion perdue, nouvelle tentative…');
+        reconnectTimer = setTimeout(connect, 4000);
+    });
+}
+function disconnect() {
+    wantLive = false; clearTimeout(reconnectTimer);
+    if (socket) { socket.onclose = null; socket.close(); socket = null; }
+    setLive('off'); setStatus('Déconnecté du live.');
+}
+
+/* ---------- Contrôles ---------- */
+const TEST_NAMES = ['Lina', 'Marco', 'Sofia', 'Yanis', 'Emma', 'Hugo', 'Zoé', 'Noah', 'Jade', 'Leo', 'Maya', 'Adam', 'Inès', 'Louis', 'Alice'];
+let testN = 0;
+function testMarble() { const n = TEST_NAMES[testN % TEST_NAMES.length] + (testN >= TEST_NAMES.length ? Math.floor(testN / TEST_NAMES.length) : ''); testN++; return addMarble('test-' + n, n, ''); }
+function randomMarble() { const l = racers(); return l.length ? l[Math.floor(Math.random() * l.length)] : testMarble(); }
+$('connect').onclick = connect; $('disconnect').onclick = disconnect;
+$('username').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('username').value = localStorage.getItem('cb-user') || '';
+$('b-go').onclick = startCountdown;
+$('b-add').onclick = testMarble;
+$('b-add10').onclick = () => { for (let i = 0; i < 10; i++) testMarble(); };
+$('b-g1').onclick = () => { const m = randomMarble(); onGift({ id: m.id, name: m.name, pic: '' }, 1, 1); };
+$('b-g5').onclick = () => { const m = randomMarble(); onGift({ id: m.id, name: m.name, pic: '' }, 5, 1); };
+$('b-mute').onclick = () => setMuted(!muted);
+$('b-reset').onclick = resetRace;
+const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
+$('eye').onclick = togglePanel;
+addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'm' || e.key === 'M') setMuted(!muted);
+    if (e.key === 'h' || e.key === 'H') togglePanel();
+});
+(function drag() {
+    const p = $('panel'), h = $('panel-handle');
+    let ox = 0, oy = 0, on = false;
+    h.addEventListener('pointerdown', e => { on = true; const r = p.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top; h.setPointerCapture(e.pointerId); });
+    h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (e.clientX - ox) + 'px'; p.style.top = (e.clientY - oy) + 'px'; p.style.right = 'auto'; p.style.bottom = 'auto'; });
+    h.addEventListener('pointerup', () => { on = false; });
+})();
+$('start-btn').onclick = () => { $('start').remove(); say('Course de billes prête.'); if ('speechSynthesis' in window) speechSynthesis.getVoices(); };
+
+/* ---------- Démarrage ---------- */
+let last = performance.now(), acc = 0;
+function frame(now) {
+    acc += Math.min(100, now - last); last = now;
+    let n = 0;
+    while (acc >= 1000 / 60 && n < 4) { physicsStep(now); acc -= 1000 / 60; n++; }
+    if (n === 4) acc = 0;
+    if (phase === 'lobby' && autoStartAt && now >= autoStartAt) startCountdown();
+    if (phase === 'done' && now >= winnerTimer) resetRace();
+    updateCamera(); drawWorld(now); updateHud(now);
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__game = { marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); drawWorld(performance.now()); updateHud(performance.now()); }, get phase() { return phase; }, cam };
+</script>
+</body>
+</html>
