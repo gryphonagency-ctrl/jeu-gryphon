@@ -503,14 +503,15 @@ function setAvatar(el, name, url) {
   el.style.backgroundImage = ok ? `url("${url.replace(/"/g, '%22')}")` : 'none';
   el.textContent = ok ? '' : (String(name).trim()[0] || '?').toUpperCase();
 }
-function showStars(name, note) {
+function showStars(name, note, globalStars) {
   const v = viewer(name), c = $('starcard');
+  const total = Math.max(v.stars || 0, Number(globalStars) || 0);
   c.innerHTML = '';
   const av = document.createElement('div'); av.className = 'av'; setAvatar(av, v.name, v.avatar); c.appendChild(av);
   const box = document.createElement('div');
   const s = document.createElement('small'); s.textContent = note || "TOTAL D'ÉTOILES GAGNÉES";
   const b = document.createElement('b'); b.textContent = v.name;
-  const e = document.createElement('em'); e.textContent = `⭐ ${v.stars}`;
+  const e = document.createElement('em');   e.textContent = `⭐ ${total}`;
   box.append(s, b, e); c.appendChild(box);
   c.hidden = false; clearTimeout(starTimer); starTimer = setTimeout(() => { c.hidden = true; }, 5000);
 }
@@ -603,6 +604,12 @@ function handleMessage(data) {
   }
 }
 // "étoile" et "run" du live passent par le portefeuille global du serveur (total de tous les jeux).
+window.addEventListener('arcade:wallet', ev => {
+  const d = ev.detail || {}, p = d.player;
+  const name = p && (p.username || p.uniqueId || p.nickname);
+  if (!name || !/^Solde global/.test(d.message || '')) return;
+  showStars(name, '', p.stars);
+});
 window.addEventListener('arcade:wallet-run', ev => {
   const p = ev.detail && ev.detail.player, spent = Math.floor(Number(ev.detail && ev.detail.spent) || 0);
   if (!p || spent < 1) return;
