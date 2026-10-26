@@ -123,9 +123,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 const WS_URL = 'wss://jeu6boite.onrender.com';
 const $ = id => document.getElementById(id);
 const W = 1408, H = 768, N = 15, SEG = 360 / N;
-const DEFAULT_SECTORS = ['0','1','0','NEW','0','2','0','2','NEW','0','2','0','3','0','NEW'];
+const DEFAULT_SECTORS = ['0','1','0','NEW','0','2','0','2','/2','0','2','0','3','0','NEW'];
 const COLORS = ['#e53935','#1e88e5','#fdd835','#43a047','#8e24aa','#fb8c00','#00acc1','#ec407a'];
-const CFG_VER = 3;
+const CFG_VER = 4;
 let CFG = { v: CFG_VER, p1: 30, p2: 5, p3: 5, newp: 28, dur: 6, voice: true, video: '', sectors: DEFAULT_SECTORS.slice() };
 try {
   const saved = JSON.parse(localStorage.getItem('cw-cfg') || '{}');
@@ -149,7 +149,8 @@ addEventListener('resize', resize); resize();
 /* ---------- Secteurs ---------- */
 const isNew = s => /^new/i.test(String(s).trim());
 const mult = s => { const v = parseFloat(String(s).replace(/x/i, '').replace(',', '.')); return isNaN(v) ? 0 : Math.max(0, v); };
-const kind = s => isNew(s) ? 'new' : mult(s) > 0 ? 'win' : 'zero';
+const isHalf = s => /^\s*(?:\/\s*2|÷\s*2|half)\s*$/i.test(String(s));
+const kind = s => isNew(s) ? 'new' : isHalf(s) ? 'half' : mult(s) > 0 ? 'win' : 'zero';
 
 /* ---------- Roue : état ---------- */
 const WX = 930, WY = 400, RO = 345, RS = 285;
@@ -240,13 +241,16 @@ function drawWheel() {
   for (let i = 0; i < N; i++) {
     const a0 = (-90 + i * SEG) * Math.PI / 180, a1 = a0 + SEG * Math.PI / 180, mid = (a0 + a1) / 2;
     const s = CFG.sectors[i], k = kind(s);
-    ctx.fillStyle = k === 'new' ? '#6d1230' : COLORS[i % COLORS.length];
+    ctx.fillStyle = k === 'new' ? '#6d1230' : k === 'half' ? '#1b5e5a' : COLORS[i % COLORS.length];
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, RS, a0, a1); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2; ctx.stroke();
     ctx.save(); ctx.rotate(mid); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (k === 'new') {
       ctx.font = '900 21px Georgia, serif'; ctx.fillStyle = '#f2d27a';
       ctx.fillText('NOUVELLE', RS * .66, -10); ctx.fillText('ROUE', RS * .66, 14);
+    } else if (k === 'half') {
+      ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.fillStyle = '#fff'; ctx.font = '900 30px Georgia, serif';
+      ctx.strokeText('÷ 2', RS * .68, 0); ctx.fillText('÷ 2', RS * .68, 0);
     } else {
       ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.fillStyle = '#fff';
       const t = k === 'win' ? `★ ${mult(s)}x` : '0';
@@ -404,7 +408,7 @@ function drawClownVector(t) {
 const queue = []; let state = 'idle', timer = 0, cur = null, chain = 0;
 function pickSector() {
   const groups = { 1: [], 2: [], 3: [], new: [], zero: [] };
-  CFG.sectors.forEach((s, i) => { const k = kind(s); groups[k === 'win' ? Math.min(3, Math.max(1, Math.round(mult(s)))) : k].push(i); });
+  CFG.sectors.forEach((s, i) => { const k = kind(s); groups[k === 'win' ? Math.min(3, Math.max(1, Math.round(mult(s)))) : k === 'half' ? 'new' : k].push(i); });
   const table = [[1, CFG.p1], [2, CFG.p2], [3, CFG.p3], ['new', CFG.newp]];
   let r = Math.random() * 100, list = groups.zero;
   for (const [key, p] of table) { if (r < p) { list = groups[key]; break; } r -= p; }
@@ -429,6 +433,11 @@ function finishSpin() {
     text = `${cur.name} : ⭐ +${stars}`; speak(`Bravo ${cur.name}, ${stars} étoiles !`);
     tick(1200, .25, .08); setTimeout(() => tick(1600, .3, .08), 180);
     addLog(`🌟 ${cur.name} : +${stars} ⭐ (×${mult(s)})`);
+  } else if (k === 'half') {
+    const stars = Math.round(cur.stake * 50) / 100; win = true;
+    addStars(cur.name, stars);
+    text = `${cur.name} : ÷ 2 → ⭐ +${stars}`; speak(`Divisé par deux, ${cur.name} récupère ${stars} étoiles.`);
+    addLog(`➗ ${cur.name} : +${stars} ⭐ (÷2)`);
   } else if (k === 'new') {
     text = `${cur.name} : NOUVELLE ROUE !`; win = true; speak('Nouvelle roue !');
     if (chain < 50) { queue.unshift({ name: cur.name, stake: cur.stake, avatar: cur.avatar, free: true }); chain++; }
@@ -460,7 +469,7 @@ let viewers = {};
 try { viewers = JSON.parse(localStorage.getItem('cw-viewers') || '{}') || {}; } catch (e) {}
 const saveViewers = () => { try { localStorage.setItem('cw-viewers', JSON.stringify(viewers)); } catch (e) {} };
 function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
-function addStars(name, n) { viewer(name).stars += n; saveViewers(); }
+function addStars(name, n) { const v = viewer(name); v.stars = Math.round((v.stars + n) * 100) / 100; saveViewers(); }
 let starTimer = 0;
 function setAvatar(el, name, url) {
   const ok = /^(https?:|data:image\/)/.test(url || '');
