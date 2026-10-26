@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pêche aux Canards — TikTok Live</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #04202a; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hud { position: fixed; z-index: 5; pointer-events: none; text-shadow: 0 .2vh .6vh #000; }
+#title { top: 1.2vh; left: 50%; transform: translateX(-50%); text-align: center; }
+#title h1 { margin: 0; font: 900 5vh Impact, Arial; letter-spacing: .1vh; color: #ffd23f; }
+#title p { margin: .2vh 0 0; font-size: 2.1vh; color: #d8f3ff; }
+#left { top: 1.2vh; left: 1.2vw; background: rgba(4,32,42,.72); border: .25vh solid #2e7d8f; border-radius: 1.4vh; padding: 1.2vh 1.4vw; min-width: 17vw; }
+#left .big { font: 900 5.5vh Impact, Arial; color: #ffd23f; line-height: 1; }
+#left small { color: #9fd6e6; font-size: 1.8vh; }
+#board { margin-top: 1vh; font-size: 2vh; }
+#board div { display: flex; justify-content: space-between; gap: 1vw; padding: .2vh 0; }
+#log { left: 1.2vw; bottom: 2vh; width: 28vw; font-size: 2vh; }
+#log div { background: rgba(4,32,42,.78); border-left: .6vh solid #ffd23f; border-radius: .8vh; padding: .6vh 1vw; margin-top: .6vh; }
+#log div.empty { border-left-color: #6b7f86; color: #b8c8cd; }
+#end { position: fixed; inset: 0; z-index: 8; display: none; align-items: center; justify-content: center; background: rgba(2,18,26,.72); text-align: center; }
+#end h2 { margin: 0 0 1vh; font: 900 8vh Impact, Arial; color: #ffd23f; }
+#end p { font-size: 3vh; margin: .6vh 0; }
+.tk { grid-column: 1 / -1; background: rgba(15,23,42,.9); border: .2vh solid #334c7a; border-radius: 1vh; padding: 1vh .8vw; font-size: 1.8vh; }
+.tk header { display: flex; align-items: center; gap: .8vw; margin-bottom: .8vh; font-weight: 800; }
+.dot { width: 1.4vh; height: 1.4vh; border-radius: 50%; background: #10b981; box-shadow: 0 0 1vh #10b981; flex: none; }
+.dot.off { background: #6b7280; box-shadow: none; } .dot.wait { background: #f59e0b; box-shadow: 0 0 1vh #f59e0b; }
+.tk .row { display: flex; gap: .5vw; }
+.tk input { flex: 1; min-width: 0; padding: .9vh .6vw; border-radius: .8vh; border: .2vh solid #475569; background: #0f172a; color: #fff; font-size: 2vh; font-weight: 700; }
+.tk small { display: block; margin-top: .6vh; color: #94a3b8; }
+button { cursor: pointer; border: none; border-radius: .8vh; padding: 1vh 1.2vw; font: 800 2vh Arial; background: #38bdf8; color: #06202e; }
+button.alt { background: #334155; color: #fff; }
+button:active { transform: scale(.96); }
+#panel { position: fixed; z-index: 10; right: 1.2vw; top: 1.2vh; width: min(380px, 80vw); background: rgba(10,16,32,.94); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1.2vh 1vw; display: grid; grid-template-columns: 1fr 1fr; gap: .8vh; }
+#panel h5 { grid-column: 1 / -1; margin: 0; color: #fbbf24; font-size: 2vh; cursor: move; user-select: none; }
+#panel button { font-size: 1.8vh; }
+#panel .wide { grid-column: 1 / -1; }
+#eye { position: fixed; z-index: 11; right: .8vw; bottom: .8vh; opacity: .45; padding: .6vh .8vw; }
+#eye:hover { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="hud" id="title"><h1>🦆 PÊCHE AUX CANARDS</h1><p>1 pièce = 1 canard pêché · 500 canards cachent de 1 à 50 ⭐</p></div>
+<div class="hud" id="left">
+    <small>CANARDS RESTANTS</small>
+    <div class="big" id="remain">3000</div>
+    <small>🏆 CLASSEMENT ⭐</small>
+    <div id="board"></div>
+</div>
+<div class="hud" id="log"></div>
+
+<div id="end"><div><h2>MARE VIDE !</h2><p id="end-top"></p><p>Appuie sur <b>R</b> pour relancer 3000 canards</p><button id="restart" type="button" style="pointer-events:auto;font-size:3vh;margin-top:1vh">↺ Nouvelle partie</button></div></div>
+
+<div id="panel">
+    <h5 id="panel-handle">⚙ Contrôle (déplaçable)</h5>
+    <div class="tk">
+        <header><span class="dot off" id="dot"></span><span>TikTok Live</span></header>
+        <div class="row">
+            <input id="username" type="text" placeholder="@pseudo TikTok" autocomplete="off" aria-label="Pseudo TikTok">
+            <button id="connect" type="button">Connecter</button>
+            <button id="disconnect" class="alt" type="button">✕</button>
+        </div>
+        <small id="ttstatus">Non connecté.</small>
+    </div>
+    <button id="t1" type="button">🎁 1 pièce</button>
+    <button id="t10" type="button">🎁 10 pièces</button>
+    <button id="t100" type="button">🎁 100 pièces</button>
+    <button id="t500" type="button">🎁 500 pièces</button>
+    <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
+    <button id="b-reset" class="alt" type="button">↺ Nouvelle partie (R)</button>
+</div>
+<button id="eye" class="alt" type="button" title="Masquer / afficher le panneau (H)">👁</button>
+
+<script>
+const WS_URL = 'wss://jeu6boite.onrender.com';
+const TOTAL = 3000, PRIZES = 500;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let vw = 0, vh = 0, dpr = 1, bg = null;
+
+/* ---------- Voix ---------- */
+let muted = false;
+function say(text) {
+    if (muted || !('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'fr-FR'; u.rate = 1.05;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function setMuted(v) { muted = v; $('b-mute').textContent = muted ? '🔇 Voix coupée (M)' : '🔊 Voix (M)'; if (muted && 'speechSynthesis' in window) speechSynthesis.cancel(); }
+
+/* ---------- Sprites ---------- */
+const COLORS = ['#ffd23f', '#ff7a59', '#4dadf7', '#3ddbd0', '#ff8fc7', '#a78bfa', '#ffffff'];
+function shade(hex, k) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = c => Math.max(0, Math.min(255, Math.round(c * k)));
+    return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+function makeDuck(color) {
+    const c = document.createElement('canvas'); c.width = 80; c.height = 64;
+    const g = c.getContext('2d'); g.scale(2, 2);
+    g.fillStyle = color; g.strokeStyle = shade(color, 0.55); g.lineWidth = 1.4;
+    g.beginPath(); g.ellipse(18, 20, 14, 9.5, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(5, 17); g.quadraticCurveTo(0, 12, 3, 9); g.quadraticCurveTo(6, 13, 9, 14); g.fill(); g.stroke();
+    g.beginPath(); g.arc(29, 11, 7, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = '#ff9f1c'; g.strokeStyle = '#a45a00';
+    g.beginPath(); g.moveTo(34.5, 9.5); g.quadraticCurveTo(41, 10, 40, 13); g.quadraticCurveTo(37, 15, 34, 13.5); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = shade(color, 0.82); g.strokeStyle = shade(color, 0.5);
+    g.beginPath(); g.ellipse(17, 20, 8.5, 5, -0.25, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = '#10151a'; g.beginPath(); g.arc(31.2, 9, 1.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(31.7, 8.4, 0.5, 0, Math.PI * 2); g.fill();
+    return c;
+}
+const SPRITES = COLORS.map(makeDuck);
+const SPR_W = 40, SPR_H = 32;
+
+/* ---------- Canards ---------- */
+let ducks = [], stars = new Map(), pending = [], popups = [], ripples = [], log = [];
+let totalFished = 0, gameOver = false, duckScale = 0.5;
+function pad() { return 34 * duckScale + 24; }
+function buildPrizes() {
+    const p = new Array(TOTAL).fill(0);
+    for (let i = 0; i < PRIZES; i++) p[i] = i < 5 ? 50 : 1 + Math.floor(49 * Math.pow(Math.random(), 2.2));
+    for (let i = TOTAL - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    return p;
+}
+function newGame() {
+    const prizes = buildPrizes();
+    ducks = [];
+    for (let i = 0; i < TOTAL; i++) {
+        ducks.push({
+            x: pad() + Math.random() * Math.max(10, vw - pad() * 2),
+            y: pad() + 40 + Math.random() * Math.max(10, vh - pad() * 2 - 40),
+            a: Math.random() * Math.PI * 2, s: 0.12 + Math.random() * 0.35, t: Math.random() * 6.28,
+            col: Math.floor(Math.random() * COLORS.length), face: 1, prize: prizes[i]
+        });
+    }
+    stars = new Map(); pending = []; popups = []; log = []; totalFished = 0; gameOver = false;
+    $('end').style.display = 'none'; $('log').innerHTML = ''; updateHud();
+}
+
+/* ---------- Pêche ---------- */
+function onGift(user, coins, repeat) {
+    const n = Math.max(1, Math.floor(coins * repeat));
+    if (gameOver) return;
+    pending.push({ user, n });
+}
+function fishOne(user) {
+    if (!ducks.length) return false;
+    const i = Math.floor(Math.random() * ducks.length), d = ducks[i];
+    ducks[i] = ducks[ducks.length - 1]; ducks.pop();
+    popups.push({ x: d.x, y: d.y, col: d.col, face: d.face, prize: d.prize, t: 0 });
+    totalFished++;
+    if (d.prize > 0) {
+        stars.set(user, (stars.get(user) || 0) + d.prize);
+        addLog(user, d.prize);
+        if (d.prize >= 30) say(`${user} gagne ${d.prize} étoiles !`);
+    }
+    for (let k = 0; k < 2; k++) ripples.push({ x: d.x, y: d.y, r: 6, a: 0.7 });
+    return true;
+}
+function addLog(user, prize) {
+    const el = document.createElement('div'); el.textContent = `${user} → +${prize} ⭐`;
+    const box = $('log'); box.appendChild(el);
+    while (box.children.length > 5) box.removeChild(box.firstChild);
+}
+function processQueue() {
+    let total = 0; for (const p of pending) total += p.n;
+    let k = Math.min(total, Math.max(1, Math.ceil(total / 45)));
+    while (k > 0 && pending.length) {
+        const p = pending[0];
+        if (!fishOne(p.user)) { pending = []; break; }
+        p.n--; k--; if (p.n <= 0) pending.shift();
+    }
+    if (!ducks.length && !pending.length && !gameOver) finish();
+}
+function finish() {
+    gameOver = true;
+    const top = [...stars.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    $('end-top').textContent = top.length ? '🏆 ' + top.map(([u, s]) => `${u} ${s}⭐`).join('  ·  ') : '';
+    $('end').style.display = 'flex';
+    say('La mare est vide ! Appuie sur R pour relancer.');
+}
+function updateHud() {
+    $('remain').textContent = ducks.length;
+    const top = [...stars.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    $('board').innerHTML = top.length ? top.map(([u, s], i) => `<div><span>${i + 1}. ${u.replace(/[<>&]/g, '')}</span><b>${s} ⭐</b></div>`).join('') : '<div><span>En attente de cadeaux…</span></div>';
+}
+
+/* ---------- Décor : poissons, crapauds, bébés canards ---------- */
+const fish = [];
+function initFish() {
+    fish.length = 0;
+    for (let i = 0; i < 16; i++) fish.push({
+        x: Math.random() * vw, y: Math.random() * vh, a: Math.random() * 6.28, s: 0.3 + Math.random() * 0.6,
+        len: 26 + Math.random() * 40, ph: Math.random() * 6.28, col: ['#ff9a3c', '#d9e6ee', '#7fb8c9', '#f2c14e'][i % 4]
+    });
+}
+let toads = [];
+function initToads() {
+    toads = [];
+    const spots = [[0.08, 0.28], [0.9, 0.2], [0.06, 0.72], [0.93, 0.66], [0.5, 0.93]];
+    spots.forEach(([fx, fy], i) => toads.push({ x: fx * vw, y: fy * vh, r: 34 + (i % 3) * 6, hop: 0, next: 2 + Math.random() * 5, ph: Math.random() * 6 }));
+}
+const mother = { x: 0, y: 0, a: 0 }, trail = [];
+function initBabies() { mother.x = vw * 0.3; mother.y = vh * 0.6; mother.a = 0; trail.length = 0; }
+
+function drawFish(f, t) {
+    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.a); ctx.globalAlpha = 0.3;
+    const w = Math.sin(t * 6 + f.ph) * 0.25;
+    ctx.fillStyle = f.col;
+    ctx.beginPath(); ctx.ellipse(0, 0, f.len / 2, f.len / 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-f.len / 2, 0); ctx.lineTo(-f.len / 2 - f.len * 0.28, -f.len * (0.2 + w)); ctx.lineTo(-f.len / 2 - f.len * 0.28, f.len * (0.2 - w)); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#0a2530'; ctx.beginPath(); ctx.arc(f.len * 0.32, -f.len * 0.04, f.len * 0.04, 0, 6.28); ctx.fill();
+    ctx.restore();
+}
+function drawLily(x, y, r, ph) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ph);
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(r * 0.1, r * 0.18, r, r * 0.8, 0, 0, 6.28); ctx.fill();
+    const g = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.1, 0, 0, r);
+    g.addColorStop(0, '#6dbb4a'); g.addColorStop(1, '#2f7a2e');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, 0.3, Math.PI * 2 - 0.3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(20,70,20,.6)'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.restore();
+}
+function drawToad(td, t) {
+    drawLily(td.x, td.y + td.r * 0.35, td.r * 1.5, td.ph);
+    const k = td.hop > 0 ? Math.sin((1 - td.hop) * Math.PI) : 0;
+    const y = td.y - k * td.r * 1.1, r = td.r;
+    ctx.save(); ctx.translate(td.x, y);
+    ctx.fillStyle = '#5c6b2a'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.72, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#7f9440'; ctx.beginPath(); ctx.ellipse(0, -r * 0.1, r * 0.8, r * 0.55, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#4a561f';
+    for (const [dx, dy, rr] of [[-0.4, -0.2, 0.14], [0.3, -0.35, 0.12], [0.05, 0.1, 0.16], [-0.15, -0.5, 0.1]]) { ctx.beginPath(); ctx.arc(dx * r, dy * r, rr * r, 0, 6.28); ctx.fill(); }
+    ctx.fillStyle = '#c8d98a'; ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.55, r * 0.25, 0, 0, 6.28); ctx.fill();
+    const blink = (Math.sin(t * 0.9 + td.ph * 3) > 0.985) ? 0.2 : 1;
+    for (const sx of [-1, 1]) {
+        ctx.fillStyle = '#7f9440'; ctx.beginPath(); ctx.arc(sx * r * 0.42, -r * 0.62, r * 0.26, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(sx * r * 0.42, -r * 0.64, r * 0.17, r * 0.17 * blink, 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx * r * 0.42, -r * 0.64, r * 0.07, r * 0.14 * blink, 0, 0, 6.28); ctx.fill();
+    }
+    ctx.strokeStyle = '#3b4518'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.38, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.restore();
+}
+function drawSprite(i, x, y, sc, face, rot) {
+    ctx.setTransform(dpr * sc * face, 0, 0, dpr * sc, x * dpr, y * dpr);
+    if (rot) ctx.rotate(rot);
+    ctx.drawImage(SPRITES[i], -SPR_W / 2, -SPR_H / 2, SPR_W, SPR_H);
+}
+function resetT() { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+
+/* ---------- Fond de mare ---------- */
+function buildBackground() {
+    bg = document.createElement('canvas'); bg.width = vw * dpr; bg.height = vh * dpr;
+    const g = bg.getContext('2d'); g.scale(dpr, dpr);
+    const w = g.createRadialGradient(vw / 2, vh / 2, vh * 0.1, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+    w.addColorStop(0, '#3fa7b5'); w.addColorStop(0.55, '#1f7c8e'); w.addColorStop(1, '#0a3b48');
+    g.fillStyle = w; g.fillRect(0, 0, vw, vh);
+    for (let i = 0; i < 90; i++) {
+        const x = Math.random() * vw, y = Math.random() * vh, r = 20 + Math.random() * 90;
+        const p = g.createRadialGradient(x, y, 0, x, y, r);
+        const dark = Math.random() < 0.6;
+        p.addColorStop(0, dark ? 'rgba(6,40,50,.22)' : 'rgba(120,220,220,.12)'); p.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = p; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // berges et roseaux
+    for (const side of [0, 1, 2, 3]) {
+        const len = side % 2 ? vh : vw, n = Math.floor(len / 14);
+        for (let i = 0; i < n; i++) {
+            const o = Math.random() * len, h = 20 + Math.random() * 34, lean = (Math.random() - 0.5) * 10;
+            let x, y, dx, dy;
+            if (side === 0) { x = o; y = 0; dx = lean; dy = h; } else if (side === 1) { x = vw; y = o; dx = -h; dy = lean; }
+            else if (side === 2) { x = o; y = vh; dx = lean; dy = -h; } else { x = 0; y = o; dx = h; dy = lean; }
+            g.strokeStyle = `rgba(${40 + Math.random() * 40},${90 + Math.random() * 60},40,.85)`; g.lineWidth = 2 + Math.random() * 2;
+            g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + dx * 0.5 + lean, y + dy * 0.5, x + dx, y + dy); g.stroke();
+        }
+    }
+    const v = g.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.45, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,15,20,.55)');
+    g.fillStyle = v; g.fillRect(0, 0, vw, vh);
+}
+const lilies = [];
+function initLilies() { lilies.length = 0; for (let i = 0; i < 14; i++) lilies.push({ x: Math.random() * vw, y: Math.random() * vh, r: 20 + Math.random() * 22, ph: Math.random() * 6.28 }); }
+
+function resize() {
+    const ow = vw, oh = vh;
+    dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
+    cv.width = vw * dpr; cv.height = vh * dpr;
+    duckScale = Math.max(0.32, Math.min(vw / 1280, vh / 720) * 0.42);
+    buildBackground(); initFish(); initToads(); initBabies(); initLilies();
+    if (ow && oh) for (const d of ducks) { d.x *= vw / ow; d.y *= vh / oh; }
+}
+addEventListener('resize', resize);
+
+/* ---------- Mise à jour et rendu ---------- */
+let last = performance.now(), clock = 0;
+function update(dt) {
+    clock += dt;
+    const k = dt * 60, p = pad();
+    for (const d of ducks) {
+        d.t += dt; d.a += (Math.sin(d.t * 0.7 + d.col) * 0.04 + (Math.random() - 0.5) * 0.06) * k;
+        const vx = Math.cos(d.a) * d.s * k, vy = Math.sin(d.a) * d.s * k * 0.7;
+        d.x += vx; d.y += vy;
+        if (d.x < p) { d.x = p; d.a = Math.PI - d.a; } else if (d.x > vw - p) { d.x = vw - p; d.a = Math.PI - d.a; }
+        if (d.y < p + 40) { d.y = p + 40; d.a = -d.a; } else if (d.y > vh - p) { d.y = vh - p; d.a = -d.a; }
+        if (Math.abs(vx) > 0.05) d.face = vx >= 0 ? 1 : -1;
+    }
+    for (const f of fish) {
+        f.a += Math.sin(clock * 0.8 + f.ph) * 0.02 * k; f.x += Math.cos(f.a) * f.s * 1.4 * k; f.y += Math.sin(f.a) * f.s * 1.4 * k;
+        if (f.x < -60) f.x = vw + 40; if (f.x > vw + 60) f.x = -40; if (f.y < -60) f.y = vh + 40; if (f.y > vh + 60) f.y = -40;
+    }
+    for (const td of toads) {
+        if (td.hop > 0) td.hop = Math.max(0, td.hop - dt * 1.6);
+        else { td.next -= dt; if (td.next <= 0) { td.hop = 1; td.next = 3 + Math.random() * 6; } }
+    }
+    mother.a += (Math.sin(clock * 0.31) * 0.03) * k;
+    mother.x += Math.cos(mother.a) * 0.9 * k; mother.y += Math.sin(mother.a) * 0.9 * k;
+    if (mother.x < p || mother.x > vw - p) mother.a = Math.PI - mother.a;
+    if (mother.y < p + 40 || mother.y > vh - p) mother.a = -mother.a;
+    mother.x = Math.min(Math.max(mother.x, p), vw - p); mother.y = Math.min(Math.max(mother.y, p + 40), vh - p);
+    trail.unshift({ x: mother.x, y: mother.y }); if (trail.length > 140) trail.pop();
+    for (const r of ripples) { r.r += 40 * dt; r.a -= dt * 0.7; }
+    ripples = ripples.filter(r => r.a > 0);
+    if (Math.random() < dt * 3) ripples.push({ x: Math.random() * vw, y: Math.random() * vh, r: 4, a: 0.25 });
+    for (const q of popups) q.t += dt;
+    popups = popups.filter(q => q.t < 1.9);
+    if (pending.length) processQueue();
+}
+function render() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bg, 0, 0); resetT();
+    // lumière qui danse dans l'eau
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 26; i++) {
+        const x = ((Math.sin(clock * 0.13 + i * 1.7) * 0.5 + 0.5) * vw), y = ((Math.cos(clock * 0.11 + i * 2.3) * 0.5 + 0.5) * vh);
+        const r = 50 + (i % 5) * 18, a = 0.035 + 0.025 * Math.sin(clock * 0.9 + i);
+        const p = ctx.createRadialGradient(x, y, 0, x, y, r); p.addColorStop(0, `rgba(170,255,245,${a})`); p.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = p; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    for (const f of fish) drawFish(f, clock);
+    for (const l of lilies) drawLily(l.x, l.y, l.r, l.ph);
+    for (const r of ripples) { ctx.strokeStyle = `rgba(220,255,255,${Math.max(0, r.a)})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.55, 0, 0, 6.28); ctx.stroke(); }
+    for (const td of toads) drawToad(td, clock);
+    // ombres puis canards
+    ctx.fillStyle = 'rgba(0,25,35,.28)';
+    for (const d of ducks) { ctx.beginPath(); ctx.ellipse(d.x + 2, d.y + 9 * duckScale * 1.6, 13 * duckScale * 1.4, 4 * duckScale * 1.4, 0, 0, 6.28); ctx.fill(); }
+    for (const d of ducks) drawSprite(d.col, d.x, d.y + Math.sin(d.t * 2.2) * 1.2, duckScale * 1.4, d.face, Math.sin(d.t * 1.6) * 0.05 * d.face);
+    resetT();
+    // maman canard et ses bébés
+    const mf = Math.cos(mother.a) >= 0 ? 1 : -1;
+    for (let i = 5; i >= 0; i--) {
+        const pt = trail[Math.min(trail.length - 1, 14 + i * 16)] || mother;
+        drawSprite(0, pt.x, pt.y + Math.sin(clock * 3 + i) * 1.2, duckScale * 0.8, mf, 0);
+    }
+    drawSprite(4, mother.x, mother.y, duckScale * 1.8, mf, 0);
+    resetT();
+    // canards pêchés
+    for (const q of popups) {
+        const e = Math.min(1, q.t / 0.35), sc = duckScale * (1.4 + e * 1.6), up = Math.min(1, q.t / 1.2) * 46;
+        ctx.globalAlpha = Math.max(0, Math.min(1, (1.9 - q.t) / 0.5));
+        drawSprite(q.col, q.x, q.y - up - e * 10, sc, q.face, Math.sin(q.t * 14) * 0.12 * (1 - e));
+        resetT();
+        const txt = q.prize > 0 ? `+${q.prize} ⭐` : 'Vide';
+        ctx.font = `900 ${Math.round(18 + (q.prize > 0 ? Math.min(14, q.prize / 4) : 0))}px Arial`; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.85)';
+        ctx.fillStyle = q.prize >= 30 ? '#ff5ee0' : q.prize > 0 ? '#ffd23f' : '#c4d3d8';
+        const ty = q.y - up - 30 * duckScale - 14;
+        ctx.strokeText(txt, q.x, ty); ctx.fillText(txt, q.x, ty);
+        ctx.globalAlpha = 1;
+    }
+    updateHud();
+}
+let hudT = 0;
+function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    update(dt); render();
+    requestAnimationFrame(frame);
+}
+
+/* ---------- Connexion TikTok ---------- */
+let socket = null, wantLive = false, reconnectTimer = null;
+function setLive(s) { $('dot').className = 'dot ' + (s === 'on' ? '' : s === 'wait' ? 'wait' : 'off'); }
+function setStatus(m) { $('ttstatus').textContent = m; }
+function handleMessage(data) {
+    if (data.type === 'STATUS') { setStatus(data.message || 'Statut reçu.'); return; }
+    if (data.type === 'gift' || data.type === 'tiktok-gift') {
+        const g = data.gift ?? data;
+        const id = String(g.nickname || g.username || g.uniqueId || g.userId || 'inconnu');
+        const coins = Number(g.coinValue ?? g.diamondCount ?? 1) || 1;
+        const repeat = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
+        onGift(id, coins, repeat);
+    }
+}
+function connect() {
+    const name = $('username').value.trim().replace(/^@/, '');
+    if (!name) { setStatus('Entre un pseudo TikTok.'); return; }
+    localStorage.setItem('pc-user', name);
+    wantLive = true; clearTimeout(reconnectTimer);
+    if (socket) { socket.onclose = null; socket.close(); }
+    try { socket = new WebSocket(WS_URL); } catch (e) { setStatus('Connexion impossible.'); return; }
+    const active = socket;
+    setLive('wait'); setStatus(`Connexion au live de @${name}…`);
+    active.addEventListener('open', () => active.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: name })));
+    active.addEventListener('message', ev => {
+        try {
+            const data = JSON.parse(ev.data);
+            if (data.type === 'STATUS' && /connect|live|rejoint|en direct/i.test(data.message || '') && !/impossible|erreur|invalide|pas en direct|hors/i.test(data.message || '')) setLive('on');
+            if (data.type === 'comment' || data.type === 'gift') setLive('on');
+            handleMessage(data);
+        } catch (e) { /* message ignoré */ }
+    });
+    active.addEventListener('error', () => { setLive('off'); setStatus('Connexion impossible.'); });
+    active.addEventListener('close', () => {
+        if (socket !== active) return;
+        setLive('off');
+        if (!wantLive) return;
+        setStatus('Connexion perdue, nouvelle tentative…');
+        reconnectTimer = setTimeout(connect, 4000);
+    });
+}
+function disconnect() {
+    wantLive = false; clearTimeout(reconnectTimer);
+    if (socket) { socket.onclose = null; socket.close(); socket = null; }
+    setLive('off'); setStatus('Déconnecté du live.');
+}
+
+/* ---------- Contrôles ---------- */
+const TEST = ['Lina', 'Marco', 'Sofia', 'Yanis', 'Emma', 'Hugo', 'Zoé', 'Noah'];
+const testGift = n => onGift(TEST[Math.floor(Math.random() * TEST.length)], n, 1);
+$('connect').onclick = connect; $('disconnect').onclick = disconnect;
+$('username').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('username').value = localStorage.getItem('pc-user') || '';
+$('t1').onclick = () => testGift(1); $('t10').onclick = () => testGift(10);
+$('t100').onclick = () => testGift(100); $('t500').onclick = () => testGift(500);
+$('b-mute').onclick = () => setMuted(!muted);
+$('b-reset').onclick = newGame; $('restart').onclick = newGame;
+const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
+$('eye').onclick = togglePanel;
+addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    const k = e.key.toLowerCase();
+    if (k === 'r') newGame();
+    if (k === 'm') setMuted(!muted);
+    if (k === 'h') togglePanel();
+});
+(function drag() {
+    const p = $('panel'), h = $('panel-handle');
+    let ox = 0, oy = 0, on = false;
+    h.addEventListener('pointerdown', e => { on = true; const r = p.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top; h.setPointerCapture(e.pointerId); });
+    h.addEventListener('pointermove', e => {
+        if (!on) return;
+        p.style.left = Math.max(0, Math.min(innerWidth - 60, e.clientX - ox)) + 'px';
+        p.style.top = Math.max(0, Math.min(innerHeight - 40, e.clientY - oy)) + 'px';
+        p.style.right = 'auto'; p.style.bottom = 'auto';
+    });
+    h.addEventListener('pointerup', () => { on = false; });
+})();
+
+resize(); newGame();
+requestAnimationFrame(frame);
+window.__peche = { onGift, newGame, get ducks() { return ducks.length; }, get gameOver() { return gameOver; }, get stars() { return stars; }, step(n) { for (let i = 0; i < n; i++) update(1 / 60); }, render };
+</script>
+</body>
+</html>
