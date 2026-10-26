@@ -3886,16 +3886,20 @@
             try {
                 if (file.size > 1024 * 1024) throw new Error('Le fichier dépasse la taille maximale de 1 Mo.');
                 const snapshot = JSON.parse(await file.text());
-                if (snapshot && snapshot.type === 'roue-du-cirque-etoiles' && snapshot.viewers && typeof snapshot.viewers === 'object') {
+                const isAprendre = snapshot && !snapshot.type && snapshot.viewers && typeof snapshot.viewers === 'object' && snapshot.settings;
+                if (snapshot && (snapshot.type === 'roue-du-cirque-etoiles' || isAprendre) && snapshot.viewers && typeof snapshot.viewers === 'object') {
+                    const gameLabel = isAprendre ? 'À prendre ou à laisser' : 'la Roue du Cirque';
+                    const gamePath = isAprendre ? '/a-prendre-ou-a-laisser.html' : '/roue-du-cirque.html';
+                    const gameKey = isAprendre ? 'aprendre' : 'roue';
                     const gains = [];
                     for (const viewer of Object.values(snapshot.viewers)) {
-                        const username = String(viewer?.name || '').trim().replace(/^@/, '').toLowerCase();
+                        const username = String(viewer?.name || viewer?.username || '').trim().replace(/^@/, '').toLowerCase();
                         const amount = Math.floor(Number(String(viewer?.stars).replace(',', '.')));
                         if (/^[a-z0-9._]{1,32}$/.test(username) && amount >= 1) gains.push([username, amount]);
                     }
                     const total = gains.reduce((sum, [, amount]) => sum + amount, 0);
-                    if (!gains.length) throw new Error('Aucun joueur avec un pseudo valide dans ce fichier de la Roue.');
-                    if (!window.confirm(`Ajouter ${total.toLocaleString('fr-FR')} étoiles de la Roue du Cirque (${gains.length} joueurs) par-dessus le classement ? Les noms avec espaces ou caractères spéciaux sont ignorés.`)) {
+                    if (!gains.length) throw new Error('Aucun joueur avec un pseudo valide dans ce fichier.');
+                    if (!window.confirm(`Ajouter ${total.toLocaleString('fr-FR')} étoiles de ${gameLabel} (${gains.length} joueurs) par-dessus le classement ? Les noms avec espaces ou caractères spéciaux sont ignorés.`)) {
                         status.textContent = 'Import annulé.';
                         return;
                     }
@@ -3904,7 +3908,7 @@
                         credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ entries: gains.map(([username, amount]) => ({
-                            username, amount, gameId: '/roue-du-cirque.html', transactionId: `manual:roue-2026-10-26:${username}`
+                            username, amount, gameId: gamePath, transactionId: `manual:${gameKey}-2026-10-26:${username}`
                         })) })
                     });
                     const collected = await collect.json();
@@ -3912,8 +3916,8 @@
                     await refreshAdminStarsLeaderboard();
                     status.className = 'checkout-status success';
                     status.textContent = collected.applied
-                        ? `${collected.applied} joueur(s) ajoutés (${Number(collected.total).toLocaleString('fr-FR')} étoiles) depuis la Roue du Cirque.`
-                        : 'Ces gains de la Roue étaient déjà ajoutés.';
+                        ? `${collected.applied} joueur(s) ajoutés (${Number(collected.total).toLocaleString('fr-FR')} étoiles) depuis ${gameLabel}.`
+                        : 'Ces gains étaient déjà ajoutés.';
                     window.alert(status.textContent);
                     return;
                 }
