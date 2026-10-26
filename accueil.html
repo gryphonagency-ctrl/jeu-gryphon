@@ -3524,6 +3524,39 @@
             status.textContent = `Mis à jour à ${new Date().toLocaleTimeString('fr-FR')}.`;
         }
 
+        let starsRestoreTried = false;
+        // Copie de secours dans ce navigateur : renvoyée au serveur s'il a perdu ses données (disque non persistant).
+        async function syncStarsBackup(players) {
+            const KEY = 'gryphon-stars-backup';
+            const sum = list => list.reduce((total, player) => total + Math.max(0, Number(player.balance) || 0), 0);
+            let backup = null;
+            try { backup = JSON.parse(localStorage.getItem(KEY)); } catch { backup = null; }
+            const backupList = Array.isArray(backup?.players) ? backup.players : [];
+            const current = sum(players);
+            const saved = sum(backupList);
+            if (!starsRestoreTried && saved > 0 && current < saved * 0.5) {
+                starsRestoreTried = true;
+                const response = await fetch('/api/admin/stars-restore', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ players: backupList })
+                });
+                const outcome = await response.json().catch(() => ({}));
+                if (response.ok && outcome.restored) {
+                    const status = document.querySelector('[data-stars-admin-status]');
+                    status.className = 'checkout-status success';
+                    status.textContent = `Le serveur avait perdu ses données : ${outcome.restored} joueur(s) restaurés (${Number(outcome.added).toLocaleString('fr-FR')} étoiles) depuis la copie de ce navigateur.`;
+                    return true;
+                }
+            }
+            if (current >= saved * 0.5 || saved === 0) {
+                const slim = players.filter(player => player.balance > 0).map(({ username, balance }) => ({ username, balance }));
+                try { localStorage.setItem(KEY, JSON.stringify({ savedAt: new Date().toISOString(), players: slim })); } catch { /* stockage plein */ }
+            }
+            return false;
+        }
+
         async function refreshAdminStarsLeaderboard() {
             const response = await fetch('/api/tiktok-stars/leaderboard?scope=all', {
                 credentials: 'same-origin',
@@ -3534,6 +3567,9 @@
             if (result.scope !== 'all' || !Array.isArray(result.players)) {
                 throw new Error('Le classement complet reçu est invalide.');
             }
+            try {
+                if (await syncStarsBackup(result.players)) return refreshAdminStarsLeaderboard();
+            } catch { /* la copie de secours ne doit jamais bloquer l'affichage */ }
             adminStarsLeaderboard = result.players;
             const owedTotal = result.players.reduce((sum, player) => sum + Math.max(0, Number(player.balance) || 0), 0);
             const owedLabel = document.querySelector('[data-stars-owed]');

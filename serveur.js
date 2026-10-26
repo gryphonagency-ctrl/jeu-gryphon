@@ -809,6 +809,37 @@ const server = http.createServer((req, res) => {
         }, 1024 * 1024);
         return;
     }
+    if (pathname === '/api/admin/stars-restore' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Réservé à l’administrateur.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            // Complète seulement : un solde n'est jamais abaissé, et les joueurs absents sont recréés.
+            const players = Array.isArray(body.players) ? body.players.slice(0, 5000) : [];
+            let restored = 0;
+            let added = 0;
+            for (const entry of players) {
+                const target = Number(entry?.balance);
+                if (!Number.isSafeInteger(target) || target < 1) continue;
+                const handle = String(entry.username || '').trim().replace(/^@/, '').toLowerCase();
+                const current = store.resolveTikTokPlayer(handle);
+                const missing = target - (current ? current.stars : 0);
+                if (missing < 1) continue;
+                const result = store.creditBrowserStars({
+                    username: handle,
+                    amount: missing,
+                    gameId: '/restauration-navigateur',
+                    transactionId: `restore:${crypto.randomUUID()}`
+                });
+                if (result.applied) { restored += 1; added += missing; }
+            }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ restored, added }));
+        }, 1024 * 1024);
+        return;
+    }
     if (pathname === '/api/admin/stars-collect' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
