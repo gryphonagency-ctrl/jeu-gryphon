@@ -56,6 +56,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #sectors{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 #sectors input{width:100%;text-align:center;padding:5px 2px}
 #log{font-size:11px;color:#d8cceb;max-height:110px;overflow:auto;line-height:1.5}
+#stList{max-height:260px;overflow:auto}
+#stList .st{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #ffffff14}
+#stList .st span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff2a8;font-weight:700}
+#stList .st b{color:#ffd24a;min-width:40px;text-align:right}
+#stList .st input{width:70px}
+#stList .st button{padding:3px 7px}
 .hint{font-size:11px;color:#a899c4;margin:4px 0 0}
 </style>
 </head>
@@ -112,6 +118,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
     <div id="sectors"></div>
     <div class="row" style="margin-top:8px"><button id="reset">Valeurs par défaut</button></div>
     <p class="hint">Un nombre (ex. 3) donne ⭐ ×3 la valeur du cadeau. « NEW » relance une roue. « 0 » ne donne rien.</p>
+  </section>
+  <section>
+    <h4>⭐ TABLEAU DES ÉTOILES</h4>
+    <div class="row"><button id="stOpen" type="button">📋 Afficher le tableau</button><button id="stRefresh" type="button" hidden>↻</button></div>
+    <div id="stBox" hidden>
+      <input id="stFilter" type="text" placeholder="Rechercher un pseudo…" style="width:100%;box-sizing:border-box;margin:8px 0 4px">
+      <div id="stList"></div>
+    </div>
   </section>
   <section>
     <h4>DERNIERS RÉSULTATS</h4>
@@ -686,6 +700,41 @@ syncQEye();
   });
   b.addEventListener('pointerup', () => { on = false; if (qPos) try { localStorage.setItem('cw-qpos', JSON.stringify(qPos)); } catch (e) {} });
 })();
+/* Tableau des étoiles modifiable (stylo) */
+let stOpen = false, stEditKey = null;
+function renderStarTable() {
+  const box = $('stList'), q = $('stFilter').value.trim().toLowerCase();
+  box.replaceChildren();
+  const rows = Object.entries(viewers).filter(([, v]) => v && (!q || String(v.name).toLowerCase().includes(q)))
+    .sort((a, b) => (b[1].stars || 0) - (a[1].stars || 0));
+  if (!rows.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Aucun spectateur enregistré.'; box.appendChild(p); return; }
+  for (const [key, v] of rows) {
+    const row = document.createElement('div'); row.className = 'st';
+    const name = document.createElement('span'); name.textContent = v.name || key; row.appendChild(name);
+    if (stEditKey === key) {
+      const inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.5'; inp.value = v.stars || 0;
+      const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = '✔';
+      const no = document.createElement('button'); no.type = 'button'; no.textContent = '✕';
+      const commit = () => { const n = parseFloat(String(inp.value).replace(',', '.')); if (!isNaN(n) && n >= 0) { v.stars = Math.round(n * 100) / 100; saveViewers(); } stEditKey = null; renderStarTable(); };
+      ok.onclick = commit; no.onclick = () => { stEditKey = null; renderStarTable(); };
+      inp.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') no.onclick(); };
+      row.append(inp, ok, no);
+      box.appendChild(row); inp.focus(); inp.select();
+      continue;
+    }
+    const val = document.createElement('b'); val.textContent = `⭐ ${v.stars || 0}`;
+    const pen = document.createElement('button'); pen.type = 'button'; pen.textContent = '✏️'; pen.title = 'Modifier';
+    pen.onclick = () => { stEditKey = key; renderStarTable(); };
+    row.append(val, pen); box.appendChild(row);
+  }
+}
+$('stOpen').onclick = () => {
+  stOpen = !stOpen; $('stBox').hidden = !stOpen; $('stRefresh').hidden = !stOpen;
+  $('stOpen').textContent = stOpen ? '🙈 Masquer le tableau' : '📋 Afficher le tableau';
+  if (stOpen) renderStarTable();
+};
+$('stRefresh').onclick = () => { stEditKey = null; renderStarTable(); };
+$('stFilter').oninput = () => { stEditKey = null; renderStarTable(); };
 window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
 </script>
