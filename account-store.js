@@ -368,6 +368,21 @@ function importTikTokStarLeaderboard(snapshot) {
     }
 
     return updateStore(store => {
+        // Serveur vidé : on recrée les profils connus par pseudo avant de restaurer leurs totaux.
+        for (const imported of snapshot.players) {
+            if (store.tiktokPlayers[imported.playerId]) continue;
+            const handle = imported.playerId.startsWith('handle:')
+                ? imported.playerId.slice(7)
+                : String(imported.username || '').toLowerCase();
+            if (!/^[a-z0-9._]{1,32}$/.test(handle)) continue;
+            store.tiktokPlayers[imported.playerId] = {
+                id: imported.playerId, stars: 0, avatarKey: '', avatarType: '',
+                userId: imported.playerId.startsWith('id:') ? imported.playerId.slice(3) : '',
+                uniqueId: handle, username: handle, nickname: String(imported.nickname || '').slice(0, 100),
+                updatedAt: new Date().toISOString()
+            };
+            store.tiktokPlayerAliases[handle] = imported.playerId;
+        }
         if (snapshot.players.some(player => !store.tiktokPlayers[player.playerId])) {
             throw new Error('Le fichier contient un profil TikTok absent de cette base de données.');
         }
