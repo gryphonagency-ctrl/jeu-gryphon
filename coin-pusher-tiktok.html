@@ -1285,7 +1285,7 @@
     const queuedCoinDrops = [];
     const queuedCoinDropsByPlayer = new Map();
     const maximumActiveCoins = 60;
-    const maximumVisibleCoins = 120;
+    const maximumVisibleCoins = 260;
     const coinDropInterval = 180;
     const coinDropBatchSize = 10;
     const coinDropBatchPause = 300;
@@ -2270,9 +2270,15 @@
       const airborneCount = coins.filter(coin => coin.airborne).length;
       const accepted = Math.min(requested, Math.max(0, maximumActiveCoins - airborneCount));
       while (coins.length + accepted > maximumVisibleCoins) {
-        const settledIndex = coins.findIndex(coin => !coin.airborne);
-        if (settledIndex < 0) break;
-        const [removed] = coins.splice(settledIndex, 1);
+        // On retire d'abord la pièce la plus proche du bord (déjà presque tombée), jamais celles qui attendent le poussoir.
+        let removeIndex = -1;
+        coins.forEach((coin, i) => {
+          if (!coin.airborne && !coin.waitingForPusher &&
+            (removeIndex < 0 || coin.body.position.y > coins[removeIndex].body.position.y)) removeIndex = i;
+        });
+        if (removeIndex < 0) removeIndex = coins.findIndex(coin => !coin.airborne);
+        if (removeIndex < 0) break;
+        const [removed] = coins.splice(removeIndex, 1);
         MatterComposite.remove(physicsEngine.world, removed.body);
       }
       if (!accepted) {
@@ -3788,6 +3794,22 @@
       MatterBody.setPosition(pusherBody, { x: width * .5, y: pusherCommandedY + height * pusherLipDepth / 2 }, false);
       MatterBody.setAngle(pusherBody, 0);
       MatterBody.setAngularVelocity(pusherBody, 0);
+      // Pas de rebond : les pièces ne dépassent jamais la vitesse du poussoir et ne repartent pas en arrière.
+      const coinSpeedCap = maxPusherStep * 1.1 + .4;
+      for (const coin of coins) {
+        if (coin.airborne || coin.leftTable || coin.body.isStatic) continue;
+        const velocity = coin.body.velocity;
+        const speed = Math.hypot(velocity.x, velocity.y);
+        let nextX = velocity.x * .85;
+        let nextY = velocity.y < 0 ? velocity.y * .2 : velocity.y;
+        const nextSpeed = Math.hypot(nextX, nextY);
+        if (nextSpeed > coinSpeedCap) {
+          nextX *= coinSpeedCap / nextSpeed;
+          nextY *= coinSpeedCap / nextSpeed;
+        }
+        if (speed > 0) MatterBody.setVelocity(coin.body, { x: nextX, y: nextY });
+        MatterBody.setAngularVelocity(coin.body, coin.body.angularVelocity * .5);
+      }
       const movingCoins = [
         ...coins.filter(coin => coin.onConveyor).map(coin => coin.body),
         ...fallingCards.filter(card => card.phase === 'on-conveyor').map(card => card.body)
