@@ -777,13 +777,14 @@ function stopShow() {
 }
 
 /* ---------- Chat ---------- */
-function handleChat(name, text, avatar) {
+function handleChat(name, text, avatar, fromLive) {
     const v = getViewer(name, avatar);
     const raw = String(text || '');
     const t = norm(raw);
-    if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(v); return; }
+    // En live, "étoile" et "run" passent par le portefeuille global du serveur (total de tous les jeux).
+    if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { if (!fromLive) showStars(v); return; }
     const run = /^!?run(?:\s+(\d+))?$/.exec(t);
-    if (run) { runStake(v, run[1] ? Number(run[1]) : 0); return; }
+    if (run) { if (!fromLive) runStake(v, run[1] ? Number(run[1]) : 0); return; }
     if (S.phase === 'recruiting') {
         if (/^(jouer|je joue|moi|play|candidat)$/.test(t)) { S.candidates.set(v.key, v); updateChip(); }
         return;
@@ -828,6 +829,32 @@ function runStake(v, wanted) {
     updateChip();
     showStars(v, `RUN ! Mise ⭐ ${fmt(v.stake)} · gain max ⭐ ${fmt(Math.round(Math.max(...settings.mult) * v.stake))}`);
 }
+
+/* RUN du live : le serveur a déjà débité le portefeuille global, on place simplement la mise */
+const deferredRuns = [];
+function applyWalletRun(name, spent) {
+    const v = getViewer(name, '');
+    v.lastStake = spent;
+    v.stake = (v.stake || 0) + spent;
+    if (S.phase === 'recruiting') { S.candidates.set(v.key, v); if (!S.contestant) schedulePick(S.gen); }
+    saveAll();
+    updateChip();
+    showStars(v, `RUN ! Mise ⭐ ${fmt(v.stake)} · gain max ⭐ ${fmt(Math.round(Math.max(...settings.mult) * v.stake))}`);
+}
+window.addEventListener('arcade:wallet-run', event => {
+    const p = event.detail && event.detail.player, spent = Math.floor(Number(event.detail && event.detail.spent) || 0);
+    const name = p && (p.username || p.uniqueId || p.nickname);
+    if (!name || spent < 1) return;
+    const v = getViewer(name, '');
+    // Son propre tour est en cours : la mise est appliquée dès la fin de la partie, pour ne pas être effacée.
+    if (S.contestant && v.key === S.contestant.key && S.phase !== 'over') { deferredRuns.push({ name, spent }); showStars(v, `RUN ! ⭐ ${fmt(spent)} pour la prochaine partie`); return; }
+    applyWalletRun(name, spent);
+});
+setInterval(() => {
+    if (!deferredRuns.length) return;
+    const idx = deferredRuns.findIndex(r => !(S.contestant && getViewer(r.name, '').key === S.contestant.key && S.phase !== 'over'));
+    if (idx >= 0) { const r = deferredRuns.splice(idx, 1)[0]; applyWalletRun(r.name, r.spent); }
+}, 1000);
 
 function avatarHTML(v) {
     const initial = esc((clean(v.name)[0] || '?').toUpperCase());
@@ -1181,7 +1208,7 @@ function handleMessage(data) {
         addGift(getViewer(g.username || g.nickname, g.profilePictureUrl || g.avatarDataUri), giftCoins(g));
     } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
         const c = data.commentData ?? data;
-        handleChat(c.username || c.nickname, c.comment ?? c.text ?? '', c.profilePictureUrl || c.avatarDataUri);
+        handleChat(c.username || c.nickname, c.comment ?? c.text ?? '', c.profilePictureUrl || c.avatarDataUri, true);
     }
 }
 

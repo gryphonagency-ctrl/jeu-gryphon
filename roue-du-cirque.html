@@ -539,13 +539,13 @@ function runStars(name, wanted) {
   $('qinfo').textContent = `File d'attente : ${queue.length}`;
   showStars(name, `RUN ! ⭐ ${amount} remis en jeu`);
 }
-function handleChat(name, text, avatar) {
+function handleChat(name, text, avatar, fromLive) {
   if (!name) return;
   if (avatar) { viewer(name).avatar = avatar; }
   const raw = String(text || ''), t = raw.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(name); return; }
+  if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { if (!fromLive) showStars(name); return; }
   const run = /^!?run(?:\s+(\d+))?$/.exec(t);
-  if (run) runStars(name, run[1] ? Number(run[1]) : 0);
+  if (run && !fromLive) runStars(name, run[1] ? Number(run[1]) : 0);
 }
 function addLog(t) { const l = $('log'); l.innerHTML = `<div>${t.replace(/</g, '&lt;')}</div>` + (l.textContent === '—' ? '' : l.innerHTML); while (l.children.length > 14) l.lastChild.remove(); }
 
@@ -599,9 +599,19 @@ function handleMessage(data) {
     if (id && v.avatarDataUri) viewer(id).avatar = v.avatarDataUri;
   } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
     const c = data.commentData ?? data;
-    handleChat(c.username || c.nickname || c.uniqueId, c.comment ?? c.text ?? '', c.avatarDataUri || c.profilePictureUrl || '');
+    handleChat(c.username || c.nickname || c.uniqueId, c.comment ?? c.text ?? '', c.avatarDataUri || c.profilePictureUrl || '', true);
   }
 }
+// "étoile" et "run" du live passent par le portefeuille global du serveur (total de tous les jeux).
+window.addEventListener('arcade:wallet-run', ev => {
+  const p = ev.detail && ev.detail.player, spent = Math.floor(Number(ev.detail && ev.detail.spent) || 0);
+  if (!p || spent < 1) return;
+  const name = p.username || p.uniqueId || p.nickname; if (!name) return;
+  const v = viewer(name); v.last = spent; saveViewers();
+  queue.push({ name: v.name, stake: spent, avatar: v.avatar || '', run: true });
+  $('qinfo').textContent = `File d'attente : ${queue.length}`;
+  showStars(name, `RUN ! ⭐ ${spent} remis en jeu`);
+});
 function connect() {
   const name = $('username').value.trim().replace(/^@/, '');
   if (!name) { setStatus('Entre un pseudo TikTok.'); return; }

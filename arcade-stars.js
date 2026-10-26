@@ -23,7 +23,7 @@
             balance = profileCard.querySelector('span');
         }
         playerName.textContent = `@${player.username || player.uniqueId || 'Spectateur'}`;
-        balance.textContent = `${Number(player.stars || 0).toLocaleString('fr-FR')} étoiles`;
+        balance.textContent = `Total : ${Number(player.stars || 0).toLocaleString('fr-FR')} étoiles`;
         if (player.avatarUrl) {
             avatar.src = player.avatarUrl;
             avatar.hidden = false;

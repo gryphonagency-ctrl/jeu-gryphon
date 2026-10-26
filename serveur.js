@@ -2225,8 +2225,10 @@ function processTikTokWalletCommand(session, messageData, player) {
             messageId: commentData.messageId || ''
         });
     }
-    if (!/^!?\s*run(?:\s+\d+)?$/iu.test(comment)) return;
-    const amount = player.stars;
+    const runMatch = /^!?\s*run(?:\s+(\d+))?$/iu.exec(comment);
+    if (!runMatch) return;
+    const requested = runMatch[1] ? Number(runMatch[1]) : 0;
+    const amount = requested > 0 ? Math.min(requested, player.stars) : player.stars;
     if (amount < 1) {
         broadcastSessionMessage(session, {
             type: 'WALLET_RUN_REJECTED',
