@@ -4212,10 +4212,15 @@
             const sy = Math.max(0.16, flip);
             const thickness = 4 + 6 * (1 - sy);
 
+            const lift = (item.layer || 0) * 7;
             ctx.save();
-            ctx.translate(item.x, item.y);
-
-            ctx.fillStyle = '#442354';
+            ctx.translate(item.x, item.y - lift);
+            if (lift) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+                ctx.beginPath();
+                ctx.ellipse(2, lift + 4, r, r * 0.8, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.beginPath();
             ctx.ellipse(0, thickness, r, r * sy, 0, 0, Math.PI * 2);
             ctx.rect(-r, 0, r * 2, thickness);
@@ -4306,6 +4311,41 @@
             return 0.72;
         }
 
+        const MAX_STACK_LAYER = 3;
+        const STACK_CHANCE = 0.65;
+
+        // Une pièce qui retombe sur d'autres pièces peut se poser dessus (empilement aléatoire)
+        function assignStackLayer(item) {
+            item.layer = 0;
+            let top = -1;
+            for (const other of items) {
+                if (other === item || other.remove || other.falling || other.fallingToTable ||
+                    other.type !== 'coin') continue;
+                if (Math.hypot(other.x - item.x, other.y - item.y) < itemRadius(item) * 1.5) {
+                    top = Math.max(top, other.layer || 0);
+                }
+            }
+            if (top >= 0 && top < MAX_STACK_LAYER && Math.random() < STACK_CHANCE) {
+                item.layer = top + 1;
+                item.x += (Math.random() - 0.5) * 22;
+                item.y += (Math.random() - 0.5) * 22;
+                item.vx = (Math.random() - 0.5) * 30;
+                item.vy = (Math.random() - 0.5) * 20;
+            }
+        }
+
+        // Une pièce empilée retombe d'un niveau si plus rien ne la soutient
+        function updateStackSupport(bodies) {
+            for (const item of bodies) {
+                if (!item.layer) continue;
+                const supported = bodies.some(other =>
+                    other !== item && other.type === 'coin' &&
+                    (other.layer || 0) === item.layer - 1 &&
+                    Math.hypot(other.x - item.x, other.y - item.y) < itemRadius(item) * 1.35);
+                if (!supported) item.layer--;
+            }
+        }
+
         function resolveItemContacts(bodies) {
             const grid = new Map();
             bodies.forEach((item, index) => {
@@ -4326,6 +4366,7 @@
                         for (const otherIndex of cell) {
                             if (otherIndex <= index) continue;
                             const b = bodies[otherIndex];
+                            if ((a.layer || 0) !== (b.layer || 0)) continue;
                             let dx = b.x - a.x;
                             let dy = b.y - a.y;
                             const minDistance = itemRadius(a) + itemRadius(b);
@@ -4371,6 +4412,7 @@
             const bodies = items.filter(item =>
                 !item.remove && !item.falling && !item.fallingToTable);
             const damping = Math.exp(-LINEAR_DAMPING * dt);
+            updateStackSupport(bodies);
 
             for (const item of bodies) {
                 let vx = item.vx || 0;
@@ -4549,6 +4591,7 @@
                         if (item.landOffset !== undefined) {
                             item.vy = 40 + Math.random() * 40;
                             item.vx = (Math.random() - 0.5) * 50;
+                            assignStackLayer(item);
                         }
                         item.velocityY = 0;
                         item.fallingToTable = false;
@@ -4583,9 +4626,9 @@
             drawBrand(performance.now());
             drawPusher();
 
-            for (const item of items) {
-                if (!item.remove) drawItem(item);
-            }
+            const drawOrder = items.filter(item => !item.remove)
+                .sort((a, b) => (a.layer || 0) - (b.layer || 0) || a.y - b.y);
+            for (const item of drawOrder) drawItem(item);
 
             drawConfetti();
         }
