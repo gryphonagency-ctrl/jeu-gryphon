@@ -42,6 +42,7 @@ const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
 const trueFalseGameFile = path.join(__dirname, 'vrai-ou-faux.html');
 const marbleRaceGameFile = path.join(__dirname, 'course-de-billes.html');
 const duckFishingGameFile = path.join(__dirname, 'peche-aux-canards.html');
+const circusWheelGameFile = path.join(__dirname, 'roue-du-cirque.html');
 const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
@@ -77,6 +78,7 @@ const protectedRoutes = new Set([
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
     '/peche-aux-canards.html',
+    '/roue-du-cirque.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -106,6 +108,7 @@ const staticGameIds = [
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
     '/peche-aux-canards.html',
+    '/roue-du-cirque.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -118,6 +121,7 @@ store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
+store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
@@ -136,6 +140,7 @@ const staticGameTitles = {
     '/vrai-ou-faux.html': 'Vrai ou Faux',
     '/course-de-billes.html': 'Course de Billes',
     '/peche-aux-canards.html': 'Pêche aux Canards',
+    '/roue-du-cirque.html': 'La Roue du Cirque',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -157,6 +162,7 @@ const gameRouteIds = new Map([
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
+    ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -1830,6 +1836,7 @@ const server = http.createServer((req, res) => {
         ['/course-de-billes.html', [marbleRaceGameFile, 'text/html; charset=utf-8']],
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
+        ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -1854,6 +1861,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/vrai-ou-faux-apercu.png', [path.join(__dirname, 'images-vitrine', 'vrai-ou-faux-apercu.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.png', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.png'), 'image/png']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
+        ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
