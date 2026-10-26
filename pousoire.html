@@ -1674,7 +1674,8 @@
             y: TABLE_BACK + 2,
             speed: 100,
             travelPercent: 1,
-            direction: 1
+            phase: 0,
+            vy: 0
         };
 
         const media = {
@@ -4061,82 +4062,158 @@
             item.velocityY = Math.max(dropSpeed, 100);
         }
 
-        function pushPiecesInContact(distance, oldFront, newFront) {
-            if (distance <= 0) return;
+        /* Physique de poussée reprise d'Astra Push, adaptée à la vue 2D :
+           corps rigides circulaires avec masse, friction au sol, amortissement,
+           aucun rebond, et un poussoir au mouvement sinusoïdal qui transmet son élan. */
+        const PHYSICS_STEP = 1 / 120;
+        const TABLE_FRICTION = 2200;
+        const LINEAR_DAMPING = 0.08;
+        const REST_SPEED = 3;
+        const MAX_ITEM_SPEED = 400;
+        const CONTACT_ITERATIONS = 6;
+        const GRID_CELL = 56;
+        let physicsAccumulator = 0;
 
-            const moving = new Set();
+        function itemMass(item) {
+            if (item.type === 'coin') return 0.72;
+            if (item.type === 'star') return 0.7;
+            if (item.type === 'chest') return 1.4;
+            if (item.type === 'duck') return 1.1;
+            return 0.72;
+        }
 
-            for (const item of items) {
-                if (item.remove || item.falling || item.fallingToTable) continue;
+        function resolveItemContacts(bodies) {
+            const grid = new Map();
+            bodies.forEach((item, index) => {
+                const key = Math.floor(item.x / GRID_CELL) * 4096 + Math.floor(item.y / GRID_CELL);
+                const cell = grid.get(key);
+                if (cell) cell.push(index);
+                else grid.set(key, [index]);
+            });
 
-                const half = itemHalfHeight(item);
-                const touchesPlate =
-                    item.y + half >= oldFront - 2 &&
-                    item.y - half <= newFront + 2 &&
-                    item.x + itemRadius(item) >= table.left &&
-                    item.x - itemRadius(item) <= table.right;
+            for (let index = 0; index < bodies.length; index++) {
+                const a = bodies[index];
+                const cx = Math.floor(a.x / GRID_CELL);
+                const cy = Math.floor(a.y / GRID_CELL);
+                for (let gx = cx - 1; gx <= cx + 1; gx++) {
+                    for (let gy = cy - 1; gy <= cy + 1; gy++) {
+                        const cell = grid.get(gx * 4096 + gy);
+                        if (!cell) continue;
+                        for (const otherIndex of cell) {
+                            if (otherIndex <= index) continue;
+                            const b = bodies[otherIndex];
+                            let dx = b.x - a.x;
+                            let dy = b.y - a.y;
+                            const minDistance = itemRadius(a) + itemRadius(b);
+                            const distanceSquared = dx * dx + dy * dy;
+                            if (distanceSquared >= minDistance * minDistance) continue;
 
-                if (touchesPlate) moving.add(item);
-            }
-
-            let changed = true;
-            while (changed) {
-                changed = false;
-                for (const item of [...moving]) {
-                    const nextY = item.y + distance;
-                    for (const other of items) {
-                        if (moving.has(other) || other.remove ||
-                            other.falling || other.fallingToTable) continue;
-
-                        const required = itemRadius(item) + itemRadius(other) + 2;
-                        if (Math.hypot(item.x - other.x, nextY - other.y) <= required) {
-                            moving.add(other);
-                            changed = true;
+                            let distance = Math.sqrt(distanceSquared);
+                            if (distance < 0.001) {
+                                dx = 0;
+                                dy = 1;
+                                distance = 1;
+                            }
+                            const overlap = minDistance - distance;
+                            const weightA = 1 / itemMass(a);
+                            const weightB = 1 / itemMass(b);
+                            const share = overlap / (weightA + weightB);
+                            const nx = dx / distance;
+                            const ny = dy / distance;
+                            a.x -= nx * share * weightA;
+                            a.y -= ny * share * weightA;
+                            b.x += nx * share * weightB;
+                            b.y += ny * share * weightB;
                         }
                     }
                 }
             }
+        }
 
-            for (const item of moving) {
-                item.y += distance;
+        function enforceTableBounds(bodies) {
+            const front = pusher.y + PUSHER_DEPTH;
+            for (const item of bodies) {
+                const radius = itemRadius(item);
+                if (item.x < table.left + radius) item.x = table.left + radius;
+                if (item.x > table.right - radius) item.x = table.right - radius;
+                // Seule la lèvre avant du poussoir qui avance pousse les pièces à son contact
+                if (pusher.vy > 0 && item.y - radius < front && item.y + radius > front) {
+                    item.y = front + radius;
+                }
+            }
+        }
+
+        function stepItemPhysics(dt) {
+            const bodies = items.filter(item =>
+                !item.remove && !item.falling && !item.fallingToTable);
+            const damping = Math.exp(-LINEAR_DAMPING * dt);
+
+            for (const item of bodies) {
+                let vx = item.vx || 0;
+                let vy = item.vy || 0;
+                const speed = Math.hypot(vx, vy);
+                if (speed > 0) {
+                    const slowed = Math.max(0, speed - TABLE_FRICTION * dt) * damping;
+                    const scale = Math.min(slowed, MAX_ITEM_SPEED) / speed;
+                    vx *= scale;
+                    vy *= scale;
+                }
+                item.prevX = item.x;
+                item.prevY = item.y;
+                item.x += vx * dt;
+                item.y += vy * dt;
+            }
+
+            for (let iteration = 0; iteration < CONTACT_ITERATIONS; iteration++) {
+                resolveItemContacts(bodies);
+                enforceTableBounds(bodies);
+            }
+
+            for (const item of bodies) {
+                let vx = (item.x - item.prevX) / dt;
+                let vy = (item.y - item.prevY) / dt;
+                if (Math.hypot(vx, vy) < REST_SPEED) {
+                    vx = 0;
+                    vy = 0;
+                }
+                item.vx = vx;
+                item.vy = vy;
                 if (item.y + itemHalfHeight(item) >= table.front - 2) {
+                    item.vx = 0;
+                    item.vy = 0;
                     startFalling(item);
                 }
             }
         }
 
+        // Mouvement sinusoïdal comme Astra Push : le poussoir ralentit aux extrémités
         function updatePusher(deltaTime) {
             const limits = pusherLimits();
+            const travel = limits.front - limits.back;
 
-            if (pusher.travelPercent <= 0) {
+            if (pusher.travelPercent <= 0 || travel <= 0) {
                 pusher.y = limits.back;
-                pusher.direction = 1;
+                pusher.vy = 0;
                 return;
             }
 
+            const angularSpeed = Math.min(12, Math.PI * pusher.speed / Math.max(travel, 60));
+            pusher.phase = (pusher.phase + angularSpeed * deltaTime) % (Math.PI * 2);
+
+            const targetY = limits.back + travel * (1 - Math.cos(pusher.phase)) / 2;
+            const maxStep = Math.max(600, pusher.speed * 4) * deltaTime;
             const previousY = pusher.y;
-            const oldFront = previousY + PUSHER_DEPTH;
-            const movingForward = pusher.direction > 0;
+            pusher.y += Math.max(-maxStep, Math.min(maxStep, targetY - previousY));
+            pusher.vy = (pusher.y - previousY) / deltaTime;
+        }
 
-            pusher.y += pusher.direction * pusher.speed * deltaTime;
-
-            if (pusher.direction > 0 && pusher.y >= limits.front) {
-                pusher.y = limits.front;
-                pusher.direction = -1;
-            } else if (pusher.direction < 0 && pusher.y <= limits.back) {
-                pusher.y = limits.back;
-                pusher.direction = 1;
+        function stepPhysics(deltaTime) {
+            physicsAccumulator = Math.min(physicsAccumulator + deltaTime, PHYSICS_STEP * 6);
+            while (physicsAccumulator >= PHYSICS_STEP) {
+                updatePusher(PHYSICS_STEP);
+                stepItemPhysics(PHYSICS_STEP);
+                physicsAccumulator -= PHYSICS_STEP;
             }
-
-            if (!movingForward) return;
-            const movement = pusher.y - previousY;
-            if (movement <= 0) return;
-
-            pushPiecesInContact(
-                movement,
-                oldFront,
-                pusher.y + PUSHER_DEPTH
-            );
         }
 
         function countItem(item) {
@@ -4234,7 +4311,7 @@
                 }
             }
 
-            updatePusher(deltaTime);
+            stepPhysics(deltaTime);
             updateHorseRace(deltaTime);
             updateConfetti(deltaTime);
 
