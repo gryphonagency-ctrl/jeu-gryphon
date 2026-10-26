@@ -735,9 +735,62 @@
                 flex-basis: auto;
             }
         }
+        .pusher-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 60;
+            width: 230px;
+            padding: 10px 12px 12px;
+            border-radius: 12px;
+            background: rgba(14, 18, 40, 0.94);
+            border: 1px solid #38e8ff;
+            color: #fff;
+            font: 13px Arial, sans-serif;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+        }
+        .pusher-panel[hidden] { display: none; }
+        .pusher-panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: grab;
+            font-weight: bold;
+            margin-bottom: 8px;
+            user-select: none;
+        }
+        .pusher-panel label { display: block; margin-top: 8px; }
+        .pusher-panel input[type="range"] { width: 100%; }
+        .pusher-eye {
+            position: fixed;
+            top: 40px;
+            right: 20px;
+            z-index: 61;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 1px solid #38e8ff;
+            background: rgba(14, 18, 40, 0.9);
+            cursor: pointer;
+            font-size: 17px;
+            line-height: 1;
+        }
     </style>
 </head>
 <body>
+    <button id="pusher-eye" class="pusher-eye" type="button"
+            title="Afficher / masquer le panneau du poussoir">👁</button>
+    <aside id="pusher-panel" class="pusher-panel" aria-label="Réglage du poussoir">
+        <div id="pusher-panel-head" class="pusher-panel-head">
+            <span>🎛 Poussoir</span>
+        </div>
+        <label for="pp-travel">Avancée : <strong id="pp-travel-value">100</strong> %
+            <input id="pp-travel" type="range" min="0" max="100" value="100">
+        </label>
+        <label for="pp-speed">Vitesse : <strong id="pp-speed-value">100</strong> px/s
+            <input id="pp-speed" type="range" min="20" max="350" value="100">
+        </label>
+    </aside>
     <div class="data-toolbar" aria-label="Import et export des données">
         <button id="export-data" type="button">Exporter les données</button>
         <button id="import-data" type="button">Importer les données</button>
@@ -2820,6 +2873,7 @@
             }
 
             clampPusherPosition();
+            syncPusherPanel();
             setScoreboardMode(
                 data.settings.scoreboardPosition ?? data.settings.scoreboardSide
             );
@@ -3031,10 +3085,39 @@
                         ? (STAR_VALUES.includes(numericValue) ? numericValue : 50)
                         : 1;
 
+            const player = owner ? players.get(owner) : null;
+            if (itemType === 'coin') {
+                // Chute comme Astra Push : trois goulottes, légère dérive, la pièce tourne en tombant
+                if (items.length >= 220) return false;
+                const lane = [-1, 0, 1][Math.floor(Math.random() * 3)];
+                const x = table.centerX + lane * 135 + (Math.random() - 0.5) * 16;
+                items.push({
+                    id: nextItemId++,
+                    type: 'coin',
+                    value: itemValue,
+                    owner: owner || null,
+                    avatar: avatar ?? player?.avatar ?? null,
+                    x,
+                    y: 40,
+                    targetX: x,
+                    targetY: table.back + PUSHER_DEPTH + 40,
+                    landOffset: 18 + Math.random() * 46,
+                    vx: (Math.random() - 0.5) * 24,
+                    vy: 0,
+                    velocityY: 0,
+                    spin: Math.random() * Math.PI * 2,
+                    spinSpeed: (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 7),
+                    fallingToTable: true,
+                    falling: false,
+                    counted: false,
+                    remove: false
+                });
+                return true;
+            }
+
             const landing = findLandingSpot(itemType, side);
             if (!landing) return false;
 
-            const player = owner ? players.get(owner) : null;
             items.push({
                 id: nextItemId++,
                 type: itemType,
@@ -3318,6 +3401,67 @@
             dropSpeed = Number(event.target.value);
             document.getElementById('drop-speed-value').textContent = event.target.value;
         });
+
+        function syncPusherPanel() {
+            const pairs = [['pp-travel', 'pp-travel-value', Math.round(pusher.travelPercent * 100)],
+                ['pp-speed', 'pp-speed-value', Math.round(pusher.speed)]];
+            for (const [inputId, valueId, value] of pairs) {
+                document.getElementById(inputId).value = value;
+                document.getElementById(valueId).textContent = value;
+            }
+        }
+
+        for (const [panelId, mainId] of [['pp-travel', 'pusher-travel'], ['pp-speed', 'pusher-speed']]) {
+            document.getElementById(panelId).addEventListener('input', event => {
+                const main = document.getElementById(mainId);
+                main.value = event.target.value;
+                main.dispatchEvent(new Event('input'));
+            });
+            document.getElementById(mainId).addEventListener('input', syncPusherPanel);
+        }
+
+        (function setupPusherPanel() {
+            const panel = document.getElementById('pusher-panel');
+            const eye = document.getElementById('pusher-eye');
+            const head = document.getElementById('pusher-panel-head');
+            panel.hidden = localStorage.getItem('pp-hidden') === '1';
+            try {
+                const saved = JSON.parse(localStorage.getItem('pp-pos') || 'null');
+                if (saved) {
+                    panel.style.left = `${saved.x}px`;
+                    panel.style.top = `${saved.y}px`;
+                    panel.style.right = 'auto';
+                }
+            } catch (error) { /* position ignorée */ }
+
+            eye.addEventListener('click', () => {
+                panel.hidden = !panel.hidden;
+                localStorage.setItem('pp-hidden', panel.hidden ? '1' : '0');
+            });
+
+            head.addEventListener('pointerdown', event => {
+                const rect = panel.getBoundingClientRect();
+                const offsetX = event.clientX - rect.left;
+                const offsetY = event.clientY - rect.top;
+                head.setPointerCapture(event.pointerId);
+                const move = moveEvent => {
+                    const x = Math.max(0, Math.min(window.innerWidth - 60, moveEvent.clientX - offsetX));
+                    const y = Math.max(0, Math.min(window.innerHeight - 40, moveEvent.clientY - offsetY));
+                    panel.style.left = `${x}px`;
+                    panel.style.top = `${y}px`;
+                    panel.style.right = 'auto';
+                };
+                const stop = () => {
+                    head.removeEventListener('pointermove', move);
+                    head.removeEventListener('pointerup', stop);
+                    const box = panel.getBoundingClientRect();
+                    localStorage.setItem('pp-pos', JSON.stringify({ x: box.left, y: box.top }));
+                };
+                head.addEventListener('pointermove', move);
+                head.addEventListener('pointerup', stop);
+            });
+            syncPusherPanel();
+        })();
 
         document.getElementById('coin-rate').addEventListener('input', event => {
             releaseIntervalMs = Number(event.target.value);
@@ -4025,41 +4169,89 @@
                 return;
             }
 
-            ctx.beginPath();
-            const coinRadius = itemRadius(item);
-            ctx.arc(item.x, item.y, coinRadius, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffd700';
-            ctx.fill();
-            ctx.strokeStyle = '#c58b00';
-            ctx.lineWidth = 3;
-            ctx.stroke();
+            drawAstraCoin(item);
+        }
 
+        // Pièce épaisse d'Astra Push : tranche violette, face avec avatar,
+        // anneaux cyan et rose ; elle se retourne pendant qu'elle tombe.
+        function drawAstraCoin(item) {
+            const r = itemRadius(item);
+            const flip = Math.abs(Math.cos(item.spin || 0));
+            const sy = Math.max(0.16, flip);
+            const thickness = 4 + 6 * (1 - sy);
+
+            ctx.save();
+            ctx.translate(item.x, item.y);
+
+            ctx.fillStyle = '#442354';
+            ctx.beginPath();
+            ctx.ellipse(0, thickness, r, r * sy, 0, 0, Math.PI * 2);
+            ctx.rect(-r, 0, r * 2, thickness);
+            ctx.fill();
+
+            ctx.scale(1, sy);
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fillStyle = '#21132f';
+            ctx.fill();
+
+            const faceRadius = r * 0.92;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(0, 0, faceRadius, 0, Math.PI * 2);
+            ctx.clip();
             if (item.avatar?.complete && item.avatar.naturalWidth > 0) {
-                ctx.save();
-                ctx.beginPath();
-                const avatarRadius = coinRadius * 0.78;
-                ctx.arc(item.x, item.y, avatarRadius, 0, Math.PI * 2);
-                ctx.clip();
+                const side = Math.min(item.avatar.naturalWidth, item.avatar.naturalHeight);
                 ctx.drawImage(
                     item.avatar,
-                    item.x - avatarRadius,
-                    item.y - avatarRadius,
-                    avatarRadius * 2,
-                    avatarRadius * 2
+                    (item.avatar.naturalWidth - side) / 2,
+                    (item.avatar.naturalHeight - side) / 2,
+                    side, side,
+                    -faceRadius, -faceRadius, faceRadius * 2, faceRadius * 2
                 );
-                ctx.restore();
             } else {
-                ctx.fillStyle = '#fff0a6';
-                ctx.beginPath();
-                ctx.arc(item.x - 6, item.y - 6, 6, 0, Math.PI * 2);
-                ctx.fill();
+                const gradient = ctx.createRadialGradient(-r * 0.3, -r * 0.4, 2, 0, 0, r * 1.3);
+                if (item.owner) {
+                    gradient.addColorStop(0, '#ffe7ff');
+                    gradient.addColorStop(0.42, '#ff62b7');
+                    gradient.addColorStop(1, '#512274');
+                } else {
+                    gradient.addColorStop(0, '#fff3a6');
+                    gradient.addColorStop(0.5, '#ffd43b');
+                    gradient.addColorStop(1, '#b8860b');
+                }
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-r, -r, r * 2, r * 2);
+                if (item.owner) {
+                    ctx.fillStyle = '#fff7d1';
+                    ctx.font = `bold ${Math.round(r * 0.95)}px Trebuchet MS, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(String(item.owner).charAt(0).toUpperCase(), 0, 2);
+                }
             }
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, r - 1.5, 0, Math.PI * 2);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#9dfaff';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#ff78c4';
+            ctx.stroke();
+            ctx.restore();
         }
 
         function startFalling(item) {
             if (item.falling || item.fallingToTable) return;
             item.falling = true;
             item.velocityY = Math.max(dropSpeed, 100);
+            if (item.type === 'coin') {
+                item.spinSpeed = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 6);
+            }
         }
 
         /* Physique de poussée reprise d'Astra Push, adaptée à la vue 2D :
@@ -4114,6 +4306,8 @@
                                 dy = 1;
                                 distance = 1;
                             }
+                            a.crowd = (a.crowd || 0) + 1;
+                            b.crowd = (b.crowd || 0) + 1;
                             const overlap = minDistance - distance;
                             const weightA = 1 / itemMass(a);
                             const weightB = 1 / itemMass(b);
@@ -4160,6 +4354,9 @@
                 }
                 item.prevX = item.x;
                 item.prevY = item.y;
+                // Étalement des tas, comme la force d'étalement d'Astra Push
+                if ((item.crowd || 0) >= 3) item.y += 30 * dt;
+                item.crowd = 0;
                 item.x += vx * dt;
                 item.y += vy * dt;
             }
@@ -4281,9 +4478,26 @@
             lastSpawnTime = time;
         }
 
+        function updateCoinSpin(item, deltaTime) {
+            if (item.type !== 'coin' || !item.spinSpeed) return;
+            item.spin += item.spinSpeed * deltaTime;
+            if (item.fallingToTable || item.falling) return;
+
+            item.spinSpeed *= Math.exp(-6 * deltaTime);
+            if (Math.abs(item.spinSpeed) < 2) {
+                const target = Math.round(item.spin / Math.PI) * Math.PI;
+                item.spin += (target - item.spin) * Math.min(1, 12 * deltaTime);
+                if (Math.abs(target - item.spin) < 0.03) {
+                    item.spin = 0;
+                    item.spinSpeed = 0;
+                }
+            }
+        }
+
         function update(deltaTime) {
             for (const item of items) {
                 if (item.remove) continue;
+                updateCoinSpin(item, deltaTime);
 
                 if (item.fallingToTable) {
                     item.velocityY = Math.min(
@@ -4292,8 +4506,20 @@
                     );
                     item.y += item.velocityY * deltaTime;
 
+                    if (item.landOffset !== undefined) {
+                        item.x += item.vx * deltaTime;
+                        item.targetY = Math.min(
+                            table.front - itemRadius(item) - 30,
+                            pusher.y + PUSHER_DEPTH + itemRadius(item) + item.landOffset
+                        );
+                    }
+
                     if (item.y >= item.targetY) {
                         item.y = item.targetY;
+                        if (item.landOffset !== undefined) {
+                            item.vy = 40 + Math.random() * 40;
+                            item.vx = (Math.random() - 0.5) * 50;
+                        }
                         item.velocityY = 0;
                         item.fallingToTable = false;
                     }
