@@ -3359,9 +3359,9 @@
       ctx.clearRect(0, 0, width, height);
 
       const background = ctx.createLinearGradient(0, 0, 0, height);
-      background.addColorStop(0, '#30231c');
-      background.addColorStop(.45, '#17110f');
-      background.addColorStop(1, '#080706');
+      background.addColorStop(0, '#1b0c33');
+      background.addColorStop(.45, '#110722');
+      background.addColorStop(1, '#0a0416');
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, width, height);
       ctx.save();
@@ -3766,22 +3766,33 @@
           }
         } else if (card.phase === 'on-conveyor') {
           const conveyorExitY = height * (cardTreadmillExitPosition - rewardCardHeightScale / 2);
-          const conveyorStep = Math.min(
-            Math.max(0, conveyorExitY - card.body.position.y),
-            height * .0002 * delta,
-            card.pushBudget ?? Infinity
-          );
-          MatterBody.setPosition(card.body, {
-            x: card.body.position.x,
-            y: card.body.position.y + conveyorStep
-          });
+          const cardHalfHeight = height * rewardCardHeightScale / 2;
+          const settleCard = () => {
+            card.pushBudget = null;
+            card.phase = 'landed';
+            MatterBody.setVelocity(card.body, { x: 0, y: 0 });
+            MatterBody.setStatic(card.body, true);
+          };
           if (card.pushBudget !== null && card.pushBudget !== undefined) {
+            // Carte touchée par une autre : elle avance un peu puis s'arrête.
+            const conveyorStep = Math.min(
+              Math.max(0, conveyorExitY - card.body.position.y),
+              height * .0002 * delta,
+              card.pushBudget
+            );
+            MatterBody.setPosition(card.body, { x: card.body.position.x, y: card.body.position.y + conveyorStep });
             card.pushBudget -= conveyorStep;
             if (card.pushBudget <= .01) {
-              card.pushBudget = null;
-              card.phase = 'landed';
-              MatterBody.setVelocity(card.body, { x: 0, y: 0 });
-              MatterBody.setStatic(card.body, true);
+              settleCard();
+              continue;
+            }
+          } else {
+            // Carte poussée par le poussoir : elle n'avance que tant que le poussoir la touche.
+            const minimumY = getPusherFront(pusherCommandedY) + cardHalfHeight + height * pusherContactMargin;
+            if (card.body.position.y < minimumY) {
+              MatterBody.setPosition(card.body, { x: card.body.position.x, y: minimumY }, true);
+            } else if (!pusherMovingForward) {
+              settleCard();
               continue;
             }
           }
@@ -4281,7 +4292,7 @@
       }
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.outputEncoding = THREE.sRGBEncoding;
-      renderer.setClearColor(0x07050c, 1);
+      renderer.setClearColor(0x0e0620, 1);
       const el = renderer.domElement;
       el.id = 'machine3d';
       el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none';
@@ -4361,30 +4372,62 @@
       v.staticKey = `${W}x${H}`;
     }
 
-    function updateSign3d(W) {
+    function updateSign3d(W, timestamp = 0) {
       const v = view3d;
+      if (!v.signMesh) return;
       const text = state.agencyName || 'COIN PUSHER';
-      if (v.signKey === text || !v.signMesh) return;
-      v.signKey = text;
-      const texture = makeCanvasTexture((g, w, h) => {
-        g.fillStyle = '#120d0a';
-        g.fillRect(0, 0, w, h);
-        g.lineWidth = 10;
-        g.strokeStyle = '#f0b94d';
-        g.strokeRect(8, 8, w - 16, h - 16);
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.font = '700 84px Georgia, serif';
-        g.fillStyle = '#ffd777';
-        g.shadowColor = '#f59b2b';
-        g.shadowBlur = 24;
-        g.fillText(text, w / 2, h / 2, w * .86);
-      }, 1024, 256);
-      if (v.signMesh.material.map) v.signMesh.material.map.dispose();
-      v.signMesh.material.map = texture;
-      v.signMesh.material.emissiveMap = texture;
-      v.signMesh.material.emissiveIntensity = .9;
-      v.signMesh.material.needsUpdate = true;
+      if (!v.signCanvas) {
+        v.signCanvas = document.createElement('canvas');
+        v.signCanvas.width = 1024;
+        v.signCanvas.height = 256;
+        v.signTexture = new THREE.CanvasTexture(v.signCanvas);
+        v.signTexture.encoding = THREE.sRGBEncoding;
+        v.signDrops = Array.from({ length: 26 }, () => ({
+          x: Math.random(), y: Math.random(), speed: .25 + Math.random() * .35, size: 9 + Math.random() * 9, phase: Math.random() * 6
+        }));
+        v.signMesh.material.map = v.signTexture;
+        v.signMesh.material.emissiveMap = v.signTexture;
+        v.signMesh.material.emissiveIntensity = .9;
+        v.signMesh.material.needsUpdate = true;
+        v.signLast = timestamp;
+      }
+      const dt = Math.min(.05, Math.max(0, (timestamp - v.signLast) / 1000));
+      v.signLast = timestamp;
+      const g = v.signCanvas.getContext('2d');
+      const w = 1024;
+      const h = 256;
+      g.fillStyle = '#120d0a';
+      g.fillRect(0, 0, w, h);
+      for (const drop of v.signDrops) {
+        drop.y += drop.speed * dt;
+        if (drop.y > 1.1) { drop.y = -.1; drop.x = Math.random(); }
+        const squash = Math.max(.25, Math.abs(Math.cos(timestamp / 400 + drop.phase)));
+        const cx = drop.x * w;
+        const cy = drop.y * h;
+        g.save();
+        g.globalAlpha = .55;
+        g.translate(cx, cy);
+        g.beginPath();
+        g.ellipse(0, 0, drop.size, drop.size * squash, 0, 0, Math.PI * 2);
+        g.fillStyle = '#ffd43b';
+        g.fill();
+        g.lineWidth = 3;
+        g.strokeStyle = '#fff3a6';
+        g.stroke();
+        g.restore();
+      }
+      g.lineWidth = 10;
+      g.strokeStyle = '#f0b94d';
+      g.strokeRect(8, 8, w - 16, h - 16);
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 84px Georgia, serif';
+      g.fillStyle = '#ffd777';
+      g.shadowColor = '#f59b2b';
+      g.shadowBlur = 24;
+      g.fillText(text, w / 2, h / 2, w * .86);
+      g.shadowBlur = 0;
+      v.signTexture.needsUpdate = true;
     }
 
     function topFaceMaterial3d(avatar, tint) {
@@ -4423,7 +4466,7 @@
         v.camera.updateProjectionMatrix();
       }
       if (v.staticKey !== `${W}x${H}`) buildStatic3d(W, H);
-      updateSign3d(W);
+      updateSign3d(W, performance.now());
 
       const pusherTopY = pusherBody.position.y - H * pusherLipDepth / 2 - H * pusherHalfHeight;
       const pusherLipY = pusherBody.position.y - H * pusherLipDepth / 2 + H * pusherHalfHeight + H * pusherLipDepth;
