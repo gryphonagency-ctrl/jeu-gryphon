@@ -57,8 +57,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #sectors input{width:100%;text-align:center;padding:5px 2px}
 #log{font-size:11px;color:#d8cceb;max-height:110px;overflow:auto;line-height:1.5}
 #stList{max-height:260px;overflow:auto}
-#stList .st{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #ffffff14}
-#stList .st span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff2a8;font-weight:700}
+#stList .st,#qList .st{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #ffffff14}
+#stList .st span,#qList .st span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff2a8;font-weight:700}
 #stList .st b{color:#ffd24a;min-width:40px;text-align:right}
 #stList .st input{width:70px}
 #stList .st button{padding:3px 7px}
@@ -118,6 +118,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
     <div id="sectors"></div>
     <div class="row" style="margin-top:8px"><button id="reset">Valeurs par défaut</button></div>
     <p class="hint">Un nombre (ex. 3) donne ⭐ ×3 la valeur du cadeau. « NEW » relance une roue. « 0 » ne donne rien.</p>
+  </section>
+  <section>
+    <h4>⏳ FILE D'ATTENTE</h4>
+    <div class="row"><button id="qClearAll" type="button">🗑 Supprimer toute la file</button></div>
+    <div id="qList" style="max-height:180px;overflow:auto;margin-top:6px"></div>
   </section>
   <section>
     <h4>⭐ TABLEAU DES ÉTOILES</h4>
@@ -784,6 +789,25 @@ $('stFile').onchange = e => {
   };
   rd.readAsText(f);
 };
+/* File d'attente : suppression individuelle ou totale */
+let qListSig = '';
+function renderQList() {
+  const sig = queue.map(j => `${j.name}:${j.stake}`).join('|');
+  if (sig === qListSig) return;
+  qListSig = sig;
+  const box = $('qList'); box.replaceChildren();
+  if (!queue.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Personne en attente.'; box.appendChild(p); return; }
+  queue.slice(0, 50).forEach(job => {
+    const row = document.createElement('div'); row.className = 'st';
+    const n = document.createElement('span'); n.textContent = `${job.name} (${job.stake})`;
+    const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.title = 'Retirer de la file';
+    x.onclick = () => { const i = queue.indexOf(job); if (i >= 0) queue.splice(i, 1); $('qinfo').textContent = `File d'attente : ${queue.length}`; renderQList(); };
+    row.append(n, x); box.appendChild(row);
+  });
+  if (queue.length > 50) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `+ ${queue.length - 50} autres`; box.appendChild(p); }
+}
+$('qClearAll').onclick = () => { queue.length = 0; $('qinfo').textContent = 'File d\'attente : 0'; renderQList(); };
+setInterval(renderQList, 400); renderQList();
 window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
 </script>
