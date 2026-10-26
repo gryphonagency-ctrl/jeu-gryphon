@@ -39,6 +39,7 @@ const wishLabFile = path.join(__dirname, 'wish-lab.html');
 const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
 const plushGameFile = path.join(__dirname, 'peluches-mutantes.html');
 const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
+const trueFalseGameFile = path.join(__dirname, 'vrai-ou-faux.html');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
@@ -70,6 +71,7 @@ const protectedRoutes = new Set([
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/a-prendre-ou-a-laisser.html',
+    '/vrai-ou-faux.html',
     '/gryphon-plinko',
     '/index.html',
     '/plinko.html',
@@ -95,6 +97,7 @@ const staticGameIds = [
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/a-prendre-ou-a-laisser.html',
+    '/vrai-ou-faux.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -104,6 +107,7 @@ store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
+store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
@@ -119,6 +123,7 @@ const staticGameTitles = {
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/a-prendre-ou-a-laisser.html': 'À prendre ou à laisser',
+    '/vrai-ou-faux.html': 'Vrai ou Faux',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -137,6 +142,7 @@ const gameRouteIds = new Map([
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/a-prendre-ou-a-laisser.html', '/a-prendre-ou-a-laisser.html'],
+    ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -1806,6 +1812,7 @@ const server = http.createServer((req, res) => {
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/a-prendre-ou-a-laisser.html', [dealGameFile, 'text/html; charset=utf-8']],
+        ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -1827,6 +1834,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/a-prendre-ou-a-laisser-apercu.png', [path.join(__dirname, 'images-vitrine', 'a-prendre-ou-a-laisser-apercu.png'), 'image/png']],
+        ['/images-vitrine/vrai-ou-faux-apercu.png', [path.join(__dirname, 'images-vitrine', 'vrai-ou-faux-apercu.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
