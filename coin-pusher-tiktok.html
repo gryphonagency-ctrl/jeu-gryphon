@@ -2207,6 +2207,24 @@
       nextCoinDropAt = timestamp + coinDropInterval;
     }
 
+    // Cherche un emplacement sans chevauchement : poser une pièce sur une autre fait exploser la résolution des contacts.
+    function findFreeLandingX(coin, y) {
+      const laneHalfWidth = physicsWidth * coinDropLaneWidthScale / 2;
+      const minX = physicsWidth * coinDropLaneCenter - laneHalfWidth + coin.radius;
+      const maxX = physicsWidth * coinDropLaneCenter + laneHalfWidth - coin.radius;
+      const isFree = x => !coins.some(other =>
+        other !== coin && !other.airborne && !other.leftTable &&
+        Math.hypot(other.body.position.x - x, other.body.position.y - y) < coin.radius * 2.02
+      );
+      if (isFree(coin.landingX)) return coin.landingX;
+      for (let attempt = 1; attempt <= 24; attempt += 1) {
+        const offset = Math.ceil(attempt / 2) * coin.radius * 1.1 * (attempt % 2 ? 1 : -1);
+        const x = Math.min(maxX, Math.max(minX, coin.landingX + offset));
+        if (isFree(x)) return x;
+      }
+      return null;
+    }
+
     function findCoinStackSupport(coin, groundLandingY) {
       const laneHalfWidth = physicsWidth * coinDropLaneWidthScale / 2;
       const laneEdge = physicsWidth * coinDropLaneCenter - laneHalfWidth;
@@ -3204,6 +3222,8 @@
         }
       );
       MatterBody.setInertia(pusherBody, Infinity);
+      // Masse énorme : les pièces ne peuvent ni freiner ni faire trembler le poussoir.
+      MatterBody.setMass(pusherBody, 1e7);
       MatterComposite.add(physicsEngine.world, [...boundaries, pusherBody]);
       queuePendingRewardCards();
     }
@@ -3656,6 +3676,8 @@
               coin.stackLevel = stackPlacement.support.stackLevel + 1;
               coin.stackGroup = stackPlacement.support.stackGroup;
             } else {
+              const freeX = findFreeLandingX(coin, groundLandingY);
+              if (freeX !== null) coin.landingX = freeX;
               coin.stackBaseY = groundLandingY;
               coin.stackLevel = 0;
               coin.stackGroup = nextCoinStackGroup;
@@ -3701,14 +3723,13 @@
       if (pendingDropsChanged) updatePendingPlayerDrops();
       for (const card of fallingCards) {
         if (card.phase === 'entering') {
-          const distance = card.targetX - card.body.position.x;
-          const step = Math.sign(distance) * Math.min(Math.abs(distance), width * .0002 * delta);
-          const progress = Math.min(1, card.entryProgress + Math.abs(step) / Math.max(1, card.entryDistance));
-          const y = card.rampStartY + (card.landingY - card.rampStartY) * progress;
-          MatterBody.setPosition(card.body, { x: card.body.position.x + step, y });
+          const remaining = card.landingY - card.body.position.y;
+          const step = Math.min(Math.max(0, remaining), height * .0006 * delta * state.controls.dropSpeed);
+          const progress = Math.min(1, card.entryProgress + step / Math.max(1, card.entryDistance));
+          MatterBody.setPosition(card.body, { x: card.targetX, y: card.body.position.y + step });
           MatterBody.setAngle(card.body, card.slideDirection * .18 * (1 - progress));
           card.entryProgress = progress;
-          if (Math.abs(distance) <= Math.abs(step)) {
+          if (remaining <= step) {
             card.phase = 'landed';
             card.airborne = false;
             card.body.collisionFilter.mask = 0xFFFFFFFF;
@@ -3971,13 +3992,9 @@
         const cardWidth = width * rewardCardWidthScale;
         const cardHeight = height * rewardCardHeightScale;
         const slideDirection = Math.random() < .5 ? 1 : -1;
-        const sideX = slideDirection > 0
-          ? width * .12 + cardWidth / 2
-          : width * .88 - cardWidth / 2;
-        const targetX = width * (slideDirection > 0
-          ? .42 + Math.random() * .06
-          : .52 + Math.random() * .06);
-        const rampStartY = height * (playfieldSurfacePosition + rewardCardHeightScale / 2);
+        const targetX = width * (coinDropLaneCenter + (Math.random() - .5) * .06);
+        const sideX = targetX;
+        const rampStartY = height * coinDropSkyPosition - cardHeight;
         const landingY = height * getCardLandingPosition();
         const body = MatterBodies.rectangle(
           sideX,
@@ -3996,7 +4013,7 @@
           targetX,
           rampStartY,
           landingY,
-          entryDistance: Math.abs(targetX - sideX),
+          entryDistance: Math.max(1, landingY - rampStartY),
           entryProgress: 0,
           reward: drop.reward || null,
           name: displayRewardName(visualReward?.name),
