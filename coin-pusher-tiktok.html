@@ -3707,39 +3707,28 @@
         }
       }
       MatterEngine.update(physicsEngine, delta);
-      const movingCoins = coins.filter(coin => coin.onConveyor).map(coin => coin.body);
-      const waitingCoins = coins
-        .filter(coin => !coin.airborne && !coin.onConveyor && coin.waitingForPusher)
-        .map(coin => coin.body);
+      const movingCoins = [
+        ...coins.filter(coin => coin.onConveyor).map(coin => coin.body),
+        ...fallingCards.filter(card => card.phase === 'on-conveyor').map(card => card.body)
+      ];
+      const waitingCoins = [
+        ...coins
+          .filter(coin => !coin.airborne && !coin.onConveyor && coin.waitingForPusher)
+          .map(coin => coin.body),
+        ...fallingCards
+          .filter(card => !card.airborne && card.phase === 'landed')
+          .map(card => card.body)
+      ];
       for (const movingBody of movingCoins) {
-        const nextBody = MatterQuery.collides(movingBody, waitingCoins)
+        if (Math.hypot(movingBody.velocity.x, movingBody.velocity.y) <= .08) continue;
+        const impact = movingBody.velocity;
+        const touched = MatterQuery.collides(movingBody, waitingCoins)
           .map(collision => collision.bodyA === movingBody ? collision.bodyB : collision.bodyA)
-          .filter(body => body.position.y > movingBody.position.y)
-          .sort((first, second) => first.position.y - second.position.y)[0];
-        if (nextBody && movingBody.velocity.y > .08) {
-          const impact = movingBody.velocity;
+          .filter(body => body.position.y > movingBody.position.y - physicsHeight * .01);
+        for (const nextBody of touched) {
           activateConveyorBody(nextBody, {
             x: impact.x * .55,
-            y: impact.y * .55
-          });
-        }
-      }
-      const movingCards = fallingCards
-        .filter(card => card.phase === 'on-conveyor')
-        .map(card => card.body);
-      const waitingCards = fallingCards
-        .filter(card => !card.airborne && card.phase === 'landed')
-        .map(card => card.body);
-      for (const movingBody of movingCards) {
-        const nextBody = MatterQuery.collides(movingBody, waitingCards)
-          .map(collision => collision.bodyA === movingBody ? collision.bodyB : collision.bodyA)
-          .filter(body => body.position.y > movingBody.position.y)
-          .sort((first, second) => first.position.y - second.position.y)[0];
-        if (nextBody) {
-          const impact = movingBody.velocity;
-          activateConveyorBody(nextBody, {
-            x: impact.x * .55,
-            y: Math.max(impact.y * .55, height * .0012)
+            y: Math.max(impact.y * .55, 0)
           });
         }
       }
