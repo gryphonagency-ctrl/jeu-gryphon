@@ -81,6 +81,7 @@ button:active { transform: scale(.96); }
     <button id="b-add10" class="alt" type="button">+10 billes</button>
     <button id="b-g1" type="button">🎁 1 pièce</button>
     <button id="b-g5" type="button">🎁 5 pièces</button>
+    <button id="b-view" class="wide" type="button">🛰 Vue du dessus (V)</button>
     <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
     <button id="b-reset" class="alt" type="button">↺ Reset</button>
 </div>
@@ -103,7 +104,7 @@ const WS_URL = 'wss://jeu6boite.onrender.com';
 const W = 1000, FINISH = 9300, WALL_TOP = -1800, LEVELS = 16;
 const R = 21;
 const engine = Engine.create();
-engine.gravity.y = 1;
+engine.gravity.y = 2.2;
 const world = engine.world;
 const statics = [];   // { body, kind }
 const spinners = [];
@@ -184,7 +185,7 @@ function addMarble(id, name, pic) {
     let m = marbles.get(id);
     if (m && !m.ejected) return m;
     const body = Bodies.circle(40 + Math.random() * (W - 80), -50 - Math.random() * 300, R, {
-        restitution: 0.35, friction: 0.02, frictionAir: 0.006, density: 0.0012, label: 'marble'
+        restitution: 0.35, friction: 0.02, frictionAir: 0.002, density: 0.0012, label: 'marble'
     });
     m = { id, name, body, h: hue(id), boostUntil: 0, finished: false, ejected: false, ejectedAt: 0, rank: 0, stuck: 0 };
     marbles.set(id, m);
@@ -204,7 +205,7 @@ function allActive() { return [...marbles.values()].filter(m => !m.ejected); }
 function boost(m, times = 1) {
     if (!m || m.ejected || m.finished) return;
     m.boostUntil = Math.max(performance.now(), m.boostUntil) + 2500 * Math.min(times, 5);
-    if (phase === 'race') Body.setVelocity(m.body, { x: m.body.velocity.x, y: m.body.velocity.y + 8 });
+    if (phase === 'race') Body.setVelocity(m.body, { x: m.body.velocity.x, y: m.body.velocity.y + 14 });
     toast(`🚀 ${m.name} accélère !`, 'boost');
 }
 function eject(by) {
@@ -278,11 +279,11 @@ function physicsStep(now) {
         const b = m.body;
         if (m.ejected) { if (now - m.ejectedAt > 3500) removeMarble(m); continue; }
         const boosted = now < m.boostUntil;
-        if (boosted) Body.setVelocity(b, { x: b.velocity.x * 1.01, y: b.velocity.y * 1.03 + 0.15 });
+        if (boosted) Body.setVelocity(b, { x: b.velocity.x * 1.01, y: b.velocity.y * 1.03 + 0.3 });
         if (phase !== 'lobby' || b.position.y > 0) for (const z of mudZones) {
-            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * 0.93, y: b.velocity.y * 0.93 });
+            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * 0.9, y: b.velocity.y * 0.9 });
         }
-        const cap = boosted ? 36 : 25;
+        const cap = boosted ? 60 : 44;
         const sp = Math.hypot(b.velocity.x, b.velocity.y);
         if (sp > cap) Body.setVelocity(b, { x: b.velocity.x * cap / sp, y: b.velocity.y * cap / sp });
         if (phase === 'race' && !m.finished) {
@@ -291,7 +292,7 @@ function physicsStep(now) {
             if (b.position.y > FINISH) finishMarble(m);
         }
     }
-    Engine.update(engine, 1000 / 60);
+    Engine.update(engine, 1000 / 120); Engine.update(engine, 1000 / 120);
 }
 
 /* ---------- Rendu ---------- */
@@ -300,7 +301,10 @@ let vw = 0, vh = 0, dpr = 1;
 function resize() { dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight; cv.width = vw * dpr; cv.height = vh * dpr; }
 addEventListener('resize', resize); resize();
 const cam = { y: -200, z: 0.8 };
+let topView = false;
+function setView(v) { topView = v; $('b-view').textContent = topView ? '🎥 Vue suivi (V)' : '🛰 Vue du dessus (V)'; }
 function updateCamera() {
+    if (topView) { cam.y += (FINISH / 2 + 100 - cam.y) * 0.15; cam.z += (Math.min(vh / (FINISH + 500), 1) - cam.z) * 0.15; return; }
     const list = phase === 'lobby' || phase === 'count' ? [] : allActive().filter(m => !m.finished || phase === 'done');
     let ty = -250, tz = Math.min(vw / 1100, 1.2) || 0.8;
     if (phase === 'done' && finishedList[0]) { ty = finishedList[0].body.position.y - 100; tz = 1; }
@@ -373,6 +377,7 @@ function drawWorld(now) {
         const boosted = now < m.boostUntil && !m.ejected;
         ctx.save();
         ctx.translate(p.x, p.y);
+        if (topView) { const big = Math.max(1, 7 / (R * cam.z)); ctx.scale(big, big); }
         if (m.ejected) ctx.globalAlpha = Math.max(0.2, 1 - (now - m.ejectedAt) / 3500);
         if (boosted) { ctx.fillStyle = 'rgba(251,146,60,.45)'; ctx.beginPath(); ctx.arc(0, 0, R + 9, 0, 7); ctx.fill(); }
         ctx.rotate(b.angle);
@@ -383,7 +388,7 @@ function drawWorld(now) {
         ctx.restore();
         ctx.lineWidth = 4; ctx.strokeStyle = ranked[0] === m ? '#fbbf24' : `hsl(${m.h} 80% 65%)`; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.stroke();
         ctx.restore();
-        if (showNames || ranked.indexOf(m) < 6) {
+        if (!topView && (showNames || ranked.indexOf(m) < 6)) {
             ctx.save(); ctx.globalAlpha = m.ejected ? 0.4 : 1;
             ctx.font = '800 15px Arial'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
             const label = m.name.slice(0, 14);
@@ -491,6 +496,7 @@ $('b-add').onclick = testMarble;
 $('b-add10').onclick = () => { for (let i = 0; i < 10; i++) testMarble(); };
 $('b-g1').onclick = () => { const m = randomMarble(); onGift({ id: m.id, name: m.name, pic: '' }, 1, 1); };
 $('b-g5').onclick = () => { const m = randomMarble(); onGift({ id: m.id, name: m.name, pic: '' }, 5, 1); };
+$('b-view').onclick = () => setView(!topView);
 $('b-mute').onclick = () => setMuted(!muted);
 $('b-reset').onclick = resetRace;
 const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
@@ -499,6 +505,7 @@ addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
     if (e.key === 'm' || e.key === 'M') setMuted(!muted);
     if (e.key === 'h' || e.key === 'H') togglePanel();
+    if (e.key === 'v' || e.key === 'V') setView(!topView);
 });
 (function drag() {
     const p = $('panel'), h = $('panel-handle');
