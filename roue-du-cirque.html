@@ -98,7 +98,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
     <label>Chance « Nouvelle roue » (%) <input id="newPct" type="number" min="0" max="100" step="1"></label>
     <label>Durée d'un tour (s) <input id="dur" type="number" min="2" max="20" step="1"></label>
     <label>Voix de l'animateur <input id="voice" type="checkbox"></label>
-    <label>Vidéo de fond (URL) <input id="video" type="text" placeholder="https://…mp4" style="width:170px"></label>
+    <label>Vidéo de fond</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0">
+      <button id="vidPick" type="button">📁 Choisir une vidéo…</button>
+      <button id="vidClear" type="button">✕ Retirer</button>
+      <input id="vidFile" type="file" accept="video/*" hidden>
+    </div>
+    <p class="hint" id="vidName"></p>
+    <label>ou URL <input id="video" type="text" placeholder="https://…mp4" style="width:150px"></label>
   </section>
   <section>
     <h4>15 SECTEURS (0, NEW ou multiplicateur)</h4>
@@ -604,15 +611,38 @@ addEventListener('keydown', e => {
   if (e.key === 'h' || e.key === 'H') $('eye').click();
   if (e.key === ' ') { e.preventDefault(); $('spinTest').click(); }
 });
-function applyVideo() {
+/* Vidéo de fond : fichier choisi sur l'ordinateur, conservé dans IndexedDB ("local:nom") ou URL */
+const idb = {
+  open: () => new Promise((res, rej) => { const r = indexedDB.open('cw-media', 1); r.onupgradeneeded = () => r.result.createObjectStore('f'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }),
+  async put(k, v) { const d = await this.open(); return new Promise((res, rej) => { const t = d.transaction('f', 'readwrite'); t.objectStore('f').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); },
+  async get(k) { const d = await this.open(); return new Promise((res, rej) => { const q = d.transaction('f').objectStore('f').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+};
+let vidUrl = '';
+async function applyVideo() {
   const v = $('vid');
-  if (CFG.video) { v.src = CFG.video; v.style.display = 'block'; v.play().catch(() => {}); }
+  if (vidUrl) { URL.revokeObjectURL(vidUrl); vidUrl = ''; }
+  let src = CFG.video;
+  if (src && src.startsWith('local:')) {
+    try { const blob = await idb.get('bgvideo'); src = blob ? (vidUrl = URL.createObjectURL(blob)) : ''; } catch (e) { src = ''; }
+    if (!src) { CFG.video = ''; save(); $('video').value = ''; $('vidName').textContent = ''; }
+  }
+  if (src) { v.src = src; v.style.display = 'block'; v.play().catch(() => {}); }
   else { v.removeAttribute('src'); v.style.display = 'none'; }
 }
+$('vidPick').onclick = () => $('vidFile').click();
+$('vidFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (!/^video\//.test(f.type)) { $('vidName').textContent = 'Ce fichier n\'est pas une vidéo.'; return; }
+  try { await idb.put('bgvideo', f); } catch (err) { $('vidName').textContent = 'Impossible de mémoriser la vidéo.'; return; }
+  CFG.video = 'local:' + f.name; save(); $('video').value = ''; $('vidName').textContent = '🎬 ' + f.name; applyVideo();
+};
+$('vidClear').onclick = () => { CFG.video = ''; save(); $('video').value = ''; $('vidName').textContent = ''; applyVideo(); };
 function bindNum(id, key) { const el = $(id); el.value = CFG[key]; el.oninput = () => { CFG[key] = Number(el.value) || 0; save(); }; }
 bindNum('p1', 'p1'); bindNum('p2', 'p2'); bindNum('p3', 'p3'); bindNum('newPct', 'newp'); bindNum('dur', 'dur');
 $('voice').checked = CFG.voice; $('voice').onchange = e => { CFG.voice = e.target.checked; save(); };
-$('video').value = CFG.video; $('video').onchange = e => { CFG.video = e.target.value.trim(); save(); applyVideo(); };
+$('video').value = CFG.video.startsWith('local:') ? '' : CFG.video; $('vidName').textContent = CFG.video.startsWith('local:') ? '🎬 ' + CFG.video.slice(6) : '';
+$('video').onchange = e => { CFG.video = e.target.value.trim(); save(); $('vidName').textContent = ''; applyVideo(); };
 function buildSectors() {
   const box = $('sectors'); box.replaceChildren();
   CFG.sectors.forEach((s, i) => {
