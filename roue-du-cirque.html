@@ -497,7 +497,7 @@ try { viewers = JSON.parse(localStorage.getItem('cw-viewers') || '{}') || {}; } 
 const saveViewers = () => { try { const s = JSON.stringify(viewers); localStorage.setItem('cw-viewers', s); localStorage.setItem('cw-viewers-auto', JSON.stringify({ date: Date.now(), data: viewers })); } catch (e) {} };
 function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
 function addStars(name, n) { const v = viewer(name); v.stars = Math.round((v.stars + n) * 100) / 100; saveViewers(); try { window.ArcadeStars?.record?.(v.name || name, n); } catch (e) {} }
-let starTimer = 0;
+let starTimer = 0, pendingStarTimer = 0;
 function setAvatar(el, name, url) {
   const ok = /^(https?:|data:image\/)/.test(url || '');
   el.style.backgroundImage = ok ? `url("${url.replace(/"/g, '%22')}")` : 'none';
@@ -544,7 +544,11 @@ function handleChat(name, text, avatar, fromLive) {
   if (!name) return;
   if (avatar) { viewer(name).avatar = avatar; }
   const raw = String(text || ''), t = raw.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(name); return; }
+  if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) {
+    // En live, on attend le solde global du serveur ; le total local ne s'affiche que s'il ne répond pas.
+    if (fromLive) { clearTimeout(pendingStarTimer); pendingStarTimer = setTimeout(() => showStars(name), 2500); } else showStars(name);
+    return;
+  }
   const run = /^!?run(?:\s+(\d+))?$/.exec(t);
   if (run && !fromLive) runStars(name, run[1] ? Number(run[1]) : 0);
 }
@@ -608,6 +612,7 @@ window.addEventListener('arcade:wallet', ev => {
   const d = ev.detail || {}, p = d.player;
   const name = p && (p.username || p.uniqueId || p.nickname);
   if (!name || !/^Solde global/.test(d.message || '')) return;
+  clearTimeout(pendingStarTimer);
   showStars(name, '', p.stars);
 });
 window.addEventListener('arcade:wallet-run', ev => {

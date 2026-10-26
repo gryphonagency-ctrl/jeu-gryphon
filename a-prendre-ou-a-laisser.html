@@ -783,7 +783,11 @@ function handleChat(name, text, avatar, fromLive) {
     const t = norm(raw);
     // En live, "étoile" et "run" passent par le portefeuille global du serveur (total de tous les jeux).
     // "étoile" : on garde aussi l'affichage du solde local du jeu, pour ne jamais montrer 0 aux joueurs qui ont déjà gagné ici.
-    if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(v); return; }
+    if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) {
+        // En live, on attend le solde global du serveur ; le total local ne s'affiche que s'il ne répond pas.
+        if (fromLive) { clearTimeout(pendingStarTimer); pendingStarTimer = setTimeout(() => showStars(v), 2500); } else showStars(v);
+        return;
+    }
     const run = /^!?run(?:\s+(\d+))?$/.exec(t);
     if (run) { if (!fromLive) runStake(v, run[1] ? Number(run[1]) : 0); return; }
     if (S.phase === 'recruiting') {
@@ -808,7 +812,7 @@ function handleChat(name, text, avatar, fromLive) {
     }
 }
 
-let starTimer = null;
+let starTimer = null, pendingStarTimer = null;
 function showStars(v, note, globalStars) {
     const card = $('starcard');
     const total = Number.isFinite(Number(globalStars)) && globalStars !== undefined && globalStars !== null ? Number(globalStars) : (v.stars || 0);
@@ -837,6 +841,7 @@ window.addEventListener('arcade:wallet', event => {
     const d = event.detail || {}, p = d.player;
     const name = p && (p.username || p.uniqueId || p.nickname);
     if (!name || !/^Solde global/.test(d.message || '')) return;
+    clearTimeout(pendingStarTimer);
     showStars(getViewer(name, p.avatarUrl || ''), '', p.stars);
 });
 const deferredRuns = [];
