@@ -910,6 +910,11 @@ donne <!doctype html>
             '/inedexd.html': { title: 'Les Six Boîtes', description: 'Choisis l’une des six boîtes dans l’aperçu interactif.', action: 'boxes', color: '#f3c96b', scene: 'boxes' },
             '/petits-chevaux-tiktok.html': { title: 'Petit Trot', description: 'Lance une course de démonstration entre les chevaux.', action: 'Lancer la course', color: '#f2d387', scene: 'horses' },
             '/monde-du-ballon.html': { title: 'Le Monde du Ballon', description: 'Les ballons descendent en continu ; les cadeaux du direct déclenchent des tirs et révèlent les étoiles gagnées.', action: 'Découvrir le jeu', color: '#ffdc78', scene: 'balloons' },
+            '/coin-pusher-3d-preview.html': { title: 'Astra-Push', description: 'Fais tomber des pièces sur le plateau et regarde-les être poussées.', action: 'Lâcher des pièces', color: '#ffc05b', scene: 'astra' },
+            '/course-de-billes.html': { title: 'Course de Billes', description: 'Lance la course : les billes dévalent les rampes jusqu’à la ligne d’arrivée.', action: 'Lancer la course', color: '#55dfff', scene: 'marbles' },
+            '/peche-aux-canards.html': { title: 'Pêche aux Canards', description: 'Pêche un canard dans la mare et découvre les étoiles qu’il cache.', action: 'Pêcher un canard', color: '#ffd84d', scene: 'ducks' },
+            '/vrai-ou-faux.html': { title: 'Vrai ou Faux', description: 'Vote pour la bonne réponse : vrai ou faux ?', action: 'truefalse', color: '#3fd0ff', scene: 'truefalse' },
+            '/a-prendre-ou-a-laisser.html': { title: 'À prendre ou à laisser', description: 'Choisis une mallette et découvre le nombre d’étoiles qu’elle cache.', action: 'briefcases', color: '#ffc93c', scene: 'briefcases' },
             '/wish-lab.html': { title: 'Wish Lab', description: 'Mélange une potion et réveille une créature du laboratoire.', action: 'Mélanger une potion', color: '#df76ff', scene: 'lab' }
         };
         const previewPalette = ['#ff695e', '#54c9ff', '#ffc54f', '#7ce28b', '#d18cff', '#ff73b7', '#51e0da', '#d1df58'];
@@ -1159,9 +1164,78 @@ donne <!doctype html>
             };
         }
 
+        function drawNewGamePreview(context, definition, state, time) {
+            const scene = definition.scene;
+            if (!['astra', 'marbles', 'ducks', 'truefalse', 'briefcases'].includes(scene)) return false;
+            const width = 360;
+            const height = gamePreviewCanvas.height / (gamePreviewCanvas.width / 360);
+            const age = Math.max(0, (time - state.actionStartedAt) / 1000);
+            const pulse = .75 + Math.sin(time / 110) * .25;
+            context.save();
+            context.textAlign = 'center';
+            if (scene === 'astra') {
+                const count = Math.min(6, state.actions);
+                for (let index = 0; index < count; index++) {
+                    const fall = Math.min(1, Math.max(0, age - index * .12) / .9);
+                    drawPreviewCoin(context, 110 + index * 28 + Math.sin(index * 2.3) * 8, height * (.1 + fall * .55), 9, '#ffd24a');
+                }
+                context.fillStyle = '#ffd27acc';
+                context.fillRect(30, height * .72 + Math.sin(age * 5) * 5, width - 60, 5);
+            } else if (scene === 'marbles') {
+                const colors = ['#ff5a5a', '#4dc4ff', '#ffd24a', '#7ce28b', '#d18cff'];
+                for (let index = 0; index < 5; index++) {
+                    const progress = Math.min(1, Math.max(0, age * (.32 + index * .025) - index * .02));
+                    const x = 24 + progress * (width - 48);
+                    const y = height * (.2 + progress * .5) + Math.sin(progress * 20 + index) * 4;
+                    context.fillStyle = colors[index];
+                    context.shadowColor = colors[index];
+                    context.shadowBlur = 10;
+                    context.beginPath();
+                    context.arc(x, y + index * 8, 7, 0, Math.PI * 2);
+                    context.fill();
+                }
+            } else if (scene === 'ducks') {
+                const seed = state.actions * 97;
+                const x = 60 + (seed % 240);
+                const y = height * (.35 + ((seed * 7) % 40) / 100);
+                const rise = Math.min(1, age / 1.4);
+                const stars = [1, 3, 5, 12, 25, 50][state.actions % 6];
+                context.font = '30px Segoe UI Emoji, sans-serif';
+                context.globalAlpha = Math.max(0, 1 - Math.max(0, age - 1.6));
+                context.fillText('🦆', x, y - rise * 24);
+                context.font = '800 14px Segoe UI, sans-serif';
+                context.fillStyle = '#fff3a0';
+                context.shadowColor = '#000';
+                context.shadowBlur = 6;
+                context.fillText(`+${stars} ⭐`, x, y - 32 - rise * 24);
+            } else if (scene === 'truefalse' && state.choice >= 0) {
+                const x = state.choice === 0 ? width * .42 : width * .58;
+                context.strokeStyle = `rgba(255,255,255,${.6 + pulse * .4})`;
+                context.lineWidth = 3;
+                context.strokeRect(x - 28, height * .5, 56, height * .17);
+                context.fillStyle = state.choice === 0 ? '#1fd48a' : '#ff5d6c';
+                context.font = '800 13px Segoe UI, sans-serif';
+                context.fillText(state.choice === 0 ? 'VOTE : VRAI' : 'VOTE : FAUX', width / 2, height * .86);
+            } else if (scene === 'briefcases' && state.choice >= 0) {
+                const x = [117, 159, 201, 242][state.choice % 4];
+                const y = state.choice < 4 ? height * .52 : height * .7;
+                context.strokeStyle = `rgba(255,241,160,${.55 + pulse * .4})`;
+                context.lineWidth = 3;
+                context.strokeRect(x - 20, y - 15, 40, 30);
+                context.fillStyle = '#ffe27a';
+                context.font = '800 13px Segoe UI, sans-serif';
+                context.shadowColor = '#000';
+                context.shadowBlur = 6;
+                context.fillText(`⭐ ${state.stars}`, x, y + 5);
+            }
+            context.restore();
+            return true;
+        }
+
         function drawInteractivePreview(context, gameId, state, time) {
             const definition = gamePreviewDefinitions[gameId];
             if (!definition || !state.actions) return;
+            if (drawNewGamePreview(context, definition, state, time)) return;
             const height = gamePreviewCanvas.height / (gamePreviewCanvas.width / 360);
             const age = Math.max(0, (time - state.actionStartedAt) / 1000);
             const pulse = .75 + Math.sin(time / 110) * .25;
@@ -1399,6 +1473,11 @@ donne <!doctype html>
             } else if (definition.action === 'coffers' || definition.action === 'boxes') {
                 const count = definition.action === 'coffers' ? 3 : 6;
                 for (let index = 0; index < count; index++) addActionButton(`Choisir ${definition.action === 'coffers' ? 'le coffre' : 'la boîte'} ${index + 1}`, index);
+            } else if (definition.action === 'truefalse') {
+                addActionButton('Voter VRAI', 0);
+                addActionButton('Voter FAUX', 1);
+            } else if (definition.action === 'briefcases') {
+                for (let index = 0; index < 8; index++) addActionButton(`Mallette ${index + 1}`, index);
             } else if (definition.action === 'quiz') {
                 ['A', 'B', 'C', 'D'].forEach((answer, index) => addActionButton(`Réponse ${answer}`, index));
             } else {
@@ -1411,6 +1490,18 @@ donne <!doctype html>
         function updateGamePreview(gameId, state, actionIndex = 0, letter = '') {
             const definition = gamePreviewDefinitions[gameId];
             state.actions += 1;
+            if (definition.action === 'truefalse') {
+                state.choice = actionIndex;
+                gamePreviewStatus.textContent = actionIndex === 0 ? 'Tu as voté VRAI. Les bananes ne poussent pas sur des arbres… ou si ?' : 'Tu as voté FAUX : le chat compte les votes !';
+                return;
+            }
+            if (definition.action === 'briefcases') {
+                const stars = [1, 5, 10, 20, 50, 150, 250, 500];
+                state.choice = actionIndex;
+                state.stars = stars[(actionIndex * 3 + state.actions) % stars.length];
+                gamePreviewStatus.textContent = `La mallette ${actionIndex + 1} s’ouvre : ⭐ ${state.stars} !`;
+                return;
+            }
             state.actionStartedAt = performance.now();
             if (definition.action === 'letter') {
                 state.guessed.add(letter);
@@ -1450,6 +1541,9 @@ donne <!doctype html>
                 '/petits-chevaux-tiktok.html': ['La course est lancée !', 'Les chevaux sprintent vers l’arrivée !'],
                 '/monde-du-ballon.html': ['🎯 Le ballon éclate et les étoiles s’ajoutent !', '🎈 Tir réussi : découvre ton gain en étoiles !'],
                 '/qui-veut-gagner-des-etoiles.html': ['La question apparaît : choisis ta réponse !', 'Bonne réponse : la pyramide d’étoiles monte !'],
+                '/coin-pusher-3d-preview.html': ['Les pièces tombent sur le plateau !', 'Le poussoir fait glisser les pièces !'],
+                '/course-de-billes.html': ['Les billes dévalent la rampe !', 'La course continue : qui franchira la ligne en premier ?'],
+                '/peche-aux-canards.html': ['Un canard est pêché !', 'Encore un canard : combien d’étoiles ?'],
                 '/wish-lab.html': ['La potion pétille : une créature apparaît !', 'Mélange réussi : le labo s’illumine !']
             };
             gamePreviewStatus.textContent = messages[gameId][(state.actions - 1) % messages[gameId].length];
