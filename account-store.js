@@ -401,6 +401,12 @@ function importTikTokStarLeaderboard(snapshot) {
 }
 
 function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, reason }) {
+    const result = applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason });
+    if (result.applied) scheduleStarBackup();
+    return result;
+}
+
+function applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason }) {
     return updateStore(store => {
         const existingTransaction = store.tiktokStarTransactions[transactionId];
         if (existingTransaction) {
@@ -424,6 +430,36 @@ function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, re
         };
         return { applied: true, duplicate: false, balance };
     });
+}
+
+// Sauvegarde automatique des soldes d'étoiles : une copie à jour + une copie par jour (14 jours conservés)
+let starBackupTimer = null;
+function scheduleStarBackup() {
+    if (starBackupTimer) return;
+    starBackupTimer = setTimeout(() => {
+        starBackupTimer = null;
+        try {
+            const store = readStore();
+            const directory = path.join(path.dirname(storeFile), 'star-backups');
+            fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+            const players = Object.values(store.tiktokPlayers).map(player => ({
+                id: player.id, username: player.username, nickname: player.nickname, stars: player.stars
+            }));
+            const content = JSON.stringify({ savedAt: new Date().toISOString(), players });
+            const write = name => {
+                const target = path.join(directory, name);
+                fs.writeFileSync(`${target}.tmp`, content, { mode: 0o600 });
+                fs.renameSync(`${target}.tmp`, target);
+            };
+            write('etoiles-latest.json');
+            write(`etoiles-${new Date().toISOString().slice(0, 10)}.json`);
+            fs.readdirSync(directory).filter(name => /^etoiles-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+                .sort().slice(0, -14).forEach(name => fs.rmSync(path.join(directory, name), { force: true }));
+        } catch (error) {
+            console.warn('Sauvegarde automatique des étoiles impossible :', error.message);
+        }
+    }, 1500);
+    starBackupTimer.unref?.();
 }
 
 function saveTikTokAvatar(identity, content, contentType) {

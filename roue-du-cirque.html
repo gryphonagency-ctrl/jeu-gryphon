@@ -122,6 +122,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
   <section>
     <h4>⭐ TABLEAU DES ÉTOILES</h4>
     <div class="row"><button id="stOpen" type="button">📋 Afficher le tableau</button><button id="stRefresh" type="button" hidden>↻</button></div>
+    <div class="row" style="margin-top:6px">
+      <button id="stSave" type="button">💾 Enregistrer</button>
+      <button id="stRestore" type="button">♻ Restaurer</button>
+      <button id="stExport" type="button">⬇ Exporter</button>
+      <button id="stImport" type="button">⬆ Importer</button>
+      <input id="stFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <p class="hint" id="stMsg"></p>
     <div id="stBox" hidden>
       <input id="stFilter" type="text" placeholder="Rechercher un pseudo…" style="width:100%;box-sizing:border-box;margin:8px 0 4px">
       <div id="stList"></div>
@@ -481,7 +489,7 @@ function onGift(name, coins, repeat = 1, avatar = '') {
 const vkey = n => String(n).trim().toLowerCase();
 let viewers = {};
 try { viewers = JSON.parse(localStorage.getItem('cw-viewers') || '{}') || {}; } catch (e) {}
-const saveViewers = () => { try { localStorage.setItem('cw-viewers', JSON.stringify(viewers)); } catch (e) {} };
+const saveViewers = () => { try { const s = JSON.stringify(viewers); localStorage.setItem('cw-viewers', s); localStorage.setItem('cw-viewers-auto', JSON.stringify({ date: Date.now(), data: viewers })); } catch (e) {} };
 function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
 function addStars(name, n) { const v = viewer(name); v.stars = Math.round((v.stars + n) * 100) / 100; saveViewers(); }
 let starTimer = 0;
@@ -735,6 +743,47 @@ $('stOpen').onclick = () => {
 };
 $('stRefresh').onclick = () => { stEditKey = null; renderStarTable(); };
 $('stFilter').oninput = () => { stEditKey = null; renderStarTable(); };
+/* Sauvegarde, export et import du tableau des étoiles */
+const stMsg = t => { $('stMsg').textContent = t; };
+const stBackupInfo = () => { try { const b = JSON.parse(localStorage.getItem('cw-viewers-backup') || 'null'); if (b) stMsg(`Dernier enregistrement : ${new Date(b.date).toLocaleString('fr-FR')} (${Object.keys(b.data).length} spectateurs)`); } catch (e) {} };
+stBackupInfo();
+$('stSave').onclick = () => {
+  try { localStorage.setItem('cw-viewers-backup', JSON.stringify({ date: Date.now(), data: viewers })); stBackupInfo(); }
+  catch (e) { stMsg('Enregistrement impossible.'); }
+};
+$('stRestore').onclick = () => {
+  let b = null; try { b = JSON.parse(localStorage.getItem('cw-viewers-backup') || localStorage.getItem('cw-viewers-auto') || 'null'); } catch (e) {}
+  if (!b || !b.data) { stMsg('Aucun enregistrement trouvé.'); return; }
+  if (!confirm('Remplacer le tableau actuel par le dernier enregistrement ?')) return;
+  for (const k of Object.keys(viewers)) delete viewers[k];
+  Object.assign(viewers, b.data); saveViewers(); stEditKey = null; if (stOpen) renderStarTable();
+  stMsg(`Tableau restauré (${Object.keys(viewers).length} spectateurs).`);
+};
+$('stExport').onclick = () => {
+  const blob = new Blob([JSON.stringify({ type: 'roue-du-cirque-etoiles', date: new Date().toISOString(), viewers }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `etoiles-roue-du-cirque-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  stMsg(`Exporté : ${Object.keys(viewers).length} spectateurs.`);
+};
+$('stImport').onclick = () => $('stFile').click();
+$('stFile').onchange = e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const j = JSON.parse(rd.result), src = j && j.viewers ? j.viewers : j;
+      const entries = Object.values(src || {}).filter(v => v && v.name !== undefined && isFinite(Number(v.stars)));
+      if (!entries.length) throw new Error('vide');
+      if (!confirm(`Importer ${entries.length} spectateurs ? Les totaux du fichier remplacent ceux des mêmes pseudos ; les autres spectateurs sont conservés.`)) return;
+      for (const v of entries) { const x = viewer(v.name); x.stars = Math.max(0, Math.round(Number(v.stars) * 100) / 100); }
+      saveViewers(); stEditKey = null; if (stOpen) renderStarTable();
+      stMsg(`Importé : ${entries.length} spectateurs.`);
+    } catch (err) { stMsg('Fichier invalide.'); }
+  };
+  rd.readAsText(f);
+};
 window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
 </script>
