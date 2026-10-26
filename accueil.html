@@ -280,6 +280,14 @@ donne <!doctype html>
         .admin-actions { display: flex; flex-wrap: wrap; gap: 9px; }
         .live-sessions-card { grid-column: 1 / -1; }
         .admin-card[data-dashboard-widget="homepage-notice"] { grid-column: 1 / -1; }
+        .partner-games { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; }
+        .partner-games label { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; }
+        .partner-games input { flex: none; width: 18px; height: 18px; min-height: 0; padding: 0; }
+        .partner-list { display: grid; gap: 10px; margin: 12px 0; }
+        .partner-item { padding: 10px 12px; border: 1px solid rgba(114,220,255,.35); border-radius: 12px; }
+        .partner-item.is-revoked { opacity: .65; border-color: rgba(255,120,120,.6); }
+        .partner-item header { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-weight: 700; }
+        .partner-item .admin-actions { margin-top: 8px; }
         #homepage-notice-text { min-height: 180px; }
         .notice-double-size { display: flex; align-items: center; gap: 10px; }
         .notice-double-size input { width: 18px; min-height: 18px; accent-color: var(--lime); }
@@ -630,6 +638,20 @@ donne <!doctype html>
                             <button id="admin-creator-copy" class="button button-secondary" type="button">Copier</button>
                         </div>
                         <p id="creator-admin-status" class="checkout-status" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="admin-card live-sessions-card" data-dashboard-widget="partner-access">
+                        <h3>🔒 Accès partenaires</h3>
+                        <p>Donne l’accès à des jeux précis (ex. Plinko et Pendu) à un partenaire, ajoute ou retire des jeux à tout moment, ou révoque son accès. Ce panneau est enregistré sur le serveur et seul l’administrateur connecté peut le modifier.</p>
+                        <form id="partner-form" class="creator-tts-manager">
+                            <h4>Donner l’accès à un partenaire</h4>
+                            <label class="field"><span class="field-label">Identifiant (ex. gryphon.games)</span><input id="partner-username" required maxlength="64" pattern="[-A-Za-z0-9._@]+" autocomplete="off"></label>
+                            <label class="field"><span class="field-label">Mot de passe initial (12 caractères minimum)</span><input id="partner-password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label>
+                            <label class="field"><span class="field-label">Durée d’accès (jours)</span><input id="partner-duration" type="number" required min="1" max="3650" step="1" value="365"></label>
+                            <div id="partner-new-games" class="partner-games"></div>
+                            <button class="button button-primary" type="submit">Donner l’accès</button>
+                        </form>
+                        <div id="partner-list" class="partner-list"><p>Aucun partenaire.</p></div>
+                        <p id="partner-status" class="checkout-status" role="status" aria-live="polite"></p>
                     </div>
                     <div class="admin-card live-sessions-card" data-dashboard-widget="host-room">
                         <h3 id="host-room-heading">Salon hôte · chargement…</h3>
@@ -2500,10 +2522,151 @@ donne <!doctype html>
         creatorPresenceList.addEventListener('click', handlePresenceRoomEdit);
         allPresenceList.addEventListener('click', handlePresenceRoomEdit);
 
+        const partnerForm = document.getElementById('partner-form');
+        const partnerList = document.getElementById('partner-list');
+        const partnerNewGames = document.getElementById('partner-new-games');
+        const partnerStatus = document.getElementById('partner-status');
+        const defaultPartnerGames = ['/plinko.html', '/pendu.html'];
+
+        function setPartnerStatus(message, kind = '') {
+            partnerStatus.className = `checkout-status ${kind}`.trim();
+            partnerStatus.textContent = message;
+        }
+
+        function buildGameChecks(catalog, selectedIds, attribute) {
+            const fragment = document.createDocumentFragment();
+            for (const game of catalog) {
+                const label = document.createElement('label');
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.dataset[attribute] = game.id;
+                input.checked = selectedIds.includes(game.id);
+                label.append(input, document.createTextNode(game.title));
+                fragment.append(label);
+            }
+            return fragment;
+        }
+
+        function renderPartnerAccess(result) {
+            const catalog = result.gameCatalog;
+            if (!partnerNewGames.dataset.ready) {
+                partnerNewGames.replaceChildren(buildGameChecks(catalog, defaultPartnerGames, 'partnerNewGame'));
+                partnerNewGames.dataset.ready = '1';
+            }
+            if (partnerList.dataset.dirty) return;
+            const partners = result.creators.filter(creator =>
+                !creator.protectedAdmin && (creator.manualAccount || creator.managedPlayer));
+            partnerList.replaceChildren();
+            if (!partners.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'Aucun partenaire.';
+                partnerList.append(empty);
+                return;
+            }
+            for (const partner of partners) {
+                const item = document.createElement('div');
+                item.className = `partner-item${partner.accessEnabled ? '' : ' is-revoked'}`;
+                item.dataset.partner = partner.username;
+                const header = document.createElement('header');
+                const name = document.createElement('span');
+                name.textContent = partner.username;
+                const state = document.createElement('span');
+                state.textContent = partner.accessEnabled
+                    ? `Accès actif${partner.accessExpiresAt ? ` jusqu’au ${new Date(partner.accessExpiresAt).toLocaleDateString('fr-FR')}` : ''}`
+                    : 'Accès révoqué';
+                header.append(name, state);
+                const games = document.createElement('div');
+                games.className = 'partner-games';
+                const allowed = Array.isArray(partner.gameAccess) ? partner.gameAccess : catalog.map(game => game.id);
+                games.append(buildGameChecks(catalog, allowed, 'partnerGame'));
+                const actions = document.createElement('div');
+                actions.className = 'admin-actions';
+                const save = document.createElement('button');
+                save.type = 'button';
+                save.className = 'button button-primary';
+                save.dataset.partnerAction = 'games';
+                save.textContent = 'Enregistrer les jeux';
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'button button-secondary';
+                toggle.dataset.partnerAction = partner.accessEnabled ? 'revoke' : 'restore';
+                toggle.textContent = partner.accessEnabled ? 'Révoquer l’accès' : 'Rétablir l’accès';
+                actions.append(save, toggle);
+                item.append(header, games, actions);
+                partnerList.append(item);
+            }
+        }
+
+        partnerList.addEventListener('change', () => { partnerList.dataset.dirty = '1'; });
+
+        partnerList.addEventListener('click', async event => {
+            const button = event.target.closest('button[data-partner-action]');
+            if (!button || button.disabled) return;
+            const item = button.closest('[data-partner]');
+            const accountUsername = item.dataset.partner;
+            const action = button.dataset.partnerAction;
+            let body;
+            if (action === 'games') {
+                const gameIds = [...item.querySelectorAll('[data-partner-game]:checked')].map(input => input.dataset.partnerGame);
+                if (!window.confirm(`Autoriser ${gameIds.length} jeu${gameIds.length === 1 ? '' : 'x'} pour ${accountUsername} ?`)) return;
+                body = { action: 'game-access', accountUsername, gameIds };
+            } else {
+                const enabled = action === 'restore';
+                if (!window.confirm(`${enabled ? 'Rétablir' : 'Révoquer'} l’accès de ${accountUsername} ?`)) return;
+                body = { action: 'access', accountUsername, enabled };
+            }
+            button.disabled = true;
+            setPartnerStatus('Mise à jour…');
+            try {
+                await submitCreatorAction(body);
+                delete partnerList.dataset.dirty;
+                await refreshCreatorAdmin();
+                setPartnerStatus(`Accès de ${accountUsername} mis à jour.`, 'success');
+            } catch (error) {
+                setPartnerStatus(error.message || 'Action impossible.', 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        partnerForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const submit = partnerForm.querySelector('button[type="submit"]');
+            const gameIds = [...partnerNewGames.querySelectorAll('[data-partner-new-game]:checked')]
+                .map(input => input.dataset.partnerNewGame);
+            if (!gameIds.length) {
+                setPartnerStatus('Choisis au moins un jeu.', 'error');
+                return;
+            }
+            submit.disabled = true;
+            setPartnerStatus('Création de l’accès…');
+            try {
+                const username = document.getElementById('partner-username').value;
+                const created = await submitCreatorAction({
+                    action: 'manual-create',
+                    username,
+                    password: document.getElementById('partner-password').value,
+                    durationDays: Number(document.getElementById('partner-duration').value)
+                });
+                await submitCreatorAction({ action: 'game-access', accountUsername: created.username, gameIds });
+                partnerForm.reset();
+                delete partnerList.dataset.dirty;
+                partnerNewGames.replaceChildren();
+                delete partnerNewGames.dataset.ready;
+                await refreshCreatorAdmin();
+                setPartnerStatus(`Accès donné à ${created.username} jusqu’au ${new Date(created.accessExpiresAt).toLocaleDateString('fr-FR')}.`, 'success');
+            } catch (error) {
+                setPartnerStatus(error.message || 'Impossible de créer cet accès.', 'error');
+            } finally {
+                submit.disabled = false;
+            }
+        });
+
         async function refreshCreatorAdmin() {
             const response = await fetch('/api/admin/creators', { credentials: 'same-origin' });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Impossible de charger les créateurs.');
+            renderPartnerAccess(result);
             onlineCount.textContent = String(result.onlineCount);
             dailyUsageCount.querySelector('strong').textContent = String(result.dailyUniqueUsers);
             const [usageYear, usageMonth, usageDay] = result.dailyUsageDate.split('-');

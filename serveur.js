@@ -13,6 +13,7 @@ const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const adminDashboardWidgetIds = [
     'creators',
+    'partner-access',
     'host-room',
     'homepage-notice',
     'paypal-link',
