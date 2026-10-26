@@ -1285,7 +1285,7 @@
     const coinDropInterval = 180;
     const coinDropBatchSize = 10;
     const coinDropBatchPause = 300;
-    const coinStackChance = .65;
+    const coinStackChance = .25;
     const maximumCoinStackLevel = 4;
     let nextCoinStackGroup = 1;
     let nextCoinDropAt = 0;
@@ -2305,8 +2305,7 @@
           airborne: true,
           landingY: groundLandingY,
           landingX,
-          stackEligible: sequence % coinDropBatchSize <
-            Math.round(coinStackChance * coinDropBatchSize),
+          stackEligible: Math.random() < coinStackChance,
           stackBaseY: null,
           stackLevel: null,
           stackGroup: null,
@@ -3641,7 +3640,11 @@
           }
           if (coin.body.position.y >= coin.landingY ||
             (coin.airborneStalledAt !== null && timestamp - coin.airborneStalledAt >= 220)) {
-            const groundLandingY = coin.landingY;
+            const groundLandingY = Math.max(
+              coin.landingY,
+              getPusherFront() + coin.radius + physicsHeight * pusherContactMargin
+            );
+            coin.landingY = groundLandingY;
             const stackPlacement = coin.stackEligible
               ? findCoinStackSupport(coin, groundLandingY)
               : null;
@@ -3936,7 +3939,19 @@
       }
 
       for (const coin of orderedCoins) {
-        drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, coin.airborne ? coin.wobble : 0);
+        if (coin.airborne) {
+          // Une pièce en chute n'est visible que devant le poussoir, jamais au-dessus de son plateau.
+          const visibleFrom = getPusherFront();
+          if (coin.body.position.y + coin.radius <= visibleFrom) continue;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, visibleFrom, width, height - visibleFrom);
+          ctx.clip();
+          drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, coin.wobble);
+          ctx.restore();
+          continue;
+        }
+        drawCoin(coin.body.position.x, coin.body.position.y, coin.radius, .98, 0, coin.avatar, coin.tint, 0);
       }
 
       while (queuedCardDrops.length > 0 && timestamp >= nextCardDropAt) {
