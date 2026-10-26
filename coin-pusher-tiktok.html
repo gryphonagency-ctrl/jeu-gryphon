@@ -189,6 +189,7 @@
     .quick-actions-fields > label { min-width: 0; }
     .quick-actions-fields .profile-input { grid-column: 1 / -1; }
     .quick-actions-fields .button { grid-column: 1 / -1; width: 100%; }
+    .quick-actions-fields .username { grid-column: 1 / -1; width: 100%; }
     .quick-actions-overlay .range-line { margin: 0; }
     .quick-actions-overlay input[type="range"] { width: 100%; }
     .quick-actions-overlay .hint { margin: 0; }
@@ -388,10 +389,12 @@
             <label><span class="field-label">Spectateur</span><input class="text-input" id="demoUsername" value="Spectateur" maxlength="32"></label>
             <label><span class="field-label">Pièces à lâcher (1 à 1 000)</span><input class="number-input" id="demoCount" type="number" min="1" max="1000" value="100"></label>
             <label class="profile-input"><span class="field-label">Photo de profil (facultatif)</span><input id="demoAvatarFile" type="file" accept="image/*" aria-label="Choisir la photo de profil pour la simulation"></label>
-            <button class="button primary" id="demoButton" type="button">Lâcher les pièces</button>
+            <button class="button primary" id="demoButton" type="button">Lâcher les monstres</button>
             <p class="hint" id="coinDropQueueStatus" aria-live="polite">Une pièce toutes les 80 ms, par groupes de 10 · maximum 60 en vol.</p>
             <label><span class="field-label">Cartes à faire tomber (1 à 1 000)</span><input class="number-input" id="manualCardCount" type="number" min="1" max="1000" value="1"></label>
             <button class="button" id="dropCardsButton" type="button">Lâcher les cartes</button>
+            <label class="profile-input"><span class="field-label">Vidéo en arrière-plan (facultatif)</span><input id="backgroundVideoFile" type="file" accept="video/*" aria-label="Choisir une vidéo en arrière-plan de la machine" data-video-layer="backgroundVideo"></label>
+            <button class="button" id="clearBackgroundVideo" type="button">Retirer la vidéo d’arrière-plan</button>
           </div>
           <p class="hint">Les pièces sont lâchées une par une, par groupes de 10, avec un maximum de 100 en vol. Les pièces restantes poursuivent leur chute à mesure que la place se libère.</p>
         </section>
@@ -496,8 +499,13 @@
       <button class="tiny-button" id="pinQuickActionsButton" type="button" aria-pressed="false" title="Verrouiller la position du panneau">Épingler</button>
       <button class="tiny-button" id="hideQuickActionsButton" type="button" aria-label="Masquer les commandes rapides">Masquer</button>
     </div>
-    <section class="quick-actions-group" id="quickDropActions" aria-label="Lâcher des pièces et des cartes">
-      <h2>Lâcher des pièces</h2>
+    <section class="quick-actions-group" id="quickConnectActions" aria-label="Connexion au live TikTok">
+      <h2>Connecter mon live TikTok</h2>
+      <div class="quick-actions-fields" id="quickConnectFields"></div>
+      <p class="hint connection" id="connectionStatus" role="status" aria-live="polite">Non connecté · saisis ton pseudo TikTok.</p>
+    </section>
+    <section class="quick-actions-group" id="quickDropActions" aria-label="Lâcher des monstres et des cartes">
+      <h2>Lâcher les monstres</h2>
       <div class="quick-actions-fields" id="quickDropFields"></div>
       <h2>Lâcher des cartes</h2>
       <div class="quick-actions-fields" id="quickCardFields"></div>
@@ -801,6 +809,10 @@
     const demoGrid = document.querySelector('.demo-grid');
     const quickDropFields = document.getElementById('quickDropFields');
     const quickCardFields = document.getElementById('quickCardFields');
+    document.getElementById('quickConnectFields').append(
+      document.getElementById('tiktokUsername'),
+      document.getElementById('connectButton')
+    );
     quickDropFields.append(
       document.getElementById('demoUsername').closest('label'),
       document.getElementById('demoCount').closest('label'),
@@ -810,7 +822,9 @@
     );
     quickCardFields.append(
       document.getElementById('manualCardCount').closest('label'),
-      document.getElementById('dropCardsButton')
+      document.getElementById('dropCardsButton'),
+      document.getElementById('backgroundVideoFile').closest('label'),
+      document.getElementById('clearBackgroundVideo')
     );
     demoGrid.remove();
 
@@ -1377,7 +1391,7 @@
         await completed;
         for (const asset of assets) {
           if (!asset || typeof asset.layer !== 'string' || !(asset.blob instanceof Blob)) continue;
-          if (!['left', 'right', 'playfieldVideo', 'upperTitleVideo', 'pusherTopVideo', 'pusherTopImage', 'profileAvatar'].includes(asset.layer)) continue;
+          if (!['left', 'right', 'backgroundVideo', 'playfieldVideo', 'upperTitleVideo', 'pusherTopVideo', 'pusherTopImage', 'profileAvatar'].includes(asset.layer)) continue;
           const file = new File([asset.blob], asset.name || 'media', { type: asset.mimeType || asset.blob.type });
           if (asset.kind === 'video' && file.type.startsWith('video/')) {
             loadVideoLayer(asset.layer, file, false);
@@ -2908,6 +2922,12 @@
       if (notify) showToast(`Photo « ${file.name} » chargée · utilise « Sauvegarder médias » pour la conserver.`);
     }
 
+    document.getElementById('clearBackgroundVideo')?.addEventListener('click', () => {
+      clearMediaLayer('backgroundVideo');
+      const input = document.getElementById('backgroundVideoFile');
+      if (input) input.value = '';
+      showToast('Vidéo d’arrière-plan retirée · refais « Sauvegarder médias » pour l’oublier.');
+    });
     document.querySelectorAll('[data-video-layer]').forEach(input => {
       input.addEventListener('change', () => {
         const file = input.files?.[0];
@@ -3413,6 +3433,15 @@
       background.addColorStop(1, '#0a0416');
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, width, height);
+      const backdropVideo = videoLayers.get('backgroundVideo');
+      if (backdropVideo && backdropVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && backdropVideo.videoWidth) {
+        const cover = Math.max(width / backdropVideo.videoWidth, height / backdropVideo.videoHeight);
+        const bw = backdropVideo.videoWidth * cover;
+        const bh = backdropVideo.videoHeight * cover;
+        ctx.drawImage(backdropVideo, (width - bw) / 2, (height - bh) / 2, bw, bh);
+      }
+      ctx.save();
+      ctx.translate(width / 2, height / 2);
       ctx.save();
       ctx.translate(width / 2, height / 2);
       ctx.scale(state.controls.zoom, state.controls.zoom);
@@ -4800,6 +4829,25 @@
           v.scene.remove(mesh);
           v.cardMeshes.delete(card);
         }
+      }
+      const backdropVideo3d = videoLayers.get('backgroundVideo');
+      if (backdropVideo3d && backdropVideo3d.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && backdropVideo3d.videoWidth) {
+        if (v.backdropSource !== backdropVideo3d) {
+          v.backdropTexture?.dispose();
+          v.backdropTexture = new THREE.VideoTexture(backdropVideo3d);
+          v.backdropTexture.encoding = THREE.sRGBEncoding;
+          v.backdropSource = backdropVideo3d;
+        }
+        // Remplissage « cover » : on recadre la texture au ratio de l'écran.
+        const screenRatio = v.renderer.domElement.clientWidth / Math.max(1, v.renderer.domElement.clientHeight);
+        const videoRatio = backdropVideo3d.videoWidth / backdropVideo3d.videoHeight;
+        const tex = v.backdropTexture;
+        tex.repeat.set(Math.min(1, screenRatio / videoRatio), Math.min(1, videoRatio / screenRatio));
+        tex.offset.set((1 - tex.repeat.x) / 2, (1 - tex.repeat.y) / 2);
+        v.scene.background = tex;
+      } else if (v.scene.background) {
+        v.scene.background = null;
+        v.backdropSource = null;
       }
       v.renderer.render(v.scene, v.camera);
     }
