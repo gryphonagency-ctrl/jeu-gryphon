@@ -15,6 +15,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #starcard{position:fixed;left:50%;top:14vh;transform:translateX(-50%);z-index:4;padding:1.2vh 2.4vw;border-radius:18px;background:rgba(20,6,40,.92);border:3px solid #ffc93c;box-shadow:0 0 30px rgba(255,190,40,.55);color:#ffe08a;font:900 clamp(16px,3.4vh,36px) Georgia,serif;text-align:center;pointer-events:none}
 #starcard small{display:block;font:700 .55em Arial,sans-serif;color:#ffd0a0;letter-spacing:.08em}
 #banner.win span{background:linear-gradient(#7a1630,#3a0a18);color:#fff2a8}
+#spinner{position:fixed;z-index:3;display:flex;align-items:center;gap:.8vh;padding:.6vh 1.4vh .6vh .6vh;border-radius:60px;background:rgba(40,8,18,.9);border:2px solid #ffc93c;box-shadow:0 0 18px rgba(255,190,40,.5);opacity:0;transition:opacity .3s;pointer-events:none;max-width:24vw}
+#spinner.on{opacity:1}
+#spinner .av{width:6.4vh;height:6.4vh;flex:none;border-radius:50%;border:2px solid #fff;background:#5a2a7a center/cover;display:grid;place-items:center;font:900 3vh Arial;color:#fff}
+#spinner b{display:block;font:900 2.6vh Arial;color:#fff2a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22vw}
+#spinner small{font:700 1.6vh Arial;color:#ffd0a0}
 #whoNow{position:fixed;left:2vw;bottom:2.2vh;z-index:3;font:800 clamp(11px,2vh,20px) Arial;color:#ffd86a;letter-spacing:.12em;text-shadow:0 1px 3px #000}
 #brand{position:fixed;left:50%;transform:translateX(-50%);top:1.6vh;z-index:3;font:900 clamp(11px,2.2vh,22px) Arial;letter-spacing:.3em;color:#ffc93c;text-shadow:0 0 10px rgba(255,190,40,.7),0 1px 2px #000;pointer-events:none}
 #eye{position:fixed;right:10px;top:10px;z-index:30;width:40px;height:40px;border-radius:50%;border:1px solid #ffc93c88;background:#1a0d22cc;color:#fff;font-size:20px;cursor:pointer}
@@ -44,6 +49,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 <video id="vid" muted loop playsinline></video>
 <canvas id="cv"></canvas>
 <div id="brand">GRYPHON AGENCY</div>
+<div id="spinner"><div class="av" id="spAv"></div><div><b id="spName"></b><small id="spSub"></small></div></div>
 <div id="whoNow"></div>
 <div id="starcard" hidden></div>
 <div id="banner"><span id="bannerText"></span></div>
@@ -70,7 +76,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
   </section>
   <section>
     <h4>RÉGLAGES</h4>
-    <label>Chance de gains (%) <input id="winPct" type="number" min="0" max="100" step="1"></label>
+    <label>Chance ×1 (%) <input id="p1" type="number" min="0" max="100" step="1"></label>
+    <label>Chance ×2 (%) <input id="p2" type="number" min="0" max="100" step="1"></label>
+    <label>Chance ×3 (%) <input id="p3" type="number" min="0" max="100" step="1"></label>
     <label>Chance « Nouvelle roue » (%) <input id="newPct" type="number" min="0" max="100" step="1"></label>
     <label>Durée d'un tour (s) <input id="dur" type="number" min="2" max="20" step="1"></label>
     <label>Voix de l'animateur <input id="voice" type="checkbox"></label>
@@ -94,12 +102,12 @@ const $ = id => document.getElementById(id);
 const W = 1408, H = 768, N = 15, SEG = 360 / N;
 const DEFAULT_SECTORS = ['0','1','0','NEW','0','2','0','2','NEW','0','2','0','3','0','NEW'];
 const COLORS = ['#e53935','#1e88e5','#fdd835','#43a047','#8e24aa','#fb8c00','#00acc1','#ec407a'];
-const CFG_VER = 2;
-let CFG = { v: CFG_VER, win: 55, newp: 10, dur: 6, voice: true, video: '', sectors: DEFAULT_SECTORS.slice() };
+const CFG_VER = 3;
+let CFG = { v: CFG_VER, p1: 30, p2: 5, p3: 5, newp: 28, dur: 6, voice: true, video: '', sectors: DEFAULT_SECTORS.slice() };
 try {
   const saved = JSON.parse(localStorage.getItem('cw-cfg') || '{}');
   // anciens réglages (v1) : on repart sur les nouveaux secteurs et pourcentages
-  if (saved.v !== CFG_VER) { delete saved.sectors; delete saved.win; delete saved.newp; }
+  if (saved.v !== CFG_VER) { delete saved.sectors; delete saved.win; delete saved.newp; delete saved.p1; delete saved.p2; delete saved.p3; }
   Object.assign(CFG, saved);
 } catch (e) {}
 CFG.v = CFG_VER;
@@ -372,28 +380,22 @@ function drawClownVector(t) {
 /* ---------- Résultats et file d'attente ---------- */
 const queue = []; let state = 'idle', timer = 0, cur = null, chain = 0;
 function pickSector() {
-  const groups = { win: [], new: [], zero: [] };
-  CFG.sectors.forEach((s, i) => groups[kind(s)].push(i));
-  const r = Math.random() * 100;
-  let list = r < CFG.win ? groups.win : r < CFG.win + CFG.newp ? groups.new : groups.zero;
+  const groups = { 1: [], 2: [], 3: [], new: [], zero: [] };
+  CFG.sectors.forEach((s, i) => { const k = kind(s); groups[k === 'win' ? Math.min(3, Math.max(1, Math.round(mult(s)))) : k].push(i); });
+  const table = [[1, CFG.p1], [2, CFG.p2], [3, CFG.p3], ['new', CFG.newp]];
+  let r = Math.random() * 100, list = groups.zero;
+  for (const [key, p] of table) { if (r < p) { list = groups[key]; break; } r -= p; }
   if (!list.length) list = groups.zero.length ? groups.zero : CFG.sectors.map((_, i) => i);
-  if (list === groups.win) {
-    // les gros multiplicateurs sont rares : poids = 1 / multiplicateur^4
-    const w = list.map(i => 1 / Math.pow(Math.max(1, mult(CFG.sectors[i])), 4));
-    let x = Math.random() * w.reduce((a, b) => a + b, 0);
-    for (let j = 0; j < list.length; j++) { x -= w[j]; if (x <= 0) return list[j]; }
-    return list[list.length - 1];
-  }
   return list[Math.floor(Math.random() * list.length)];
 }
 function startSpin(job) {
   cur = job; job.k = pickSector();
+  showSpinner(job);
   let end = -(job.k * SEG + SEG * (0.2 + Math.random() * 0.6));
   const minTurns = 5 + Math.floor(Math.random() * 2);
   while (end > angle - 360 * minTurns) end -= 360;
   spin = { from: angle, to: end, t: 0, dur: Math.max(2, CFG.dur) };
   state = 'spin'; excite = 1; lastIdx = sectorAt(angle);
-  $('whoNow').textContent = `${job.name} · cadeau ${job.stake}`;
 }
 function finishSpin() {
   const s = CFG.sectors[cur.k], k = kind(s);
@@ -406,7 +408,7 @@ function finishSpin() {
     addLog(`🌟 ${cur.name} : +${stars} ⭐ (×${mult(s)})`);
   } else if (k === 'new') {
     text = `${cur.name} : NOUVELLE ROUE !`; win = true; speak('Nouvelle roue !');
-    if (chain < 5) { queue.unshift({ name: cur.name, stake: cur.stake, free: true }); chain++; }
+    if (chain < 5) { queue.unshift({ name: cur.name, stake: cur.stake, avatar: cur.avatar, free: true }); chain++; }
     addLog(`🔁 ${cur.name} : nouvelle roue`);
   } else {
     text = `${cur.name} : 0`; addLog(`· ${cur.name} : 0`);
@@ -415,9 +417,19 @@ function finishSpin() {
   $('bannerText').textContent = text; $('banner').className = 'on' + (win ? ' win' : '');
   state = 'show'; timer = win ? 3.2 : 2; spin = null;
 }
-function onGift(name, coins, repeat = 1) {
+function showSpinner(job) {
+  const el = $('spinner'), av = $('spAv');
+  const url = job.avatar || (viewers[vkey(job.name)] || {}).avatar || '';
+  av.style.backgroundImage = /^(https?:|data:image\/)/.test(url) ? `url("${url.replace(/"/g, '%22')}")` : 'none';
+  av.textContent = url ? '' : (job.name.trim()[0] || '?').toUpperCase();
+  $('spName').textContent = job.name;
+  $('spSub').textContent = `cadeau ${job.stake}`;
+  el.classList.add('on');
+}
+function onGift(name, coins, repeat = 1, avatar = '') {
   if (queue.length > 300) return;
-  queue.push({ name: String(name).slice(0, 24), stake: Math.max(1, Math.round(coins * repeat)) });
+  if (avatar) viewer(name).avatar = avatar;
+  queue.push({ name: String(name).slice(0, 24), stake: Math.max(1, Math.round(coins * repeat)), avatar });
   $('qinfo').textContent = `File d'attente : ${queue.length}`;
 }
 /* Étoiles gagnées par spectateur : "étoiles" affiche le total, "run" les rejoue */
@@ -441,12 +453,13 @@ function runStars(name, wanted) {
   const amount = Math.min(Math.floor(v.stars), wanted > 0 ? wanted : (v.last || v.stars));
   if (amount < 1) { showStars(name, "RUN : pas assez d'étoiles"); return; }
   v.stars -= amount; v.last = amount; saveViewers();
-  queue.push({ name: v.name, stake: amount, run: true });
+  queue.push({ name: v.name, stake: amount, avatar: v.avatar || '', run: true });
   $('qinfo').textContent = `File d'attente : ${queue.length}`;
   showStars(name, `RUN ! ⭐ ${amount} remis en jeu`);
 }
-function handleChat(name, text) {
+function handleChat(name, text, avatar) {
   if (!name) return;
+  if (avatar) { viewer(name).avatar = avatar; }
   const raw = String(text || ''), t = raw.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(name); return; }
   const run = /^!?run(?:\s+(\d+))?$/.exec(t);
@@ -474,7 +487,9 @@ function render() {
   if (!CFG.video) drawBackdrop();
   drawFloor(); drawSign(); drawWheel(); drawClown(time);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-}
+  const sp = $('spinner'); sp.style.left = (ox + 985 * sc) + 'px'; sp.style.top = (oy + 8 * sc) + 'px';
+  sp.classList.toggle('on', state === 'spin' || state === 'show');
+} 
 let last = performance.now();
 function frame(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); render(); requestAnimationFrame(frame); }
 
@@ -489,10 +504,10 @@ function handleMessage(data) {
     const id = String(g.nickname || g.username || g.uniqueId || g.userId || 'inconnu');
     const coins = Number(g.coinValue ?? g.diamondCount ?? 1) || 1;
     const repeat = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
-    onGift(id, coins, repeat);
+    onGift(id, coins, repeat, g.profilePictureUrl || g.avatarDataUri || '');
   } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
     const c = data.commentData ?? data;
-    handleChat(c.username || c.nickname, c.comment ?? c.text ?? '');
+    handleChat(c.username || c.nickname, c.comment ?? c.text ?? '', c.profilePictureUrl || c.avatarDataUri || '');
   }
 }
 function connect() {
@@ -549,7 +564,7 @@ function applyVideo() {
   else { v.removeAttribute('src'); v.style.display = 'none'; }
 }
 function bindNum(id, key) { const el = $(id); el.value = CFG[key]; el.oninput = () => { CFG[key] = Number(el.value) || 0; save(); }; }
-bindNum('winPct', 'win'); bindNum('newPct', 'newp'); bindNum('dur', 'dur');
+bindNum('p1', 'p1'); bindNum('p2', 'p2'); bindNum('p3', 'p3'); bindNum('newPct', 'newp'); bindNum('dur', 'dur');
 $('voice').checked = CFG.voice; $('voice').onchange = e => { CFG.voice = e.target.checked; save(); };
 $('video').value = CFG.video; $('video').onchange = e => { CFG.video = e.target.value.trim(); save(); applyVideo(); };
 function buildSectors() {
@@ -560,7 +575,7 @@ function buildSectors() {
     box.append(el);
   });
 }
-$('reset').onclick = () => { CFG.sectors = DEFAULT_SECTORS.slice(); CFG.win = 55; CFG.newp = 10; save(); buildSectors(); $('winPct').value = 55; $('newPct').value = 10; };
+$('reset').onclick = () => { CFG.sectors = DEFAULT_SECTORS.slice(); CFG.p1 = 30; CFG.p2 = 5; CFG.p3 = 5; CFG.newp = 28; save(); buildSectors(); $('p1').value = 30; $('p2').value = 5; $('p3').value = 5; $('newPct').value = 28; };
 buildSectors(); applyVideo();
 (function drag() {
   const p = $('panel'), h = $('phead'); let sx, sy, px, py, on = false;
@@ -568,7 +583,7 @@ buildSectors(); applyVideo();
   h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (px + e.clientX - sx) + 'px'; p.style.top = (py + e.clientY - sy) + 'px'; p.style.right = 'auto'; });
   h.addEventListener('pointerup', () => { on = false; });
 })();
-window.__roue = { handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
+window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
 </script>
 </body>
