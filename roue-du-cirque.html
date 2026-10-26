@@ -12,6 +12,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #banner{position:fixed;left:0;right:0;bottom:7vh;z-index:3;text-align:center;pointer-events:none;opacity:0;transform:translateY(14px) scale(.9);transition:.35s}
 #banner.on{opacity:1;transform:none}
 #banner span{display:inline-block;padding:1.2vh 3vw;border-radius:60px;background:rgba(40,8,18,.88);border:3px solid #ffc93c;box-shadow:0 0 30px rgba(255,190,40,.55);font:900 clamp(18px,4vh,44px) Georgia,serif;color:#ffe08a;text-shadow:0 2px 4px #000}
+#starcard{position:fixed;left:50%;top:14vh;transform:translateX(-50%);z-index:4;padding:1.2vh 2.4vw;border-radius:18px;background:rgba(20,6,40,.92);border:3px solid #ffc93c;box-shadow:0 0 30px rgba(255,190,40,.55);color:#ffe08a;font:900 clamp(16px,3.4vh,36px) Georgia,serif;text-align:center;pointer-events:none}
+#starcard small{display:block;font:700 .55em Arial,sans-serif;color:#ffd0a0;letter-spacing:.08em}
 #banner.win span{background:linear-gradient(#7a1630,#3a0a18);color:#fff2a8}
 #whoNow{position:fixed;left:2vw;bottom:2.2vh;z-index:3;font:800 clamp(11px,2vh,20px) Arial;color:#ffd86a;letter-spacing:.12em;text-shadow:0 1px 3px #000}
 #brand{position:fixed;left:50%;transform:translateX(-50%);top:1.6vh;z-index:3;font:900 clamp(11px,2.2vh,22px) Arial;letter-spacing:.3em;color:#ffc93c;text-shadow:0 0 10px rgba(255,190,40,.7),0 1px 2px #000;pointer-events:none}
@@ -43,6 +45,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 <canvas id="cv"></canvas>
 <div id="brand">GRYPHON AGENCY</div>
 <div id="whoNow"></div>
+<div id="starcard" hidden></div>
 <div id="banner"><span id="bannerText"></span></div>
 <button id="eye" title="Afficher / masquer le panneau (H)" aria-label="Afficher ou masquer le panneau de commande">🙈</button>
 
@@ -356,6 +359,7 @@ function finishSpin() {
   let text = '', win = false;
   if (k === 'win') {
     const stars = Math.round(mult(s) * cur.stake); win = true;
+    addStars(cur.name, stars);
     text = `${cur.name} : ⭐ +${stars}`; speak(`Bravo ${cur.name}, ${stars} étoiles !`);
     tick(1200, .25, .08); setTimeout(() => tick(1600, .3, .08), 180);
     addLog(`🌟 ${cur.name} : +${stars} ⭐ (×${mult(s)})`);
@@ -374,6 +378,38 @@ function onGift(name, coins, repeat = 1) {
   if (queue.length > 300) return;
   queue.push({ name: String(name).slice(0, 24), stake: Math.max(1, Math.round(coins * repeat)) });
   $('qinfo').textContent = `File d'attente : ${queue.length}`;
+}
+/* Étoiles gagnées par spectateur : "étoiles" affiche le total, "run" les rejoue */
+const vkey = n => String(n).trim().toLowerCase();
+let viewers = {};
+try { viewers = JSON.parse(localStorage.getItem('cw-viewers') || '{}') || {}; } catch (e) {}
+const saveViewers = () => { try { localStorage.setItem('cw-viewers', JSON.stringify(viewers)); } catch (e) {} };
+function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
+function addStars(name, n) { viewer(name).stars += n; saveViewers(); }
+let starTimer = 0;
+function showStars(name, note) {
+  const v = viewer(name), c = $('starcard');
+  c.innerHTML = '';
+  const s = document.createElement('small'); s.textContent = note || "TOTAL D'ÉTOILES GAGNÉES"; c.appendChild(s);
+  c.appendChild(document.createTextNode(`${v.name} : ⭐ ${v.stars}`));
+  c.hidden = false; clearTimeout(starTimer); starTimer = setTimeout(() => { c.hidden = true; }, 5000);
+}
+function runStars(name, wanted) {
+  const v = viewer(name);
+  if (queue.some(j => vkey(j.name) === vkey(name)) || (cur && state === 'spin' && vkey(cur.name) === vkey(name))) { showStars(name, 'RUN : roue déjà en cours'); return; }
+  const amount = Math.min(Math.floor(v.stars), wanted > 0 ? wanted : (v.last || v.stars));
+  if (amount < 1) { showStars(name, "RUN : pas assez d'étoiles"); return; }
+  v.stars -= amount; v.last = amount; saveViewers();
+  queue.push({ name: v.name, stake: amount, run: true });
+  $('qinfo').textContent = `File d'attente : ${queue.length}`;
+  showStars(name, `RUN ! ⭐ ${amount} remis en jeu`);
+}
+function handleChat(name, text) {
+  if (!name) return;
+  const raw = String(text || ''), t = raw.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(etoiles?|stars?)$/.test(t) || /^\s*!?\s*⭐+s?\s*$/u.test(raw)) { showStars(name); return; }
+  const run = /^!?run(?:\s+(\d+))?$/.exec(t);
+  if (run) runStars(name, run[1] ? Number(run[1]) : 0);
 }
 function addLog(t) { const l = $('log'); l.innerHTML = `<div>${t.replace(/</g, '&lt;')}</div>` + (l.textContent === '—' ? '' : l.innerHTML); while (l.children.length > 14) l.lastChild.remove(); }
 
@@ -413,6 +449,9 @@ function handleMessage(data) {
     const coins = Number(g.coinValue ?? g.diamondCount ?? 1) || 1;
     const repeat = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
     onGift(id, coins, repeat);
+  } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
+    const c = data.commentData ?? data;
+    handleChat(c.username || c.nickname, c.comment ?? c.text ?? '');
   }
 }
 function connect() {
@@ -488,7 +527,7 @@ buildSectors(); applyVideo();
   h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (px + e.clientX - sx) + 'px'; p.style.top = (py + e.clientY - sy) + 'px'; p.style.right = 'auto'; });
   h.addEventListener('pointerup', () => { on = false; });
 })();
-window.__roue = { onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
+window.__roue = { handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
 requestAnimationFrame(frame);
 </script>
 </body>
