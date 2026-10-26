@@ -2643,6 +2643,7 @@ wss.on('connection', (socket, req) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
+    restoreStarsFromSeed();
     sweepExpiredManualAccounts();
     setInterval(() => {
         try {
@@ -2656,6 +2657,21 @@ server.listen(port, '0.0.0.0', () => {
         console.warn('Accès aux jeux fermé : configure au moins un compte dans GAME_USERS_JSON.');
     }
 });
+
+// Au démarrage, si le portefeuille est vide (serveur sans disque, redéployé), on le recharge depuis etoiles-sauvegarde.json.
+// Ce fichier n'est servi par aucune route : il reste interne au serveur.
+function restoreStarsFromSeed() {
+    try {
+        const seedFile = path.join(__dirname, 'etoiles-sauvegarde.json');
+        if (!fs.existsSync(seedFile)) return;
+        if (store.listTikTokPlayers().some(player => player.stars > 0)) return;
+        const snapshot = JSON.parse(fs.readFileSync(seedFile, 'utf8'));
+        const result = store.importTikTokStarLeaderboard(snapshot);
+        console.log(`Portefeuille d'étoiles rechargé depuis etoiles-sauvegarde.json (${snapshot.players.length} joueurs, ${result.updatedPlayers} ajustements).`);
+    } catch (error) {
+        console.warn('Rechargement du portefeuille d’étoiles impossible :', error.message);
+    }
+}
 
 function sweepExpiredManualAccounts(now = Date.now()) {
     for (const [username, account] of store.listAccounts()) {
