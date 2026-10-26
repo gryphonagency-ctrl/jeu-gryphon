@@ -3886,6 +3886,37 @@
             try {
                 if (file.size > 1024 * 1024) throw new Error('Le fichier dépasse la taille maximale de 1 Mo.');
                 const snapshot = JSON.parse(await file.text());
+                if (snapshot && snapshot.type === 'roue-du-cirque-etoiles' && snapshot.viewers && typeof snapshot.viewers === 'object') {
+                    const gains = [];
+                    for (const viewer of Object.values(snapshot.viewers)) {
+                        const username = String(viewer?.name || '').trim().replace(/^@/, '').toLowerCase();
+                        const amount = Math.floor(Number(String(viewer?.stars).replace(',', '.')));
+                        if (/^[a-z0-9._]{1,32}$/.test(username) && amount >= 1) gains.push([username, amount]);
+                    }
+                    const total = gains.reduce((sum, [, amount]) => sum + amount, 0);
+                    if (!gains.length) throw new Error('Aucun joueur avec un pseudo valide dans ce fichier de la Roue.');
+                    if (!window.confirm(`Ajouter ${total.toLocaleString('fr-FR')} étoiles de la Roue du Cirque (${gains.length} joueurs) par-dessus le classement ? Les noms avec espaces ou caractères spéciaux sont ignorés.`)) {
+                        status.textContent = 'Import annulé.';
+                        return;
+                    }
+                    const collect = await fetch('/api/admin/stars-collect', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entries: gains.map(([username, amount]) => ({
+                            username, amount, gameId: '/roue-du-cirque.html', transactionId: `manual:roue-2026-10-26:${username}`
+                        })) })
+                    });
+                    const collected = await collect.json();
+                    if (!collect.ok) throw new Error(collected.message || 'Ajout impossible.');
+                    await refreshAdminStarsLeaderboard();
+                    status.className = 'checkout-status success';
+                    status.textContent = collected.applied
+                        ? `${collected.applied} joueur(s) ajoutés (${Number(collected.total).toLocaleString('fr-FR')} étoiles) depuis la Roue du Cirque.`
+                        : 'Ces gains de la Roue étaient déjà ajoutés.';
+                    window.alert(status.textContent);
+                    return;
+                }
                 if (!snapshot || snapshot.format !== 'gryphon-stars-leaderboard' ||
                     snapshot.version !== 1 || !Array.isArray(snapshot.players)) {
                     throw new Error('Ce fichier n’est pas une sauvegarde compatible du classement.');
