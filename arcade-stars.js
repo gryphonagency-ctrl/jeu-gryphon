@@ -12,6 +12,11 @@
 
     function displayPlayer(player, message = '') {
         if (!player) return;
+        // Les jeux qui ont leur propre bannière centrale (#starcard) l'affichent eux-mêmes.
+        if (!profileCard && document.getElementById('starcard')) {
+            walletEvent('arcade:wallet', { player, message });
+            return;
+        }
         if (!profileCard) {
             profileCard = document.createElement('aside');
             profileCard.id = 'arcade-stars-wallet';
@@ -294,14 +299,14 @@
 
     const style = document.createElement('style');
     style.textContent = `
-        #arcade-stars-wallet{position:fixed;z-index:2147483000;right:16px;bottom:16px;display:flex;align-items:center;gap:10px;max-width:min(360px,calc(100vw - 32px));padding:10px 14px;border:1px solid #f5d36b;border-radius:14px;background:rgba(9,17,36,.96);box-shadow:0 8px 30px #0008;color:#fff;font:700 13px/1.35 system-ui,sans-serif}
+        #arcade-stars-wallet{position:fixed;z-index:2147483000;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:clamp(10px,2vh,24px);max-width:calc(100vw - 32px);padding:clamp(10px,2vh,22px) clamp(16px,3vh,36px);border:4px solid #f5d36b;border-radius:28px;background:linear-gradient(180deg,rgba(60,20,110,.97),rgba(14,8,40,.97));box-shadow:0 0 40px rgba(255,200,60,.65),0 12px 34px #000a;color:#fff;font:800 clamp(16px,3vh,34px)/1.3 system-ui,sans-serif;pointer-events:none}
         #arcade-stars-owed{position:fixed;z-index:2147483000;left:50%;bottom:6px;transform:translateX(-50%);padding:4px 12px;border:1px solid #f5d36b;border-radius:999px;background:rgba(9,17,36,.9);color:#ffe17d;font:800 12px/1.3 system-ui,sans-serif;pointer-events:none}
         #arcade-stars-wallet[hidden],#arcade-stars-wallet img[hidden]{display:none}
-        #arcade-stars-wallet img{width:38px;height:38px;flex:none;border-radius:50%;object-fit:cover}
+        #arcade-stars-wallet img{width:clamp(48px,9vh,100px);height:clamp(48px,9vh,100px);flex:none;border-radius:50%;object-fit:cover;border:3px solid #f5d36b}
         #arcade-stars-wallet div{display:grid;gap:3px;min-width:0}
-        #arcade-stars-wallet strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        #arcade-stars-wallet div span{color:#ffe17d}
-        #arcade-stars-wallet .arcade-stars-status{color:#9eeeff;font-size:11px}
+        #arcade-stars-wallet strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.15em}
+        #arcade-stars-wallet div span{color:#ffe17d;font-size:1.5em}
+        #arcade-stars-wallet .arcade-stars-status{color:#9eeeff;font-size:.6em}
     `;
     document.head.append(style);
 })();
