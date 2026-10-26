@@ -44,7 +44,7 @@ button:active { transform: scale(.96); }
 <body>
 <canvas id="cv"></canvas>
 
-<div class="hud" id="title"><h1>🦆 PÊCHE AUX CANARDS</h1><p>1 pièce = 1 canard pêché · 500 canards cachent de 1 à 50 ⭐</p></div>
+<div class="hud" id="title"><h1>🦆 PÊCHE AUX CANARDS</h1></div>
 <div class="hud" id="left">
     <small>CANARDS RESTANTS</small>
     <div class="big" id="remain">3000</div>
@@ -77,7 +77,7 @@ button:active { transform: scale(.96); }
 
 <script>
 const WS_URL = 'wss://jeu6boite.onrender.com';
-const TOTAL = 3000, PRIZES = 500;
+const TOTAL = 3000, PRIZES = 500, VISIBLE = 1000;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let vw = 0, vh = 0, dpr = 1, bg = null;
@@ -117,7 +117,7 @@ const SPRITES = COLORS.map(makeDuck);
 const SPR_W = 40, SPR_H = 32;
 
 /* ---------- Canards ---------- */
-let ducks = [], stars = new Map(), pending = [], popups = [], ripples = [], log = [];
+let ducks = [], reserve = [], stars = new Map(), pending = [], popups = [], ripples = [], log = [];
 let totalFished = 0, gameOver = false, duckScale = 0.5;
 function pad() { return 34 * duckScale + 24; }
 function buildPrizes() {
@@ -126,17 +126,19 @@ function buildPrizes() {
     for (let i = TOTAL - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
     return p;
 }
+function spawnDuck() {
+    if (!reserve.length) return;
+    ducks.push({
+        x: pad() + Math.random() * Math.max(10, vw - pad() * 2),
+        y: pad() + 40 + Math.random() * Math.max(10, vh - pad() * 2 - 40),
+        a: Math.random() * Math.PI * 2, s: 0.12 + Math.random() * 0.35, t: Math.random() * 6.28,
+        col: Math.floor(Math.random() * COLORS.length), face: 1, prize: reserve.pop()
+    });
+}
 function newGame() {
     const prizes = buildPrizes();
-    ducks = [];
-    for (let i = 0; i < TOTAL; i++) {
-        ducks.push({
-            x: pad() + Math.random() * Math.max(10, vw - pad() * 2),
-            y: pad() + 40 + Math.random() * Math.max(10, vh - pad() * 2 - 40),
-            a: Math.random() * Math.PI * 2, s: 0.12 + Math.random() * 0.35, t: Math.random() * 6.28,
-            col: Math.floor(Math.random() * COLORS.length), face: 1, prize: prizes[i]
-        });
-    }
+    ducks = []; reserve = prizes;
+    for (let i = 0; i < VISIBLE; i++) spawnDuck();
     stars = new Map(); pending = []; popups = []; log = []; totalFished = 0; gameOver = false;
     $('end').style.display = 'none'; $('log').innerHTML = ''; updateHud();
 }
@@ -152,7 +154,7 @@ function fishOne(user) {
     const i = Math.floor(Math.random() * ducks.length), d = ducks[i];
     ducks[i] = ducks[ducks.length - 1]; ducks.pop();
     popups.push({ x: d.x, y: d.y, col: d.col, face: d.face, prize: d.prize, t: 0 });
-    totalFished++;
+    totalFished++; spawnDuck();
     if (d.prize > 0) {
         stars.set(user, (stars.get(user) || 0) + d.prize);
         addLog(user, d.prize);
@@ -174,7 +176,7 @@ function processQueue() {
         if (!fishOne(p.user)) { pending = []; break; }
         p.n--; k--; if (p.n <= 0) pending.shift();
     }
-    if (!ducks.length && !pending.length && !gameOver) finish();
+    if (!ducks.length && !reserve.length && !pending.length && !gameOver) finish();
 }
 function finish() {
     gameOver = true;
@@ -184,7 +186,7 @@ function finish() {
     say('La mare est vide ! Appuie sur R pour relancer.');
 }
 function updateHud() {
-    $('remain').textContent = ducks.length;
+    $('remain').textContent = ducks.length + reserve.length;
     const top = [...stars.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
     $('board').innerHTML = top.length ? top.map(([u, s], i) => `<div><span>${i + 1}. ${u.replace(/[<>&]/g, '')}</span><b>${s} ⭐</b></div>`).join('') : '<div><span>En attente de cadeaux…</span></div>';
 }
@@ -288,7 +290,7 @@ function resize() {
     const ow = vw, oh = vh;
     dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
     cv.width = vw * dpr; cv.height = vh * dpr;
-    duckScale = Math.max(0.32, Math.min(vw / 1280, vh / 720) * 0.42);
+    duckScale = Math.max(0.5, Math.min(vw / 1280, vh / 720) * 0.72);
     buildBackground(); initFish(); initToads(); initBabies(); initLilies();
     if (ow && oh) for (const d of ducks) { d.x *= vw / ow; d.y *= vh / oh; }
 }
@@ -459,7 +461,7 @@ addEventListener('keydown', e => {
 
 resize(); newGame();
 requestAnimationFrame(frame);
-window.__peche = { onGift, newGame, get ducks() { return ducks.length; }, get gameOver() { return gameOver; }, get stars() { return stars; }, step(n) { for (let i = 0; i < n; i++) update(1 / 60); }, render };
+window.__peche = { onGift, newGame, get ducks() { return ducks.length + reserve.length; }, get visible() { return ducks.length; }, get gameOver() { return gameOver; }, get stars() { return stars; }, step(n) { for (let i = 0; i < n; i++) update(1 / 60); }, render };
 </script>
 </body>
 </html>
