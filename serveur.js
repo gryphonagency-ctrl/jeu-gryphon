@@ -832,7 +832,7 @@ const server = http.createServer((req, res) => {
                     results.push(false);
                     continue;
                 }
-                const result = store.creditBrowserStars({ username: entry.username, amount, gameId, transactionId });
+                const result = store.creditBrowserStars({ username: entry.username, amount, gameId, transactionId, absolute: entry.absolute === true });
                 if (result.applied) { applied += 1; total += amount; } else { skipped += 1; }
                 results.push(Boolean(result.applied));
             }

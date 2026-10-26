@@ -3638,6 +3638,23 @@
                 if (amount < 1) continue;
                 entries.push({ key, amount, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
             }
+            const total0 = new Map();
+            const addTotal = (gameId, name, stars) => {
+                const handle = String(name || '').trim().replace(/^@/, '').toLowerCase();
+                const value = Math.floor(Number(stars) || 0);
+                if (!/^[a-z0-9._]{1,32}$/.test(handle) || value < 1) return;
+                total0.set(`${gameId}|${handle}`, { gameId, username: handle, amount: Math.max(value, total0.get(`${gameId}|${handle}`)?.amount || 0) });
+            };
+            for (const [name, player] of Object.entries(readJson('tiktok-aquarium-live-v1', {}).players || {})) addTotal('/aquarium-tiktok-live.html', name, player?.stars);
+            for (const [key, player] of Object.entries(readJson('tiktok-coin-pusher-v1', {}).players || {})) {
+                const cards = Array.isArray(player?.cards) ? player.cards.reduce((sum, card) => sum + Math.max(0, Number(card?.value) || 0), 0) : 0;
+                addTotal('/coin-pusher-tiktok.html', player?.username || key, cards + Math.max(0, Number(player?.wheelStarsWon) || 0));
+            }
+            const absoluteDone = readJson('arcade-stars-absolute', {});
+            for (const [key, item] of total0) {
+                if ((absoluteDone[key] || 0) >= item.amount) continue;
+                entries.push({ key, amount: item.amount, absolute: true, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
+            }
             if (!entries.length) {
                 status.className = 'checkout-status';
                 status.textContent = 'Rien de nouveau à récupérer dans ce navigateur (tout est déjà enregistré).';
@@ -3658,9 +3675,11 @@
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || 'Récupération impossible.');
                 entries.forEach((entry, index) => {
-                    if (result.results?.[index]) sent[entry.key] = (sent[entry.key] || 0) + entry.amount;
+                    if (entry.absolute) absoluteDone[entry.key] = entry.amount;
+                    else if (result.results?.[index]) sent[entry.key] = (sent[entry.key] || 0) + entry.amount;
                 });
                 localStorage.setItem('arcade-stars-sent', JSON.stringify(sent));
+                localStorage.setItem('arcade-stars-absolute', JSON.stringify(absoluteDone));
                 status.className = 'checkout-status success';
                 status.textContent = `${result.applied} gain(s) ajoutés (${Number(result.total).toLocaleString('fr-FR')} étoiles)` +
                     (result.skipped ? ` · ${result.skipped} ignoré(s) (pseudo non valide pour le classement).` : '.');

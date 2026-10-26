@@ -183,6 +183,24 @@
                 const amount = item.local - Math.floor(sent[key] || 0);
                 if (amount >= 1) entries.push({ key, amount, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
             }
+            // Aquarium et table à pièces : totaux complets, le serveur ne crédite que l'écart déjà connu.
+            const totals = new Map();
+            const addTotal = (gameId, name, stars) => {
+                const handle = String(name || '').trim().replace(/^@/, '').toLowerCase();
+                const value = Math.floor(Number(stars) || 0);
+                if (!/^[a-z0-9._]{1,32}$/.test(handle) || value < 1) return;
+                totals.set(`${gameId}|${handle}`, { gameId, username: handle, amount: Math.max(value, totals.get(`${gameId}|${handle}`)?.amount || 0) });
+            };
+            for (const [name, player] of Object.entries(readJson('tiktok-aquarium-live-v1', {}).players || {})) addTotal('/aquarium-tiktok-live.html', name, player?.stars);
+            for (const [key, player] of Object.entries(readJson('tiktok-coin-pusher-v1', {}).players || {})) {
+                const cards = Array.isArray(player?.cards) ? player.cards.reduce((sum, card) => sum + Math.max(0, Number(card?.value) || 0), 0) : 0;
+                addTotal('/coin-pusher-tiktok.html', player?.username || key, cards + Math.max(0, Number(player?.wheelStarsWon) || 0));
+            }
+            const absoluteDone = readJson('arcade-stars-absolute', {});
+            for (const [key, item] of totals) {
+                if ((absoluteDone[key] || 0) >= item.amount) continue;
+                entries.push({ key, amount: item.amount, absolute: true, gameId: item.gameId, username: item.username, transactionId: `browser:${crypto.randomUUID()}` });
+            }
             if (!entries.length) return;
             const response = await fetch('/api/admin/stars-collect', {
                 method: 'POST',
@@ -194,9 +212,11 @@
             const result = await response.json();
             const latest = readJson(SENT_KEY, {});
             entries.forEach((entry, index) => {
-                if (result.results?.[index]) latest[entry.key] = (latest[entry.key] || 0) + entry.amount;
+                if (entry.absolute) absoluteDone[entry.key] = entry.amount;
+                else if (result.results?.[index]) latest[entry.key] = (latest[entry.key] || 0) + entry.amount;
             });
             writeJson(SENT_KEY, latest);
+            writeJson('arcade-stars-absolute', absoluteDone);
             if (typeof refreshOwedTotal === 'function') refreshOwedTotal();
         } catch {
             // Réessai au prochain passage.

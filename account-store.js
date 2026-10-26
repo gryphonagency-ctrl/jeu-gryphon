@@ -932,11 +932,19 @@ function setSubscriptionStatus(subscriptionId, status, updates = {}) {
 }
 
 // Crédite des étoiles gagnées dans un jeu (récupérées dans le navigateur de l'admin), même si le joueur n'est pas en live.
-function creditBrowserStars({ username, amount, gameId, transactionId }) {
+// Avec `absolute`, amount est le total gagné dans ce jeu : seul l'écart avec ce que le serveur a déjà reçu est crédité.
+function creditBrowserStars({ username, amount, gameId, transactionId, absolute = false }) {
     const handle = String(username || '').trim().replace(/^@/, '').toLowerCase();
     if (!/^[a-z0-9._]{1,32}$/.test(handle)) return { applied: false, skipped: true };
     let player = resolveTikTokPlayer(handle);
     if (!player) player = upsertTikTokPlayer({ uniqueId: handle, username: handle });
+    if (absolute) {
+        const known = Object.values(readStore().tiktokStarTransactions).reduce((sum, transaction) =>
+            transaction.playerId === player.id && transaction.gameId === gameId &&
+            transaction.reason === 'game-reward' && transaction.delta > 0 ? sum + transaction.delta : sum, 0);
+        amount -= known;
+        if (amount < 1) return { applied: false, duplicate: true, skipped: false };
+    }
     const result = applyTikTokStarTransaction({
         transactionId,
         playerId: player.id,
