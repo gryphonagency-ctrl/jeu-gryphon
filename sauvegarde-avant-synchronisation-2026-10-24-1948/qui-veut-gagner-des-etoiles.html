@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qui Veut Gagner des Étoiles ? - TikTok Live Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800;900&display=swap');
+        body { font-family: 'Montserrat', sans-serif; background: radial-gradient(circle at center, #1a1c4b 0%, #08091a 70%, #020308 100%); color: white; min-height: 100vh; }
+        .hex-btn { position: relative; background: linear-gradient(180deg, #101432 0%, #080a1c 100%); border: 2px solid #3b82f6; clip-path: polygon(5% 0, 95% 0, 100% 50%, 95% 100%, 5% 100%, 0 50%); box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); transition: all 0.2s ease; }
+        .hex-btn:hover:not(:disabled) { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245, 158, 11, 0.6); transform: scale(1.02); }
+        .hex-btn.selected { background: linear-gradient(180deg, #b45309 0%, #78350f 100%); border-color: #fbbf24; box-shadow: 0 0 25px rgba(251, 191, 36, 0.8); }
+        .hex-btn.correct { background: linear-gradient(180deg, #15803d 0%, #166534 100%) !important; border-color: #22c55e !important; box-shadow: 0 0 30px rgba(34, 197, 94, 0.9) !important; }
+        .hex-btn.wrong { background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%) !important; border-color: #ef4444 !important; box-shadow: 0 0 30px rgba(239, 68, 68, 0.9) !important; }
+        .hex-btn.eliminated { opacity: 0.4; text-decoration: line-through; filter: grayscale(1); }
+        .question-box { background: linear-gradient(180deg, #0d1238 0%, #050716 100%); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.4); }
+        .ladder-item.active { background: linear-gradient(90deg, #d97706 0%, #b45309 100%); color: #ffffff; font-weight: 800; box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); }
+        .ladder-item.milestone { color: #38bdf8; font-weight: 700; }
+        .tiktok-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .bar-fill { transition: width 0.5s ease; }
+        .winner-card { background: linear-gradient(135deg, rgba(146, 64, 14, 0.35), rgba(15, 23, 42, 0.9)); border: 1px solid rgba(251, 191, 36, 0.55); }
+        .winner-avatar { width: 76px; height: 76px; object-fit: cover; border: 3px solid #fbbf24; box-shadow: 0 0 22px rgba(251, 191, 36, 0.45); }
+        .game-topbar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; overflow: hidden; padding: 14px 18px; border: 1px solid rgba(103, 232, 249, 0.38); border-radius: 14px; background: linear-gradient(110deg, rgba(4, 12, 34, 0.96), rgba(20, 20, 57, 0.94) 60%, rgba(39, 12, 46, 0.92)); box-shadow: 0 8px 32px rgba(2, 6, 23, 0.5), inset 0 1px rgba(255, 255, 255, 0.12); }
+        .game-topbar::before { position: absolute; inset: 0; z-index: 0; background: linear-gradient(105deg, transparent 14%, rgba(34, 211, 238, 0.12) 38%, transparent 55%, rgba(217, 70, 239, 0.12) 82%, transparent); content: ""; pointer-events: none; }
+        .game-topbar::after { position: absolute; top: 0; right: 6%; left: 6%; height: 2px; background: linear-gradient(90deg, transparent, #22d3ee 24%, #a78bfa 55%, #fbbf24 82%, transparent); content: ""; box-shadow: 0 0 12px rgba(34, 211, 238, 0.72); }
+        .game-brand { position: relative; z-index: 1; display: grid; grid-template-columns: 50px minmax(0, 1fr); align-items: center; gap: 13px; min-width: 0; }
+        .game-brand-logo { display: grid; width: 50px; aspect-ratio: 1; place-items: center; border: 1px solid rgba(253, 230, 138, 0.9); border-radius: 12px; background: radial-gradient(circle at 35% 28%, #fcd34d, #d97706 52%, #713f12); box-shadow: 0 0 14px rgba(251, 191, 36, 0.48), inset 0 1px rgba(255, 255, 255, 0.42); color: #111827; }
+        .game-brand-copy { min-width: 0; }
+        .game-brand-kicker { margin: 0 0 4px; color: #67e8f9; font-size: 10px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; }
+        .game-brand-title { display: flex; flex-wrap: wrap; column-gap: 6px; margin: 0; color: #f8fafc; font-size: 20px; font-weight: 900; line-height: 1.15; }
+        .game-brand-title strong { color: #fbbf24; }
+        .game-brand-subtitle { margin: 4px 0 0; color: #a5b4fc; font-size: 11px; font-weight: 700; }
+        .game-topbar-controls { position: relative; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+        .game-topbar-button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; border: 1px solid rgba(103, 232, 249, 0.35); border-radius: 9px; background: rgba(8, 16, 39, 0.9); color: #e0f2fe; font-size: 11px; font-weight: 850; line-height: 1.2; white-space: nowrap; }
+        .game-topbar-button:hover { border-color: #67e8f9; box-shadow: 0 0 14px rgba(34, 211, 238, 0.2); }
+        .game-topbar-button.reset { border-color: rgba(244, 114, 182, 0.58); background: linear-gradient(135deg, rgba(131, 24, 67, 0.88), rgba(76, 5, 55, 0.94)); color: #fff1f2; }
+        .game-topbar-button.reset:hover { border-color: #f9a8d4; box-shadow: 0 0 14px rgba(236, 72, 153, 0.24); }
+        @media (max-width: 640px) {
+            .game-topbar { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; }
+            .game-brand { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
+            .game-brand-logo { width: 42px; border-radius: 10px; }
+            .game-brand-title { column-gap: 5px; font-size: 15px; }
+            .game-topbar-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+            .game-topbar-button { width: 100%; min-width: 0; padding: 8px 7px; white-space: normal; }
+        }
+        [hidden] { display: none !important; }
+        .game-app { position: relative; isolation: isolate; min-height: 100vh; }
+        .game-app::before { position: fixed; inset: -20% -45%; z-index: -1; background: linear-gradient(108deg, transparent 0 12%, rgba(34, 211, 238, 0.18) 17%, transparent 23% 31%, rgba(236, 72, 153, 0.16) 37%, transparent 44% 53%, rgba(168, 85, 247, 0.18) 59%, transparent 66% 75%, rgba(250, 204, 21, 0.12) 81%, transparent 88%), radial-gradient(ellipse at 50% 50%, rgba(37, 99, 235, 0.2), transparent 55%); background-size: 220% 100%; content: ""; opacity: 0.75; pointer-events: none; animation: gameplay-lights 18s linear infinite alternate; }
+        .game-app::after { position: fixed; inset: 0; z-index: -1; background: radial-gradient(ellipse at 20% 12%, rgba(34, 211, 238, 0.12), transparent 38%), radial-gradient(ellipse at 82% 78%, rgba(217, 70, 239, 0.1), transparent 42%); content: ""; pointer-events: none; animation: gameplay-glow 8s ease-in-out infinite alternate; }
+        .question-box { position: relative; overflow: hidden; }
+        .question-box::after { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 25%, rgba(147, 197, 253, 0.12) 48%, transparent 70%); content: ""; pointer-events: none; transform: translateX(-110%); animation: question-sheen 7s ease-in-out infinite; }
+        .question-box h2 { position: relative; z-index: 1; }
+        .game-watermark { --watermark-size: min(40vmin, 260px, calc(100vw - 24px), calc(100vh - 24px)); position: fixed; top: 12px; left: 12px; z-index: -1; display: grid; width: var(--watermark-size); height: var(--watermark-size); place-items: center; opacity: 0.24; pointer-events: none; animation: watermark-roam 30s ease-in-out infinite; }
+        .watermark-rotor { position: absolute; inset: 0; display: grid; place-items: center; border: 3px solid rgba(56, 189, 248, 0.28); border-radius: 50%; background: conic-gradient(from 0deg, rgba(34, 211, 238, 0.08), rgba(168, 85, 247, 0.12), rgba(251, 191, 36, 0.08), rgba(236, 72, 153, 0.1), rgba(34, 211, 238, 0.08)); box-shadow: 0 0 50px rgba(59, 130, 246, 0.18), inset 0 0 48px rgba(168, 85, 247, 0.12); animation: watermark-turn 48s linear infinite; }
+        .watermark-rotor::before, .watermark-rotor::after { position: absolute; border: 1px solid rgba(251, 191, 36, 0.36); border-radius: 50%; content: ""; }
+        .watermark-rotor::before { inset: 5%; border-color: rgba(34, 211, 238, 0.55); border-width: 2px; animation: watermark-orbit 18s linear infinite; }
+        .watermark-rotor::after { inset: 12%; border-color: rgba(251, 191, 36, 0.48); border-style: dashed; animation: watermark-orbit-reverse 28s linear infinite; }
+        .watermark-copy { position: relative; z-index: 1; display: grid; gap: 8px; width: 76%; color: #fff; text-align: center; text-shadow: 0 0 18px rgba(96, 165, 250, 0.8); animation: watermark-counterturn 48s linear infinite; }
+        .watermark-copy span { color: #bae6fd; font-size: clamp(14px, 2vw, 21px); font-weight: 900; }
+        .watermark-copy strong { color: #fbbf24; font-size: clamp(18px, 5vw, 58px); font-weight: 900; }
+        .watermark-copy small { color: #e9d5ff; font-size: clamp(8px, 1vw, 12px); font-weight: 800; letter-spacing: 0.12em; }
+        .watermark-beacon { position: absolute; top: 7%; left: calc(50% - 6px); width: 12px; aspect-ratio: 1; border: 2px solid #fff; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 12px #22d3ee, 0 0 26px #a78bfa; }
+        @keyframes watermark-turn { to { transform: rotate(360deg); } }
+        @keyframes watermark-counterturn { to { transform: rotate(-360deg); } }
+        @keyframes watermark-roam {
+            0%, 100% { top: 12px; left: 12px; }
+            12.5% { top: 12px; left: calc(100vw - var(--watermark-size) - 12px); }
+            25% { top: calc((100vh - var(--watermark-size)) / 2); left: calc(100vw - var(--watermark-size) - 12px); }
+            37.5% { top: calc(100vh - var(--watermark-size) - 12px); left: calc(100vw - var(--watermark-size) - 12px); }
+            50% { top: calc(100vh - var(--watermark-size) - 12px); left: 12px; }
+            62.5% { top: calc((100vh - var(--watermark-size)) / 2); left: 12px; }
+            75% { top: 12px; left: calc((100vw - var(--watermark-size)) / 2); }
+            87.5% { top: calc((100vh - var(--watermark-size)) / 2); left: calc((100vw - var(--watermark-size)) / 2); }
+        }
+        .welcome-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow: hidden; padding: 24px; background: #020308; isolation: isolate; }
+        .welcome-screen::before { position: absolute; inset: -35%; z-index: -2; background: radial-gradient(ellipse at 50% 20%, rgba(96, 165, 250, 0.35), transparent 28%), radial-gradient(ellipse at 20% 55%, rgba(59, 130, 246, 0.22), transparent 24%), radial-gradient(ellipse at 80% 55%, rgba(168, 85, 247, 0.2), transparent 25%), repeating-conic-gradient(from 5deg at 50% 25%, transparent 0deg 8deg, rgba(255, 255, 255, 0.08) 9deg, transparent 11deg 18deg); content: ""; animation: stage-glow 12s ease-in-out infinite alternate; }
+        .stage-beam { position: absolute; top: -25%; z-index: -1; width: 18%; height: 145%; border-radius: 50%; filter: blur(22px); mix-blend-mode: screen; opacity: 0.4; pointer-events: none; }
+        .stage-beam.blue { left: 15%; background: linear-gradient(180deg, transparent, rgba(96, 165, 250, 0.78), transparent); animation: beam-sweep-blue 7s ease-in-out infinite alternate; }
+        .stage-beam.violet { right: 14%; background: linear-gradient(180deg, transparent, rgba(167, 139, 250, 0.72), transparent); animation: beam-sweep-violet 8s ease-in-out infinite alternate; }
+        .welcome-screen::after { position: absolute; inset: 18% 8%; z-index: -1; border: 1px solid rgba(191, 219, 254, 0.28); clip-path: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%); box-shadow: 0 0 45px rgba(59, 130, 246, 0.22), inset 0 0 45px rgba(59, 130, 246, 0.12); content: ""; }
+        .welcome-content { width: min(100%, 940px); padding: 48px 24px; text-align: center; }
+        .welcome-emblem { display: grid; width: 104px; aspect-ratio: 1; place-items: center; margin: 0 auto 24px; border: 2px solid #fbbf24; border-radius: 50%; background: radial-gradient(circle, #78350f 0%, #111827 68%); box-shadow: 0 0 18px rgba(251, 191, 36, 0.7), 0 0 70px rgba(59, 130, 246, 0.35); color: #fde68a; font-size: 46px; }
+        .welcome-kicker { margin: 0 0 18px; color: #93c5fd; font-size: 13px; font-weight: 800; text-transform: uppercase; }
+        .welcome-title { margin: 0; color: #fff; font-size: 58px; font-weight: 900; line-height: 1.05; text-shadow: 0 0 12px rgba(96, 165, 250, 0.65), 0 0 42px rgba(59, 130, 246, 0.45); }
+        .welcome-title span { display: block; margin-top: 8px; color: #fbbf24; }
+        .welcome-prize { margin: 22px 0 30px; color: #dbeafe; font-size: 18px; font-weight: 700; }
+        .welcome-start { min-height: 56px; padding: 0 30px; border: 1px solid #fde68a; border-radius: 12px; background: linear-gradient(180deg, #fbbf24, #d97706); box-shadow: 0 0 28px rgba(245, 158, 11, 0.4); color: #111827; font-size: 15px; font-weight: 900; text-transform: uppercase; transition: transform 180ms ease, box-shadow 180ms ease; }
+        .welcome-start:hover { transform: translateY(-2px); box-shadow: 0 0 38px rgba(245, 158, 11, 0.65); }
+        .welcome-status { min-height: 24px; margin: 18px 0 0; color: #cbd5e1; font-size: 13px; }
+        .welcome-import { display: grid; justify-items: center; gap: 8px; margin: 18px auto 0; }
+        .welcome-import-button { border: 1px solid rgba(147, 197, 253, 0.55); border-radius: 10px; background: rgba(15, 23, 42, 0.82); padding: 9px 14px; color: #dbeafe; font-size: 12px; font-weight: 800; }
+        .welcome-import-status { margin: 0; color: #94a3b8; font-size: 11px; }
+        .game-app[hidden] { display: none !important; }
+        @keyframes stage-glow { from { transform: rotate(-3deg) scale(1); opacity: 0.75; } to { transform: rotate(3deg) scale(1.08); opacity: 1; } }
+        @media (max-width: 640px) { .welcome-title { font-size: 40px; } .welcome-screen::after { inset: 16% 3%; } .welcome-emblem { width: 82px; font-size: 38px; } }
+        @keyframes beam-sweep-blue { from { transform: rotate(24deg) translateX(-12vw); } to { transform: rotate(-24deg) translateX(18vw); } }
+        @keyframes beam-sweep-violet { from { transform: rotate(-22deg) translateX(14vw); } to { transform: rotate(25deg) translateX(-18vw); } }
+        @keyframes gameplay-lights { from { background-position: 0% 50%; transform: translateX(-5%); } to { background-position: 100% 50%; transform: translateX(5%); } }
+        @keyframes gameplay-glow { from { opacity: 0.55; } to { opacity: 1; } }
+        @keyframes question-sheen { 0%, 48% { transform: translateX(-110%); } 72%, 100% { transform: translateX(110%); } }
+        @media (prefers-reduced-motion: reduce) { .welcome-screen::before, .stage-beam, .game-app::before, .game-app::after, .question-box::after, .game-watermark, .watermark-rotor, .watermark-rotor::before, .watermark-rotor::after, .watermark-copy { animation: none; } .welcome-start { transition: none; } }
+    </style>
+</head>
+<body class="p-4 flex flex-col justify-between min-h-screen">
+    <section id="welcomeScreen" class="welcome-screen" aria-labelledby="welcomeTitle">
+        <div class="stage-beam blue" aria-hidden="true"></div>
+        <div class="stage-beam violet" aria-hidden="true"></div>
+        <div class="welcome-content">
+            <div class="welcome-emblem" aria-hidden="true"><i class="fa-solid fa-star"></i></div>
+            <p class="welcome-kicker">Le grand jeu du direct</p>
+            <h1 id="welcomeTitle" class="welcome-title">QUI VEUT GAGNER<span>DES ÉTOILES ?</span></h1>
+            <p class="welcome-prize">20 questions · jusqu’à 250 ⭐</p>
+            <div class="welcome-import">
+                <button id="importQuestionBankButton" class="welcome-import-button" type="button" onclick="openQuestionBankPicker()">Importer ma banque JSON / CSV</button>
+                <input id="questionBankFile" type="file" accept=".json,.csv,application/json,text/csv" hidden>
+                <p id="questionBankStatus" class="welcome-import-status" role="status" aria-live="polite">63 / 10 000 questions intégrées</p>
+            </div>
+            <button id="startGameButton" class="welcome-start" onclick="beginGame()">Entrer sur le plateau</button>
+            <p id="welcomeStatus" class="welcome-status" role="status" aria-live="polite"></p>
+        </div>
+    </section>
+
+    <div id="gameApp" class="game-app" hidden>
+    <div class="game-watermark" aria-hidden="true">
+        <div class="watermark-rotor">
+            <div class="watermark-copy">
+                <span>QUI VEUT GAGNER</span>
+                <strong>DES ÉTOILES ?</strong>
+                <small>LE GRAND JEU DU DIRECT · QUI VEUT GAGNER DES ÉTOILES</small>
+            </div>
+            <span class="watermark-beacon"></span>
+        </div>
+    </div>
+    <header class="game-topbar max-w-7xl mx-auto w-full mb-4">
+        <div class="game-brand">
+            <div class="game-brand-logo" aria-hidden="true"><i class="fa-solid fa-star text-2xl"></i></div>
+            <div class="game-brand-copy">
+                <p class="game-brand-kicker">Le grand jeu du direct</p>
+                <h1 class="game-brand-title"><span>QUI VEUT GAGNER</span><strong>DES ÉTOILES ?</strong></h1>
+                <p class="game-brand-subtitle">TikTok Live Edition</p>
+            </div>
+        </div>
+        <div class="game-topbar-controls">
+            <button id="ttsToggle" onclick="toggleTTS()" class="game-topbar-button"><i class="fa-solid fa-volume-high" aria-hidden="true"></i><span>IA Voix: ON</span></button>
+            <button onclick="resetGame()" class="game-topbar-button reset"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Nouvelle Partie</span></button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <section class="lg:col-span-8 space-y-6">
+            <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-slate-950"><i class="fa-solid fa-robot text-xl"></i></div>
+                    <div>
+                        <div class="text-xs text-slate-400">Présentateur IA</div>
+                        <div id="aiStatusText" class="text-sm font-semibold">Prêt à jouer</div>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="joker5050" onclick="useJoker5050()" class="bg-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-xl text-xs">50:50</button>
+                    <button id="jokerAudience" onclick="useJokerAudience()" aria-label="Joker du public" title="Joker du public" class="bg-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-xl text-xs"><i class="fa-solid fa-users"></i></button>
+                    <button id="jokerPhone" onclick="useJokerPhone()" aria-label="Appel à un expert" title="Appel à un expert" class="bg-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-xl text-xs"><i class="fa-solid fa-phone"></i></button>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center bg-slate-900/40 px-6 py-2 rounded-xl border border-slate-800">
+                <span class="text-xs font-bold text-slate-400 uppercase">Question <span id="currentQNum">1</span> / 20</span>
+                <span id="currentReward" class="text-lg font-black text-amber-400">100 </span>
+            </div>
+
+            <div class="question-box p-6 rounded-3xl text-center">
+                <h2 id="questionText" class="text-xl font-bold min-h-[60px] flex items-center justify-center">Chargement...</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button id="btnA" onclick="selectAnswer('A')" class="hex-btn p-4 rounded-2xl flex items-center gap-4 text-left"><span class="text-amber-400 font-black">A</span><span id="textA">Option A</span></button>
+                <button id="btnB" onclick="selectAnswer('B')" class="hex-btn p-4 rounded-2xl flex items-center gap-4 text-left"><span class="text-amber-400 font-black">B</span><span id="textB">Option B</span></button>
+                <button id="btnC" onclick="selectAnswer('C')" class="hex-btn p-4 rounded-2xl flex items-center gap-4 text-left"><span class="text-amber-400 font-black">C</span><span id="textC">Option C</span></button>
+                <button id="btnD" onclick="selectAnswer('D')" class="hex-btn p-4 rounded-2xl flex items-center gap-4 text-left"><span class="text-amber-400 font-black">D</span><span id="textD">Option D</span></button>
+            </div>
+
+            <div class="flex gap-3 justify-center pt-2">
+                <button id="btnReadVoice" onclick="speakCurrentQuestion()" class="bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl text-xs">Relire la question</button>
+                <button id="btnConfirm" onclick="confirmAnswer()" disabled class="bg-amber-500 text-slate-950 font-black px-8 py-2.5 rounded-xl text-sm disabled:opacity-30">C'EST MON DERNIER MOT !</button>
+                <button id="btnNext" onclick="nextQuestion()" class="hidden bg-emerald-600 text-white font-bold px-6 py-2.5 rounded-xl text-sm">Question Suivante</button>
+            </div>
+        </section>
+
+        <section class="lg:col-span-4 space-y-6">
+            <div class="tiktok-panel rounded-3xl p-5 border border-cyan-500/20">
+                <h3 class="text-sm font-black text-slate-100 uppercase mb-3">Connexion TikTok</h3>
+                <div class="flex gap-2">
+                    <input id="tiktokUsername" type="text" maxlength="32" placeholder="Pseudo TikTok du live" aria-label="Pseudo TikTok du live" class="min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500">
+                    <button id="connectTikTokButton" onclick="connectTikTok()" class="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950">Connecter</button>
+                </div>
+                <p id="liveStatus" class="mt-2 text-xs text-slate-300" role="status" aria-live="polite">Connecte le live pour recevoir les réponses du chat.</p>
+                <p class="mt-2 text-xs text-slate-400">Répondez A, B, C ou D dans le chat. Après 20 bonnes réponses, écrivez « étoile » pour réclamer le gain. Un cadeau d’au moins 100 pièces est obligatoire.</p>
+            </div>
+
+            <div class="bg-slate-900/80 border border-slate-800 rounded-3xl p-5">
+                <h3 class="text-xs font-black uppercase text-slate-400 mb-3">Pyramide des Étoiles</h3>
+                <div id="starLadder" class="space-y-1"></div>
+            </div>
+
+            <div class="tiktok-panel rounded-3xl p-5 border border-amber-500/20">
+                <h3 class="text-sm font-black text-slate-100 uppercase mb-3">Vote Chat TikTok</h3>
+                <div class="space-y-2 text-xs font-bold">
+                    <div><div>A: <span id="votePercentA">0%</span></div><div class="bg-slate-800 h-2 rounded-full"><div id="voteBarA" class="bar-fill bg-amber-500 h-full w-0"></div></div></div>
+                    <div><div>B: <span id="votePercentB">0%</span></div><div class="bg-slate-800 h-2 rounded-full"><div id="voteBarB" class="bar-fill bg-amber-500 h-full w-0"></div></div></div>
+                    <div><div>C: <span id="votePercentC">0%</span></div><div class="bg-slate-800 h-2 rounded-full"><div id="voteBarC" class="bar-fill bg-amber-500 h-full w-0"></div></div></div>
+                    <div><div>D: <span id="votePercentD">0%</span></div><div class="bg-slate-800 h-2 rounded-full"><div id="voteBarD" class="bar-fill bg-amber-500 h-full w-0"></div></div></div>
+                </div>
+                <div class="mt-4 pt-2 border-t border-slate-800 flex flex-col gap-2">
+                    <button onclick="simulateTikTokVotes()" class="bg-slate-800 text-amber-300 text-xs font-bold py-1.5 rounded-xl">Simuler votes</button>
+                    <button onclick="applyMajorityVote()" class="bg-slate-800 text-slate-200 text-xs font-bold py-1.5 rounded-xl">Sélectionner majorité Chat</button>
+                </div>
+            </div>
+
+            <div id="winnerCard" class="winner-card hidden rounded-3xl p-5 text-center" aria-live="polite">
+                <h3 class="text-xs font-black uppercase text-amber-300">Gagnant du live</h3>
+                <img id="winnerAvatar" class="winner-avatar mx-auto mt-4 rounded-full hidden" alt="Photo de profil TikTok du gagnant">
+                <div id="winnerAvatarFallback" class="winner-avatar mx-auto mt-4 flex items-center justify-center rounded-full bg-slate-900 text-3xl">⭐</div>
+                <p id="winnerUsername" class="mt-3 text-lg font-black text-white"></p>
+                <p id="winnerReward" class="mt-1 text-xl font-black text-amber-300">250 ⭐</p>
+                <p class="mt-1 text-xs text-slate-300">20 bonnes réponses</p>
+            </div>
+        </section>
+    </main>
+
+    <div id="jokerModal" class="fixed inset-0 bg-slate-950/80 hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border-2 border-amber-500/50 rounded-3xl p-6 max-w-md w-full text-center">
+            <h3 id="modalTitle" class="text-xl font-black text-amber-400 mb-4">Joker</h3>
+            <div id="modalContent" class="mb-6 text-slate-200 text-sm"></div>
+            <button onclick="closeModal()" class="bg-amber-500 text-slate-950 font-black px-6 py-2 rounded-xl text-sm">Fermer</button>
+        </div>
+    </div>
+
+    <script>
+        const QUESTION_NUMBER_WORDS = ['une', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf', 'vingt'];
+
+        function questionNumberInWords(index) {
+            return QUESTION_NUMBER_WORDS[index] || String(index + 1);
+        }
+
+        const LADDER = Array.from({ length: 20 }, (_, index) => {
+            const level = 20 - index;
+            const stars = level === 20 ? 250 : level * 10;
+            return { level, stars: `${stars} `, milestone: level === 1 || level % 5 === 0 };
+        });
+
+        const QUESTIONS_DATABASE = [
+            [
+                { id: 'easy-01', question: "Quelle est la capitale de la France ?", answer: "Paris" },
+                { id: 'easy-02', question: "Quelle étoile se trouve au centre de notre système solaire ?", answer: "Le Soleil" },
+                { id: 'easy-03', question: "Quelle planète est surnommée la planète rouge ?", answer: "Mars" },
+                { id: 'easy-04', question: "Quelle est la formule chimique de l'eau ?", answer: "H2O" },
+                { id: 'easy-05', question: "Quel est le plus grand océan de la Terre ?", answer: "L'océan Pacifique" },
+                { id: 'easy-06', question: "Combien de côtés possède un hexagone ?", answer: "6" },
+                { id: 'easy-07', question: "Quel est le plus grand animal terrestre ?", answer: "L'éléphant d'Afrique" },
+                { id: 'easy-08', question: "Quelle est la capitale du Canada ?", answer: "Ottawa" },
+                { id: 'easy-09', question: "Quel insecte produit le miel ?", answer: "L'abeille" },
+                { id: 'easy-10', question: "Quelle est la planète la plus proche du Soleil ?", answer: "Mercure" },
+                { id: 'easy-11', question: "Quelle est la capitale de l'Italie ?", answer: "Rome" },
+                { id: 'easy-12', question: "Quelle est la lettre utilisée comme symbole du carbone ?", answer: "C" },
+                { id: 'easy-13', question: "Quel est le plus haut sommet du monde ?", answer: "L'Everest" },
+                { id: 'easy-14', question: "Qui a peint La Joconde ?", answer: "Léonard de Vinci" },
+                { id: 'easy-15', question: "Quelle langue est principalement parlée au Brésil ?", answer: "Le portugais" },
+                { id: 'easy-16', question: "Quel est le satellite naturel de la Terre ?", answer: "La Lune" },
+                { id: 'easy-17', question: "Combien font 5 multiplié par 6 ?", answer: "30" },
+                { id: 'easy-18', question: "Quel gaz les plantes absorbent-elles principalement ?", answer: "Le dioxyde de carbone" },
+                { id: 'easy-19', question: "Quelle est la monnaie du Japon ?", answer: "Le yen" },
+                { id: 'easy-20', question: "Combien de jours compte une année non bissextile ?", answer: "365" },
+                { id: 'easy-21', question: "Combien de pattes une araignée possède-t-elle ?", answer: "8" }
+            ],
+            [
+                { id: 'medium-01', question: "En quelle année Apollo 11 a-t-elle aluni ?", answer: "1969" },
+                { id: 'medium-02', question: "Quel fleuve possède le plus grand débit au monde ?", answer: "L'Amazone" },
+                { id: 'medium-03', question: "Quelle est la lettre du symbole chimique de l'oxygène ?", answer: "O" },
+                { id: 'medium-04', question: "Combien de symphonies Beethoven a-t-il composées ?", answer: "9" },
+                { id: 'medium-05', question: "Quelle est la capitale de l'Australie ?", answer: "Canberra" },
+                { id: 'medium-06', question: "Quelle est la formule chimique du sel de table ?", answer: "NaCl" },
+                { id: 'medium-07', question: "Quel est le premier élément du tableau périodique ?", answer: "L'hydrogène" },
+                { id: 'medium-08', question: "Qui a écrit Le Petit Prince ?", answer: "Antoine de Saint-Exupéry" },
+                { id: 'medium-09', question: "Quelle est la monnaie du Royaume-Uni ?", answer: "La livre sterling" },
+                { id: 'medium-10', question: "Quel est le plus grand désert du monde ?", answer: "L'Antarctique" },
+                { id: 'medium-11', question: "Quelle est la capitale du Japon ?", answer: "Tokyo" },
+                { id: 'medium-12', question: "Quel pigment donne leur couleur verte aux plantes ?", answer: "La chlorophylle" },
+                { id: 'medium-13', question: "Quel est le plus petit nombre premier ?", answer: "2" },
+                { id: 'medium-14', question: "Quelle planète est célèbre pour ses grands anneaux ?", answer: "Saturne" },
+                { id: 'medium-15', question: "Quel organe pompe le sang dans le corps humain ?", answer: "Le cœur" },
+                { id: 'medium-16', question: "Qui a peint La Nuit étoilée ?", answer: "Vincent van Gogh" },
+                { id: 'medium-17', question: "En quelle année la tour Eiffel a-t-elle été inaugurée ?", answer: "1889" },
+                { id: 'medium-18', question: "Quel océan se trouve entre l'Afrique et l'Australie ?", answer: "L'océan Indien" },
+                { id: 'medium-19', question: "Que transporte une fibre optique ?", answer: "La lumière" },
+                { id: 'medium-20', question: "Quelle force nous maintient au sol ?", answer: "La gravité" },
+                { id: 'medium-21', question: "Quel est le deuxième plus haut sommet du monde ?", answer: "Le K2" }
+            ],
+            [
+                { id: 'hard-01', question: "Quelle est la vitesse de la lumière dans le vide, environ ?", answer: "299 792 458 m/s" },
+                { id: 'hard-02', question: "En quelle année l'Empire romain d'Occident est-il tombé ?", answer: "476" },
+                { id: 'hard-03', question: "Quelle est la capitale du Kazakhstan ?", answer: "Astana" },
+                { id: 'hard-04', question: "Quel est le plus grand satellite naturel de Saturne ?", answer: "Titan" },
+                { id: 'hard-05', question: "Quel est le symbole chimique du tungstène ?", answer: "W" },
+                { id: 'hard-06', question: "Combien d'os compte généralement le squelette adulte ?", answer: "206" },
+                { id: 'hard-07', question: "Qui a proposé le modèle de la double hélice de l'ADN ?", answer: "James Watson et Francis Crick" },
+                { id: 'hard-08', question: "En quelle année l'euro a-t-il été lancé comme monnaie scripturale ?", answer: "1999" },
+                { id: 'hard-09', question: "Quelle est la fosse océanique la plus profonde connue ?", answer: "La fosse des Mariannes" },
+                { id: 'hard-10', question: "En quelle année les premiers prix Nobel ont-ils été remis ?", answer: "1901" },
+                { id: 'hard-11', question: "Quelle lettre romaine représente le nombre 50 ?", answer: "L" },
+                { id: 'hard-12', question: "Quelle déesse grecque est associée à la sagesse ?", answer: "Athéna" },
+                { id: 'hard-13', question: "Quel scientifique a isolé l'hydrogène au XVIIIe siècle ?", answer: "Henry Cavendish" },
+                { id: 'hard-14', question: "Combien de degrés mesure un angle plat ?", answer: "180 degrés" },
+                { id: 'hard-15', question: "Quel scientifique a formulé la loi de la gravitation universelle ?", answer: "Isaac Newton" },
+                { id: 'hard-16', question: "Quelle est la plus grande planète du système solaire ?", answer: "Jupiter" },
+                { id: 'hard-17', question: "Quelle est la capitale de la Mongolie ?", answer: "Oulan-Bator" },
+                { id: 'hard-18', question: "Quelle unité mesure la résistance électrique ?", answer: "L'ohm" },
+                { id: 'hard-19', question: "Qui a écrit La République ?", answer: "Platon" },
+                { id: 'hard-20', question: "Quel est le symbole chimique du potassium ?", answer: "K" },
+                { id: 'hard-21', question: "À quelle température l'eau bout-elle au niveau de la mer ?", answer: "100 °C" }
+            ]
+        ];
+
+        const QUESTION_BANK_DB_NAME = 'star-quiz-question-bank';
+        const QUESTION_BANK_STORE = 'questions';
+        const MAX_QUESTION_BANK_SIZE = 10000;
+        const BASE_QUESTION_COUNT = QUESTIONS_DATABASE.flat().length;
+
+        let currentLevelIndex = 0, currentQuestionObj = null, selectedOption = null, ttsEnabled = true, jokersUsed = {}, liveVotes = { A: 0, B: 0, C: 0, D: 0 };
+        let tiktokSocket = null, gameWon = false, answerLocked = false, winnerKey = null, introAudioContext = null;
+        const chatPlayers = new Map();
+        const questionAnswers = new Map();
+        const USED_QUESTIONS_KEY = 'qui-veut-gagner-etoiles-used-questions-v1';
+        const QUESTIONS_PER_GAME = 20;
+        const QUESTIONS_BY_TIER = [7, 7, 6];
+        let usedQuestionIds = loadUsedQuestionIds();
+        let gameQuestions = [];
+        let importedQuestionBank = [];
+        let questionBankReady = Promise.resolve();
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderLadder();
+            document.getElementById('questionBankFile').addEventListener('change', handleQuestionBankImport);
+            questionBankReady = loadImportedQuestionBank();
+            document.getElementById('tiktokUsername').addEventListener('keydown', event => {
+                if (event.key === 'Enter') connectTikTok();
+            });
+        });
+
+        function loadUsedQuestionIds() {
+            try {
+                const storedIds = JSON.parse(localStorage.getItem(USED_QUESTIONS_KEY) || '[]');
+                return new Set(Array.isArray(storedIds) ? storedIds.filter(id => typeof id === 'string') : []);
+            } catch (error) {
+                return new Set();
+            }
+        }
+
+        function openQuestionBankDatabase() {
+            return new Promise((resolve, reject) => {
+                if (!('indexedDB' in window)) {
+                    reject(new Error('Ce navigateur ne prend pas en charge le stockage des questions.'));
+                    return;
+                }
+                const request = indexedDB.open(QUESTION_BANK_DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    if (!request.result.objectStoreNames.contains(QUESTION_BANK_STORE)) {
+                        request.result.createObjectStore(QUESTION_BANK_STORE, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Ouverture de la banque impossible.'));
+            });
+        }
+
+        async function readImportedQuestions() {
+            const database = await openQuestionBankDatabase();
+            return new Promise((resolve, reject) => {
+                const request = database.transaction(QUESTION_BANK_STORE, 'readonly')
+                    .objectStore(QUESTION_BANK_STORE).getAll();
+                request.onsuccess = () => {
+                    database.close();
+                    resolve(request.result || []);
+                };
+                request.onerror = () => {
+                    database.close();
+                    reject(request.error || new Error('Lecture de la banque impossible.'));
+                };
+            });
+        }
+
+        async function saveImportedQuestions(questions) {
+            const database = await openQuestionBankDatabase();
+            return new Promise((resolve, reject) => {
+                const transaction = database.transaction(QUESTION_BANK_STORE, 'readwrite');
+                const store = transaction.objectStore(QUESTION_BANK_STORE);
+                store.clear();
+                questions.forEach(question => store.put(question));
+                transaction.oncomplete = () => {
+                    database.close();
+                    resolve();
+                };
+                transaction.onerror = () => {
+                    database.close();
+                    reject(transaction.error || new Error('Enregistrement de la banque impossible.'));
+                };
+            });
+        }
+
+        function normalizeBankField(field) {
+            return String(field || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        }
+
+        function normalizeQuestionKey(question, answer) {
+            return `${question} ${answer}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        }
+
+        function hashQuestionKey(value) {
+            let hash = 2166136261;
+            for (const character of value) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+            return (hash >>> 0).toString(36);
+        }
+
+        function answerValues(value) {
+            if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+            if (value && typeof value === 'object') return Object.values(value).map(item => String(item).trim()).filter(Boolean);
+            if (typeof value !== 'string' || !value.trim()) return [];
+            const trimmed = value.trim();
+            if (trimmed.startsWith('[')) {
+                try { return answerValues(JSON.parse(trimmed)); } catch (error) { return []; }
+            }
+            return trimmed.split(/[|;]/).map(item => item.trim()).filter(Boolean);
+        }
+
+        function normalizeImportedQuestionRows(rows) {
+            const seen = new Set(QUESTIONS_DATABASE.flat().map(question => normalizeQuestionKey(question.question, question.answer)));
+            const difficulties = { easy: 0, facile: 0, medium: 1, moyen: 1, moyenne: 1, intermediate: 1, hard: 2, difficile: 2 };
+            const imported = [];
+
+            rows.forEach((sourceRow, rowIndex) => {
+                if (!sourceRow || typeof sourceRow !== 'object' || Array.isArray(sourceRow)) return;
+                const row = Object.fromEntries(Object.entries(sourceRow).map(([key, value]) => [normalizeBankField(key), value]));
+                const question = String(row.question || row.enonce || row.texte || '').trim();
+                const answer = String(row.answer || row.reponse || row.bonne_reponse || row.correct_answer || row.solution || '').trim();
+                if (!question || !answer) return;
+
+                const uniqueKey = normalizeQuestionKey(question, answer);
+                if (seen.has(uniqueKey)) return;
+                seen.add(uniqueKey);
+
+                const suppliedOptions = answerValues(row.options || row.choices);
+                const incorrectAnswers = [...new Set([
+                    ...answerValues(row.incorrect_answers || row.incorrectanswers || row.wrong_answers),
+                    ...suppliedOptions,
+                    ...[row.option_a, row.option_b, row.option_c, row.option_d, row.a, row.b, row.c, row.d]
+                        .map(value => String(value || '').trim())
+                ].filter(value => value && value !== answer))];
+                const difficultyName = normalizeBankField(row.difficulty || row.difficulte || row.niveau);
+                const tier = difficulties[difficultyName] ?? rowIndex % QUESTIONS_DATABASE.length;
+                imported.push({
+                    id: `imported-${hashQuestionKey(uniqueKey)}`,
+                    question,
+                    answer,
+                    incorrectAnswers,
+                    tier
+                });
+            });
+
+            return imported.slice(0, Math.max(0, MAX_QUESTION_BANK_SIZE - BASE_QUESTION_COUNT));
+        }
+
+        async function parseQuestionBankFile(file) {
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                if (!window.Papa) throw new Error('Le lecteur CSV est indisponible. Réessaie avec un fichier JSON.');
+                return new Promise((resolve, reject) => {
+                    Papa.parse(file, {
+                        header: true,
+                        skipEmptyLines: true,
+                        transformHeader: normalizeBankField,
+                        complete: result => resolve(result.data || []),
+                        error: reject
+                    });
+                });
+            }
+            const parsed = JSON.parse(await file.text());
+            const rows = Array.isArray(parsed) ? parsed : parsed.questions;
+            if (!Array.isArray(rows)) throw new Error('Le JSON doit être une liste de questions ou contenir une propriété « questions ».');
+            return rows;
+        }
+
+        function updateQuestionBankStatus(message) {
+            const total = Math.min(MAX_QUESTION_BANK_SIZE, BASE_QUESTION_COUNT + importedQuestionBank.length);
+            document.getElementById('questionBankStatus').innerText = message || `${total.toLocaleString('fr-FR')} / ${MAX_QUESTION_BANK_SIZE.toLocaleString('fr-FR')} questions disponibles`;
+        }
+
+        async function loadImportedQuestionBank() {
+            try {
+                importedQuestionBank = (await readImportedQuestions()).slice(0, MAX_QUESTION_BANK_SIZE - BASE_QUESTION_COUNT);
+                updateQuestionBankStatus();
+            } catch (error) {
+                updateQuestionBankStatus('Importe un fichier pour ajouter des questions.');
+            }
+        }
+
+        function openQuestionBankPicker() {
+            document.getElementById('questionBankFile').click();
+        }
+
+        async function handleQuestionBankImport(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const importButton = document.getElementById('importQuestionBankButton');
+            importButton.disabled = true;
+            updateQuestionBankStatus('Lecture du fichier…');
+            try {
+                const rows = await parseQuestionBankFile(file);
+                const normalized = normalizeImportedQuestionRows(rows);
+                if (!normalized.length) throw new Error('Aucune question valide trouvée. Chaque ligne doit contenir question et answer.');
+                await saveImportedQuestions(normalized);
+                importedQuestionBank = normalized;
+                updateQuestionBankStatus(`${normalized.length.toLocaleString('fr-FR')} questions importées · ${Math.min(MAX_QUESTION_BANK_SIZE, BASE_QUESTION_COUNT + normalized.length).toLocaleString('fr-FR')} au total`);
+            } catch (error) {
+                updateQuestionBankStatus(error.message || 'Impossible d’importer ce fichier.');
+            } finally {
+                importButton.disabled = false;
+                event.target.value = '';
+            }
+        }
+
+        function shuffle(items) {
+            const shuffled = [...items];
+            for (let index = shuffled.length - 1; index > 0; index--) {
+                const swapIndex = Math.floor(Math.random() * (index + 1));
+                [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+            }
+            return shuffled;
+        }
+
+        function buildQuestion(question, tierPool) {
+            const wrongAnswers = [...new Set(tierPool
+                .map(item => item.answer)
+                .concat(question.incorrectAnswers || [])
+                .filter(answer => answer !== question.answer))];
+            const optionValues = shuffle([
+                question.answer,
+                ...shuffle(wrongAnswers).slice(0, 3)
+            ]);
+            const letters = ['A', 'B', 'C', 'D'];
+            const options = Object.fromEntries(letters.map((letter, index) => [letter, optionValues[index]]));
+            return { ...question, options, answer: letters[optionValues.indexOf(question.answer)] };
+        }
+
+        function selectGameQuestions() {
+            const selectedQuestions = [];
+            const selectedIds = new Set();
+            const questionPools = QUESTIONS_DATABASE.map((pool, tier) => [
+                ...pool,
+                ...importedQuestionBank.filter(question => question.tier === tier)
+            ]);
+            const allQuestions = questionPools.flat();
+            for (let tier = 0; tier < QUESTIONS_DATABASE.length; tier++) {
+                const available = questionPools[tier].filter(question => !usedQuestionIds.has(question.id));
+                const count = QUESTIONS_BY_TIER[tier];
+                const tierSelection = shuffle(available).slice(0, count);
+                tierSelection.forEach(question => selectedIds.add(question.id));
+                selectedQuestions.push(...tierSelection.map(question => buildQuestion(question, allQuestions)));
+            }
+
+            if (selectedQuestions.length < QUESTIONS_PER_GAME) {
+                const remaining = shuffle(allQuestions.filter(question =>
+                    !usedQuestionIds.has(question.id) && !selectedIds.has(question.id)
+                )).slice(0, QUESTIONS_PER_GAME - selectedQuestions.length);
+                selectedQuestions.push(...remaining.map(question => buildQuestion(question, allQuestions)));
+            }
+            if (selectedQuestions.length < QUESTIONS_PER_GAME) return null;
+
+            return selectedQuestions;
+        }
+
+        function markQuestionAsUsed(questionId) {
+            if (usedQuestionIds.has(questionId)) return;
+            usedQuestionIds.add(questionId);
+            try {
+                localStorage.setItem(USED_QUESTIONS_KEY, JSON.stringify([...usedQuestionIds]));
+            } catch (error) {
+                document.getElementById('liveStatus').innerText = 'La mémoire des questions est indisponible dans ce navigateur.';
+            }
+        }
+
+        function startNewGame() {
+            const selectedQuestions = selectGameQuestions();
+            if (!selectedQuestions) return false;
+            gameQuestions = selectedQuestions;
+            currentLevelIndex = 0;
+            gameWon = false;
+            answerLocked = false;
+            winnerKey = null;
+            chatPlayers.clear();
+            questionAnswers.clear();
+            document.getElementById('winnerCard').classList.add('hidden');
+            document.getElementById('winnerAvatar').classList.add('hidden');
+            document.getElementById('winnerAvatarFallback').classList.remove('hidden');
+            return true;
+        }
+
+        async function beginGame() {
+            const startButton = document.getElementById('startGameButton');
+            startButton.disabled = true;
+            document.getElementById('welcomeStatus').innerText = 'Préparation de la partie…';
+            await questionBankReady;
+            if (!startNewGame()) {
+                document.getElementById('welcomeStatus').innerText = 'Il ne reste pas assez de questions inédites. Importe une nouvelle banque.';
+                startButton.disabled = false;
+                return;
+            }
+            startButton.disabled = false;
+            document.getElementById('welcomeStatus').innerText = '';
+            playIntroSound();
+            document.getElementById('welcomeScreen').hidden = true;
+            document.getElementById('gameApp').hidden = false;
+            loadQuestion();
+        }
+
+        function playIntroSound() {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return;
+            introAudioContext ||= new AudioContextClass();
+            void introAudioContext.resume();
+            const now = introAudioContext.currentTime;
+            [392, 523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
+                const oscillator = introAudioContext.createOscillator();
+                const volume = introAudioContext.createGain();
+                const start = now + index * 0.13;
+                oscillator.type = index < 2 ? 'triangle' : 'sine';
+                oscillator.frequency.setValueAtTime(frequency, start);
+                volume.gain.setValueAtTime(0.0001, start);
+                volume.gain.exponentialRampToValueAtTime(0.07, start + 0.035);
+                volume.gain.exponentialRampToValueAtTime(0.0001, start + 0.65);
+                oscillator.connect(volume);
+                volume.connect(introAudioContext.destination);
+                oscillator.start(start);
+                oscillator.stop(start + 0.68);
+            });
+        }
+
+        function showWelcomeScreen(message) {
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+            document.getElementById('gameApp').hidden = true;
+            document.getElementById('welcomeScreen').hidden = false;
+            document.getElementById('welcomeStatus').innerText = message || '';
+        }
+
+        function showQuestionBankExhausted() {
+            currentQuestionObj = null;
+            document.getElementById('questionText').innerText = 'Il ne reste pas assez de questions inédites pour lancer une partie de 20 questions.';
+            document.getElementById('currentQNum').innerText = '20';
+            document.getElementById('currentReward').innerText = '—';
+            document.getElementById('btnConfirm').disabled = true;
+            document.getElementById('btnNext').classList.add('hidden');
+            ['A', 'B', 'C', 'D'].forEach(letter => {
+                document.getElementById(`btn${letter}`).disabled = true;
+            });
+            document.getElementById('aiStatusText').innerText = 'Banque de questions épuisée';
+            document.getElementById('liveStatus').innerText = `${Math.min(MAX_QUESTION_BANK_SIZE, BASE_QUESTION_COUNT + importedQuestionBank.length).toLocaleString('fr-FR')} questions sont chargées. Importe une nouvelle banque pour continuer.`;
+        }
+
+        function renderLadder() {
+            const container = document.getElementById('starLadder');
+            container.innerHTML = '';
+            LADDER.forEach((item, index) => {
+                const ladderIndex = LADDER.length - 1 - index;
+                const div = document.createElement('div');
+                div.className = `ladder-item flex justify-between items-center px-4 py-1 rounded-xl text-xs font-bold border border-slate-800/50 ${
+                    ladderIndex === currentLevelIndex ? 'active' : ladderIndex < currentLevelIndex ? 'text-emerald-400' : item.milestone ? 'milestone' : 'text-slate-400'
+                }`;
+                div.innerHTML = `<span>${item.level}. ${item.stars}⭐</span> ${item.milestone ? '' : ''}`;
+                container.appendChild(div);
+            });
+        }
+
+        function loadQuestion() {
+            currentQuestionObj = gameQuestions[currentLevelIndex];
+            markQuestionAsUsed(currentQuestionObj.id);
+
+            document.getElementById('currentQNum').innerText = questionNumberInWords(currentLevelIndex);
+            document.getElementById('currentReward').innerText = `${LADDER[LADDER.length - 1 - currentLevelIndex].stars}⭐`;
+            document.getElementById('questionText').innerText = currentQuestionObj.question;
+
+            ['A', 'B', 'C', 'D'].forEach(opt => {
+                const btn = document.getElementById(`btn${opt}`);
+                btn.className = "hex-btn p-4 rounded-2xl flex items-center gap-4 text-left";
+                btn.disabled = false;
+                document.getElementById(`text${opt}`).innerText = currentQuestionObj.options[opt];
+            });
+
+            selectedOption = null;
+            answerLocked = false;
+            questionAnswers.clear();
+            liveVotes = { A: 0, B: 0, C: 0, D: 0 };
+            document.getElementById('btnConfirm').disabled = true;
+            document.getElementById('btnConfirm').classList.remove('hidden');
+            document.getElementById('btnNext').classList.add('hidden');
+            renderLadder();
+            renderVotes();
+            speakCurrentQuestion();
+        }
+
+        function speakCurrentQuestion() {
+            if (!ttsEnabled) return;
+            if (!('speechSynthesis' in window)) {
+                document.getElementById('aiStatusText').innerText = 'Synthèse vocale indisponible';
+                return;
+            }
+            window.speechSynthesis.cancel();
+            const questionNumber = questionNumberInWords(currentLevelIndex);
+            const text = `Question ${questionNumber} : ${currentQuestionObj.question}. Réponse A : ${currentQuestionObj.options.A}. Réponse B : ${currentQuestionObj.options.B}. Réponse C : ${currentQuestionObj.options.C}. Réponse D : ${currentQuestionObj.options.D}.`;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'fr-FR';
+            document.getElementById('aiStatusText').innerText = 'Lecture de la question';
+            utterance.onend = () => {
+                document.getElementById('aiStatusText').innerText = 'Attente du choix du candidat';
+            };
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function toggleTTS() {
+            ttsEnabled = !ttsEnabled;
+            document.getElementById('ttsToggle').innerText = ttsEnabled ? "IA Voix: ON" : "IA Voix: OFF";
+            if (!ttsEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            document.getElementById('aiStatusText').innerText = ttsEnabled ? 'Prêt à jouer' : 'Voix désactivée';
+        }
+
+        function selectAnswer(opt) {
+            if (answerLocked || document.getElementById(`btn${opt}`).disabled) return;
+            selectedOption = opt;
+            ['A', 'B', 'C', 'D'].forEach(o => {
+                document.getElementById(`btn${o}`).classList.toggle('selected', o === opt);
+            });
+            document.getElementById('btnConfirm').disabled = false;
+        }
+
+        function confirmAnswer() {
+            if (!selectedOption) return;
+            answerLocked = true;
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+            document.getElementById('btnConfirm').classList.add('hidden');
+
+            const isCorrect = selectedOption === currentQuestionObj.answer;
+            scoreChatAnswers();
+            document.getElementById(`btn${selectedOption}`).classList.add(isCorrect ? 'correct' : 'wrong');
+
+            if (isCorrect) {
+                if (typeof confetti === 'function') confetti({ particleCount: 50 });
+                if (currentLevelIndex === LADDER.length - 1) {
+                    gameWon = true;
+                    document.getElementById('questionText').innerText = `Vous avez gagné ${LADDER[0].stars}⭐ ! Le gagnant doit écrire « étoile » dans le chat.`;
+                    document.getElementById('winnerReward').innerText = `${LADDER[0].stars}⭐`;
+                    document.getElementById('aiStatusText').innerText = 'Partie parfaite ! En attente du gagnant';
+                } else {
+                    document.getElementById('btnNext').classList.remove('hidden');
+                }
+            } else {
+                document.getElementById(`btn${currentQuestionObj.answer}`).classList.add('correct');
+                const guaranteedLevel = Math.max(1, currentLevelIndex);
+                const guaranteedReward = LADDER.find(item => item.milestone && item.level <= guaranteedLevel);
+                document.getElementById('questionText').innerText = `Dommage ! Vous repartez avec ${guaranteedReward?.stars || '10 '}⭐.`;
+                document.getElementById('aiStatusText').innerText = 'Partie perdue';
+                window.setTimeout(() => showWelcomeScreen('La partie est terminée. Le plateau est prêt pour une nouvelle aventure.'), 5000);
+            }
+        }
+
+        function nextQuestion() { currentLevelIndex++; loadQuestion(); }
+        function resetGame() {
+            showWelcomeScreen('La partie est remise à zéro. Appuie pour rejouer.');
+        }
+
+        function useJoker5050() {
+            const wrong = ['A', 'B', 'C', 'D'].filter(o => o !== currentQuestionObj.answer).sort(() => Math.random() - 0.5);
+            wrong.slice(0, 2).forEach(opt => {
+                document.getElementById(`btn${opt}`).disabled = true;
+                document.getElementById(`text${opt}`).innerText = "---";
+            });
+        }
+
+        function useJokerAudience() {
+            openModal("Avis du Public", `A: ${liveVotes.A}% | B: ${liveVotes.B}% | C: ${liveVotes.C}% | D: ${liveVotes.D}%`);
+        }
+
+        function useJokerPhone() {
+            openModal("Appel à un Expert", `L'expert vous conseille de répondre la ${currentQuestionObj.answer} !`);
+        }
+
+        function openModal(title, text) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalContent').innerText = text;
+            document.getElementById('jokerModal').classList.replace('hidden', 'flex');
+        }
+
+        function closeModal() { document.getElementById('jokerModal').classList.replace('flex', 'hidden'); }
+
+        function renderVotes() {
+            const total = Object.values(liveVotes).reduce((sum, count) => sum + count, 0);
+            ['A', 'B', 'C', 'D'].forEach(o => {
+                const percentage = total ? Math.round(liveVotes[o] / total * 100) : 0;
+                document.getElementById(`voteBar${o}`).style.width = percentage + '%';
+                document.getElementById(`votePercent${o}`).innerText = percentage + '%';
+            });
+        }
+
+        function simulateTikTokVotes() {
+            liveVotes = { A: 13, B: 13, C: 13, D: 13 };
+            liveVotes[currentQuestionObj.answer] = 61;
+            renderVotes();
+        }
+
+        function applyMajorityVote() {
+            const majority = Object.entries(liveVotes).sort((first, second) => second[1] - first[1])[0];
+            if (majority[1] > 0) selectAnswer(majority[0]);
+        }
+
+        function connectTikTok() {
+            const username = document.getElementById('tiktokUsername').value.trim().replace(/^@/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                document.getElementById('liveStatus').innerText = 'Saisis un pseudo TikTok valide.';
+                return;
+            }
+            if (tiktokSocket) tiktokSocket.close();
+            const socketUrl = location.protocol === 'https:'
+                ? `wss://${location.host}`
+                : 'wss://jeu6boite.onrender.com';
+            document.getElementById('liveStatus').innerText = 'Connexion au live TikTok…';
+            tiktokSocket = new WebSocket(socketUrl);
+            tiktokSocket.addEventListener('open', () => {
+                tiktokSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+            });
+            tiktokSocket.addEventListener('message', event => {
+                try {
+                    handleTikTokMessage(JSON.parse(event.data));
+                } catch (error) {
+                    console.error('Message TikTok invalide :', error);
+                }
+            });
+            tiktokSocket.addEventListener('error', () => {
+                document.getElementById('liveStatus').innerText = 'Connexion impossible. Ouvre le jeu depuis le site connecté.';
+            });
+        }
+
+        function normalizeUsername(username) {
+            return String(username || '').trim().replace(/^@/, '').toLocaleLowerCase();
+        }
+
+        function handleTikTokMessage(data) {
+            if (data.type === 'STATUS') {
+                document.getElementById('liveStatus').innerText = data.message || 'Statut TikTok reçu.';
+                return;
+            }
+            if (data.type === 'viewer') {
+                const username = data.viewer?.username || '';
+                const key = normalizeUsername(username);
+                const player = chatPlayers.get(key);
+                if (player && data.viewer?.avatarDataUri) {
+                    player.avatarDataUri = data.viewer.avatarDataUri;
+                    if (winnerKey === key) showWinner(player);
+                }
+                return;
+            }
+            if (data.type === 'gift') {
+                const gift = data.gift || {};
+                registerGift(gift);
+                return;
+            }
+            if (data.type !== 'comment') return;
+
+            const username = String(data.commentData?.username || 'Spectateur').trim().replace(/^@/, '');
+            const comment = String(data.commentData?.comment || '').trim();
+            const key = normalizeUsername(username);
+            if (/^[a-d]$/i.test(comment) && !answerLocked && !gameWon) {
+                if (!questionAnswers.has(key)) {
+                    const answer = comment.toUpperCase();
+                    questionAnswers.set(key, { username, answer });
+                    liveVotes[answer]++;
+                    renderVotes();
+                    if (!chatPlayers.has(key)) {
+                        chatPlayers.set(key, { username, correctAnswers: 0, eliminated: false, avatarDataUri: '' });
+                    }
+                }
+                return;
+            }
+            if (/^(?:!\s*)?(?:étoile|etoile|⭐)s?$/iu.test(comment)) claimWinner(username, key);
+        }
+
+        function registerGift(gift) {
+            const username = String(gift.username || gift.nickname || 'Spectateur').trim().replace(/^@/, '');
+            const key = normalizeUsername(username);
+            const player = chatPlayers.get(key) || {
+                username,
+                correctAnswers: 0,
+                eliminated: false,
+                avatarDataUri: '',
+                giftEligible: false
+            };
+            if (Number(gift.coinCount) >= 100) {
+                player.giftEligible = true;
+                document.getElementById('liveStatus').innerText = `@${username}, cadeau de ${gift.coinCount} pièces validé pour le gain final.`;
+            }
+            chatPlayers.set(key, player);
+            if (Number(gift.coinCount) === 1) revealGiftHint(gift);
+        }
+
+        function revealGiftHint(gift) {
+            if (answerLocked || gameWon) return;
+            const wrongOptions = ['A', 'B', 'C', 'D'].filter(letter =>
+                letter !== currentQuestionObj.answer && !document.getElementById(`btn${letter}`).disabled
+            );
+            if (!wrongOptions.length) return;
+            const eliminated = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+            const button = document.getElementById(`btn${eliminated}`);
+            button.disabled = true;
+            button.classList.add('eliminated');
+            button.setAttribute('aria-label', `Réponse ${eliminated} éliminée par un cadeau`);
+            const username = String(gift.username || gift.nickname || 'Un spectateur').trim().replace(/^@/, '');
+            document.getElementById('liveStatus').innerText = `@${username} offre un cadeau de 1 pièce : la réponse ${eliminated} est éliminée.`;
+        }
+
+        function scoreChatAnswers() {
+            questionAnswers.forEach(({ answer }, key) => {
+                const player = chatPlayers.get(key);
+                if (!player || player.eliminated) return;
+                if (answer === currentQuestionObj.answer) player.correctAnswers++;
+                else player.eliminated = true;
+            });
+        }
+
+        function claimWinner(username, key) {
+            if (!gameWon) {
+                document.getElementById('liveStatus').innerText = `@${username}, attends la fin des ${QUESTIONS_PER_GAME} questions pour réclamer le gain.`;
+                return;
+            }
+            if (winnerKey) return;
+            const player = chatPlayers.get(key);
+            if (!player || player.eliminated || player.correctAnswers !== LADDER.length) {
+                document.getElementById('liveStatus').innerText = `@${username}, il faut avoir répondu juste aux ${QUESTIONS_PER_GAME} questions.`;
+                return;
+            }
+            if (!player.giftEligible) {
+                document.getElementById('liveStatus').innerText = `@${username}, envoie un cadeau d’au moins 100 pièces pour réclamer les étoiles.`;
+                return;
+            }
+            winnerKey = key;
+            player.username = username;
+            showWinner(player);
+            document.getElementById('liveStatus').innerText = `Gagnant confirmé : @${username} · ${LADDER[0].stars}⭐`;
+        }
+
+        function showWinner(player) {
+            document.getElementById('winnerUsername').innerText = `@${player.username}`;
+            const avatar = document.getElementById('winnerAvatar');
+            const fallback = document.getElementById('winnerAvatarFallback');
+            if (player.avatarDataUri) {
+                avatar.src = player.avatarDataUri;
+                avatar.classList.remove('hidden');
+                fallback.classList.add('hidden');
+            }
+            document.getElementById('winnerCard').classList.remove('hidden');
+        }
+    </script>
+    </div>
+</body>
+</html>
