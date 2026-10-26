@@ -2305,11 +2305,12 @@
         const column = sequence % coinDropBatchSize;
         const sweepColumn = row % 2 ? coinDropBatchSize - column - 1 : column;
         const lanePosition = (sweepColumn + .2 + Math.random() * .6) / coinDropBatchSize;
-        const cascadeSpread = Math.min(safeLaneOffset, radius * 1.1);
-        const landingX = physicsWidth * coinDropLaneCenter + (lanePosition * 2 - 1) * cascadeSpread;
+        const dropLane = (sequence % 3) - 1;
+        const cascadeSpread = safeLaneOffset * .62;
+        const landingX = physicsWidth * coinDropLaneCenter + dropLane * cascadeSpread + (Math.random() - .5) * radius * .6;
         const body = MatterBodies.circle(
           landingX,
-          physicsHeight * coinDropSkyPosition - (index % 12) * radius * 1.5 - Math.random() * radius * .4,
+          physicsHeight * coinDropSkyPosition - Math.floor(index / 3) % 8 * radius * 1.5 - Math.random() * radius * .4,
           radius,
           {
             label: 'gift-coin',
@@ -2367,7 +2368,7 @@
       return y + physicsHeight * (pusherHalfHeight + pusherLipDepth);
     }
 
-    function activateConveyorBody(body, velocity = { x: 0, y: 0 }) {
+    function activateConveyorBody(body, velocity = { x: 0, y: 0 }, limitedPush = false) {
       const coin = coins.find(item => item.body === body);
       const card = fallingCards.find(item => item.body === body);
       if (coin && (coin.airborne || coin.onConveyor)) return false;
@@ -2391,7 +2392,11 @@
         MatterBody.setVelocity(body, velocity);
         MatterSleeping.set(body, false);
       }
-      if (card) card.phase = 'on-conveyor';
+      if (card) {
+        card.phase = 'on-conveyor';
+        // Une carte poussée par une autre avance seulement un peu, puis s'arrête.
+        card.pushBudget = limitedPush ? physicsHeight * .02 : null;
+      }
       return true;
     }
 
@@ -3763,12 +3768,23 @@
           const conveyorExitY = height * (cardTreadmillExitPosition - rewardCardHeightScale / 2);
           const conveyorStep = Math.min(
             Math.max(0, conveyorExitY - card.body.position.y),
-            height * .0002 * delta
+            height * .0002 * delta,
+            card.pushBudget ?? Infinity
           );
           MatterBody.setPosition(card.body, {
             x: card.body.position.x,
             y: card.body.position.y + conveyorStep
           });
+          if (card.pushBudget !== null && card.pushBudget !== undefined) {
+            card.pushBudget -= conveyorStep;
+            if (card.pushBudget <= .01) {
+              card.pushBudget = null;
+              card.phase = 'landed';
+              MatterBody.setVelocity(card.body, { x: 0, y: 0 });
+              MatterBody.setStatic(card.body, true);
+              continue;
+            }
+          }
           if (card.body.position.y >= conveyorExitY) {
             card.phase = 'falling-off';
             card.airborne = true;
@@ -3831,9 +3847,9 @@
           .filter(body => body.position.y > movingBody.position.y - physicsHeight * .01);
         for (const nextBody of touched) {
           activateConveyorBody(nextBody, {
-            x: impact.x * .55,
-            y: Math.max(impact.y * .55, 0)
-          });
+            x: impact.x * .3,
+            y: Math.max(impact.y * .3, 0)
+          }, true);
         }
       }
       const sideWallHalfWidth = Math.max(8, width * playfieldSideWallScale) / 2;
@@ -4034,7 +4050,9 @@
         const cardWidth = width * rewardCardWidthScale;
         const cardHeight = height * rewardCardHeightScale;
         const slideDirection = Math.random() < .5 ? 1 : -1;
-        const targetX = width * (coinDropLaneCenter + (Math.random() - .5) * .06);
+        const targetX = width * coinDropLaneCenter +
+          (Math.floor(Math.random() * 3) - 1) * Math.max(0, width * coinDropLaneWidthScale / 2 - width * rewardCardWidthScale / 2 - 8) * .62 +
+          (Math.random() - .5) * width * .02;
         const sideX = targetX;
         const rampStartY = height * coinDropSkyPosition - cardHeight;
         const landingY = height * getCardLandingPosition();
