@@ -108,12 +108,79 @@ async function restoreFiles(directory) {
     return result.rows.length;
 }
 
+const BACKUP_KEEP = 40;
+
+function offsiteCredentials() {
+    const url = process.env.CLOUDINARY_URL?.match(/^cloudinary:\/\/(\d+):([^@]+)@([\w-]+)$/);
+    if (url) return { apiKey: url[1], apiSecret: url[2], cloudName: url[3] };
+    const { CLOUDINARY_CLOUD_NAME: cloudName, CLOUDINARY_API_KEY: apiKey, CLOUDINARY_API_SECRET: apiSecret } = process.env;
+    return cloudName && apiKey && apiSecret ? { cloudName, apiKey, apiSecret } : null;
+}
+
+async function uploadOffsiteBackup(content) {
+    const credentials = offsiteCredentials();
+    if (!credentials) return false;
+    const { cloudName, apiKey, apiSecret } = credentials;
+    const publicId = `gryphon-backups/arcade-${new Date().toISOString().slice(0, 10)}.json`;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = require('crypto').createHash('sha1')
+        .update(`overwrite=true&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
+        .digest('hex');
+    const form = new FormData();
+    form.set('file', new Blob([content], { type: 'application/json' }), 'backup.json');
+    form.set('api_key', apiKey);
+    form.set('overwrite', 'true');
+    form.set('public_id', publicId);
+    form.set('timestamp', timestamp);
+    form.set('signature', signature);
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(30000)
+    });
+    if (!response.ok) throw new Error(`Cloudinary a répondu ${response.status}.`);
+    return true;
+}
+
+async function runBackup() {
+    if (!enabled) return;
+    try {
+        await ensureTable();
+        await getPool().query(
+            'CREATE TABLE IF NOT EXISTS app_backups (id SERIAL PRIMARY KEY, content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())'
+        );
+        const current = await getPool().query("SELECT value FROM app_store WHERE key = 'accounts'");
+        if (!current.rows.length) return;
+        const content = current.rows[0].value;
+        const latest = await getPool().query('SELECT content FROM app_backups ORDER BY id DESC LIMIT 1');
+        if (!latest.rows.length || latest.rows[0].content !== content) {
+            await getPool().query('INSERT INTO app_backups (content) VALUES ($1)', [content]);
+            await getPool().query(
+                'DELETE FROM app_backups WHERE id NOT IN (SELECT id FROM app_backups ORDER BY id DESC LIMIT $1)',
+                [BACKUP_KEEP]
+            );
+            console.log('Sauvegarde automatique PostgreSQL effectuée.');
+        }
+        if (await uploadOffsiteBackup(content)) console.log('Sauvegarde externe Cloudinary effectuée.');
+    } catch (error) {
+        console.error('Échec de la sauvegarde automatique :', error.message);
+    }
+}
+
+function startBackups() {
+    if (!enabled) return;
+    const hours = Number(process.env.BACKUP_INTERVAL_HOURS);
+    const intervalMs = (Number.isFinite(hours) && hours > 0 ? hours : 6) * 3600 * 1000;
+    setTimeout(runBackup, 2 * 60 * 1000).unref();
+    setInterval(runBackup, intervalMs).unref();
+}
+
 async function close() {
     while (flushing || pending) await new Promise(resolve => setTimeout(resolve, 50));
     if (pool) await pool.end();
 }
 
-module.exports = { enabled, push, restore, pushFile, deleteFile, restoreFiles, close };
+module.exports = { enabled, push, restore, pushFile, deleteFile, restoreFiles, startBackups, runBackup, close };
 
 if (require.main === module) {
     const { storeFile, getGameFilesDirectory } = require('./account-store');

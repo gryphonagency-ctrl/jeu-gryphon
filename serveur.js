@@ -2731,6 +2731,7 @@ wss.on('connection', (socket, req) => {
 
 server.listen(port, '0.0.0.0', () => {
     restoreStarsFromSeed();
+    dbSync.startBackups();
     sweepExpiredManualAccounts();
     setInterval(() => {
         try {
