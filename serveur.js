@@ -2422,6 +2422,7 @@ function processTikTokWalletCommand(session, messageData, player) {
     if (/^!?\s*(?:étoile|etoile|star)s?$/iu.test(comment) || comment === '*') {
         broadcastSessionMessage(session, {
             type: 'WALLET_BALANCE',
+            source: 'chat',
             player: getPublicTikTokPlayer(player),
             messageId: commentData.messageId || ''
         });

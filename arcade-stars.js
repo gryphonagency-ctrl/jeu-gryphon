@@ -10,10 +10,13 @@
     let status;
     let hideTimer;
 
-    function displayPlayer(player, message = '') {
+    function displayPlayer(player, message = '', forceCard = false) {
         if (!player) return;
-        // Les jeux qui ont leur propre bannière centrale (#starcard) l'affichent eux-mêmes.
-        if (!profileCard && document.getElementById('starcard')) {
+        // Une seule bannière : le total d'étoiles (commande « étoile »). Gains, RUN et mises à jour n'en créent pas.
+        const showCard = forceCard || /^Solde global/.test(message);
+        // Les jeux qui ont leur propre bannière centrale l'affichent eux-mêmes.
+        const ownBanner = document.getElementById('starcard') || document.getElementById('walletBanner');
+        if (!showCard || (!profileCard && ownBanner)) {
             walletEvent('arcade:wallet', { player, message });
             return;
         }
@@ -69,12 +72,12 @@
             return;
         }
         if (data.type === 'WALLET_BALANCE') {
-            displayPlayer(data.player, 'Solde global consulté dans le chat.');
+            displayPlayer(data.player, data.source === 'chat' ? 'Solde global consulté dans le chat.' : 'Solde mis à jour.');
         } else if (data.type === 'WALLET_RUN') {
             displayPlayer(data.player, `${Number(data.spent || 0).toLocaleString('fr-FR')} étoiles dépensées.`);
             walletEvent('arcade:wallet-run', data);
         } else if (data.type === 'WALLET_RUN_REJECTED') {
-            displayPlayer(data.player, data.message || 'RUN impossible.');
+            displayPlayer(data.player, data.message || 'RUN impossible.', true);
             displayRunRejection(data.message || 'Solde insuffisant.');
             walletEvent('arcade:wallet-run-rejected', data);
         }
