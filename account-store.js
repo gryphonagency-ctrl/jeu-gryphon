@@ -342,6 +342,7 @@ function listTikTokStarLeaderboard() {
             playerId: player.id,
             username: player.username || player.uniqueId || 'Joueur',
             nickname: player.nickname || '',
+            avatarUrl: player.avatarKey ? `/api/tiktok-avatars/${player.avatarKey}` : '',
             ...getTikTokPlayerStarTotals(totals, player.id),
             balance: player.stars
         }))
