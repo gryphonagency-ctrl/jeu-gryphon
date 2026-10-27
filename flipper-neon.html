@@ -53,7 +53,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     <summary>🎁 Cadeaux → effets</summary>
     <label>Un cadeau par ligne : <code>nom=action</code></label>
     <textarea id="gifts" spellcheck="false"></textarea>
-    <div style="font-size:11px;opacity:.7;margin-top:4px">Actions : addBumper, multiball, lowGravity, highGravity, superBounce, bigFlippers, shield, bigBall, bonus, extraLife</div>
+    <div style="font-size:11px;opacity:.7;margin-top:4px">Actions : addBumper, movingBumper, spinner, multiball, lowGravity, highGravity, superBounce, bigFlippers, shield, bigBall, bonus, extraLife</div>
     <button id="giftsApply">Appliquer</button><button id="giftsReset">Valeurs par défaut</button>
   </details>
   <details>
@@ -116,18 +116,45 @@ canvas { display: block; width: 100vw; height: 100vh; }
   seg(60, 690, 140, 770, 0.5, colors.pink, { kick: 520, th: 5 });   // slingshot gauche
   seg(488, 690, 408, 770, 0.5, colors.pink, { kick: 520, th: 5 });  // slingshot droit
 
-  // Obstacles circulaires : bumpers métalliques et plots
+  // Obstacles circulaires : bumpers métalliques et plots (fixes ou mobiles via c.move)
   const circles = [];
-  const addCircle = (x, y, r, kind = 'bumper', ttl = 0) => {
-    const c = { x, y, r, kind, flash: 0, points: kind === 'bumper' ? 100 : 25,
+  const addCircle = (x, y, r, kind = 'bumper', ttl = 0, opts = {}) => {
+    const c = { x, y, r, kind, flash: 0, points: kind === 'bumper' ? 100 : 25, vx: 0, vy: 0,
       color: [colors.cyan, colors.pink, colors.yellow, colors.green][circles.length % 4],
-      expires: ttl ? performance.now() + ttl : 0 };
+      expires: ttl ? performance.now() + ttl : 0, perm: !ttl, move: null };
+    if (opts.move) c.move = Object.assign({ cx: x, cy: y, ax: 0, ay: 0, speed: 1, phase: 0 }, opts.move);
     circles.push(c);
     return c;
   };
   addCircle(205, 380, 32); addCircle(385, 380, 32); addCircle(295, 500, 32);
   addCircle(135, 560, 22); addCircle(455, 560, 22);
   addCircle(295, 250, 14, 'post');
+  // Bumpers mobiles permanents
+  addCircle(295, 305, 20, 'bumper', 0, { move: { ax: 105, speed: 1.3 } });
+  addCircle(80, 440, 16, 'bumper', 0, { move: { ay: 55, speed: 1.1, phase: 1 } });
+  addCircle(470, 440, 16, 'bumper', 0, { move: { ay: 55, speed: 1.1, phase: 4 } });
+
+  // Cibles rotatives : barres qui tournent et renvoient la bille
+  const rotors = [];
+  const addRotor = (x, y, len = 110, omega = 1.6, ttl = 0) => {
+    const r = { x, y, len, omega, angle: Math.random() * Math.PI, th: 7, flash: 0, points: 75,
+      color: colors.yellow, expires: ttl ? performance.now() + ttl : 0, perm: !ttl };
+    rotors.push(r);
+    return r;
+  };
+  addRotor(295, 640, 120, 1.6);
+  let simTime = 0;
+
+  function updateMovers(h) {
+    simTime += h;
+    for (const c of circles) {
+      if (!c.move) continue;
+      const m = c.move, a = m.speed * simTime + m.phase;
+      c.x = m.cx + m.ax * Math.sin(a); c.y = m.cy + m.ay * Math.sin(a);
+      c.vx = m.ax * m.speed * Math.cos(a); c.vy = m.ay * m.speed * Math.cos(a);
+    }
+    for (const r of rotors) r.angle += r.omega * h;
+  }
 
   // ---------- Flippers ----------
   const makeFlipper = (px, py, side) => ({
@@ -208,7 +235,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     if (d >= min || d === 0) return;
     const nx = dx / d, ny = dy / d;
     b.x = c.x + nx * min; b.y = c.y + ny * min;
-    const vn = b.vx * nx + b.vy * ny;
+    const vn = (b.vx - c.vx) * nx + (b.vy - c.vy) * ny;
     if (vn < 0) {
       const kick = c.kind === 'bumper' ? 1.15 : 0.6;
       b.vx -= (1 + kick) * vn * nx;
@@ -217,6 +244,28 @@ canvas { display: block; width: 100vw; height: 100vh; }
       c.flash = 1;
       state.combo++;
       addScore(c.points * Math.min(5, 1 + Math.floor(state.combo / 5)));
+    }
+  }
+
+  function collideRotor(b, r) {
+    const rad = BALL_R * state.ballScale;
+    const hx = Math.cos(r.angle) * r.len / 2, hy = Math.sin(r.angle) * r.len / 2;
+    const dx = hx * 2, dy = hy * 2, ax = r.x - hx, ay = r.y - hy;
+    let t = ((b.x - ax) * dx + (b.y - ay) * dy) / (dx * dx + dy * dy);
+    t = Math.max(0, Math.min(1, t));
+    const px = ax + dx * t, py = ay + dy * t;
+    let nx = b.x - px, ny = b.y - py;
+    const d = Math.hypot(nx, ny), min = rad + r.th;
+    if (d >= min) return;
+    if (d < 1e-6) { nx = -Math.sin(r.angle); ny = Math.cos(r.angle); } else { nx /= d; ny /= d; }
+    b.x = px + nx * min; b.y = py + ny * min;
+    // vitesse de la surface au point de contact (rotation autour du centre)
+    const svx = -r.omega * (py - r.y), svy = r.omega * (px - r.x);
+    const vn = (b.vx - svx) * nx + (b.vy - svy) * ny;
+    if (vn < 0) {
+      b.vx -= 1.85 * vn * nx; b.vy -= 1.85 * vn * ny;
+      r.flash = 1;
+      addScore(r.points);
     }
   }
 
@@ -230,6 +279,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     const h = dt / SUBSTEPS;
     for (let s = 0; s < SUBSTEPS; s++) {
       flippers.forEach(f => updateFlipper(f, h));
+      updateMovers(h);
       for (const b of balls) {
         b.vy += state.gravity * h;
         const sp = Math.hypot(b.vx, b.vy);
@@ -238,6 +288,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
         for (const sg of segments) collideSegment(b, sg, null);
         for (const f of flippers) collideSegment(b, { e: 0.25, th: f.th }, f);
         for (const c of circles) collideCircle(b, c);
+        for (const r of rotors) collideRotor(b, r);
         // bouclier : mur virtuel sous les flippers
         if (state.shieldUntil > now && b.y > 975 && b.x < LANE_X) { b.y = 975; b.vy = -Math.abs(b.vy) * 0.9 - 200; }
       }
@@ -305,10 +356,35 @@ canvas { display: block; width: 100vw; height: 100vh; }
     for (let i = circles.length - 1; i >= 0; i--) {
       if (circles[i].expires && circles[i].expires <= now) circles.splice(i, 1);
     }
+    for (let i = rotors.length - 1; i >= 0; i--) {
+      if (rotors[i].expires && rotors[i].expires <= now) rotors.splice(i, 1);
+    }
     return 0;
   }
 
+  const freeSpot = (margin = 50) => {
+    for (let t = 0; t < 40; t++) {
+      const x = 110 + Math.random() * 330, y = 230 + Math.random() * 380;
+      if (circles.every(c => Math.hypot(c.x - x, c.y - y) > c.r + margin + (c.move ? Math.max(c.move.ax, c.move.ay) : 0)) &&
+          rotors.every(r => Math.hypot(r.x - x, r.y - y) > r.len / 2 + margin)) return { x, y };
+    }
+    return null;
+  };
+
   const actions = {
+    movingBumper() {
+      const p = freeSpot(90);
+      if (!p) return;
+      const horizontal = Math.random() < 0.5, amp = 60 + Math.random() * 30;
+      addCircle(p.x, p.y, 22, 'bumper', 30000, { move: { ax: horizontal ? amp : 0, ay: horizontal ? 0 : amp, speed: 1 + Math.random(), phase: Math.random() * 6 } });
+      flash('🍩 Bumper mobile !');
+    },
+    spinner() {
+      const p = freeSpot(75);
+      if (!p) return;
+      addRotor(p.x, p.y, 100 + Math.random() * 40, (Math.random() < 0.5 ? -1 : 1) * (1.4 + Math.random()), 30000);
+      flash('🌀 Cible rotative !');
+    },
     addBumper() {
       for (let t = 0; t < 40; t++) {
         const x = 90 + Math.random() * 360, y = 220 + Math.random() * 380;
@@ -352,7 +428,8 @@ canvas { display: block; width: 100vw; height: 100vh; }
     rose: 'addBumper', 'rose': 'addBumper', heart: 'bonus', 'cœur': 'bonus', tiktok: 'shield',
     gg: 'multiball', galaxy: 'lowGravity', 'galaxie': 'lowGravity', lion: 'bigFlippers', 'lion': 'bigFlippers',
     perfume: 'superBounce', 'parfum': 'superBounce', finger_heart: 'extraLife', 'mini coeur': 'extraLife',
-    diamond: 'bigBall', 'diamant': 'bigBall', 'universe': 'highGravity', 'univers': 'highGravity'
+    diamond: 'bigBall', 'diamant': 'bigBall', 'universe': 'highGravity', 'univers': 'highGravity',
+    donut: 'spinner', 'beignet': 'spinner', corgi: 'movingBumper', 'confetti': 'movingBumper'
   };
 
   function handleGift(gift, info = {}) {
@@ -379,6 +456,8 @@ canvas { display: block; width: 100vw; height: 100vh; }
     setBackground, loadBackgroundFile, pickBackground,
     setBackgroundDim(v) { background.dim = Math.max(0, Math.min(0.9, v)); },
     addBumper: (x, y, r = 24, ttl = 0) => addCircle(x, y, r, 'bumper', ttl),
+    addMovingBumper: (x, y, r = 22, move = { ax: 80, speed: 1.2 }, ttl = 0) => addCircle(x, y, r, 'bumper', ttl, { move }),
+    addRotor: (x, y, len = 110, omega = 1.6, ttl = 0) => addRotor(x, y, len, omega, ttl),
     addWall: (ax, ay, bx, by, ttlMs) => {
       const s = { ax, ay, bx, by, e: 0.5, color: colors.yellow, th: 4, kick: 0, flash: 0 };
       segments.push(s);
@@ -397,7 +476,8 @@ canvas { display: block; width: 100vw; height: 100vh; }
     state.effects.forEach(e => e.revert()); state.effects.length = 0;
     flippers.forEach(f => f.lenMul = 1);
     state.gravity = BASE_GRAVITY; state.bounce = BASE_BOUNCE; state.ballScale = 1; state.shieldUntil = 0; state.messageUntil = 0;
-    circles.length = Math.min(circles.length, 6); // conserve les obstacles d'origine
+    circles.splice(0, circles.length, ...circles.filter(c => c.perm)); // garde les obstacles d'origine
+    rotors.splice(0, rotors.length, ...rotors.filter(r => r.perm));
     resetMainBall();
   }
 
@@ -503,6 +583,15 @@ canvas { display: block; width: 100vw; height: 100vh; }
       }
     }
 
+    // Cibles rotatives
+    for (const r of rotors) {
+      r.flash *= 0.9;
+      const hx = Math.cos(r.angle) * r.len / 2, hy = Math.sin(r.angle) * r.len / 2;
+      neonLine(r.x - hx, r.y - hy, r.x + hx, r.y + hy, r.flash > 0.15 ? '#ffffff' : r.color, r.th * 2, 14 + r.flash * 24);
+      ctx.shadowBlur = 0; ctx.fillStyle = '#d9e2ff';
+      ctx.beginPath(); ctx.arc(r.x, r.y, 8, 0, Math.PI * 2); ctx.fill();
+    }
+
     // Bouclier
     if (state.shieldUntil > now) neonLine(22, 975, LANE_X, 975, colors.green, 4, 18);
 
@@ -576,7 +665,8 @@ canvas { display: block; width: 100vw; height: 100vh; }
   const API = window.PinballAPI;
   const DEFAULT_GIFTS = {
     rose: 'addBumper', gg: 'multiball', galaxy: 'lowGravity', universe: 'highGravity', lion: 'bigFlippers',
-    perfume: 'superBounce', tiktok: 'shield', diamond: 'bigBall', heart: 'bonus', finger_heart: 'extraLife'
+    perfume: 'superBounce', tiktok: 'shield', diamond: 'bigBall', heart: 'bonus', finger_heart: 'extraLife',
+    donut: 'spinner', corgi: 'movingBumper'
   };
   const DEF = { user: '', url: 'wss://jeu6boite.onrender.com', dim: 0.45, balls: 3, grav: 1, bounce: 1, pow: 1, bgUrl: '', bgData: '', gifts: DEFAULT_GIFTS };
   let S = Object.assign({}, DEF);
