@@ -51,7 +51,7 @@
   #tkStatus.online { color: #6fe3c1; }
   @keyframes drop { from { transform: translateY(-14%) } to { transform: translateY(14%) } }
   #hud { min-height: 5vh; padding: 1vh 0; text-align: center; font-size: clamp(14px, 2.4vw, 26px); text-shadow: 0 2px 6px #000; }
-  #queueBox { position: fixed; z-index: 3; left: 10px; top: 60vh; background: rgba(0,0,0,.72); border: 2px solid #9cf; border-radius: 12px; padding: 8px 12px; display: block; width: 230px; max-height: 40vh; overflow: hidden; touch-action: none; }
+  #queueBox { position: fixed; z-index: 3; left: 10px; top: 60vh; background: rgba(0,0,0,.72); border: 2px solid #9cf; border-radius: 12px; padding: 8px 12px; display: block; width: 230px; max-height: 70vh; overflow: hidden; touch-action: none; }
   #queueBox.unpinned { cursor: grab; border-style: dashed; border-color: #ffe600; }
   #queueBox.dragging { cursor: grabbing; }
   #queueBox h4 { display: flex; align-items: center; justify-content: space-between; }
@@ -117,6 +117,8 @@
 
 <div id="panel" class="open">
   <div class="row"><strong>Panneau de contrôle</strong><button onclick="togglePanel()">✕</button></div>
+  <div class="row"><button id="turboBtn" onclick="toggleTurbo()" style="flex:1;font-weight:700">🐢 Rotation normale (cliquer pour accélérer)</button></div>
+  <div class="row">File d'attente : <button onclick="queueZoom(-.2)">➖</button><span id="queueScaleOut">100%</span><button onclick="queueZoom(.2)">➕</button></div>
 
   <h3>TikTok Live <span id="tkStatus">HORS LIGNE</span></h3>
   <div class="row"><input id="tkUser" placeholder="@ton_pseudo_tiktok"><button id="tkConnect" onclick="requestTikTokConnection()">Connecter TikTok</button></div>
@@ -294,7 +296,7 @@ function startSpin(i) {
   const r = reels[i];
   r.el.classList.remove('hit'); r.el.classList.add('spinning');
   clearInterval(r.timer);
-  r.timer = setInterval(() => { r.img.src = rand(symbols()); if (i === 0 && $('diamond').classList.contains('spin')) beep(520, .03); }, 260 + i * 40);
+  r.timer = setInterval(() => { r.img.src = rand(symbols()); if (i === 0 && $('diamond').classList.contains('spin')) beep(520, .03); }, (turbo ? 70 : 260) + i * (turbo ? 10 : 40));
 }
 
 // Cloche d'école : plusieurs partiels inharmoniques avec une longue décroissance, frappée 5 fois
@@ -366,16 +368,18 @@ async function playResult(res, who, label) {
   dia.classList.add('spin');
   if (label) hud(label);
   const fast = jobs.length > 0; // enchaînement rapide quand plusieurs tours sont en attente
-  for (let i = 0; i < 6; i++) await sleep(fast ? (i === 0 ? 500 : 130) : (i === 0 ? 1200 : 800)), stopSpin(i, finals[i]);
+  if (turbo) {
+    for (let i = 0; i < 6; i++) await sleep(i === 0 ? 180 : 50), stopSpin(i, finals[i]);
+  } else for (let i = 0; i < 6; i++) await sleep(fast ? (i === 0 ? 500 : 130) : (i === 0 ? 1200 : 800)), stopSpin(i, finals[i]);
   dia.classList.remove('spin');
   if (res.id) {
     reels.forEach(r => r.el.classList.add('hit'));
     dia.classList.add('win'); bell(); sparkle(); showVip(who, res); awardStars(who, res.value);
     hud(`🎉 ${who} aligne six cadeaux !`);
-    await sleep(1000);
+    await sleep(turbo ? 700 : 1000);
     dia.classList.remove('win');
-    await sleep(fast ? 1200 : 3000);
-  } else { hud(`${who} : raté…`); await sleep(fast ? 250 : 1400); }
+    await sleep(turbo ? 1300 : fast ? 1200 : 3000);
+  } else { hud(`${who} : raté…`); await sleep(turbo ? 60 : fast ? 250 : 1400); }
   reels.forEach((_, i) => startSpin(i));
 }
 
@@ -421,7 +425,7 @@ function receiveGift(pseudo, coins, forceWin, live) {
   // Un cadeau de N pièces fait tourner la machine N fois (gratuit), chaque tour gagne selon la chance de victoire
   const spins = Math.min(coins, 500);
   const results = forceWin ? [adminControls.drawWeightedGift()] : Array.from({ length: spins }, () => ({ lazy: true }));
-  enqueueResults(results, pseudo, `🎁 ${pseudo} offre ${coins} pièce${coins > 1 ? 's' : ''} — ${results.length} tour${results.length > 1 ? 's' : ''} !`);
+  enqueueResults(results, pseudo, `🎁 ${pseudo} a envoyé ${results.length} tour${results.length > 1 ? 's' : ''} (${coins} pièce${coins > 1 ? 's' : ''}) !`);
   refreshPanel();
 }
 
@@ -607,6 +611,26 @@ let queuePinned = true;
 })();
 
 function toggleQueue() { $('queueBox').style.display = adminControls.toggleQueueDisplay() ? 'block' : 'none'; refreshPanel(); }
+
+// Taille de la file d'attente (zoom 1 à 3), mémorisée
+let queueScale = 1;
+try { queueScale = Math.min(3, Math.max(.6, Number(localStorage.getItem('mc_queue_scale')) || 1)); } catch (e) {}
+function queueZoom(delta) {
+  queueScale = Math.min(3, Math.max(.6, Math.round((queueScale + delta) * 10) / 10));
+  $('queueBox').style.zoom = queueScale;
+  try { localStorage.setItem('mc_queue_scale', queueScale); } catch (e) {}
+  const o = $('queueScaleOut'); if (o) o.textContent = Math.round(queueScale * 100) + '%';
+}
+$('queueBox').style.zoom = queueScale; $('queueScaleOut').textContent = Math.round(queueScale * 100) + '%';
+
+// Rotation rapide : accélère les tours pour faire passer tout le monde plus vite
+let turbo = false;
+function toggleTurbo() {
+  turbo = !turbo;
+  $('turboBtn').textContent = turbo ? '⚡ Rotation RAPIDE (cliquer pour revenir à la normale)' : '🐢 Rotation normale (cliquer pour accélérer)';
+  $('turboBtn').style.background = turbo ? '#b8500a' : '#222238';
+  reels.forEach((_, i) => { if (reels[i].el.classList.contains('spinning')) startSpin(i); });
+}
 function setBalance() {
   const id = viewerId($('balUser').value);
   adminControls.modifyViewerBalance(id, parseInt($('balAmt').value, 10) || 0); refreshPanel();
@@ -661,7 +685,7 @@ function refreshPanel() {
     `<div><img src="${g.img}" alt=""><span>${g.value}</span><button onclick="removeGift(${g.id})">✕</button></div>`).join('');
   $('board').innerHTML = adminControls.getLeaderboard().slice(0, 10).map(v => `<div><span>${v.pseudo}</span><b>${v.stars}</b></div>`).join('');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></h4>` + (adminControls.queue.map((q, i) => {
+  $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <span style="margin-left:auto"><button onclick="queueZoom(-.2)" title="Réduire">➖</button><button onclick="queueZoom(.2)" title="Agrandir">➕</button><button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></span></h4>` + (adminControls.queue.map((q, i) => {
     const n = jobs.filter(j => viewerId(j.who) === q.viewerId).length;
     const v = adminControls.viewers.get(q.viewerId);
     return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span>${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}</div>`;
