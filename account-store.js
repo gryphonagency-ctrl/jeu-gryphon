@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const dbSync = require('./db-sync');
 
 const renderEnvironment = process.env.RENDER === 'true';
 const persistentDataDirectory = '/var/data';
@@ -212,6 +213,7 @@ function writeStore(store) {
     const temporaryFile = `${storeFile}.${process.pid}.tmp`;
     fs.writeFileSync(temporaryFile, JSON.stringify(store), { mode: 0o600 });
     fs.renameSync(temporaryFile, storeFile);
+    dbSync.push('accounts', JSON.stringify(store));
 }
 
 function updateStore(mutator) {
@@ -971,6 +973,7 @@ function creditBrowserStars({ username, amount, gameId, transactionId, absolute 
 }
 
 module.exports = {
+    storeFile,
     creditBrowserStars,
     deleteCheckout,
     deleteGame,
