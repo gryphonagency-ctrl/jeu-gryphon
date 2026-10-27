@@ -155,6 +155,8 @@
   <input id="newImg" type="file" accept="image/*"><button onclick="addGift()">Ajouter le cadeau</button>
 
   <h3>Import / Export</h3>
+  <div class="row"><button onclick="saveAll()" style="flex:1;background:#1d6b3a;font-weight:700">💾 Enregistrer tout mon setup et les étoiles</button></div>
+  <div id="saveInfo" style="opacity:.8;margin:2px 0">Rechargé automatiquement à la prochaine ouverture.</div>
   <div class="row"><button onclick="exportSetup()">Exporter</button><input id="importFile" type="file" accept=".json"></div>
 </div>
 
@@ -625,6 +627,28 @@ function exportSetup() {
   a.href = URL.createObjectURL(new Blob([adminControls.exportState()], { type: 'application/json' }));
   a.download = 'machine-cadeaux.json'; a.click();
 }
+// Enregistre cadeaux, probabilité, étoiles des spectateurs, file d'attente et son dans ce navigateur.
+const SAVE_KEY = 'mc_setup_v1';
+function saveAll() {
+  const info = $('saveInfo');
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ state: adminControls.exportState(), sound: adminControls.isSoundEnabled, nextId, savedAt: Date.now() }));
+    info.textContent = `✅ Setup et étoiles enregistrés à ${new Date().toLocaleTimeString('fr-FR')}.`;
+  } catch (e) {
+    info.textContent = '⚠ Enregistrement impossible (images trop lourdes) : utilise Exporter.';
+  }
+}
+function loadSaved() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!s || !s.state || !adminControls.importState(s.state).success) return;
+    adminControls.isSoundEnabled = s.sound !== false;
+    nextId = Math.max(nextId, Number(s.nextId) || 0);
+    $('rtp').value = adminControls.rtp * 100; $('rtp').dispatchEvent(new Event('input'));
+    $('soundBtn').textContent = adminControls.isSoundEnabled ? '🔊 Son : ON (M)' : '🔇 Son : MUET (M)';
+    $('saveInfo').textContent = `Setup rechargé (enregistré à ${new Date(s.savedAt).toLocaleTimeString('fr-FR')}).`;
+  } catch (e) {}
+}
 $('importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   const r = adminControls.importState(await f.text());
@@ -648,6 +672,7 @@ function refreshPanel() {
   if (keep) sel.value = keep;
 }
 
+loadSaved();
 reels.forEach((_, i) => startSpin(i));
 refreshPanel();
 </script>
