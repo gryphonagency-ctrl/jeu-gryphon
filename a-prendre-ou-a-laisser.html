@@ -845,14 +845,14 @@ window.addEventListener('arcade:wallet', event => {
     showStars(getViewer(name, p.avatarUrl || ''), '', p.stars);
 });
 const deferredRuns = [];
-function applyWalletRun(name, spent) {
+function applyWalletRun(name, spent, remaining) {
     const v = getViewer(name, '');
     v.lastStake = spent;
     v.stake = (v.stake || 0) + spent;
     if (S.phase === 'recruiting') { S.candidates.set(v.key, v); if (!S.contestant) schedulePick(S.gen); }
     saveAll();
     updateChip();
-    showStars(v, `RUN ! Mise ⭐ ${fmt(v.stake)} · gain max ⭐ ${fmt(Math.round(Math.max(...settings.mult) * v.stake))}`);
+    showStars(v, `RUN ! Mise ⭐ ${fmt(v.stake)} ·     gain max ⭐ ${fmt(Math.round(Math.max(...settings.mult) * v.stake))}`, remaining);
 }
 window.addEventListener('arcade:wallet-run', event => {
     const p = event.detail && event.detail.player, spent = Math.floor(Number(event.detail && event.detail.spent) || 0);
@@ -860,13 +860,13 @@ window.addEventListener('arcade:wallet-run', event => {
     if (!name || spent < 1) return;
     const v = getViewer(name, '');
     // Son propre tour est en cours : la mise est appliquée dès la fin de la partie, pour ne pas être effacée.
-    if (S.contestant && v.key === S.contestant.key && S.phase !== 'over') { deferredRuns.push({ name, spent }); showStars(v, `RUN ! ⭐ ${fmt(spent)} pour la prochaine partie`); return; }
-    applyWalletRun(name, spent);
+    if (S.contestant && v.key === S.contestant.key && S.phase !== 'over')     { deferredRuns.push({ name, spent, remaining: p.stars }); showStars(v, `RUN ! ⭐ ${fmt(spent)} pour la prochaine partie`, p.stars); return; }
+        applyWalletRun(name, spent, p.stars);
 });
 setInterval(() => {
     if (!deferredRuns.length) return;
     const idx = deferredRuns.findIndex(r => !(S.contestant && getViewer(r.name, '').key === S.contestant.key && S.phase !== 'over'));
-    if (idx >= 0) { const r = deferredRuns.splice(idx, 1)[0]; applyWalletRun(r.name, r.spent); }
+    if (idx >= 0) { const r = deferredRuns.splice(idx, 1)[0]; applyWalletRun(r.name, r.spent, r.remaining); }
 }, 1000);
 
 function avatarHTML(v) {
