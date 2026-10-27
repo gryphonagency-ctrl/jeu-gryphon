@@ -239,6 +239,10 @@ function upsertTikTokPlayer(profile) {
             const legacy = store.tiktokPlayers[handleKey];
             const target = store.tiktokPlayers[playerKey] || { ...legacy, id: playerKey, stars: 0 };
             target.stars = (Number(target.stars) || 0) + (Number(legacy.stars) || 0);
+            for (const [owner, value] of Object.entries(legacy.wallets || {})) {
+                target.wallets = { ...(target.wallets || {}) };
+                target.wallets[owner] = (Number(target.wallets[owner]) || 0) + (Number(value) || 0);
+            }
             store.tiktokPlayers[playerKey] = target;
             for (const transaction of Object.values(store.tiktokStarTransactions || {})) {
                 if (transaction.playerId === handleKey) transaction.playerId = playerKey;
@@ -293,9 +297,35 @@ function listTikTokPlayers() {
     return Object.values(readStore().tiktokPlayers);
 }
 
-function getTikTokStarTotals(store) {
+// Chaque compte (gryphon.agency, gryphon.games…) a son propre portefeuille par spectateur.
+// Le solde historique `player.stars` appartient à l'administrateur ; les autres comptes sont dans `player.wallets`.
+const ADMIN_WALLET_OWNER = 'gryphon.agency';
+
+function normalizeWalletOwner(owner) {
+    return String(owner || '').trim().toLowerCase() || ADMIN_WALLET_OWNER;
+}
+
+function getWalletBalance(player, owner = ADMIN_WALLET_OWNER) {
+    if (!player) return 0;
+    const key = normalizeWalletOwner(owner);
+    if (key === ADMIN_WALLET_OWNER) return Number(player.stars) || 0;
+    return Number(player.wallets?.[key]) || 0;
+}
+
+function setWalletBalance(player, owner, value) {
+    const key = normalizeWalletOwner(owner);
+    if (key === ADMIN_WALLET_OWNER) {
+        player.stars = value;
+        return;
+    }
+    player.wallets = { ...(player.wallets || {}), [key]: value };
+}
+
+function getTikTokStarTotals(store, owner = ADMIN_WALLET_OWNER) {
     const totals = new Map();
+    const ownerKey = normalizeWalletOwner(owner);
     for (const transaction of Object.values(store.tiktokStarTransactions)) {
+        if (normalizeWalletOwner(transaction.owner) !== ownerKey) continue;
         const playerTotals = totals.get(transaction.playerId) || { totalEarned: 0, totalSpent: 0 };
         if (transaction.reason === 'game-reward' || transaction.reason === 'leaderboard-import-earned') {
             playerTotals.totalEarned += transaction.delta;
@@ -329,14 +359,14 @@ function getTikTokStarSummaryForAccount(username) {
     return {
         username: player.username || player.uniqueId || tiktokUsername,
         nickname: player.nickname || '',
-        ...getTikTokPlayerStarTotals(getTikTokStarTotals(store), player.id),
-        balance: player.stars
+        ...getTikTokPlayerStarTotals(getTikTokStarTotals(store, username), player.id),
+        balance: getWalletBalance(player, username)
     };
 }
 
-function listTikTokStarLeaderboard() {
+function listTikTokStarLeaderboard(owner = ADMIN_WALLET_OWNER) {
     const store = readStore();
-    const totals = getTikTokStarTotals(store);
+    const totals = getTikTokStarTotals(store, owner);
     return Object.values(store.tiktokPlayers)
         .map(player => ({
             playerId: player.id,
@@ -344,7 +374,7 @@ function listTikTokStarLeaderboard() {
             nickname: player.nickname || '',
             avatarUrl: player.avatarKey ? `/api/tiktok-avatars/${player.avatarKey}` : '',
             ...getTikTokPlayerStarTotals(totals, player.id),
-            balance: player.stars
+            balance: getWalletBalance(player, owner)
         }))
         .sort((left, right) =>
             right.totalEarned - left.totalEarned ||
@@ -433,34 +463,40 @@ function importTikTokStarLeaderboard(snapshot) {
     });
 }
 
-function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, reason }) {
-    const result = applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason });
+function applyTikTokStarTransaction({ transactionId, playerId, delta, gameId, reason, owner }) {
+    const result = applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason, owner });
     if (result.applied) scheduleStarBackup();
     return result;
 }
 
-function applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason }) {
+function applyTikTokStarTransactionNow({ transactionId, playerId, delta, gameId, reason, owner }) {
+    const ownerKey = normalizeWalletOwner(owner);
+    // Les transactions de l'administrateur gardent leur identifiant d'origine ; les autres comptes ont un espace à part.
+    const storedId = ownerKey === ADMIN_WALLET_OWNER ? transactionId : `${ownerKey}:${transactionId}`;
     return updateStore(store => {
-        const existingTransaction = store.tiktokStarTransactions[transactionId];
+        const existingTransaction = store.tiktokStarTransactions[storedId];
         if (existingTransaction) {
             const existingPlayer = store.tiktokPlayers[existingTransaction.playerId];
-            return { applied: false, duplicate: true, balance: existingPlayer?.stars || 0 };
+            return { applied: false, duplicate: true, balance: getWalletBalance(existingPlayer, ownerKey) };
         }
         const player = store.tiktokPlayers[playerId];
         if (!player) return { applied: false, duplicate: false, balance: 0 };
-        const balance = player.stars + delta;
+        const current = getWalletBalance(player, ownerKey);
+        const balance = current + delta;
         if (!Number.isSafeInteger(balance) || balance < 0) {
-            return { applied: false, duplicate: false, balance: player.stars };
+            return { applied: false, duplicate: false, balance: current };
         }
-        player.stars = balance;
+        setWalletBalance(player, ownerKey, balance);
         player.updatedAt = new Date().toISOString();
-        store.tiktokStarTransactions[transactionId] = {
+        const transaction = {
             playerId,
             delta,
             gameId,
             reason,
             createdAt: player.updatedAt
         };
+        if (ownerKey !== ADMIN_WALLET_OWNER) transaction.owner = ownerKey;
+        store.tiktokStarTransactions[storedId] = transaction;
         return { applied: true, duplicate: false, balance };
     });
 }
@@ -476,8 +512,9 @@ function scheduleStarBackup() {
             const directory = path.join(path.dirname(storeFile), 'star-backups');
             fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
             const players = Object.values(store.tiktokPlayers).map(player => ({
-                id: player.id, username: player.username, nickname: player.nickname, stars: player.stars
-            }));
+                id: player.id, username: player.username, nickname: player.nickname, stars: player.stars,
+                                ...(player.wallets && Object.keys(player.wallets).length ? { wallets: player.wallets } : {})
+                            }));
             const content = JSON.stringify({ savedAt: new Date().toISOString(), players });
             const write = name => {
                 const target = path.join(directory, name);
@@ -963,13 +1000,15 @@ function setSubscriptionStatus(subscriptionId, status, updates = {}) {
 
 // Crédite des étoiles gagnées dans un jeu (récupérées dans le navigateur de l'admin), même si le joueur n'est pas en live.
 // Avec `absolute`, amount est le total gagné dans ce jeu : seul l'écart avec ce que le serveur a déjà reçu est crédité.
-function creditBrowserStars({ username, amount, gameId, transactionId, absolute = false }) {
+function creditBrowserStars({ username, amount, gameId, transactionId, absolute = false, owner }) {
+    const ownerKey = normalizeWalletOwner(owner);
     const handle = String(username || '').trim().replace(/^@/, '').toLowerCase();
     if (!/^[a-z0-9._]{1,32}$/.test(handle)) return { applied: false, skipped: true };
     let player = resolveTikTokPlayer(handle);
     if (!player) player = upsertTikTokPlayer({ uniqueId: handle, username: handle });
     if (absolute) {
         const known = Object.values(readStore().tiktokStarTransactions).reduce((sum, transaction) =>
+            normalizeWalletOwner(transaction.owner) === ownerKey &&
             transaction.playerId === player.id && transaction.gameId === gameId &&
             transaction.reason === 'game-reward' && transaction.delta > 0 ? sum + transaction.delta : sum, 0);
         amount -= known;
@@ -980,12 +1019,15 @@ function creditBrowserStars({ username, amount, gameId, transactionId, absolute 
         playerId: player.id,
         delta: amount,
         gameId,
-        reason: 'game-reward'
+        reason: 'game-reward',
+        owner: ownerKey
     });
     return { applied: result.applied, duplicate: result.duplicate, skipped: false };
 }
 
 module.exports = {
+    ADMIN_WALLET_OWNER,
+    getWalletBalance,
     storeFile,
     creditBrowserStars,
     deleteCheckout,

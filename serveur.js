@@ -308,13 +308,13 @@ function getGameCatalog() {
     return [...builtInGames, ...uploadedGames];
 }
 
-function getPublicTikTokPlayer(player) {
+function getPublicTikTokPlayer(player, owner) {
     return {
         playerId: player.id,
         username: player.username,
         uniqueId: player.uniqueId,
         nickname: player.nickname,
-        stars: player.stars,
+        stars: store.getWalletBalance(player, owner),
         avatarUrl: player.avatarKey ? `/api/tiktok-avatars/${player.avatarKey}` : ''
     };
 }
@@ -1031,7 +1031,7 @@ const server = http.createServer((req, res) => {
             return;
         }
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ player: getPublicTikTokPlayer(player) }));
+        res.end(JSON.stringify({ player: getPublicTikTokPlayer(player, access.usernameForRequest(req)) }));
         return;
     }
     if (pathname === '/api/tiktok-stars' && req.method === 'POST') {
@@ -1071,7 +1071,8 @@ const server = http.createServer((req, res) => {
                     username: body.username || body.playerId,
                     amount,
                     gameId: canonicalGameId,
-                    transactionId
+                    transactionId,
+                    owner: accountName
                 });
                 const creditedPlayer = store.resolveTikTokPlayer(body.username || body.playerId);
                 if (credit.skipped || !creditedPlayer || (!credit.applied && !credit.duplicate)) {
@@ -1080,7 +1081,7 @@ const server = http.createServer((req, res) => {
                     return;
                 }
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ applied: credit.applied, duplicate: credit.duplicate, player: getPublicTikTokPlayer(creditedPlayer) }));
+                res.end(JSON.stringify({ applied: credit.applied, duplicate: credit.duplicate, player: getPublicTikTokPlayer(creditedPlayer, accountName) }));
                 return;
             }
             if (!appearedOnOwnerLive) {
@@ -1093,7 +1094,8 @@ const server = http.createServer((req, res) => {
                 playerId: player.id,
                 delta: amount,
                 gameId: canonicalGameId,
-                reason: 'game-reward'
+                reason: 'game-reward',
+                owner: accountName
             });
             if (!result.applied && !result.duplicate) {
                 res.writeHead(409, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -1101,7 +1103,7 @@ const server = http.createServer((req, res) => {
                 return;
             }
             const updatedPlayer = store.resolveTikTokPlayer(player.id);
-            const publicPlayer = getPublicTikTokPlayer(updatedPlayer);
+            const publicPlayer = getPublicTikTokPlayer(updatedPlayer, accountName);
             for (const session of sessions.values()) {
                 const ownedByAccount = [...session.clients].some(client =>
                     authenticatedClientUsernames.get(client)?.toLowerCase() === accountName);
@@ -2423,7 +2425,7 @@ function updateSessionWalletProfile(session, messageData) {
         avatarSavedAt
     });
     session.seenPlayerIds.add(player.id);
-    messageData.walletPlayer = getPublicTikTokPlayer(player);
+    messageData.walletPlayer = getPublicTikTokPlayer(player, session.username);
     if (messageData.type === 'viewer' && messageData.viewer) {
         messageData.viewer.avatarUrl = messageData.walletPlayer.avatarUrl;
     }
@@ -2446,24 +2448,26 @@ function broadcastSessionMessage(session, messageData) {
 function processTikTokWalletCommand(session, messageData, player) {
     if (messageData.type !== 'comment' || !player) return;
     player = store.resolveTikTokPlayer(player.id) || player;
+    const walletOwner = session.username;
     const commentData = messageData.commentData || {};
     const comment = String(commentData.comment || '').trim();
     if (/^!?\s*(?:étoile|etoile|star)s?$/iu.test(comment) || comment === '*') {
         broadcastSessionMessage(session, {
             type: 'WALLET_BALANCE',
             source: 'chat',
-            player: getPublicTikTokPlayer(player),
+            player: getPublicTikTokPlayer(player, walletOwner),
             messageId: commentData.messageId || ''
         });
     }
     const runMatch = /^!?\s*run(?:\s+(\d+))?$/iu.exec(comment);
     if (!runMatch) return;
     const requested = runMatch[1] ? Number(runMatch[1]) : 0;
-    const amount = requested > 0 ? Math.min(requested, player.stars) : player.stars;
+    const balance = store.getWalletBalance(player, walletOwner);
+    const amount = requested > 0 ? Math.min(requested, balance) : balance;
     if (amount < 1) {
         broadcastSessionMessage(session, {
             type: 'WALLET_RUN_REJECTED',
-            player: getPublicTikTokPlayer(player),
+            player: getPublicTikTokPlayer(player, walletOwner),
             message: `@${player.username}, ton solde est à zéro : aucune étoile n’a été débitée.`
         });
         return;
@@ -2477,13 +2481,14 @@ function processTikTokWalletCommand(session, messageData, player) {
         playerId: player.id,
         delta: -amount,
         gameId: 'all-games',
-        reason: 'run'
+        reason: 'run',
+        owner: walletOwner
     });
     const updatedPlayer = store.resolveTikTokPlayer(player.id);
     if (!result.applied) return;
     broadcastSessionMessage(session, {
         type: 'WALLET_RUN',
-        player: getPublicTikTokPlayer(updatedPlayer),
+        player: getPublicTikTokPlayer(updatedPlayer, walletOwner),
         spent: amount,
         messageId: sourceId
     });
