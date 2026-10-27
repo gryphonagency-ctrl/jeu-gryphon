@@ -82,6 +82,7 @@ const protectedRoutes = new Set([
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
+    '/mots-associes.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -117,6 +118,7 @@ const staticGameIds = [
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
+    '/mots-associes.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -135,6 +137,7 @@ store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
+store.grantGameAccessToExistingCreators('/mots-associes.html');
 store.grantGameAccessToExistingCreators('/bouteilles-colorees.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
@@ -158,6 +161,7 @@ const staticGameTitles = {
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
+    '/mots-associes.html': 'Mots Associés',
     '/bouteilles-colorees.html': 'Le Jeu des Bouteilles Colorées',
     '/a-prendre-ou-a-laisser.html': 'À prendre ou à laisser',
     '/vrai-ou-faux.html': 'Vrai ou Faux',
@@ -184,6 +188,7 @@ const gameRouteIds = new Map([
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
+    ['/mots-associes.html', '/mots-associes.html'],
     ['/bouteilles-colorees.html', '/bouteilles-colorees.html'],
     ['/a-prendre-ou-a-laisser.html', '/a-prendre-ou-a-laisser.html'],
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
@@ -2061,6 +2066,7 @@ const server = http.createServer((req, res) => {
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
+        ['/mots-associes.html', [path.join(__dirname, 'mots-associes.html'), 'text/html; charset=utf-8']],
         ['/bouteilles-colorees.html', [bottleGameFile, 'text/html; charset=utf-8']],
         ['/a-prendre-ou-a-laisser.html', [dealGameFile, 'text/html; charset=utf-8']],
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
@@ -2090,6 +2096,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
+        ['/images-vitrine/mots-associes.png', [path.join(__dirname, 'images-vitrine', 'mots-associes.png'), 'image/png']],
         ['/images-vitrine/bouteilles-colorees-apercu.png', [path.join(__dirname, 'images-vitrine', 'bouteilles-colorees-apercu.png'), 'image/png']],
         ['/images-vitrine/a-prendre-ou-a-laisser-apercu.png', [path.join(__dirname, 'images-vitrine', 'a-prendre-ou-a-laisser-apercu.png'), 'image/png']],
         ['/images-vitrine/vrai-ou-faux-apercu.png', [path.join(__dirname, 'images-vitrine', 'vrai-ou-faux-apercu.png'), 'image/png']],

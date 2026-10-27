@@ -1,0 +1,514 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mots associés – Gryphon Agency</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #05070d; font-family: "Segoe UI", Arial, sans-serif; color: #1c1c2e;
+         display: flex; justify-content: center; min-height: 100vh; }
+  :root { --dim: .65; --blur: 0px; --slot-bg: #f8ded9; --slot-fg: #1c1c2e; --slot-found: #3ddc84; --slot-fs: 17px;
+          --bubble-border: #3b5bdb; --bubble-fg: #3b5bdb; --chat-bg: #3b5bdb; --brand-color: #d9b45a;
+          --game-w: 480px; --mascot-w: 130px; --cols: 2; }
+  #game { position: relative; width: 100%; max-width: var(--game-w); min-height: 100vh; padding: 16px 12px 12px;
+          overflow: hidden; display: flex; flex-direction: column; gap: 10px; background: #05070d; }
+  #game > * { position: relative; z-index: 2; }
+  #game > #bg { position: absolute; inset: -30px; z-index: 0; background: center/cover no-repeat; filter: blur(var(--blur)); }
+  #game > #dim { position: absolute; inset: 0; z-index: 1; background: rgba(5,10,25,var(--dim)); }
+  #game > #bg.contain { background-size: contain; background-color: #05070d; }
+  #top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 130px; }
+  #mascot { width: var(--mascot-w); height: auto; flex: none; overflow: visible; filter: drop-shadow(0 4px 8px rgba(0,0,0,.5)); }
+  #mascot .bob { animation: bob 1.6s ease-in-out infinite; }
+  #mascot .wing { animation: flap .9s ease-in-out infinite; }
+  #mascot .wl { transform-origin: 86px 112px; }
+  #mascot .wr { transform-origin: 114px 112px; animation-name: flapR; }
+  #mascot .head { transform-origin: 100px 110px; animation: nod 2.4s ease-in-out infinite; }
+  #mascot .tail { transform-origin: 138px 150px; animation: wag 1.2s ease-in-out infinite; }
+  #mascot .eye { animation: blink 4s infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes bob { 50% { transform: translateY(-6px); } }
+  @keyframes flap { 0%,100% { transform: rotate(18deg); } 50% { transform: rotate(-22deg); } }
+  @keyframes flapR { 0%,100% { transform: rotate(-18deg); } 50% { transform: rotate(22deg); } }
+  @keyframes nod { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+  @keyframes wag { 50% { transform: rotate(10deg); } }
+  @keyframes blink { 0%,94%,100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+  #bubble { flex: 1; background: #fff; border: 4px solid var(--bubble-border); border-radius: 22px; padding: 10px 14px; text-align: center; }
+  #bubble small { color: #667; font-size: 14px; }
+  #theme { font-size: 32px; font-weight: 900; color: var(--bubble-fg); letter-spacing: 1px; }
+  #hud { display: flex; justify-content: space-between; align-items: center; color: #fff; font-weight: 700; }
+  #timer { font-size: 36px; display: flex; align-items: center; gap: 8px; }
+  #timer.low { color: #ff5d5d; }
+  #round { font-size: 16px; opacity: .9; }
+  #slots { display: grid;   grid-template-columns: repeat(var(--cols), 1fr); gap: 10px; flex: 1; align-content: start; }
+    .slot { background: var(--slot-bg); color: var(--slot-fg); border: 2px solid rgba(0,0,0,.12); border-radius: 10px; padding: 14px 6px; text-align: center;
+            font-size: var(--slot-fs); font-weight: 800; letter-spacing: 1px; min-height: 56px; transition: .3s;
+          white-space: nowrap; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+  .slot.found { background: var(--slot-found); border-color: #1fa95f; color: #053d1f; }
+    .slot.missed { background: #ffb3b3; color: #7a1414; }
+  .slot small { display: block; font-size: 11px; letter-spacing: 0; font-weight: 600; }
+  #rose { align-self: flex-end; background: none; border: 0; color: #fff; font: 800 9px Arial; cursor: pointer; text-align: center; }
+  #rose span { display: block; font-size: 34px; }
+  #chat { background: var(--chat-bg); color: #fff; border-radius: 10px; padding: 14px; text-align: center; font-weight: 700; }
+  #brand { text-align: center; font-size: 34px; font-weight: 900; letter-spacing: 3px; color: var(--brand-color); margin: 4px 0; }
+  #notice { color: #fff; text-align: center; min-height: 20px; font-size: 14px; }
+  #cfgToggle { position: fixed; top: 10px; right: 10px; z-index: 30; width: 42px; height: 42px; border-radius: 50%; border: 0;
+               background: #3b5bdb; color: #fff; font-size: 22px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  #cfg { position: fixed; top: 0; right: 0; bottom: 0; width: 330px; max-width: 100vw; z-index: 20; background: #101626; color: #e8ecff;
+         padding: 14px 14px 30px; overflow-y: auto; font-size: 13px; box-shadow: -4px 0 20px rgba(0,0,0,.6); transition: transform .25s; }
+  #cfg.closed { transform: translateX(105%); }
+  #cfg h2 { margin: 0 50px 10px 0; font-size: 17px; color: #d9b45a; }
+  #cfg details { border-top: 1px solid #26304d; padding: 6px 0; }
+  #cfg summary { cursor: pointer; font-weight: 700; padding: 6px 0; color: #9fb4ff; }
+  #cfg label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  #cfg label.col { flex-direction: column; align-items: stretch; }
+  #cfg input[type=text], #cfg input[type=number], #cfg select, #cfg textarea { width: 150px; padding: 5px; border-radius: 6px; border: 1px solid #34406a; background: #1a2340; color: #fff; }
+  #cfg label.col input[type=text], #cfg label.col textarea { width: 100%; }
+  #cfg textarea { height: 150px; font: 12px Consolas, monospace; }
+  #cfg input[type=range] { width: 150px; }
+  #cfg input[type=color] { width: 44px; height: 26px; border: 0; padding: 0; background: none; }
+  #cfg button { padding: 6px 10px; border: 0; border-radius: 6px; cursor: pointer; font-weight: 700; background: #3b5bdb; color: #fff; margin: 2px 2px 2px 0; }
+  #cfg button.warn { background: #b03a48; }
+  #cfg small, #cfgMsg, #status { color: #9aa6c9; display: block; margin-top: 4px; }
+  @media (min-width: 900px) { body.cfg-open { padding-right: 330px; } }
+  #scores { color: #fff; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="bg"></div><div id="dim"></div>
+  <div id="hud"><span id="round"></span><span id="timer">⏱ <b id="time">60</b></span></div>
+  <div id="top">
+    <svg id="mascot" viewBox="0 0 200 190" aria-label="Griffon souriant">
+      <defs>
+        <linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#c9822b"/></linearGradient>
+        <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8b04a"/><stop offset="1" stop-color="#b8741f"/></linearGradient>
+      </defs>
+      <g class="bob">
+        <path class="tail" d="M138 150q40-4 36-38 16 16 0 34-14 14-36 8z" fill="#b8741f"/>
+        <circle cx="173" cy="112" r="7" fill="#7a4a12"/>
+        <g class="wing wl"><path d="M86 112C62 96 30 82 8 52c-2 22 6 38 18 50-8-2-14-4-20-8 8 22 30 36 58 44z" fill="url(#gw)" stroke="#8a5516" stroke-width="2.5" stroke-linejoin="round"/><path d="M30 78q22 20 50 32M18 66q26 30 62 50" fill="none" stroke="#8a5516" stroke-width="2" stroke-linecap="round"/></g>
+        <g class="wing wr"><path d="M114 112C138 96 170 82 192 52c2 22-6 38-18 50 8-2 14-4 20-8-8 22-30 36-58 44z" fill="url(#gw)" stroke="#8a5516" stroke-width="2.5" stroke-linejoin="round"/><path d="M170 78q-22 20-50 32M182 66q-26 30-62 50" fill="none" stroke="#8a5516" stroke-width="2" stroke-linecap="round"/></g>
+        <ellipse cx="100" cy="136" rx="40" ry="38" fill="url(#gb)" stroke="#8a5516" stroke-width="2.5"/>
+        <ellipse cx="100" cy="146" rx="22" ry="24" fill="#f7d98a"/>
+        <ellipse cx="78" cy="174" rx="15" ry="8" fill="#f2c25c" stroke="#8a5516" stroke-width="2.5"/>
+        <ellipse cx="122" cy="174" rx="15" ry="8" fill="#f2c25c" stroke="#8a5516" stroke-width="2.5"/>
+        <path d="M72 174v-2m6 2v-2m6 2v-2M116 174v-2m6 2v-2m6 2v-2" stroke="#8a5516" stroke-width="2" stroke-linecap="round"/>
+        <g class="head">
+          <path d="M82 52l-6-22 16 12 8-20 8 20 16-12-6 22z" fill="#fff4cf" stroke="#8a5516" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="100" cy="82" r="32" fill="#fff4cf" stroke="#8a5516" stroke-width="2.5"/>
+          <path d="M68 84q-6 12 4 22M132 84q6 12-4 22" fill="none" stroke="#e8c36a" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="86" cy="76" r="9" fill="#fff" stroke="#8a5516" stroke-width="2"/><circle cx="114" cy="76" r="9" fill="#fff" stroke="#8a5516" stroke-width="2"/>
+          <circle class="eye" cx="88" cy="77" r="5" fill="#1a1a2e"/><circle class="eye" cx="112" cy="77" r="5" fill="#1a1a2e"/>
+          <circle cx="90" cy="75" r="1.8" fill="#fff"/><circle cx="114" cy="75" r="1.8" fill="#fff"/>
+          <ellipse cx="74" cy="92" rx="6" ry="4" fill="#ff9a8a" opacity=".6"/><ellipse cx="126" cy="92" rx="6" ry="4" fill="#ff9a8a" opacity=".6"/>
+          <path d="M88 90q12-6 24 0-4 18-12 20-8-2-12-20z" fill="#ff9f1c" stroke="#8a5516" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M84 104q16 14 32 0" fill="none" stroke="#6b2d14" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
+      </g>
+    </svg>
+    <div id="bubble"><small id="lbl">Associé à…</small><div id="theme"></div></div>
+  </div>
+  <div id="slots"></div>
+  <button id="rose" title="Une rose révèle une lettre"><span>🌹</span>RÉVÉLER UNE LETTRE</button>
+  <div id="chat">Tapez votre réponse dans le chat !</div>
+  <div id="notice"></div>
+  <div id="scores"></div>
+  <div id="brand">GRYPHON AGENCY</div>
+</div>
+
+<button id="cfgToggle" title="Configuration">⚙</button>
+<aside id="cfg">
+  <h2>⚙ Configuration</h2>
+
+  <details open><summary>📡 Connexion TikTok</summary>
+    <label>Pseudo<input type="text" data-k="user" id="user" placeholder="@pseudo"></label>
+    <label>Connecteur<input type="text" data-k="url" id="url"></label>
+    <button id="connect">Connecter</button>
+    <span id="status">Déconnecté</span>
+    <small>Une lettre écrite dans le chat est révélée dans tous les mots ; un mot complet est validé.</small>
+  </details>
+
+  <details><summary>🖼 Arrière-plan</summary>
+    <label class="col">Image de fond (fichier)<input id="bgFile" type="file" accept="image/*"></label>
+    <label class="col">…ou adresse d'image<input type="text" data-k="bgUrl" placeholder="https://… ou griffon-gauche.jpg"></label>
+    <label>Ajustement<select data-k="bgFit"><option value="cover">Remplir</option><option value="contain">Contenir</option></select></label>
+    <label>Assombrissement <input type="range" data-k="dim" data-num min="0" max="90"></label>
+    <label>Flou <input type="range" data-k="blur" data-num min="0" max="20"></label>
+    <button id="bgReset" class="warn">Image par défaut</button>
+    <small id="cfgMsg"></small>
+  </details>
+
+  <details><summary>🎨 Couleurs</summary>
+    <label>Cases<input type="color" data-k="slotBg"></label>
+    <label>Texte des cases<input type="color" data-k="slotFg"></label>
+    <label>Mot trouvé<input type="color" data-k="slotFound"></label>
+    <label>Bordure bulle<input type="color" data-k="bubbleBorder"></label>
+    <label>Texte bulle<input type="color" data-k="bubbleFg"></label>
+    <label>Bandeau chat<input type="color" data-k="chatBg"></label>
+    <label>Logo / marque<input type="color" data-k="brandColor"></label>
+  </details>
+
+  <details><summary>✏️ Textes</summary>
+    <label class="col">Texte au-dessus du thème<input type="text" data-k="label"></label>
+    <label class="col">Bandeau du chat<input type="text" data-k="chatText"></label>
+    <label class="col">Nom de la marque<input type="text" data-k="brandText"></label>
+  </details>
+
+  <details><summary>📐 Affichage</summary>
+    <label>Largeur du jeu <input type="range" data-k="gameW" data-num min="320" max="720"></label>
+    <label>Colonnes<select data-k="cols" data-num><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+    <label>Taille du texte <input type="range" data-k="slotFs" data-num min="12" max="32"></label>
+    <label>Mascotte visible<input type="checkbox" data-k="showMascot"></label>
+    <label>Taille mascotte <input type="range" data-k="mascotW" data-num min="60" max="260"></label>
+    <label>Chronomètre<input type="checkbox" data-k="showTimer"></label>
+    <label>Bouton rose<input type="checkbox" data-k="showRose"></label>
+    <label>Bandeau chat<input type="checkbox" data-k="showChat"></label>
+    <label>Marque<input type="checkbox" data-k="showBrand"></label>
+    <label>Classement<input type="checkbox" data-k="showScores"></label>
+  </details>
+
+  <details><summary>🎮 Règles du jeu</summary>
+    <label>Durée d'une manche (s)<input type="number" data-k="seconds" data-num min="10" max="600"></label>
+    <label>Nombre de manches<input type="number" data-k="rounds" data-num min="1" max="100"></label>
+    <label>Pause entre manches (s)<input type="number" data-k="pause" data-num min="1" max="30"></label>
+    <label>Lettres de départ<select data-k="letters" data-num><option value="-1">Auto</option><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+    <label>Mots par manche<select data-k="maxWords" data-num><option value="0">Auto</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></label>
+    <label>Difficulté<select data-k="diff" data-num><option value="0">Progressive</option><option value="1">Niveau 1</option><option value="2">Niveau 2</option><option value="3">Niveau 3</option><option value="4">Niveau 4</option><option value="5">Niveau 5</option><option value="6">Niveau 6</option><option value="7">Niveau 7</option><option value="8">Niveau 8</option><option value="9">Niveau 9</option><option value="10">Niveau 10</option></select></label>
+    <small>Les règles s'appliquent à la prochaine manche.</small>
+  </details>
+
+  <details><summary>📚 Mes thèmes</summary>
+    <small>Une ligne par thème : THÈME ; difficulté 1-10 ; mot1, mot2, mot3…</small>
+    <label class="col"><textarea data-k="custom" placeholder="PIZZA;1;FROMAGE,TOMATE,FOUR,PÂTE,BASILIC"></textarea></label>
+    <label>Seulement mes thèmes<input type="checkbox" data-k="onlyCustom"></label>
+    <small id="themeCount"></small>
+  </details>
+
+  <details><summary>🧪 Test</summary>
+    <label>Mot proposé<input type="text" id="test"></label>
+    <button id="send">Envoyer</button> <button id="skip">Manche suivante</button>
+    <button id="restart">Recommencer la partie</button>
+  </details>
+
+  <button id="cfgReset" class="warn">Tout réinitialiser</button>
+</aside>
+<script>
+// Base de thèmes extensible : difficulty = manche à partir de laquelle le thème est proposé (1-10)
+const GAME_DATABASE = [
+  { theme: "ARBRE", difficulty: 1, words: ["TRONC", "BRANCHE", "ÉCORCE", "FEUILLE", "RACINE", "FORÊT", "OISEAU", "FRUIT", "BOIS"] },
+  { theme: "MER", difficulty: 1, words: ["VAGUE", "SABLE", "POISSON", "BATEAU", "PLAGE", "ÉCUME", "MARÉE", "CORAIL", "COQUILLAGE"] },
+  { theme: "MAISON", difficulty: 1, words: ["PORTE", "FENÊTRE", "TOIT", "CHAMBRE", "CUISINE", "SALON", "JARDIN", "MUR", "ESCALIER"] },
+  { theme: "CUISINE", difficulty: 1, words: ["FOUR", "FRIGO", "ASSIETTE", "COUTEAU", "TABLE", "VERRE", "POÊLE", "CHAISE", "ÉVIER"] },
+  { theme: "VOITURE", difficulty: 1, words: ["ROUE", "MOTEUR", "VOLANT", "FREIN", "PHARE", "PORTE", "SIÈGE", "ROUTE", "VITRE"] },
+  { theme: "ÉCOLE", difficulty: 2, words: ["CLASSE", "STYLO", "CAHIER", "LIVRE", "MAÎTRE", "TABLE", "ÉLÈVE", "COUR", "SAC"] },
+  { theme: "ANIMAUX", difficulty: 2, words: ["CHIEN", "CHAT", "CHEVAL", "VACHE", "MOUTON", "LION", "TIGRE", "OURS", "LOUP"] },
+  { theme: "FORÊT", difficulty: 2, words: ["ARBRE", "FEUILLE", "MOUSSE", "CHAMPIGNON", "LOUP", "OURS", "SENTIER", "HIBOU", "GLAND"] },
+  { theme: "BUREAU", difficulty: 2, words: ["ORDINATEUR", "CLAVIER", "SOURIS", "STYLO", "PAPIER", "CHAISE", "LAMPE", "ÉCRAN", "DOSSIER"] },
+  { theme: "VILLE", difficulty: 2, words: ["RUE", "FEU", "IMMEUBLE", "VOITURE", "PIÉTON", "MAGASIN", "BUS", "PARC", "TROTTOIR"] },
+  { theme: "FOOTBALL", difficulty: 4, words: ["BALLON", "BUT", "TERRAIN", "MATCH", "ARBITRE", "STADE", "JOUEUR", "FILET", "SIFFLET"] },
+  { theme: "CINÉMA", difficulty: 4, words: ["FILM", "ÉCRAN", "ACTEUR", "RÉALISATEUR", "SALLE", "POP-CORN", "CAMÉRA", "SCÈNE", "BILLET"] },
+  { theme: "ESPACE", difficulty: 5, words: ["ÉTOILE", "PLANÈTE", "GALAXIE", "FUSÉE", "LUNE", "ASTRONAUTE", "COMÈTE", "GRAVITÉ", "ORBITE"] },
+  { theme: "MUSIQUE", difficulty: 5, words: ["GUITARE", "PIANO", "CHANSON", "NOTE", "RYTHME", "CONCERT", "CHANTEUR", "MICRO", "MÉLODIE"] },
+  { theme: "CORPS HUMAIN", difficulty: 5, words: ["CŒUR", "CERVEAU", "OS", "SANG", "PEAU", "MAIN", "PIED", "YEUX", "POUMON"] },
+  { theme: "HÔPITAL", difficulty: 6, words: ["MÉDECIN", "INFIRMIER", "LIT", "MÉDICAMENT", "PIQÛRE", "URGENCE", "BRANCARD", "BLOUSE", "SCALPEL"] },
+  { theme: "JARDIN", difficulty: 6, words: ["FLEUR", "HERBE", "TERRE", "ARROSOIR", "PELOUSE", "HAIE", "BÊCHE", "GRAINE", "TULIPE"] },
+  { theme: "HIVER", difficulty: 6, words: ["NEIGE", "FROID", "GLACE", "BONNET", "MANTEAU", "SKI", "FLOCON", "CHALET", "GEL"] },
+  { theme: "ÉTÉ", difficulty: 6, words: ["SOLEIL", "CHALEUR", "PLAGE", "MAILLOT", "SABLE", "PARASOL", "GLACE", "LUNETTES", "MER"] },
+  { theme: "AÉROPORT", difficulty: 7, words: ["AVION", "PILOTE", "PISTE", "VALISE", "BILLET", "VOL", "DOUANE", "PASSAGER", "HÉLICE"] },
+  { theme: "MYTHOLOGIE", difficulty: 8, words: ["DIEU", "OLYMPE", "HÉROS", "MONSTRE", "LÉGENDE", "ZEUS", "MYTHE", "TEMPLE", "MAGIE"] },
+  { theme: "CHIMIE", difficulty: 8, words: ["ATOME", "MOLÉCULE", "TEST", "PRODUIT", "ACIDE", "FIOLE", "RÉACTION", "LABO", "ÉLÉMENT"] },
+  { theme: "ASTRONOMIE", difficulty: 9, words: ["TÉLESCOPE", "GALAXIE", "NÉBULEUSE", "MÉTÉORE", "COSMOS", "GRAVITÉ", "PLANÈTE", "ORBITE", "TROU NOIR"] },
+  { theme: "HISTOIRE", difficulty: 9, words: ["ROI", "CHÂTEAU", "GUERRE", "MOYEN ÂGE", "ÉPÉE", "EMPIRE", "PEUPLE", "TRÔNE", "ANTIQUITÉ"] },
+  { theme: "PHILOSOPHIE", difficulty: 10, words: ["PENSÉE", "RAISON", "SAGE", "ESPRIT", "VÉRITÉ", "LOGIQUE", "DOUTE", "ÉTHIQUE", "ÂME"] },
+  { theme: "PLAGE", difficulty: 1, words: ["SABLE", "VAGUE", "PARASOL", "SERVIETTE", "MAILLOT", "SOLEIL", "SEAU", "COQUILLAGE", "BAIGNADE"] },
+  { theme: "PETIT-DÉJEUNER", difficulty: 1, words: ["CAFÉ", "LAIT", "PAIN", "BEURRE", "CONFITURE", "CROISSANT", "JUS", "CÉRÉALES", "THÉ"] },
+  { theme: "FERME", difficulty: 1, words: ["VACHE", "COCHON", "POULE", "TRACTEUR", "GRANGE", "MOUTON", "ÂNE", "FOIN", "CHAMP"] },
+  { theme: "CHAMBRE", difficulty: 2, words: ["LIT", "OREILLER", "COUETTE", "ARMOIRE", "LAMPE", "RÉVEIL", "DRAP", "TAPIS", "RIDEAU"] },
+  { theme: "SALLE DE BAIN", difficulty: 2, words: ["DOUCHE", "SAVON", "SERVIETTE", "MIROIR", "BROSSE", "DENTIFRICE", "BAIGNOIRE", "SHAMPOING", "ROBINET"] },
+  { theme: "FRUITS", difficulty: 2, words: ["POMME", "BANANE", "ORANGE", "FRAISE", "CERISE", "RAISIN", "POIRE", "CITRON", "ANANAS"] },
+  { theme: "LÉGUMES", difficulty: 2, words: ["CAROTTE", "TOMATE", "SALADE", "COURGETTE", "OIGNON", "POIREAU", "CHOU", "RADIS", "AUBERGINE"] },
+  { theme: "TRANSPORTS", difficulty: 3, words: ["TRAIN", "AVION", "BATEAU", "MÉTRO", "VÉLO", "CAMION", "TRAMWAY", "MOTO", "AUTOBUS"] },
+  { theme: "PIRATE", difficulty: 3, words: ["TRÉSOR", "BATEAU", "CARTE", "PERROQUET", "CROCHET", "DRAPEAU", "ÎLE", "RHUM", "CAPITAINE"] },
+  { theme: "CIRQUE", difficulty: 3, words: ["CLOWN", "CHAPITEAU", "TRAPÈZE", "JONGLEUR", "MAGICIEN", "ÉLÉPHANT", "PISTE", "ACROBATE", "FUNAMBULE"] },
+  { theme: "PLANÈTE", difficulty: 4, words: ["TERRE", "OCÉAN", "CONTINENT", "ATMOSPHÈRE", "CLIMAT", "VOLCAN", "DÉSERT", "MONTAGNE", "ÉQUATEUR"] },
+  { theme: "TÉLÉPHONE", difficulty: 4, words: ["ÉCRAN", "APPEL", "MESSAGE", "BATTERIE", "CHARGEUR", "SONNERIE", "APPLICATION", "CAMÉRA", "FORFAIT"] },
+  { theme: "INTERNET", difficulty: 4, words: ["SITE", "RÉSEAU", "LIEN", "NAVIGATEUR", "MOT DE PASSE", "COURRIEL", "VIDÉO", "SERVEUR", "WIFI"] },
+  { theme: "BASKETBALL", difficulty: 5, words: ["PANIER", "BALLON", "DRIBBLE", "TERRAIN", "ARBITRE", "DUNK", "ÉQUIPE", "RÉBOND", "MAILLOT"] },
+  { theme: "CUISINIER", difficulty: 5, words: ["TOQUE", "TABLIER", "RECETTE", "MARMITE", "ÉPICE", "COUTEAU", "FOURNEAU", "MENU", "SAUCE"] },
+  { theme: "DÉSERT", difficulty: 5, words: ["SABLE", "DUNE", "CHAMEAU", "OASIS", "CACTUS", "SOLEIL", "SCORPION", "MIRAGE", "CARAVANE"] },
+  { theme: "MONTAGNE", difficulty: 6, words: ["SOMMET", "NEIGE", "ALPINISTE", "GLACIER", "VALLÉE", "SENTIER", "REFUGE", "ALTITUDE", "AVALANCHE"] },
+  { theme: "VOLCAN", difficulty: 6, words: ["LAVE", "CRATÈRE", "ÉRUPTION", "CENDRE", "MAGMA", "FUMÉE", "ROCHE", "CHEMINÉE", "SÉISME"] },
+  { theme: "DINOSAURE", difficulty: 6, words: ["FOSSILE", "OS", "GRIFFE", "ŒUF", "PRÉHISTOIRE", "HERBIVORE", "CARNIVORE", "ASTÉROÏDE", "MUSÉE"] },
+  { theme: "SUPER-HÉROS", difficulty: 7, words: ["CAPE", "MASQUE", "POUVOIR", "VILAIN", "SAUVETAGE", "COSTUME", "FORCE", "VOL", "BOUCLIER"] },
+  { theme: "SPORT D'HIVER", difficulty: 7, words: ["SKI", "SNOWBOARD", "PISTE", "LUGE", "PATIN", "BÂTON", "TÉLÉSIÈGE", "FORFAIT", "CASQUE"] },
+  { theme: "OLYMPIQUES", difficulty: 7, words: ["MÉDAILLE", "FLAMME", "ATHLÈTE", "PODIUM", "RECORD", "STADE", "DRAPEAU", "RELAIS", "CHAMPION"] },
+  { theme: "SORCELLERIE", difficulty: 8, words: ["BAGUETTE", "CHAUDRON", "POTION", "SORT", "GRIMOIRE", "BALAI", "CHAPEAU", "FORMULE", "CRAPAUD"] },
+  { theme: "ÉGYPTE", difficulty: 8, words: ["PHARAON", "PYRAMIDE", "SPHINX", "MOMIE", "NIL", "HIÉROGLYPHE", "SARCOPHAGE", "PAPYRUS", "DÉSERT"] },
+  { theme: "GÉOGRAPHIE", difficulty: 8, words: ["CARTE", "FLEUVE", "CONTINENT", "FRONTIÈRE", "CAPITALE", "LATITUDE", "BOUSSOLE", "ÎLE", "PÉNINSULE"] },
+  { theme: "MÉDECINE", difficulty: 9, words: ["DIAGNOSTIC", "ORDONNANCE", "VACCIN", "CHIRURGIE", "ANTIBIOTIQUE", "PATIENT", "SYMPTÔME", "STÉTHOSCOPE", "VIRUS"] },
+  { theme: "ARCHITECTURE", difficulty: 9, words: ["PLAN", "FAÇADE", "COLONNE", "FONDATION", "VOÛTE", "ARCHITECTE", "BÉTON", "CHARPENTE", "COUPOLE"] },
+  { theme: "PHYSIQUE", difficulty: 9, words: ["FORCE", "ÉNERGIE", "VITESSE", "MASSE", "ATOME", "LUMIÈRE", "ONDE", "MAGNÉTISME", "PRESSION"] },
+  { theme: "POLITIQUE", difficulty: 10, words: ["ÉLECTION", "DÉPUTÉ", "LOI", "VOTE", "PARTI", "MINISTRE", "SÉNAT", "CONSTITUTION", "DÉMOCRATIE"] },
+  { theme: "PSYCHOLOGIE", difficulty: 10, words: ["ÉMOTION", "MÉMOIRE", "RÊVE", "COMPORTEMENT", "STRESS", "THÉRAPIE", "CONSCIENCE", "PERSONNALITÉ", "INSTINCT"] },
+  { theme: "LITTÉRATURE", difficulty: 10, words: ["ROMAN", "POÈME", "AUTEUR", "CHAPITRE", "MÉTAPHORE", "BIOGRAPHIE", "THÉÂTRE", "STROPHE", "INTRIGUE"] }
+];
+
+const norm = s => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^\p{L}]/gu, "").toUpperCase();
+const $ = id => document.getElementById(id);
+
+// ---------- Configuration (sauvegardée dans le navigateur) ----------
+const CFG_KEY = "motsAssociesConfig";
+const DEFAULTS = {
+  bgData: "", bgUrl: "griffon-gauche.jpg", bgFit: "cover", dim: 65, blur: 0,
+  slotBg: "#f8ded9", slotFg: "#1c1c2e", slotFound: "#3ddc84", bubbleBorder: "#3b5bdb", bubbleFg: "#3b5bdb",
+  chatBg: "#3b5bdb", brandColor: "#d9b45a",
+  label: "Associé à…", chatText: "Tapez votre réponse dans le chat !", brandText: "GRYPHON AGENCY",
+  gameW: 480, cols: 2, slotFs: 17, showMascot: true, mascotW: 130, showTimer: true, showRose: true, showChat: true,
+  showBrand: true, showScores: true,
+  seconds: 60, rounds: 10, pause: 4, letters: -1, maxWords: 0, diff: 0,
+  custom: "", onlyCustom: false, user: "", url: "wss://jeu6boite.onrender.com", open: true
+};
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem(CFG_KEY) || "{}")); } catch {}
+
+function saveCfg() {
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(S)); $("cfgMsg").textContent = ""; }
+  catch { $("cfgMsg").textContent = "Image trop lourde pour être mémorisée (elle reste active jusqu'au rechargement)."; }
+}
+
+function parseCustom() {
+  return S.custom.split("\n").map(l => l.split(";")).filter(p => p.length >= 3).map(p => ({
+    theme: p[0].trim().toUpperCase(),
+    difficulty: Math.min(10, Math.max(1, parseInt(p[1]) || 1)),
+    words: p.slice(2).join(";").split(",").map(w => w.trim().toUpperCase()).filter(w => norm(w).length >= 2)
+  })).filter(t => t.theme && t.words.length >= 3);
+}
+const getThemes = () => {
+  const mine = parseCustom();
+  return S.onlyCustom && mine.length ? mine : [...GAME_DATABASE, ...mine];
+};
+
+function applyCfg() {
+  const r = document.documentElement.style;
+  r.setProperty("--dim", S.dim / 100); r.setProperty("--blur", S.blur + "px");
+  r.setProperty("--slot-bg", S.slotBg); r.setProperty("--slot-fg", S.slotFg); r.setProperty("--slot-found", S.slotFound);
+  r.setProperty("--slot-fs", S.slotFs + "px"); r.setProperty("--bubble-border", S.bubbleBorder);
+  r.setProperty("--bubble-fg", S.bubbleFg); r.setProperty("--chat-bg", S.chatBg); r.setProperty("--brand-color", S.brandColor);
+  r.setProperty("--game-w", S.gameW + "px"); r.setProperty("--mascot-w", S.mascotW + "px"); r.setProperty("--cols", S.cols);
+  const src = S.bgData || S.bgUrl;
+  $("bg").style.backgroundImage = src ? `url("${src.replace(/"/g, "%22")}")` : "none";
+  $("bg").classList.toggle("contain", S.bgFit === "contain");
+  $("lbl").textContent = S.label; $("chat").textContent = S.chatText; $("brand").textContent = S.brandText;
+  $("mascot").style.display = S.showMascot ? "" : "none";
+  $("timer").style.visibility = S.showTimer ? "" : "hidden";
+  $("rose").style.display = S.showRose ? "" : "none";
+  $("chat").style.display = S.showChat ? "" : "none";
+  $("brand").style.display = S.showBrand ? "" : "none";
+  $("scores").style.display = S.showScores ? "" : "none";
+  $("cfg").classList.toggle("closed", !S.open);
+  document.body.classList.toggle("cfg-open", S.open);
+  $("themeCount").textContent = `${getThemes().length} thèmes disponibles (dont ${parseCustom().length} à vous).`;
+}
+
+function bindCfg() {
+  document.querySelectorAll("[data-k]").forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === "checkbox") el.checked = !!S[k]; else el.value = S[k];
+    el.addEventListener("input", () => {
+      S[k] = el.type === "checkbox" ? el.checked : el.dataset.num !== undefined ? Number(el.value) : el.value;
+      applyCfg(); saveCfg();
+    });
+  });
+}
+
+// Réduit l'image pour qu'elle tienne dans la mémoire du navigateur
+$("bgFile").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  const img = new Image(), url = URL.createObjectURL(f);
+  img.onload = () => {
+    const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = img.width * k; c.height = img.height * k;
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    S.bgData = c.toDataURL("image/jpeg", 0.85); URL.revokeObjectURL(url);
+    applyCfg(); saveCfg();
+  };
+  img.src = url;
+});
+$("bgReset").onclick = () => { S.bgData = ""; S.bgUrl = DEFAULTS.bgUrl; bindCfg(); applyCfg(); saveCfg(); };
+$("cfgToggle").onclick = () => { S.open = !S.open; applyCfg(); saveCfg(); };
+$("cfgReset").onclick = () => {
+  if (!confirm("Tout réinitialiser ?")) return;
+  S = { ...DEFAULTS }; try { localStorage.removeItem(CFG_KEY); } catch {}
+  bindCfg(); applyCfg();
+};
+
+let round = 0, timeLeft = 0, timer = null, slots = [], used = new Set(), scores = {}, roundActive = false, pendingRoses = 0;
+
+const level = r => S.diff || r;
+// Lettres révélées au départ : plus la manche est difficile, moins il y en a
+const startLetters = r => S.letters >= 0 ? S.letters : level(r) <= 3 ? 2 : level(r) <= 7 ? 1 : 0;
+
+function pickTheme(r) {
+  const all = getThemes(), lv = level(r);
+  let pool = all.filter(t => !used.has(t.theme) && (S.diff ? Math.abs(t.difficulty - lv) <= 1 : t.difficulty <= lv && t.difficulty >= lv - 2));
+  if (!pool.length) pool = all.filter(t => !used.has(t.theme));
+  if (!pool.length) { used.clear(); pool = all; }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function maxWords(r) { return S.maxWords || (level(r) <= 3 ? 7 : 9); }
+
+function startRound() {
+  clearInterval(timer);
+  if (round >= S.rounds) return endGame();
+  round++;
+  const t = pickTheme(round);
+  used.add(t.theme);
+  const words = [...t.words].sort(() => Math.random() - .5).slice(0, maxWords(round));
+  const n = startLetters(round);
+  slots = words.map(w => {
+    const key = norm(w);
+    return { word: w, key, rev: new Set([...Array(Math.min(n, key.length - 1)).keys()]), done: false, by: "", missed: false };
+  });
+  $("theme").textContent = t.theme;
+  $("round").textContent = `Manche ${round}/${S.rounds}`;
+  timeLeft = S.seconds; roundActive = true;
+  $("notice").textContent = "";
+  render();
+  timer = setInterval(() => { if (--timeLeft <= 0) finishRound(false); else renderTime(); }, 1000);
+  renderTime();
+  while (pendingRoses > 0 && useRose());
+}
+
+function slotText(s) {
+  if (s.done || s.missed) return s.word;
+  let n = 0;
+  return [...s.word.normalize("NFC")].map(c => {
+    if (!/\p{L}/u.test(c)) return c === " " ? "\u00A0" : c;
+    return s.rev.has(n++) ? c : "_";
+  }).join(" ");
+}
+
+function render() {
+  $("slots").innerHTML = slots.map(s =>
+    `<div class="slot ${s.done ? "found" : s.missed ? "missed" : ""}">${slotText(s)}${s.done ? `<small>@${s.by}</small>` : ""}</div>`).join("");
+  const top = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  $("scores").textContent = top.length ? "🏆 " + top.map(([u, p]) => `@${u} ${p}`).join("  ·  ") : "";
+}
+
+function renderTime() {
+  $("time").textContent = timeLeft;
+  $("timer").classList.toggle("low", timeLeft <= 10);
+}
+
+function finishRound(allFound) {
+  clearInterval(timer); roundActive = false;
+  slots.forEach(s => { if (!s.done) s.missed = true; });
+  render();
+  $("notice").textContent = allFound ? "🎉 Tous les mots trouvés !" : "⏰ Temps écoulé !";
+  setTimeout(startRound, S.pause * 1000);
+}
+
+const hiddenCount = s => s.key.length - s.rev.size;
+
+function complete(s, user) {
+  scores[user] = (scores[user] || 0) + Math.max(1, hiddenCount(s));
+  s.done = true; s.by = user;
+}
+
+// Une lettre écrite dans le chat est révélée dans tous les mots ; un mot complet est validé
+function guessLetter(letter, user) {
+  let found = 0;
+  slots.forEach(s => {
+    if (s.done) return;
+    [...s.key].forEach((c, i) => {
+      if (c === letter && !s.rev.has(i)) { s.rev.add(i); found++; scores[user] = (scores[user] || 0) + 1; }
+    });
+    if (hiddenCount(s) === 0) { s.done = true; s.by = user; }
+  });
+  if (!found) return;
+  $("notice").textContent = `🔤 @${user} : la lettre ${letter} est dans ${found} emplacement${found > 1 ? "s" : ""} !`;
+  render();
+  if (slots.every(x => x.done)) finishRound(true);
+}
+
+function guess(text, user = "anonyme") {
+  if (!roundActive) return;
+  const key = norm(text);
+  if (!key) return;
+  if (key.length === 1) return guessLetter(key, user);
+  const s = slots.find(x => !x.done && x.key === key);
+  if (!s) return;
+  complete(s, user);
+  render();
+  if (slots.every(x => x.done)) finishRound(true);
+}
+
+// Une rose révèle une lettre supplémentaire dans un mot non trouvé
+function useRose() {
+  const open = slots.filter(s => !s.done && hiddenCount(s) > 1);
+  if (!roundActive || !open.length) return false;
+  const s = open[Math.floor(Math.random() * open.length)];
+  const hidden = [...s.key].map((_, i) => i).filter(i => !s.rev.has(i));
+  s.rev.add(hidden[Math.floor(Math.random() * hidden.length)]);
+  pendingRoses = Math.max(0, pendingRoses - 1);
+  render();
+  return true;
+}
+
+function handleGift(g = {}) {
+  const name = String(g.giftName ?? g.gift?.name ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+  if (name !== "rose") return;
+  const count = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
+  $("notice").textContent = `🌹 ${g.nickname || g.username || "Le chat"} offre ${count} rose(s) : lettre révélée !`;
+  pendingRoses += count;
+  while (pendingRoses > 0 && useRose());
+}
+
+function endGame() {
+  const top = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  $("theme").textContent = "FIN";
+  $("slots").innerHTML = top.map(([u, p], i) => `<div class="slot found" style="grid-column:span 2">${i + 1}. @${u} — ${p} pts</div>`).join("")
+    || `<div class="slot" style="grid-column:span 2">Aucun gagnant</div>`;
+  $("notice").textContent = "Partie terminée ! Merci d'avoir joué.";
+  setTimeout(() => { round = 0; used.clear(); scores = {}; startRound(); }, 15000);
+}
+
+// Connexion au connecteur TikTok (même protocole que pendu.html)
+let socket = null, reconnect = null;
+function connect() {
+  const username = $("user").value.trim().replace(/^@/, ""), url = $("url").value.trim();
+  if (!username || !url) { $("status").textContent = "Pseudo et adresse requis"; return; }
+  clearTimeout(reconnect);
+  if (socket) { socket.onclose = null; socket.close(); }
+  try { socket = new WebSocket(url); } catch (e) { $("status").textContent = "Adresse invalide"; return; }
+  const ws = socket;
+  $("status").textContent = `Connexion à @${username}…`;
+  ws.addEventListener("open", () => ws.send(JSON.stringify({ action: "CONNECT_TIKTOK", username })));
+  ws.addEventListener("message", ev => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type === "STATUS") $("status").textContent = d.message || "";
+      else if (d.type === "gift" || d.type === "tiktok-gift") handleGift(d.gift ?? d);
+      else if (d.type === "comment" || d.type === "tiktok-comment") {
+        const c = d.commentData ?? d;
+        guess(String(c.comment ?? c.text ?? ""), String(c.username ?? c.nickname ?? "anonyme").replace(/^@/, ""));
+      }
+    } catch (e) { console.error(e); }
+  });
+  ws.addEventListener("error", () => $("status").textContent = "Connexion impossible");
+  ws.addEventListener("close", () => { if (socket === ws) { $("status").textContent = "Reconnexion…"; reconnect = setTimeout(connect, 3000); } });
+}
+
+$("connect").onclick = connect;
+$("send").onclick = () => { guess($("test").value, "testeur"); $("test").value = ""; };
+$("test").addEventListener("keydown", e => { if (e.key === "Enter") $("send").click(); });
+$("rose").onclick = () => handleGift({ giftName: "Rose", username: "test" });
+$("skip").onclick = startRound;
+$("restart").onclick = () => { round = 0; used.clear(); scores = {}; startRound(); };
+bindCfg(); applyCfg();
+startRound();
+</script>
+</body>
+</html>
+
