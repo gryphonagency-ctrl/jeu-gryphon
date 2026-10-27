@@ -1296,6 +1296,35 @@
       spawnGiftBalls();
     }
 
+    const handledWalletRuns = new Set();
+
+    // Le serveur débite les étoiles du « run » : ici on fait tomber les billes correspondantes (1 étoile = 1 bille).
+    function handleWalletRun(message) {
+      const runId = String(message.messageId || "");
+      if (runId) {
+        if (handledWalletRuns.has(runId)) return;
+        handledWalletRuns.add(runId);
+        if (handledWalletRuns.size > 500) handledWalletRuns.delete(handledWalletRuns.values().next().value);
+      }
+      const count = Math.floor(Number(message.spent));
+      const walletPlayer = message.player || {};
+      if (!Number.isSafeInteger(count) || count < 1) return;
+      const owner = String(walletPlayer.username || walletPlayer.nickname || "Invité").trim().replace(/^@/, "").slice(0, 18) || "Invité";
+      if (roundEnded || remainingTime <= 0) {
+        document.getElementById("roundStatus").textContent = `RUN · ${owner} : manche terminée, ${count.toLocaleString("fr-FR")} billes non jouées`;
+        return;
+      }
+      const player = getTikTokPlayer(walletPlayer.username, walletPlayer.nickname);
+      setPlayerAvatar(player, walletPlayer.avatarUrl);
+      liveStats.runBalls += count;
+      queueBallDrops(player.name, count);
+      document.getElementById("roundStatus").textContent = `RUN · ${player.name} · ${count.toLocaleString("fr-FR")} billes bonus`;
+      spawnGiftBalls();
+      updateStats();
+      updateLeaderboard();
+      scheduleGameSave();
+    }
+
     function queueBallDrops(owner, count) {
       if (!Number.isSafeInteger(count) || count < 1) return;
       const existingBatch = pendingGiftBatches.find(batch => batch.owner === owner);
@@ -1451,6 +1480,7 @@
         try { message = JSON.parse(event.data); } catch { return; }
         if (message.type === "gift" && message.gift) handleTikTokGift(message.gift);
         if (message.type === "comment" && message.commentData) handleTikTokComment(message.commentData);
+        if (message.type === "WALLET_RUN") handleWalletRun(message);
         if (message.type === "viewer" && message.viewer) {
           const viewer = message.viewer;
           setPlayerAvatar(getPlayer(viewer.username || "Spectateur"), viewer.avatarDataUri);
