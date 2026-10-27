@@ -71,6 +71,16 @@
         } catch {
             return;
         }
+        // La commande étoile est gérée uniquement par le serveur (solde global) : les jeux ne l'affichent plus.
+        const chatType = String(data.type || '').toUpperCase();
+        if (chatType === 'CHAT' || chatType === 'COMMENT') {
+            const chat = data.commentData || data;
+            const text = String(chat.comment ?? chat.text ?? chat.message ?? '').trim();
+            if (/^!?\s*(?:étoile|etoile|star|⭐)s?$|^\*$/iu.test(text)) {
+                event.stopImmediatePropagation();
+                return;
+            }
+        }
         if (data.type === 'WALLET_BALANCE') {
             displayPlayer(data.player, data.source === 'chat' ? 'Solde global consulté dans le chat.' : 'Solde mis à jour.');
         } else if (data.type === 'WALLET_RUN') {
