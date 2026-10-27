@@ -124,6 +124,7 @@ const staticGameIds = [
     '/coffres',
     '/inedexd.html'
 ];
+store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');

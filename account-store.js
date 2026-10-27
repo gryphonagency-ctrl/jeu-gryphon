@@ -648,10 +648,22 @@ function setCreatorGameAccess(username, gameIds) {
 function grantGameAccessToExistingCreators(gameId) {
     return updateStore(store => {
         if (store.gameAccessMigrations[gameId]) return false;
-        for (const gameIds of Object.values(store.gameAccess)) {
+        for (const [key, gameIds] of Object.entries(store.gameAccess)) {
+            if (store.creatorSettings[key]?.locked === true) continue;
             if (Array.isArray(gameIds) && !gameIds.includes(gameId)) gameIds.push(gameId);
         }
         store.gameAccessMigrations[gameId] = true;
+        return true;
+    });
+}
+
+function lockCreatorGamesOnce(username, gameIds, migrationKey) {
+    return updateStore(store => {
+        const key = username.toLowerCase();
+        if (store.gameAccessMigrations[migrationKey] || !store.users[key]) return false;
+        store.gameAccess[key] = [...new Set(gameIds)];
+        store.creatorSettings[key] = { ...(store.creatorSettings[key] || {}), locked: true };
+        store.gameAccessMigrations[migrationKey] = true;
         return true;
     });
 }
@@ -989,6 +1001,7 @@ module.exports = {
     getCheckout,
     getCreatorGameAccess,
     grantGameAccessToExistingCreators,
+    lockCreatorGamesOnce,
     getCreatorSettings,
     getAdminDashboardLayout,
     getCreatorServiceAccess,
