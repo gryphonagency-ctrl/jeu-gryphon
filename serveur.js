@@ -931,6 +931,55 @@ const server = http.createServer((req, res) => {
         }, 1024 * 1024);
         return;
     }
+    if (pathname === '/api/wallet/import' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.canAccessGames(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            return;
+        }
+        const walletOwner = access.usernameForRequest(req).toLowerCase();
+        readJsonBody(req, res, body => {
+            const send = (status, payload) => {
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(payload));
+            };
+            if (!body || body.format !== 'gryphon-wallet' || body.version !== 1 || !Array.isArray(body.players)) {
+                return send(400, { message: 'Ce fichier n’est pas une sauvegarde de portefeuille compatible.' });
+            }
+            if (body.players.length > 5000) return send(400, { message: 'Trop de joueurs dans ce fichier.' });
+            // Seul le portefeuille du compte connecté est modifié, jamais celui d'un autre compte.
+            let updated = 0;
+            let skipped = 0;
+            for (const entry of body.players) {
+                const handle = String(entry?.username || '').trim().replace(/^@/, '').toLowerCase();
+                const target = Number(entry?.balance);
+                if (!/^[a-z0-9._]{1,32}$/.test(handle) || !Number.isSafeInteger(target) || target < 0 || target > 10000000) {
+                    skipped += 1;
+                    continue;
+                }
+                let player = store.resolveTikTokPlayer(handle);
+                if (!player) {
+                    if (target === 0) continue;
+                    store.creditBrowserStars({ username: handle, amount: target, gameId: '/import-portefeuille', transactionId: `import:${crypto.randomUUID()}`, owner: walletOwner });
+                    updated += 1;
+                    continue;
+                }
+                const delta = target - store.getWalletBalance(player, walletOwner);
+                if (delta === 0) continue;
+                const result = store.applyTikTokStarTransaction({
+                    transactionId: `import:${crypto.randomUUID()}`,
+                    playerId: player.id,
+                    delta,
+                    gameId: '/import-portefeuille',
+                    reason: delta > 0 ? 'game-reward' : 'run',
+                    owner: walletOwner
+                });
+                if (result.applied) updated += 1; else skipped += 1;
+            }
+            send(200, { success: true, updated, skipped, message: `Portefeuille importé : ${updated} solde(s) mis à jour${skipped ? `, ${skipped} ignoré(s)` : ''}.` });
+        }, 1024 * 1024);
+        return;
+    }
     if (pathname === '/api/admin/stars-restore' && req.method === 'POST') {
         if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });

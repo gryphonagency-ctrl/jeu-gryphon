@@ -801,12 +801,12 @@
                         <p id="stars-card-intro">Totaux cumulés par profil TikTok. Les dépenses RUN et le solde restant sont affichés séparément.</p>
                         <p class="checkout-status success" data-stars-owed style="font-size:1.1rem;font-weight:800">⭐ Total dû aux joueurs : — </p>
                         <div class="admin-actions">
-                            <button id="stars-export-button" data-admin-only class="button button-primary" type="button">Exporter le classement</button>
+                            <button id="stars-export-button" class="button button-primary" type="button">Exporter le classement</button>
                             <button id="stars-collect-button" class="button button-primary" type="button">Récupérer les étoiles des jeux (ce navigateur)</button>
                             <button id="stars-capture-button" data-admin-only class="button" type="button">Ajouter les gains de la table à pièces (capture du 17 oct.)</button>
                             <button id="stars-aquarium-button" data-admin-only class="button" type="button">Ajouter les gains de l'Aquarium (sauvegarde du 23 oct.)</button>
                             <button id="stars-roue-button" data-admin-only class="button" type="button">Ajouter les gains de la Roue du Cirque (fichier du 26 oct.)</button>
-                            <button id="stars-import-button" data-admin-only class="button button-secondary" type="button">Importer un classement</button>
+                            <button id="stars-import-button" class="button button-secondary" type="button">Importer un classement</button>
                             <button id="stars-add-player-button" class="button" type="button">+ Ajouter / modifier un joueur</button>
                             <input id="stars-import-file" type="file" accept="application/json,.json" hidden>
                         </div>
@@ -3733,20 +3733,32 @@
             status.className = 'checkout-status';
             status.textContent = 'Préparation de l’export…';
             try {
-                const response = await fetch('/api/tiktok-stars/leaderboard?scope=all', {
+                const exportScope = isAdminSession ? 'all' : 'wallet';
+                const response = await fetch(`/api/tiktok-stars/leaderboard?scope=${exportScope}`, {
                     credentials: 'same-origin',
                     cache: 'no-store'
                 });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || 'Impossible d’exporter le classement.');
-                if (result.scope !== 'all' || !Array.isArray(result.players)) {
+                if (result.scope !== exportScope || !Array.isArray(result.players)) {
                     throw new Error('Le classement reçu pour l’export est invalide.');
                 }
-                const snapshot = {
+                const snapshot = isAdminSession ? {
                     format: 'gryphon-stars-leaderboard',
                     version: 1,
                     exportedAt: new Date().toISOString(),
                     players: result.players
+                } : {
+                    format: 'gryphon-wallet',
+                    version: 1,
+                    owner: walletOwnerName,
+                    exportedAt: new Date().toISOString(),
+                    players: result.players.map(player => ({
+                        username: player.username,
+                        balance: player.balance,
+                        totalEarned: player.totalEarned,
+                        totalSpent: player.totalSpent
+                    }))
                 };
                 const file = new Blob([JSON.stringify(snapshot, null, 2)], {
                     type: 'application/json'
@@ -3967,6 +3979,28 @@
             try {
                 if (file.size > 1024 * 1024) throw new Error('Le fichier dépasse la taille maximale de 1 Mo.');
                 const snapshot = JSON.parse(await file.text());
+                if (!isAdminSession) {
+                    if (!snapshot || snapshot.format !== 'gryphon-wallet' || snapshot.version !== 1 || !Array.isArray(snapshot.players)) {
+                        throw new Error('Ce fichier n’est pas une sauvegarde de portefeuille compatible.');
+                    }
+                    if (!window.confirm(`Restaurer ${snapshot.players.length} joueur(s) dans ton portefeuille ? Les soldes de ces joueurs seront remplacés par ceux du fichier.`)) {
+                        status.textContent = 'Import annulé.';
+                        return;
+                    }
+                    const walletResponse = await fetch('/api/wallet/import', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ format: snapshot.format, version: snapshot.version, players: snapshot.players })
+                    });
+                    const walletResult = await walletResponse.json();
+                    if (!walletResponse.ok) throw new Error(walletResult.message || 'Impossible d’importer le portefeuille.');
+                    await refreshAdminStarsLeaderboard();
+                    status.className = 'checkout-status success';
+                    status.textContent = walletResult.message;
+                    window.alert(status.textContent);
+                    return;
+                }
                 const isAprendre = snapshot && !snapshot.type && snapshot.viewers && typeof snapshot.viewers === 'object' && snapshot.settings;
                 if (snapshot && (snapshot.type === 'roue-du-cirque-etoiles' || isAprendre) && snapshot.viewers && typeof snapshot.viewers === 'object') {
                     const gameLabel = isAprendre ? 'À prendre ou à laisser' : 'la Roue du Cirque';
