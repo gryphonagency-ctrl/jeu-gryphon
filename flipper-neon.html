@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipper Néon – Gryphon Agency</title>
+<style>
+body { margin: 0; overflow: hidden; background: #000; font-family: "Segoe UI", system-ui, sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#cfgBtn { position: fixed; top: 10px; right: 10px; z-index: 20; width: 40px; height: 40px; border-radius: 50%; border: 1px solid #00f0ff; background: #0b0820cc; color: #00f0ff; font-size: 20px; cursor: pointer; }
+#cfg { position: fixed; top: 0; right: 0; bottom: 0; width: 310px; max-width: 92vw; z-index: 19; background: #0a0720ee; color: #e8ecff; border-left: 1px solid #00f0ff66; padding: 14px; overflow-y: auto; box-sizing: border-box; transform: translateX(100%); transition: transform .25s; }
+#cfg.open { transform: none; }
+#cfg h2 { margin: 4px 0 10px; font-size: 18px; color: #00f0ff; }
+#cfg details { margin-bottom: 8px; border: 1px solid #ffffff22; border-radius: 8px; padding: 6px 10px; }
+#cfg summary { cursor: pointer; font-weight: 700; color: #ff2bd6; }
+#cfg label { display: block; margin: 8px 0 2px; font-size: 12px; opacity: .85; }
+#cfg input[type=text], #cfg textarea { width: 100%; box-sizing: border-box; background: #150f33; border: 1px solid #ffffff33; color: #fff; border-radius: 6px; padding: 6px; font: inherit; font-size: 13px; }
+#cfg textarea { min-height: 120px; font-family: Consolas, monospace; font-size: 12px; }
+#cfg input[type=range] { width: 100%; }
+#cfg button { margin: 6px 4px 0 0; padding: 6px 10px; border-radius: 6px; border: 1px solid #00f0ff88; background: #12204a; color: #fff; cursor: pointer; font: inherit; font-size: 12px; }
+#cfg button:hover { background: #1c3270; }
+#cfg .st { font-size: 12px; margin-top: 6px; color: #ffe14d; }
+</style>
+</head>
+<body>
+<canvas id="pinballCanvas"></canvas>
+<button id="cfgBtn" title="Configuration">⚙</button>
+<aside id="cfg">
+  <h2>⚙ Configuration</h2>
+  <details open>
+    <summary>📡 Connexion TikTok</summary>
+    <label>Pseudo</label><input type="text" id="user" placeholder="@pseudo">
+    <label>Connecteur</label><input type="text" id="url" value="wss://jeu6boite.onrender.com">
+    <button id="connect">Connecter</button>
+    <div class="st" id="status">Déconnecté</div>
+  </details>
+  <details>
+    <summary>🖼 Arrière-plan</summary>
+    <label>Image ou vidéo</label><input type="file" id="bgFile" accept="image/*,video/*">
+    <label>…ou adresse (URL)</label><input type="text" id="bgUrl" placeholder="https://…">
+    <label>Assombrissement : <span id="dimV"></span></label><input type="range" id="dim" min="0" max="0.9" step="0.05">
+    <button id="bgApply">Appliquer l'URL</button><button id="bgClear">Retirer le fond</button>
+  </details>
+  <details>
+    <summary>🎮 Règles et physique</summary>
+    <label>Nombre de billes : <span id="ballsV"></span></label><input type="range" id="balls" min="1" max="9" step="1">
+    <label>Gravité : <span id="gravV"></span></label><input type="range" id="grav" min="0.4" max="2" step="0.05">
+    <label>Rebond : <span id="bounceV"></span></label><input type="range" id="bounce" min="0.7" max="1.4" step="0.05">
+    <label>Puissance des flippers : <span id="powV"></span></label><input type="range" id="pow" min="0.7" max="1.6" step="0.05">
+    <button id="restart">Nouvelle partie</button>
+  </details>
+  <details>
+    <summary>🎁 Cadeaux → effets</summary>
+    <label>Un cadeau par ligne : <code>nom=action</code></label>
+    <textarea id="gifts" spellcheck="false"></textarea>
+    <div style="font-size:11px;opacity:.7;margin-top:4px">Actions : addBumper, multiball, lowGravity, highGravity, superBounce, bigFlippers, shield, bigBall, bonus, extraLife</div>
+    <button id="giftsApply">Appliquer</button><button id="giftsReset">Valeurs par défaut</button>
+  </details>
+  <details>
+    <summary>🧪 Test</summary>
+    <div id="testBtns"></div>
+  </details>
+  <button id="resetAll">Tout réinitialiser</button>
+  <div class="st">B : fond · R : recommencer · T : cadeau au hasard</div>
+</aside>
+<script>
+/* Flipper néon futuriste – vue de face, physique 2D (cercle / segments), événements externes (cadeaux TikTok).
+   Commandes : ← / Z = flipper gauche, → / M = flipper droit, ESPACE (maintenu puis relâché) = lancer,
+   B = choisir une image/vidéo de fond, glisser-déposer un fichier sur la page, T = cadeau de test. */
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('pinballCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // ---------- Table (repère logique 600 x 1000) ----------
+  const W = 600, H = 1000;
+  const BALL_R = 11;
+  let BASE_GRAVITY = 1500;        // px/s² (réglable)
+  let BASE_BOUNCE = 1;
+  let START_BALLS = 3;
+  const SUBSTEPS = 8;
+  const MAX_SPEED = 2600;
+  const LANE_X = 548;             // séparation couloir de lancement
+
+  const state = {
+    score: 0, ballsLeft: 3, gameOver: false, combo: 0,
+    gravity: BASE_GRAVITY, bounce: 1, flipperPower: 1, ballScale: 1,
+    shieldUntil: 0, effects: [], charge: 0, charging: false, message: '', messageUntil: 0
+  };
+
+  const colors = { cyan: '#00f0ff', pink: '#ff2bd6', violet: '#9d4dff', yellow: '#ffe14d', green: '#39ff88' };
+
+  // Segments statiques : { ax, ay, bx, by, e (restitution), color, kick (impulsion), tmp (expiration) }
+  const segments = [];
+  const seg = (ax, ay, bx, by, e = 0.45, color = colors.cyan, extra = {}) =>
+    segments.push(Object.assign({ ax, ay, bx, by, e, color, th: 3, kick: 0, flash: 0 }, extra));
+
+  // Arc supérieur
+  (function buildArc() {
+    const cx = 300, cy = 300, r = 280, n = 28;
+    let px = cx - r, py = cy;
+    for (let i = 1; i <= n; i++) {
+      const a = Math.PI + (Math.PI * i) / n;
+      const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+      seg(px, py, x, y, 0.4);
+      px = x; py = y;
+    }
+  })();
+  seg(20, 300, 20, 820);                       // mur gauche
+  seg(580, 300, 580, 965);                     // mur droit
+  seg(LANE_X, 420, LANE_X, 965);               // séparation du couloir
+  seg(LANE_X, 965, 580, 965, 0.1, colors.pink); // fond du couloir
+  seg(20, 820, 182, 895, 0.4, colors.violet);  // guide gauche
+  seg(LANE_X, 820, 418, 895, 0.4, colors.violet); // guide droit
+  seg(60, 690, 140, 770, 0.5, colors.pink, { kick: 520, th: 5 });   // slingshot gauche
+  seg(488, 690, 408, 770, 0.5, colors.pink, { kick: 520, th: 5 });  // slingshot droit
+
+  // Obstacles circulaires : bumpers métalliques et plots
+  const circles = [];
+  const addCircle = (x, y, r, kind = 'bumper', ttl = 0) => {
+    const c = { x, y, r, kind, flash: 0, points: kind === 'bumper' ? 100 : 25,
+      color: [colors.cyan, colors.pink, colors.yellow, colors.green][circles.length % 4],
+      expires: ttl ? performance.now() + ttl : 0 };
+    circles.push(c);
+    return c;
+  };
+  addCircle(205, 380, 32); addCircle(385, 380, 32); addCircle(295, 500, 32);
+  addCircle(135, 560, 22); addCircle(455, 560, 22);
+  addCircle(295, 250, 14, 'post');
+
+  // ---------- Flippers ----------
+  const makeFlipper = (px, py, side) => ({
+    px, py, side, len: 105, th: 10, rest: 0.45, up: -0.5, angle: 0.45, omega: 0, pressed: false, lenMul: 1
+  });
+  const flippers = [makeFlipper(190, 900, 1), makeFlipper(410, 900, -1)];
+  const flipperEnd = f => {
+    const L = f.len * f.lenMul;
+    return { x: f.px + f.side * L * Math.cos(f.angle), y: f.py + L * Math.sin(f.angle), L };
+  };
+  function updateFlipper(f, dt) {
+    const target = f.pressed ? f.up : f.rest;
+    const speed = f.pressed ? 20 : 11;
+    const diff = target - f.angle;
+    const step = Math.sign(diff) * Math.min(Math.abs(diff), speed * dt);
+    f.angle += step;
+    f.omega = dt > 0 ? (step / dt) * state.flipperPower : 0;
+  }
+
+  // ---------- Billes ----------
+  const balls = [];
+  const spawnBall = (x = 564, y = 940, vx = 0, vy = 0, extra = false) => {
+    balls.push({ x, y, vx, vy, extra, trail: [] });
+  };
+  const resetMainBall = () => spawnBall();
+  resetMainBall();
+
+  // ---------- Physique ----------
+  function collideSegment(b, s, flipper) {
+    const rad = BALL_R * state.ballScale;
+    let ax = s.ax, ay = s.ay, bx = s.bx, by = s.by, th = s.th, svx = 0, svy = 0;
+    if (flipper) {
+      const e = flipperEnd(flipper);
+      ax = flipper.px; ay = flipper.py; bx = e.x; by = e.y; th = flipper.th;
+    }
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy || 1;
+    let t = ((b.x - ax) * dx + (b.y - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + dx * t, cy = ay + dy * t;
+    let nx = b.x - cx, ny = b.y - cy;
+    const d = Math.hypot(nx, ny);
+    const min = rad + th;
+    if (d >= min) return false;
+    if (d < 1e-6) { nx = -dy; ny = dx; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l; }
+    else { nx /= d; ny /= d; }
+    b.x = cx + nx * min; b.y = cy + ny * min;
+
+    if (flipper) {
+      const rho = t * flipperEnd(flipper).L;
+      svx = rho * flipper.omega * (-flipper.side * Math.sin(flipper.angle));
+      svy = rho * flipper.omega * Math.cos(flipper.angle);
+    }
+    const rvx = b.vx - svx, rvy = b.vy - svy;
+    const vn = rvx * nx + rvy * ny;
+    if (vn < 0) {
+      const e = Math.min(1, (flipper ? 0.25 : s.e)) * (flipper ? 1 : state.bounce);
+      b.vx -= (1 + e) * vn * nx;
+      b.vy -= (1 + e) * vn * ny;
+      // frottement tangentiel léger
+      const tx = -ny, ty = nx;
+      const vt = (b.vx - svx) * tx + (b.vy - svy) * ty;
+      b.vx -= vt * 0.015 * tx; b.vy -= vt * 0.015 * ty;
+      if (s.kick && -vn > 60) {
+        b.vx += nx * s.kick; b.vy += ny * s.kick; s.flash = 1;
+        addScore(50);
+      }
+      if (flipper && flipper.pressed) { b.vx += nx * 40; b.vy += ny * 40; }
+    }
+    return true;
+  }
+
+  function collideCircle(b, c) {
+    const rad = BALL_R * state.ballScale;
+    const dx = b.x - c.x, dy = b.y - c.y;
+    const d = Math.hypot(dx, dy);
+    const min = rad + c.r;
+    if (d >= min || d === 0) return;
+    const nx = dx / d, ny = dy / d;
+    b.x = c.x + nx * min; b.y = c.y + ny * min;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn < 0) {
+      const kick = c.kind === 'bumper' ? 1.15 : 0.6;
+      b.vx -= (1 + kick) * vn * nx;
+      b.vy -= (1 + kick) * vn * ny;
+      if (c.kind === 'bumper') { b.vx += nx * 280; b.vy += ny * 280; }
+      c.flash = 1;
+      state.combo++;
+      addScore(c.points * Math.min(5, 1 + Math.floor(state.combo / 5)));
+    }
+  }
+
+  function addScore(n) { state.score += n; }
+  function flash(msg, ms = 2200) { state.message = msg; state.messageUntil = performance.now() + ms; }
+
+  function stepPhysics(dt) {
+    const now = performance.now();
+    effectsExpire(now);
+
+    const h = dt / SUBSTEPS;
+    for (let s = 0; s < SUBSTEPS; s++) {
+      flippers.forEach(f => updateFlipper(f, h));
+      for (const b of balls) {
+        b.vy += state.gravity * h;
+        const sp = Math.hypot(b.vx, b.vy);
+        if (sp > MAX_SPEED) { b.vx *= MAX_SPEED / sp; b.vy *= MAX_SPEED / sp; }
+        b.x += b.vx * h; b.y += b.vy * h;
+        for (const sg of segments) collideSegment(b, sg, null);
+        for (const f of flippers) collideSegment(b, { e: 0.25, th: f.th }, f);
+        for (const c of circles) collideCircle(b, c);
+        // bouclier : mur virtuel sous les flippers
+        if (state.shieldUntil > now && b.y > 975 && b.x < LANE_X) { b.y = 975; b.vy = -Math.abs(b.vy) * 0.9 - 200; }
+      }
+    }
+    for (const b of balls) {
+      b.trail.push({ x: b.x, y: b.y });
+      if (b.trail.length > 14) b.trail.shift();
+    }
+    // Pertes de billes
+    for (let i = balls.length - 1; i >= 0; i--) {
+      if (balls[i].y > H + 40) {
+        balls.splice(i, 1);
+        state.combo = 0;
+      }
+    }
+    if (balls.length === 0 && !state.gameOver) {
+      state.ballsLeft--;
+      if (state.ballsLeft <= 0) { state.gameOver = true; flash('GAME OVER – appuie sur R', 600000); }
+      else resetMainBall();
+    }
+  }
+
+  // ---------- Fond personnalisable (image ou vidéo) ----------
+  const background = { el: null, type: null, dim: 0.45 };
+  function setBackground(src, type) {
+    if (!src) { background.el = null; background.type = null; return; }
+    type = type || (/\.(mp4|webm|ogv|mov)(\?|$)/i.test(src) || /^blob:.*video/.test(src) ? 'video' : 'image');
+    if (type === 'video') {
+      const v = document.createElement('video');
+      v.src = src; v.loop = true; v.muted = true; v.playsInline = true; v.autoplay = true;
+      v.play().catch(() => {});
+      background.el = v;
+    } else {
+      const img = new Image();
+      img.onload = () => { background.el = img; };
+      img.src = src;
+    }
+    background.type = type;
+  }
+  function loadBackgroundFile(file) {
+    if (!file) return;
+    const type = file.type.startsWith('video') ? 'video' : 'image';
+    setBackground(URL.createObjectURL(file), type);
+  }
+  function pickBackground() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*,video/*';
+    input.onchange = () => loadBackgroundFile(input.files[0]);
+    input.click();
+  }
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => { e.preventDefault(); loadBackgroundFile(e.dataTransfer.files[0]); });
+
+  // ---------- Événements externes (cadeaux TikTok) ----------
+  const timed = (name, ms, apply, revert) => {
+    const existing = state.effects.find(e => e.name === name);
+    if (existing) { existing.until = performance.now() + ms; return; }
+    apply();
+    state.effects.push({ name, until: performance.now() + ms, revert });
+  };
+  function effectsExpire(now) {
+    for (let i = state.effects.length - 1; i >= 0; i--) {
+      if (state.effects[i].until <= now) { state.effects[i].revert(); state.effects.splice(i, 1); }
+    }
+    for (let i = circles.length - 1; i >= 0; i--) {
+      if (circles[i].expires && circles[i].expires <= now) circles.splice(i, 1);
+    }
+    return 0;
+  }
+
+  const actions = {
+    addBumper() {
+      for (let t = 0; t < 40; t++) {
+        const x = 90 + Math.random() * 360, y = 220 + Math.random() * 380;
+        if (circles.every(c => Math.hypot(c.x - x, c.y - y) > c.r + 50)) {
+          addCircle(x, y, 24, 'bumper', 30000); flash('🌹 Nouveau bumper !'); return;
+        }
+      }
+    },
+    multiball(n = 2) { for (let i = 0; i < n; i++) spawnBall(300 + i * 20, 250, (Math.random() - 0.5) * 400, 100, true); flash('🎱 MULTIBALL !'); },
+    lowGravity(ms = 10000) {
+      timed('lowGravity', ms, () => state.gravity = BASE_GRAVITY * 0.4, () => state.gravity = BASE_GRAVITY);
+      flash('🌌 Gravité réduite');
+    },
+    highGravity(ms = 10000) {
+      timed('highGravity', ms, () => state.gravity = BASE_GRAVITY * 1.8, () => state.gravity = BASE_GRAVITY);
+      flash('🪨 Gravité lourde');
+    },
+    superBounce(ms = 12000) {
+      timed('superBounce', ms, () => state.bounce = BASE_BOUNCE * 1.25, () => state.bounce = BASE_BOUNCE);
+      flash('⚡ Super rebonds');
+    },
+    bigFlippers(ms = 15000) {
+      timed('bigFlippers', ms, () => flippers.forEach(f => f.lenMul = 1.35), () => flippers.forEach(f => f.lenMul = 1));
+      flash('🦁 Gros flippers');
+    },
+    shield(ms = 15000) {
+      timed('shield', ms, () => state.shieldUntil = performance.now() + ms, () => state.shieldUntil = 0);
+      state.shieldUntil = performance.now() + ms;
+      flash('🛡 Bouclier actif');
+    },
+    bigBall(ms = 12000) {
+      timed('bigBall', ms, () => state.ballScale = 1.6, () => state.ballScale = 1);
+      flash('🔮 Grosse bille');
+    },
+    bonus(n = 1000) { addScore(n); flash('💎 +' + n); },
+    extraLife() { state.ballsLeft++; flash('❤️ Bille bonus'); }
+  };
+
+  // Correspondance cadeau -> action (modifiable avec PinballAPI.setGiftMap)
+  let giftMap = {
+    rose: 'addBumper', 'rose': 'addBumper', heart: 'bonus', 'cœur': 'bonus', tiktok: 'shield',
+    gg: 'multiball', galaxy: 'lowGravity', 'galaxie': 'lowGravity', lion: 'bigFlippers', 'lion': 'bigFlippers',
+    perfume: 'superBounce', 'parfum': 'superBounce', finger_heart: 'extraLife', 'mini coeur': 'extraLife',
+    diamond: 'bigBall', 'diamant': 'bigBall', 'universe': 'highGravity', 'univers': 'highGravity'
+  };
+
+  function handleGift(gift, info = {}) {
+    const key = String(gift || '').toLowerCase().trim();
+    const name = giftMap[key] || giftMap[key.normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
+    const count = Math.max(1, Number(info.count) || 1);
+    if (!name || !actions[name]) { flash('🎁 ' + gift + (info.user ? ' de ' + info.user : ''), 1500); return false; }
+    for (let i = 0; i < Math.min(count, 5); i++) actions[name]();
+    return true;
+  }
+
+  // Écoute externe : CustomEvent, postMessage et API directe
+  window.addEventListener('tiktok-gift', e => handleGift(e.detail.gift || e.detail.name, e.detail));
+  window.addEventListener('message', e => {
+    const d = e.data;
+    if (d && (d.type === 'gift' || d.type === 'tiktok-gift')) handleGift(d.gift || d.name, d);
+  });
+
+  window.PinballAPI = {
+    handleGift,
+    onGift: handleGift,
+    setGiftMap(map) { giftMap = Object.assign({}, giftMap, map); },
+    actions,
+    setBackground, loadBackgroundFile, pickBackground,
+    setBackgroundDim(v) { background.dim = Math.max(0, Math.min(0.9, v)); },
+    addBumper: (x, y, r = 24, ttl = 0) => addCircle(x, y, r, 'bumper', ttl),
+    addWall: (ax, ay, bx, by, ttlMs) => {
+      const s = { ax, ay, bx, by, e: 0.5, color: colors.yellow, th: 4, kick: 0, flash: 0 };
+      segments.push(s);
+      if (ttlMs) setTimeout(() => { const i = segments.indexOf(s); if (i >= 0) segments.splice(i, 1); }, ttlMs);
+      return s;
+    },
+    setGravity(v) { BASE_GRAVITY = state.gravity = v; },
+    setBounce(v) { BASE_BOUNCE = state.bounce = v; },
+    setFlipperPower(v) { state.flipperPower = v; },
+    setStartBalls(n) { START_BALLS = Math.max(1, Math.floor(n) || 3); },
+    reset: resetGame, state
+  };
+
+  function resetGame() {
+    balls.length = 0; state.score = 0; state.ballsLeft = START_BALLS; state.gameOver = false; state.combo = 0;
+    state.effects.forEach(e => e.revert()); state.effects.length = 0;
+    flippers.forEach(f => f.lenMul = 1);
+    state.gravity = BASE_GRAVITY; state.bounce = BASE_BOUNCE; state.ballScale = 1; state.shieldUntil = 0; state.messageUntil = 0;
+    circles.length = Math.min(circles.length, 6); // conserve les obstacles d'origine
+    resetMainBall();
+  }
+
+  // ---------- Entrées ----------
+  function launch() {
+    const power = 950 + state.charge * 1000;
+    for (const b of balls) {
+      if (b.x > LANE_X && b.y > 900 && Math.abs(b.vy) < 80) { b.vy = -power; b.vx = 0; }
+    }
+    state.charge = 0; state.charging = false;
+  }
+  const keyMap = { ArrowLeft: 0, KeyZ: 0, KeyQ: 0, ArrowRight: 1, KeyM: 1, KeyP: 1 };
+  window.addEventListener('keydown', e => {
+    if (e.code in keyMap) { flippers[keyMap[e.code]].pressed = true; e.preventDefault(); }
+    else if (e.code === 'Space') { state.charging = true; e.preventDefault(); }
+    else if (e.code === 'KeyB') pickBackground();
+    else if (e.code === 'KeyR') resetGame();
+    else if (e.code === 'KeyT') handleGift(['rose', 'gg', 'galaxy', 'lion', 'tiktok', 'perfume', 'diamond', 'heart'][Math.floor(Math.random() * 8)]);
+  });
+  window.addEventListener('keyup', e => {
+    if (e.code in keyMap) flippers[keyMap[e.code]].pressed = false;
+    else if (e.code === 'Space') launch();
+  });
+  const pointers = new Map();
+  function syncPointers() {
+    flippers[0].pressed = flippers[1].pressed = false;
+    pointers.forEach(p => {
+      if (p.y > 0.6) flippers[p.x < 0.5 ? 0 : 1].pressed = true;
+    });
+  }
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    const p = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+    if (p.y <= 0.6) { state.charge = 0.7; launch(); return; }
+    pointers.set(e.pointerId, p); syncPointers();
+  });
+  const up = e => { pointers.delete(e.pointerId); syncPointers(); };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+
+  // ---------- Rendu ----------
+  let scale = 1, offX = 0, offY = 0, dpr = 1;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    scale = Math.min(canvas.width / W, canvas.height / H);
+    offX = (canvas.width - W * scale) / 2;
+    offY = (canvas.height - H * scale) / 2;
+  }
+  window.addEventListener('resize', resize); resize();
+
+  function drawBackground() {
+    ctx.fillStyle = '#04010c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const el = background.el;
+    if (el) {
+      const w = el.videoWidth || el.naturalWidth || el.width, h = el.videoHeight || el.naturalHeight || el.height;
+      if (w && h) {
+        const k = Math.max(canvas.width / w, canvas.height / h);
+        ctx.drawImage(el, (canvas.width - w * k) / 2, (canvas.height - h * k) / 2, w * k, h * k);
+      }
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      g.addColorStop(0, '#12002b'); g.addColorStop(1, '#00121f');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.fillStyle = `rgba(2,0,12,${background.dim})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function neonLine(ax, ay, bx, by, color, width, glow = 14) {
+    ctx.shadowColor = color; ctx.shadowBlur = glow;
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  }
+
+  function render(now) {
+    drawBackground();
+    ctx.save();
+    ctx.setTransform(scale, 0, 0, scale, offX, offY);
+
+    // Fond de table semi-transparent
+    ctx.fillStyle = 'rgba(5,0,20,0.35)';
+    ctx.fillRect(20, 20, 560, 980);
+
+    for (const s of segments) {
+      s.flash *= 0.9;
+      neonLine(s.ax, s.ay, s.bx, s.by, s.flash > 0.1 ? '#ffffff' : s.color, s.th * 2 + 1, 10 + s.flash * 18);
+    }
+    ctx.shadowBlur = 0;
+
+    for (const c of circles) {
+      c.flash *= 0.92;
+      const g = ctx.createRadialGradient(c.x - c.r * 0.3, c.y - c.r * 0.3, c.r * 0.1, c.x, c.y, c.r);
+      g.addColorStop(0, '#f2f6ff'); g.addColorStop(0.45, '#7d8aa6'); g.addColorStop(1, '#262c3e');
+      ctx.shadowColor = c.color; ctx.shadowBlur = 12 + c.flash * 30;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 4; ctx.strokeStyle = c.flash > 0.15 ? '#fff' : c.color; ctx.stroke();
+      if (c.kind === 'bumper') {
+        ctx.shadowBlur = 0; ctx.fillStyle = c.color; ctx.globalAlpha = 0.5 + c.flash * 0.5;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      }
+    }
+
+    // Bouclier
+    if (state.shieldUntil > now) neonLine(22, 975, LANE_X, 975, colors.green, 4, 18);
+
+    // Flippers
+    for (const f of flippers) {
+      const e = flipperEnd(f);
+      ctx.shadowColor = colors.pink; ctx.shadowBlur = 16;
+      ctx.strokeStyle = '#d9e2ff'; ctx.lineWidth = f.th * 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(f.px, f.py); ctx.lineTo(e.x, e.y); ctx.stroke();
+      ctx.strokeStyle = colors.pink; ctx.lineWidth = f.th * 2 - 8;
+      ctx.beginPath(); ctx.moveTo(f.px, f.py); ctx.lineTo(e.x, e.y); ctx.stroke();
+    }
+
+    // Piston de lancement
+    const pull = state.charging ? state.charge * 25 : 0;
+    ctx.shadowBlur = 0; ctx.fillStyle = colors.yellow;
+    ctx.fillRect(552, 955 + pull - 12, 24, 10);
+
+    // Billes (traînée + lueur)
+    const rad = BALL_R * state.ballScale;
+    for (const b of balls) {
+      b.trail.forEach((p, i) => {
+        ctx.globalAlpha = (i / b.trail.length) * 0.35;
+        ctx.fillStyle = colors.cyan;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad * (i / b.trail.length), 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      const g = ctx.createRadialGradient(b.x - 3, b.y - 3, 1, b.x, b.y, rad);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#aef6ff'); g.addColorStop(1, '#00b7d6');
+      ctx.shadowColor = colors.cyan; ctx.shadowBlur = 26;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(b.x, b.y, rad, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // HUD
+    ctx.font = 'bold 26px "Segoe UI", sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = colors.cyan; ctx.shadowColor = colors.cyan; ctx.shadowBlur = 10;
+    ctx.fillText('SCORE ' + state.score, 40, 62);
+    ctx.textAlign = 'right'; ctx.fillStyle = colors.pink; ctx.shadowColor = colors.pink;
+    ctx.fillText('● '.repeat(Math.max(0, state.ballsLeft)).trim(), 540, 62);
+    ctx.textAlign = 'center'; ctx.font = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillStyle = colors.yellow; ctx.shadowColor = colors.yellow;
+    state.effects.forEach((ef, i) => ctx.fillText(`${ef.name} ${Math.ceil((ef.until - now) / 1000)}s`, 300, 95 + i * 22));
+    if (state.messageUntil > now) {
+      ctx.font = 'bold 34px "Segoe UI", sans-serif'; ctx.fillStyle = '#fff'; ctx.shadowColor = colors.pink; ctx.shadowBlur = 20;
+      ctx.fillText(state.message, 300, 640);
+    }
+    ctx.restore();
+  }
+
+  // ---------- Boucle principale ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state.charging) state.charge = Math.min(1, state.charge + dt / 1.0);
+    if (!state.gameOver) stepPhysics(dt);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+</script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const KEY = 'flipperNeonConfig';
+  const API = window.PinballAPI;
+  const DEFAULT_GIFTS = {
+    rose: 'addBumper', gg: 'multiball', galaxy: 'lowGravity', universe: 'highGravity', lion: 'bigFlippers',
+    perfume: 'superBounce', tiktok: 'shield', diamond: 'bigBall', heart: 'bonus', finger_heart: 'extraLife'
+  };
+  const DEF = { user: '', url: 'wss://jeu6boite.onrender.com', dim: 0.45, balls: 3, grav: 1, bounce: 1, pow: 1, bgUrl: '', bgData: '', gifts: DEFAULT_GIFTS };
+  let S = Object.assign({}, DEF);
+  try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* config absente ou invalide */ }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { $('status').textContent = 'Config non sauvegardée (stockage plein)'; } };
+
+  $('cfgBtn').onclick = () => $('cfg').classList.toggle('open');
+  // Évite que les touches tapées dans le panneau pilotent le jeu
+  ['keydown', 'keyup'].forEach(ev => $('cfg').addEventListener(ev, e => e.stopPropagation()));
+
+  function giftsToText(m) { return Object.entries(m).map(([k, v]) => k + '=' + v).join('\n'); }
+  function parseGifts(t) {
+    const m = {};
+    t.split(/\r?\n/).forEach(l => {
+      const [k, v] = l.split('=').map(s => s && s.trim());
+      if (k && v && API.actions[v]) m[k.toLowerCase()] = v;
+    });
+    return m;
+  }
+  // Le moteur fusionne les correspondances : on neutralise les anciennes en les vidant
+  const engineKeys = Object.keys(DEFAULT_GIFTS).concat(['heart', 'cœur', 'galaxie', 'parfum', 'diamant', 'univers', 'mini coeur']);
+  function applyGifts() {
+    const blank = {};
+    engineKeys.forEach(k => blank[k] = '');
+    API.setGiftMap(Object.assign(blank, S.gifts));
+  }
+
+  function applyAll() {
+    $('user').value = S.user; $('url').value = S.url;
+    $('dim').value = S.dim; $('balls').value = S.balls; $('grav').value = S.grav; $('bounce').value = S.bounce; $('pow').value = S.pow;
+    $('bgUrl').value = S.bgUrl; $('gifts').value = giftsToText(S.gifts);
+    $('dimV').textContent = S.dim; $('ballsV').textContent = S.balls; $('gravV').textContent = S.grav; $('bounceV').textContent = S.bounce; $('powV').textContent = S.pow;
+    API.setBackgroundDim(S.dim);
+    API.setStartBalls(S.balls);
+    API.setGravity(1500 * S.grav);
+    API.setBounce(S.bounce);
+    API.setFlipperPower(S.pow);
+    applyGifts();
+  }
+  function applyBackground() {
+    const src = S.bgData || S.bgUrl;
+    API.setBackground(src || null, S.bgData ? S.bgData.slice(5, 10) === 'video' ? 'video' : 'image' : undefined);
+  }
+
+  [['dim', 'dimV'], ['balls', 'ballsV'], ['grav', 'gravV'], ['bounce', 'bounceV'], ['pow', 'powV']].forEach(([id, vid]) => {
+    $(id).addEventListener('input', () => {
+      S[id] = Number($(id).value); $(vid).textContent = S[id];
+      if (id === 'dim') API.setBackgroundDim(S.dim);
+      if (id === 'balls') API.setStartBalls(S.balls);
+      if (id === 'grav') API.setGravity(1500 * S.grav);
+      if (id === 'bounce') API.setBounce(S.bounce);
+      if (id === 'pow') API.setFlipperPower(S.pow);
+      save();
+    });
+  });
+  $('user').addEventListener('change', () => { S.user = $('user').value; save(); });
+  $('url').addEventListener('change', () => { S.url = $('url').value; save(); });
+  $('bgApply').onclick = () => { S.bgUrl = $('bgUrl').value.trim(); S.bgData = ''; save(); applyBackground(); };
+  $('bgClear').onclick = () => { S.bgUrl = ''; S.bgData = ''; $('bgUrl').value = ''; save(); API.setBackground(null); };
+  $('bgFile').onchange = () => {
+    const f = $('bgFile').files[0];
+    if (!f) return;
+    API.loadBackgroundFile(f);
+    S.bgUrl = '';
+    S.bgData = '';
+    if (f.type.startsWith('image/') && f.size < 2.5e6) {
+      const r = new FileReader();
+      r.onload = () => { S.bgData = String(r.result); save(); };
+      r.readAsDataURL(f);
+    } else save();
+  };
+  $('restart').onclick = () => API.reset();
+  $('giftsApply').onclick = () => { S.gifts = parseGifts($('gifts').value); save(); applyGifts(); };
+  $('giftsReset').onclick = () => { S.gifts = Object.assign({}, DEFAULT_GIFTS); $('gifts').value = giftsToText(S.gifts); save(); applyGifts(); };
+  $('resetAll').onclick = () => { try { localStorage.removeItem(KEY); } catch (e) { /* ignoré */ } S = Object.assign({}, DEF, { gifts: Object.assign({}, DEFAULT_GIFTS) }); applyAll(); API.setBackground(null); API.reset(); };
+
+  // Boutons de test : un par cadeau configuré
+  const tb = $('testBtns');
+  Object.keys(DEFAULT_GIFTS).forEach(g => {
+    const b = document.createElement('button');
+    b.textContent = g;
+    b.onclick = () => API.handleGift(g, { user: 'test' });
+    tb.appendChild(b);
+  });
+
+  // Connexion au connecteur TikTok (même protocole que les autres jeux)
+  let socket = null, reconnect = null;
+  function connect() {
+    const username = $('user').value.trim().replace(/^@/, ''), url = $('url').value.trim();
+    if (!username || !url) { $('status').textContent = 'Pseudo et adresse requis'; return; }
+    S.user = $('user').value; S.url = url; save();
+    clearTimeout(reconnect);
+    if (socket) { socket.onclose = null; socket.close(); }
+    try { socket = new WebSocket(url); } catch (e) { $('status').textContent = 'Adresse invalide'; return; }
+    const ws = socket;
+    $('status').textContent = 'Connexion à @' + username + '…';
+    ws.addEventListener('open', () => ws.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username })));
+    ws.addEventListener('message', ev => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.type === 'STATUS') $('status').textContent = d.message || '';
+        else if (d.type === 'gift' || d.type === 'tiktok-gift') {
+          const g = d.gift ?? d;
+          API.handleGift(String(g.giftName ?? g.gift?.name ?? g.name ?? ''), { count: Number(g.repeatCount) || 1, user: g.nickname || g.username });
+        }
+      } catch (e) { console.error(e); }
+    });
+    ws.addEventListener('error', () => $('status').textContent = 'Connexion impossible');
+    ws.addEventListener('close', () => { if (socket === ws) { $('status').textContent = 'Reconnexion…'; reconnect = setTimeout(connect, 3000); } });
+  }
+  $('connect').onclick = connect;
+
+  applyAll();
+  applyBackground();
+  API.reset();
+})();
+</script>
+</body>
+</html>
