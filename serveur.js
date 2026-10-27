@@ -7,6 +7,7 @@ const { createTikTokSession } = require('./tiktok-session');
 const access = require('./access-control');
 const paypal = require('./paypal');
 const store = require('./account-store');
+const dbSync = require('./db-sync');
 
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
@@ -728,6 +729,7 @@ async function saveAdminGame(body) {
             } catch (error) {
                 if (error.code !== 'ENOENT') throw error;
             }
+            dbSync.deleteFile(filename);
         }
         return { success: true, gameId, deleted: true };
     }
@@ -753,6 +755,8 @@ async function saveAdminGame(body) {
     const imageFile = `${id}.${image.extension}`;
     fs.writeFileSync(path.join(directory, htmlFile), html, { flag: 'wx', mode: 0o600 });
     fs.writeFileSync(path.join(directory, imageFile), image.buffer, { flag: 'wx', mode: 0o600 });
+    dbSync.pushFile(htmlFile, Buffer.from(html, 'utf8'));
+    dbSync.pushFile(imageFile, image.buffer);
     const game = {
         id,
         title,

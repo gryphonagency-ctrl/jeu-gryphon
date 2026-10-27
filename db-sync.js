@@ -73,16 +73,53 @@ async function restore(key, file) {
     return true;
 }
 
+function ensureFilesTable() {
+    return getPool().query(
+        'CREATE TABLE IF NOT EXISTS app_files (name TEXT PRIMARY KEY, content BYTEA NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())'
+    );
+}
+
+function pushFile(name, content) {
+    if (!enabled) return;
+    ensureFilesTable()
+        .then(() => getPool().query(
+            'INSERT INTO app_files (name, content, updated_at) VALUES ($1, $2, now()) ON CONFLICT (name) DO UPDATE SET content = EXCLUDED.content, updated_at = now()',
+            [name, Buffer.from(content)]
+        ))
+        .catch(error => console.error('Échec de la sauvegarde du fichier PostgreSQL :', error.message));
+}
+
+function deleteFile(name) {
+    if (!enabled) return;
+    ensureFilesTable()
+        .then(() => getPool().query('DELETE FROM app_files WHERE name = $1', [name]))
+        .catch(error => console.error('Échec de la suppression du fichier PostgreSQL :', error.message));
+}
+
+async function restoreFiles(directory) {
+    if (!enabled) return 0;
+    await ensureFilesTable();
+    const result = await getPool().query('SELECT name, content FROM app_files');
+    fs.mkdirSync(directory, { recursive: true });
+    for (const row of result.rows) {
+        if (!/^[a-f0-9-]{36}\.(?:html|png|jpe?g|webp)$/.test(row.name)) continue;
+        fs.writeFileSync(path.join(directory, row.name), row.content, { mode: 0o600 });
+    }
+    return result.rows.length;
+}
+
 async function close() {
     while (flushing || pending) await new Promise(resolve => setTimeout(resolve, 50));
     if (pool) await pool.end();
 }
 
-module.exports = { enabled, push, restore, close };
+module.exports = { enabled, push, restore, pushFile, deleteFile, restoreFiles, close };
 
 if (require.main === module) {
-    const { storeFile } = require('./account-store');
+    const { storeFile, getGameFilesDirectory } = require('./account-store');
     restore('accounts', storeFile)
+        .then(() => restoreFiles(getGameFilesDirectory()))
+        .then(count => { if (count) console.log(`${count} fichier(s) de jeu restauré(s) depuis PostgreSQL.`); })
         .then(close)
         .catch(error => {
             console.error('Restauration PostgreSQL impossible :', error.message);
