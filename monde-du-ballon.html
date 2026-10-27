@@ -54,6 +54,9 @@
     .balloon-fall-effect::after { position: absolute; bottom: -8px; left: 50%; width: 10px; height: 10px; background: inherit; clip-path: polygon(50% 0, 0 100%, 100% 100%); content: ""; transform: translateX(-50%); }
     @keyframes balloon-deflate-fall { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1, 1) rotate(0); } 22% { opacity: 1; transform: translate(-50%, -50%) scale(.92, .58) rotate(-12deg); } 100% { opacity: .18; transform: translate(-50%, calc(-50% + var(--fall-distance))) scale(.12, .09) rotate(24deg); } }
     .effects-canvas { position: absolute; z-index: 8; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .turret-canvas { z-index: 7; }
+    .balloon, .balloon-fall-effect { font-size: clamp(22px, 3vw, 38px); line-height: 1; text-align: center; font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; user-select: none; }
+    .balloon::first-line { text-shadow: 0 1px 3px #0005; }
     .projectile { position: absolute; z-index: 7; width: 40px; height: 40px; overflow: hidden; border: 2px solid #fff; border-radius: 50%; background: #f5d36b; box-shadow: 0 0 16px #fff7; pointer-events: none; transform: translate(-50%, -50%); }
     .projectile img { width: 100%; height: 100%; object-fit: cover; }
     .projectile span { display: grid; width: 100%; height: 100%; place-items: center; color: #443117; font-size: 10px; font-weight: 900; }
@@ -164,6 +167,7 @@
           <video class="scene-video" id="backgroundVideo" muted loop playsinline hidden></video>
           <span class="sun"></span><span class="cloud"></span><span class="cloud cloud-two"></span>
           <div class="balloon-field" id="balloonField" aria-label="Ballons à éclater"></div>
+          <canvas class="effects-canvas turret-canvas" id="turretCanvas" aria-hidden="true"></canvas>
           <canvas class="effects-canvas" id="effectsCanvas" aria-hidden="true"></canvas>
           <div class="ground"></div>
         </div>
@@ -850,8 +854,117 @@
         if (timestamp - lastGameSync >= 500) synchronizeGameState();
       }
       renderBalloons();
+      renderTurrets(timestamp);
       if (shotEffects.length) renderProjectile(timestamp);
       requestAnimationFrame(animateScene);
+    }
+
+    const turretCanvas = document.getElementById('turretCanvas');
+    const turretContext = turretCanvas.getContext('2d');
+    const TURRET_RANGE_PX = 70;
+    const TURRET_COOLDOWN_MS = 1100;
+    const TURRET_BEAM_MS = 220;
+    const turrets = [
+      { baseX: 0.12, phase: 0, speedX: 0.00045, speedY: 0.0007, lastShot: -9999, beamUntil: 0, target: null },
+      { baseX: 0.5, phase: 2.1, speedX: 0.00055, speedY: 0.0008, lastShot: -9999, beamUntil: 0, target: null },
+      { baseX: 0.88, phase: 4.2, speedX: 0.0005, speedY: 0.00075, lastShot: -9999, beamUntil: 0, target: null }
+    ];
+
+    function balloonPixels(balloon) {
+      return {
+        x: field.offsetLeft + field.clientWidth * balloon.x / 100,
+        y: field.offsetTop + field.clientHeight * balloon.y / 100
+      };
+    }
+
+    // Les ballons détruits par une tourelle réapparaissent en haut avec leur lot : l'économie des étoiles reste intacte.
+    function turretDestroy(balloon, index) {
+      showBalloonExplosion({ x: balloon.x, y: balloon.y, emoji: emojiFor(balloon.id), color: COLORS[index % COLORS.length] });
+      balloon.y = -8 - Math.random() * 18;
+      balloon.x = 2 + Math.random() * 96;
+    }
+
+    function renderTurrets(timestamp) {
+      const width = scene.clientWidth;
+      const height = scene.clientHeight;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const canvasWidth = Math.round(width * ratio);
+      const canvasHeight = Math.round(height * ratio);
+      if (turretCanvas.width !== canvasWidth || turretCanvas.height !== canvasHeight) {
+        turretCanvas.width = canvasWidth;
+        turretCanvas.height = canvasHeight;
+      }
+      const ctx = turretContext;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const groundY = height * 0.88;
+      const visibleCount = Math.min(balloons.length, MAX_VISIBLE_BALLOONS);
+      turrets.forEach((turret, turretIndex) => {
+        const baseX = width * turret.baseX;
+        const baseY = groundY;
+        // Visée qui balaie de gauche à droite et de bas en haut.
+        const sweepX = (Math.sin(timestamp * turret.speedX + turret.phase) + 1) / 2;
+        const sweepY = (Math.sin(timestamp * turret.speedY + turret.phase * 1.7) + 1) / 2;
+        let aimX = width * 0.04 + sweepX * width * 0.92;
+        let aimY = groundY - sweepY * groundY * 0.9;
+        let locked = false;
+        if (isRoomOwner && timestamp - turret.lastShot > TURRET_COOLDOWN_MS) {
+          let best = null;
+          let bestDistance = TURRET_RANGE_PX;
+          for (let index = 0; index < visibleCount; index++) {
+            const balloon = balloons[index];
+            if (balloon.y < 0 || balloon.y > 98) continue;
+            const point = balloonPixels(balloon);
+            const distance = Math.hypot(point.x - aimX, point.y - aimY);
+            if (distance < bestDistance) { best = { balloon, index, point }; bestDistance = distance; }
+          }
+          if (best) {
+            turret.lastShot = timestamp;
+            turret.beamUntil = timestamp + TURRET_BEAM_MS;
+            turret.target = best.point;
+            turretDestroy(best.balloon, best.index);
+          }
+        }
+        const firing = timestamp < turret.beamUntil && turret.target;
+        if (firing) { aimX = turret.target.x; aimY = turret.target.y; locked = true; }
+        const angle = Math.atan2(aimY - baseY, aimX - baseX);
+        const beamLength = Math.hypot(width, height);
+        const barrelLength = Math.max(26, width * 0.035);
+        const tipX = baseX + Math.cos(angle) * barrelLength;
+        const tipY = baseY + Math.sin(angle) * barrelLength;
+        ctx.save();
+        ctx.lineCap = 'round';
+        // Faisceau de repérage
+        const endX = locked ? aimX : baseX + Math.cos(angle) * beamLength;
+        const endY = locked ? aimY : baseY + Math.sin(angle) * beamLength;
+        ctx.strokeStyle = locked ? '#ff2a2a' : '#ff5a5a55';
+        ctx.lineWidth = locked ? 5 : 1.5;
+        ctx.shadowColor = '#ff1a1a';
+        ctx.shadowBlur = locked ? 18 : 6;
+        ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(endX, endY); ctx.stroke();
+        if (locked) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(endX, endY); ctx.stroke();
+        }
+        // Canon
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#2b3440';
+        ctx.lineWidth = Math.max(9, width * 0.012);
+        ctx.beginPath(); ctx.moveTo(baseX, baseY - 8); ctx.lineTo(tipX, tipY - 8 * (1 - Math.abs(Math.sin(angle)))); ctx.stroke();
+        // Socle
+        const baseWidth = Math.max(44, width * 0.055);
+        ctx.fillStyle = '#3b4656';
+        ctx.beginPath(); ctx.moveTo(baseX - baseWidth / 2, baseY + 2); ctx.lineTo(baseX - baseWidth * 0.3, baseY - 16);
+        ctx.lineTo(baseX + baseWidth * 0.3, baseY - 16); ctx.lineTo(baseX + baseWidth / 2, baseY + 2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#5c6b80';
+        ctx.beginPath(); ctx.arc(baseX, baseY - 16, baseWidth * 0.26, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = locked ? '#ff2a2a' : '#ffb74d';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(baseX, baseY - 18, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      });
     }
 
     function renderProjectile(timestamp) {
@@ -950,6 +1063,7 @@
       const fallenBalloon = document.createElement('div');
       fallenBalloon.className = 'balloon-fall-effect';
       fallenBalloon.setAttribute('aria-hidden', 'true');
+      fallenBalloon.textContent = effect.emoji || '';
       fallenBalloon.style.left = `${targetX}px`;
       fallenBalloon.style.top = `${targetY}px`;
       fallenBalloon.style.setProperty('--burst-color', effect.color || '#ffdc78');
@@ -981,6 +1095,19 @@
       if (playerKey !== 'user:') avatars.set(playerKey, avatarDataUri);
     }
 
+    const BALLOON_EMOJIS = Array.from(
+      '😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳😎🤓🧐😕😟🙁☹️😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊' +
+      '🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🐤🦆🦅🦉🦇🐺🐗🐴🦄🐝🐛🦋🐌🐞🐜🦟🦗🕷️🦂🐢🐍🦎🐙🦑🦐🦀🐡🐠🐟🐬🐳🐋🦈🐊🐅🐆🦓🦍🐘🦛🦏🐪🐫🦒🦘🐃🐂🐄🐎🐖🐏🐑🦙🐐🦌🐕🐩🐈🐓🦃🦚🦜🦢🦩🕊️🐇🦝🦨🦡🦦🦥🐁🐀🐿️🦔' +
+      '🍎🍐🍊🍋🍌🍉🍇🍓🍈🍒🍑🥭🍍🥥🥝🍅🍆🥑🥦🥬🥒🌶️🌽🥕🧄🧅🥔🍠🥐🥯🍞🥖🧀🥚🍳🥞🧇🥓🥩🍗🍖🌭🍔🍟🍕🥪🌮🌯🥗🍝🍜🍲🍣🍤🍙🍚🍦🍧🍨🍩🍪🎂🍰🧁🍫🍬🍭☕🍵🥤🍺🍷' +
+      '⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸🥊🥋⛳🎯🎮🎲🎸🎹🥁🎺🎻🎤🎧🎬🎨🚗🚕🚌🚓🚑🚒🚜🏍️🚲🛴✈️🚀🛸🚁⛵🚢⚓🏠🏰🗼🌋🏝️' +
+      '🌞🌝🌛⭐🌟✨⚡🔥🌈☀️⛅☁️❄️☃️💧🌊🌸🌼🌻🌹🌷🌵🌴🍀🍁🍄' +
+      '❤️🧡💛💚💙💜🖤🤍💔💖💝💯💥💫💦🎉🎊🎁🎈👑💎🔔🎵🏆🥇🔮🧸🪁🪀🧩'
+    );
+
+    function emojiFor(id) {
+      return BALLOON_EMOJIS[(Math.imul(id | 0, 2654435761) >>> 0) % BALLOON_EMOJIS.length];
+    }
+
     function createBalloon(reward, y = -8) {
       return {
         id: ++nextBalloonId,
@@ -999,6 +1126,7 @@
       node.className = 'balloon';
       node.dataset.balloonId = String(balloon.id);
       node.setAttribute('aria-label', 'Éclater un ballon');
+      node.textContent = emojiFor(balloon.id);
       node.addEventListener('click', () => shootBalloon(balloon.id));
       field.append(node);
       balloon.node = node;
@@ -1155,6 +1283,7 @@
         x: balloon.x,
         y: balloon.y,
         earnedStars,
+        emoji: emojiFor(balloon.id),
         color: COLORS[index % COLORS.length],
         startedAt: performance.now()
       });
