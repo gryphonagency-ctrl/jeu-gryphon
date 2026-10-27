@@ -570,6 +570,59 @@ async function uploadGameImageToCloudinary(gameId, image) {
     return { url: result.secure_url, publicId: result.public_id };
 }
 
+function cloudinaryAvatarId(avatarKey) {
+    return `tiktok-avatar-${avatarKey}`;
+}
+
+function cloudinaryAvatarCredentials() {
+    try {
+        const { cloudName, apiKey, apiSecret } = getCloudinaryCredentials();
+        if (cloudName && apiKey && apiSecret &&
+            /^[a-zA-Z0-9_-]+$/.test(cloudName) && /^\d+$/.test(apiKey)) {
+            return { cloudName, apiKey, apiSecret };
+        }
+    } catch {
+        // Cloudinary non configuré : les avatars restent sur le disque local.
+    }
+    return null;
+}
+
+async function uploadAvatarToCloudinary(avatarKey, image, contentType) {
+    const credentials = cloudinaryAvatarCredentials();
+    if (!credentials) return;
+    const { cloudName, apiKey, apiSecret } = credentials;
+    const publicId = cloudinaryAvatarId(avatarKey);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = crypto.createHash('sha1')
+        .update(`overwrite=true&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
+        .digest('hex');
+    const form = new FormData();
+    form.set('file', new Blob([image], { type: contentType }), `${avatarKey}.img`);
+    form.set('api_key', apiKey);
+    form.set('overwrite', 'true');
+    form.set('public_id', publicId);
+    form.set('timestamp', timestamp);
+    form.set('signature', signature);
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(30000)
+    });
+    if (!response.ok) throw new Error(`Cloudinary a répondu ${response.status}.`);
+}
+
+async function downloadAvatarFromCloudinary(avatarKey) {
+    const credentials = cloudinaryAvatarCredentials();
+    if (!credentials) return null;
+    const response = await fetch(
+        `https://res.cloudinary.com/${credentials.cloudName}/image/upload/${cloudinaryAvatarId(avatarKey)}`,
+        { signal: AbortSignal.timeout(15000) }
+    );
+    if (!response.ok) return null;
+    const content = Buffer.from(await response.arrayBuffer());
+    return content.length > 0 && content.length <= 2 * 1024 * 1024 ? content : null;
+}
+
 function decodeGameImage(dataUrl) {
     if (typeof dataUrl !== 'string') throw invalidAdminInput('Choisis une image PNG, JPG ou WebP.');
     const match = /^data:image\/(png|jpeg|webp);base64,([a-zA-Z0-9+/]+={0,2})$/.exec(dataUrl);
@@ -722,17 +775,31 @@ const server = http.createServer((req, res) => {
             res.end();
             return;
         }
-        const avatarPath = store.getTikTokAvatarPath(avatarMatch[1]);
-        if (!avatarPath) {
-            res.writeHead(404, { 'Cache-Control': 'no-store' });
-            res.end();
-            return;
-        }
         const player = Object.values(store.listTikTokPlayers())
             .find(item => item.avatarKey === avatarMatch[1]);
         if (!player) {
             res.writeHead(404, { 'Cache-Control': 'no-store' });
             res.end();
+            return;
+        }
+        const avatarPath = store.getTikTokAvatarPath(avatarMatch[1]);
+        if (!avatarPath) {
+            downloadAvatarFromCloudinary(avatarMatch[1]).then(content => {
+                if (!content) {
+                    res.writeHead(404, { 'Cache-Control': 'no-store' });
+                    res.end();
+                    return;
+                }
+                res.writeHead(200, {
+                    'Cache-Control': 'private, max-age=86400',
+                    'Content-Type': player.avatarType,
+                    'X-Content-Type-Options': 'nosniff'
+                });
+                res.end(content);
+            }).catch(() => {
+                res.writeHead(404, { 'Cache-Control': 'no-store' });
+                res.end();
+            });
             return;
         }
         res.writeHead(200, {
@@ -2243,6 +2310,8 @@ function updateSessionWalletProfile(session, messageData) {
             const image = Buffer.from(match[2], 'base64');
             if (image.length <= 512 * 1024) {
                 const saved = store.saveTikTokAvatar(identityKey, image, match[1]);
+                uploadAvatarToCloudinary(saved.avatarKey, image, match[1])
+                    .catch(error => console.warn('Envoi avatar vers Cloudinary impossible :', error.message));
                 avatarKey = saved.avatarKey;
                 avatarType = saved.avatarType;
                 avatarSavedAt = Date.now();
