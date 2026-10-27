@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine à cadeaux</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #151521; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; display: none; }
+  #stage { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2vh; padding: 2vh 2vw; }
+  #diamondWrap { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; height: 26vh; }
+  #diamond { height: 100%; filter: drop-shadow(0 0 30px rgba(120,200,255,.55)); animation: float 4s ease-in-out infinite; }
+  #diamond.win { animation: float 4s ease-in-out infinite, flash .25s 4; }
+  #diamondWrap { position: relative; }
+  #vip { position: absolute; z-index: 6; left: 50%; top: 50%; width: min(860px, 92vw); box-sizing: border-box; transform: translate(-50%,-50%) scale(.6); opacity: 0; pointer-events: none; display: flex; align-items: center; gap: 20px; padding: 16px 44px 16px 18px; border-radius: 80px; background: linear-gradient(135deg,#3a2a00,#a67c00 40%,#ffe27a 55%,#a67c00 70%,#3a2a00); border: 4px solid #ffd700; box-shadow: 0 0 40px #ffd700, 0 0 90px #ff2bd6; color: #fff; transition: all .4s cubic-bezier(.2,1.4,.4,1); }
+  #arcade-stars-wallet { display: none !important; }
+  #vip.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  #vip img, #starCard img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; background: #333; }
+  #vip .tag { font: 900 15px Impact,'Arial Black',sans-serif; letter-spacing: 3px; color: #ffe600; text-shadow: 0 0 8px #000; }
+  #vip .name { font: 900 clamp(22px,3.4vw,38px) Impact,'Arial Black',sans-serif; text-shadow: 2px 2px 0 #000, 0 0 14px #ff2bd6; }
+  #vip .sub { font-weight: 700; text-shadow: 0 1px 4px #000; }
+  #starCard { position: absolute; z-index: 6; left: 50%; top: 100%; margin-top: 10px; transform: translateX(-50%) scale(.7); opacity: 0; pointer-events: none; display: flex; align-items: center; gap: 20px; padding: 14px 40px 14px 14px; border-radius: 80px; background: rgba(10,10,30,.93); border: 4px solid #9cf; box-shadow: 0 0 40px #4b8fe8; color: #fff; white-space: nowrap; transition: opacity .35s, transform .35s; }
+  #starCard.show { opacity: 1; animation: slowZoom 7s ease-out forwards; }
+  @keyframes slowZoom { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.35); } }
+  #starCard img { width: 90px; height: 90px; }
+  #starCard .name { font-weight: 800; font-size: 28px; }
+  #starCard .bal { font-weight: 900; font-size: 44px; color: #ffd700; text-shadow: 0 0 14px #ff9a00; }
+  @keyframes float { 50% { transform: translateY(-10px) } }
+  @keyframes flash { 50% { filter: drop-shadow(0 0 70px #fff) brightness(1.6) } }
+  #reels { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1.2vw; width: min(96vw, 1000px); padding: 1.2vw; border-radius: 20px; background: rgba(10,10,20,.72); border: 2px solid rgba(160,210,255,.35); }
+  .reel { aspect-ratio: 1; border-radius: 14px; background: #151521; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .reel img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .reel.spinning img { animation: drop .26s ease-in-out infinite alternate; }
+  .reel.hit { box-shadow: 0 0 0 3px gold, 0 0 25px gold; }
+  #brand { flex: 0 0 auto; margin: 0; text-align: center; font-family: Impact, 'Arial Black', sans-serif; font-size: clamp(28px, 6vw, 64px); letter-spacing: 4px; text-transform: uppercase; line-height: 1; transform: rotate(-3deg) skew(-6deg);
+    color: #fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill;
+    text-shadow: 3px 3px 0 #ff2bd6, 6px 6px 0 #00e5ff, 9px 9px 0 #000, 0 0 25px #ff2bd6, 0 0 45px #00e5ff;
+    animation: brandGlow 1.6s ease-in-out infinite alternate; }
+  #brand span { color: #ffe600; }
+  @keyframes brandGlow { from { filter: brightness(1) hue-rotate(0deg); } to { filter: brightness(1.3) hue-rotate(25deg); } }
+  #diamond.gift { animation: float 4s ease-in-out infinite, giftPulse 1.2s ease-out 1; }
+  #diamond.spin { animation: float 4s ease-in-out infinite, shimmer 1.1s linear infinite; }
+  @keyframes giftPulse { 0% { transform: scale(1); } 30% { transform: scale(1.18); filter: drop-shadow(0 0 60px #9cf) brightness(1.4); } 100% { transform: scale(1); } }
+  @keyframes shimmer { 50% { filter: drop-shadow(0 0 45px #7cf) brightness(1.25); } }
+  #spark { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  #demoBanner { position: fixed; z-index: 4; left: 50%; top: 10px; transform: translateX(-50%); background: rgba(255,215,0,.92); color: #222; font-weight: 700; padding: 6px 16px; border-radius: 20px; display: none; }
+  #tkStatus { font-weight: 700; color: #e8a39a; }
+  #tkStatus.online { color: #6fe3c1; }
+  @keyframes drop { from { transform: translateY(-14%) } to { transform: translateY(14%) } }
+  #hud { min-height: 5vh; padding: 1vh 0; text-align: center; font-size: clamp(14px, 2.4vw, 26px); text-shadow: 0 2px 6px #000; }
+  #queueBox { position: fixed; z-index: 3; left: 10px; top: 60vh; background: rgba(0,0,0,.72); border: 2px solid #9cf; border-radius: 12px; padding: 8px 12px; display: block; width: 230px; max-height: 40vh; overflow: hidden; touch-action: none; }
+  #queueBox.unpinned { cursor: grab; border-style: dashed; border-color: #ffe600; }
+  #queueBox.dragging { cursor: grabbing; }
+  #queueBox h4 { display: flex; align-items: center; justify-content: space-between; }
+  #queueBox h4 button { font-size: 14px; background: none; border: 0; cursor: pointer; padding: 0 2px; }
+  #queueBox h4 { margin: 0 0 4px; font: 900 15px Impact,'Arial Black',sans-serif; letter-spacing: 2px; color: #ffe600; }
+  #queueBox em { margin-left: auto; color: #ffd700; font-style: normal; font-weight: 800; }
+  #queueBox div { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  #queueBox img { width: 28px; height: 28px; border-radius: 50%; }
+  #panel { position: fixed; z-index: 5; right: 0; top: 0; bottom: 0; width: 340px; max-width: 92vw; overflow-y: auto; background: rgba(15,15,28,.96); padding: 12px; font-size: 13px; display: none; border-left: 1px solid #335; }
+  #panel.open { display: block; }
+  #panel h3 { margin: 14px 0 6px; font-size: 14px; color: #9cf; }
+  #panel input, #panel button, #panel select { font: inherit; padding: 5px 8px; margin: 2px 0; border-radius: 6px; border: 1px solid #446; background: #222238; color: #fff; }
+  #panel button { cursor: pointer; }
+  #panel input[type=range] { width: 100%; padding: 0; }
+  #panel .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #panel .row > input { flex: 1; min-width: 70px; }
+  #giftList img { width: 32px; height: 32px; object-fit: contain; vertical-align: middle; }
+  #giftList div { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #board div { display: flex; justify-content: space-between; margin: 2px 0; }
+  #stage { transition: padding-right .2s; }
+  body.panel-open #stage { padding-right: 330px; }
+  #gear { position: fixed; z-index: 7; right: 8px; top: 8px; width: 38px; height: 38px; border-radius: 50%; border: 1px solid #446; background: rgba(15,15,28,.9); color: #fff; font-size: 20px; cursor: pointer; }
+  #panel { top: 54px; bottom: auto; max-height: calc(100% - 62px); right: 8px; border-radius: 12px; border: 1px solid #335; width: 300px; }
+</style>
+</head>
+<body>
+<video id="bg" autoplay muted loop playsinline></video>
+
+<div id="stage">
+  <div id="reels"></div>
+  <div id="hud"></div>
+  <h1 id="brand">GRYPHON <span>AGENCY</span></h1>
+  <div id="diamondWrap">
+    <svg id="diamond" viewBox="0 0 200 180" aria-hidden="true">
+      <defs>
+        <linearGradient id="gCrown" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#9fdcff"/><stop offset="1" stop-color="#4b8fe8"/></linearGradient>
+        <linearGradient id="gPav" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cc4ff"/><stop offset="1" stop-color="#1d4fb8"/></linearGradient>
+        <linearGradient id="gL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#bfeaff"/><stop offset="1" stop-color="#3b86e0"/></linearGradient>
+        <linearGradient id="gR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8fd0ff"/><stop offset="1" stop-color="#1f5fcc"/></linearGradient>
+      </defs>
+      <polygon points="50,15 150,15 190,65 10,65" fill="url(#gCrown)"/>
+      <polygon points="50,15 80,65 10,65" fill="url(#gL)" opacity=".9"/>
+      <polygon points="150,15 120,65 190,65" fill="url(#gR)" opacity=".9"/>
+      <polygon points="50,15 100,15 80,65" fill="#fff" opacity=".55"/>
+      <polygon points="100,15 150,15 120,65" fill="#cfefff" opacity=".35"/>
+      <polygon points="80,65 120,65 100,15" fill="#e8f8ff" opacity=".6"/>
+      <polygon points="10,65 190,65 100,172" fill="url(#gPav)"/>
+      <polygon points="10,65 80,65 100,172" fill="#7fd0ff" opacity=".7"/>
+      <polygon points="80,65 120,65 100,172" fill="#2f72d8" opacity=".85"/>
+      <polygon points="120,65 190,65 100,172" fill="#143f9c" opacity=".7"/>
+      <path d="M50 15 L10 65 L100 172 L190 65 L150 15 Z M10 65 H190 M80 65 L100 15 L120 65 M80 65 L100 172 L120 65" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1"/>
+      <circle cx="62" cy="32" r="3" fill="#fff"/><circle cx="140" cy="50" r="2" fill="#fff"/>
+    </svg>
+    <div id="vip"><img id="vipImg" alt=""><div><div class="tag">👑 VIP — GAGNANT 👑</div><div class="name" id="vipName"></div><div class="sub" id="vipSub"></div></div></div>
+    <div id="starCard"><img id="scImg" alt=""><div><div class="name" id="scName"></div><div class="bal" id="scBal"></div></div></div>
+  </div>
+</div>
+
+<div id="queueBox"></div>
+<button id="gear" onclick="togglePanel()" title="Panneau de contrôle">⚙</button>
+<canvas id="spark"></canvas>
+<div id="demoBanner">DÉMO</div>
+
+<div id="panel" class="open">
+  <div class="row"><strong>Panneau de contrôle</strong><button onclick="togglePanel()">✕</button></div>
+
+  <h3>TikTok Live <span id="tkStatus">HORS LIGNE</span></h3>
+  <div class="row"><input id="tkUser" placeholder="@ton_pseudo_tiktok"><button id="tkConnect" onclick="requestTikTokConnection()">Connecter TikTok</button></div>
+  <div id="tkHint" style="opacity:.8;margin:4px 0">Un cadeau de N pièces fait tourner la machine N fois. Un cadeau aligné rapporte autant d'étoiles que sa valeur.</div>
+
+  <h3>Simuler un cadeau (test)</h3>
+  <div class="row"><button onclick="testGift(false)">🎁 Cadeau 100 <kbd>G</kbd></button><button onclick="testGift(true)">🏆 Gagnant <kbd>W</kbd></button></div>
+  <h3>Démo</h3>
+  <button onclick="runDemo()">▶ Démo : cadeau de 100 pièces</button>
+
+  <h3>Chat (simulation)</h3>
+  <div class="row"><input id="chatUser" placeholder="pseudo" value="testeur"></div>
+  <div class="row"><input id="chatMsg" placeholder="étoile | run | run 5"><button onclick="sendChat()">Envoyer</button></div>
+  <div class="row"><input id="giftVal" type="number" value="5" min="1"><button onclick="simGift()">Cadeau (valeur)</button></div>
+
+  <h3>Chance de victoire par tour</h3>
+  <input id="rtp" type="range" min="0" max="100" value="10"><span id="rtpOut">10%</span>
+
+  <h3>Gros cadeaux (&gt; 100 pièces) — manuel</h3>
+  <div style="opacity:.8;margin:2px 0">Ils ne tombent jamais seuls. Choisis-en un et déclenche-le.</div>
+  <div class="row"><select id="bigGift" style="flex:1"></select><button onclick="triggerBigGift()">👑 Déclencher</button></div>
+
+  <h3>Vidéo d'arrière-plan</h3>
+  <input id="bgFile" type="file" accept="video/*,image/*">
+
+  <h3>Affichage</h3>
+  <div class="row"><button id="soundBtn" onclick="toggleSound()">🔊 Son : ON (M)</button><button onclick="toggleQueue()">File d'attente</button></div>
+
+  <h3>Solde d'étoiles</h3>
+  <div class="row"><input id="balUser" placeholder="pseudo"><input id="balAmt" type="number" placeholder="étoiles"><button onclick="setBalance()">OK</button></div>
+  <div id="board"></div>
+
+  <h3>Cadeaux (rotation)</h3>
+  <div id="giftList"></div>
+  <div class="row"><input id="newName" placeholder="nom"><input id="newVal" type="number" placeholder="valeur"></div>
+  <input id="newImg" type="file" accept="image/*"><button onclick="addGift()">Ajouter le cadeau</button>
+
+  <h3>Import / Export</h3>
+  <div class="row"><button onclick="exportSetup()">Exporter</button><input id="importFile" type="file" accept=".json"></div>
+</div>
+
+<script>
+// Ids 1-4 (initiaux) tournent dans la machine mais ont 0 % de chance d'être tirés ; 5 et 6 réutilisent les images 2 et 4.
+class TikTokGameController {
+  constructor(initialGifts) {
+    this.gifts = initialGifts;
+    this.rtp = 0.10;
+    this.viewers = new Map();
+    this.history = [];
+    this.isPanelVisible = true;
+    this.isSoundEnabled = true;
+    this.queue = [];
+    this.isQueueVisible = true;
+    this.initialGiftIds = new Set(initialGifts.map(g => g.id));
+  }
+  updateGifts(newGifts) { this.gifts = newGifts; }
+  setRTP(newRtp) { if (newRtp >= 0 && newRtp <= 1) this.rtp = newRtp; }
+  setBackground(mediaPath) { this.backgroundMedia = mediaPath; }
+  toggleControlPanel() { this.isPanelVisible = !this.isPanelVisible; return this.isPanelVisible; }
+  toggleSound() { this.isSoundEnabled = !this.isSoundEnabled; return this.isSoundEnabled; }
+  toggleQueueDisplay() { this.isQueueVisible = !this.isQueueVisible; return this.isQueueVisible; }
+  addToQueue(viewerId) {
+    const viewer = this.viewers.get(viewerId);
+    if (viewer && !this.queue.some(q => q.viewerId === viewerId)) {
+      this.queue.push({ viewerId, pseudo: viewer.pseudo, profilePicture: viewer.profilePicture });
+    }
+  }
+  getNextInQueue() { return this.queue.shift(); }
+  getLeaderboard() { return Array.from(this.viewers.values()).sort((a, b) => b.stars - a.stars); }
+  modifyViewerBalance(viewerId, newStarAmount) {
+    if (this.viewers.has(viewerId)) this.viewers.get(viewerId).stars = newStarAmount;
+  }
+  addViewer(viewerId, pseudo, profilePicture) {
+    if (!this.viewers.has(viewerId)) this.viewers.set(viewerId, { pseudo, profilePicture, stars: 0 });
+  }
+  processGift(viewerId, giftId, giftValue) {
+    this.history.push({ viewerId, giftId, giftValue });
+    const viewer = this.viewers.get(viewerId);
+    if (viewer) { viewer.stars += giftValue; this.addToQueue(viewerId); }
+    return this.triggerMechanism(giftId, giftValue);
+  }
+  processRun(viewerId, betAmount) {
+    const viewer = this.viewers.get(viewerId);
+    if (!viewer) return { success: false, message: "Viewer not found." };
+    if (!(betAmount > 0) || viewer.stars < betAmount) return { success: false, message: "Insufficient stars." };
+    viewer.stars -= betAmount;
+    const results = [];
+    for (let i = 0; i < betAmount; i++) {
+      results.push(Math.random() < this.rtp ? this.drawWeightedGift() : { id: 0, name: 'Empty', value: 0 });
+    }
+    return { success: true, message: `${viewer.pseudo} used ${betAmount} stars to play!`, remainingStars: viewer.stars, results };
+  }
+  // Poids : petits cadeaux (50) contre autres cadeaux ≤ 100 pièces (15), soit ≈77 % / ≈23 % des victoires.
+  // Les cadeaux de plus de 100 pièces ne sont jamais tirés : seul le déclenchement manuel les fait tomber.
+  drawWeightedGift() {
+    const eligible = this.gifts.filter(g => !this.initialGiftIds.has(g.id) && g.value <= 100);
+    const small = eligible.filter(g => g.tier === 'small');
+    const others = eligible.filter(g => g.tier !== 'small');
+    if (eligible.length === 0) return { id: 0, name: 'Empty', value: 0 };
+    let pool;
+    if (small.length && others.length) pool = Math.random() * 65 < 50 ? small : others;
+    else pool = small.length ? small : others;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  triggerMechanism(giftId, spins) {
+    const activeItem = this.gifts.find(gift => gift.id === giftId);
+    const results = [];
+    for (let i = 0; i < spins; i++) results.push(this.drawWeightedGift());
+    return { message: `Rotation active for ${activeItem ? activeItem.name : 'Unknown Gift'}`, spinsPerformed: spins, results };
+  }
+  exportState() {
+    return JSON.stringify({
+      gifts: this.gifts, rtp: this.rtp, backgroundMedia: this.backgroundMedia,
+      viewers: Array.from(this.viewers.entries()), history: this.history, queue: this.queue
+    });
+  }
+  importState(jsonString) {
+    try {
+      const s = JSON.parse(jsonString);
+      this.gifts = s.gifts; this.rtp = s.rtp; this.backgroundMedia = s.backgroundMedia;
+      this.viewers = new Map(s.viewers); this.history = s.history; this.queue = s.queue;
+      this.initialGiftIds = new Set([1, 2, 3, 4, 5, 6]);
+      return { success: true, message: "Setup imported successfully." };
+    } catch (e) {
+      return { success: false, message: "Failed to import setup." };
+    }
+  }
+}
+
+const D = 'cadeaux-machine/';
+const initialGifts = [
+  { id: 1, name: 'TikTok Universe', value: 1000, img: D + 'universe.png' },
+  { id: 2, name: 'TikTok Stars', value: 100, img: D + 'stars.png' },
+  { id: 3, name: 'Léon et le Lion', value: 10, img: D + 'lion.png' },
+  { id: 4, name: 'Zeus', value: 3, img: D + 'zeus.png' },
+  { id: 5, name: 'TikTok Stars', value: 100, img: D + 'stars.png' },
+  { id: 6, name: 'Zeus', value: 3, img: D + 'zeus.png' }
+];
+const adminControls = new TikTokGameController(initialGifts);
+
+// Nouveaux cadeaux, ajoutés aux six actuels (images non modifiées).
+[
+  ['Donut', 30, 'donut.jpg'], ['Manette de jeu', 100, 'manette.jpg'], ['Mercredi gagnant', 99, 'mercredi.png'],
+  ['Cœur dans les mains', 100, 'coeur-mains.png'], ['Canne en bois', 100, 'canne-bois.png'],
+  ['Le petit Ourson', 100, 'ourson.png'], ['Confettis', 100, 'confettis.png'],
+  ['Énergie dans un coquillage', 100, 'coquillage.png'], ['Cœur sur mon Terrien', 100, 'coeur-terrien.png'],
+  ['Papillon', 88, 'papillon.png'], ['Famille', 90, 'famille.png'],
+  ['Faucon', 10999, 'faucon.png'], ['Planète merveilleuse', 10000, 'planete.png'],
+  ['Canne de cristal', 10000, 'canne-cristal.png'], ['Autoroute au coucher du soleil', 10000, 'autoroute.png'],
+  ['Pieuvre', 10000, 'pieuvre.png'], ['Léon et Lili', 9699, 'leon-lili.png'],
+  ['Parc safari', 8000, 'safari.png'], ['Grand pilote de drift', 7700, 'drift.png'],
+  ['TikTok', 1, 'tiktok.png'], ['Cornet de crème glacée', 1, 'cornet-creme-glacee.png'], ['Étoile de mer', 1, 'etoile-de-mer.png'],
+  ['GG', 1, 'gg.png'], ['Main', 1, 'gift-1-1.png'], ['Café', 1, 'cafe.png'],
+  ['Cœur en flammes', 1, 'coeur-flamme.png'], ['Cœur nuage', 1, 'coeur-nuage.png']
+].forEach(([name, value, f], i) => adminControls.gifts.push({ id: 100 + i, name, value, img: D + f, tier: value === 1 ? 'small' : 'normal' }));
+let nextId = 200;
+
+const $ = id => document.getElementById(id);
+const reelsEl = $('reels');
+const reels = [];
+for (let i = 0; i < 6; i++) {
+  const d = document.createElement('div'); d.className = 'reel';
+  const im = document.createElement('img'); im.alt = ''; d.appendChild(im);
+  reelsEl.appendChild(d); reels.push({ el: d, img: im, timer: null });
+}
+
+const symbols = () => [...new Set(adminControls.gifts.map(g => g.img))];
+const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Rotation continue : chaque rouleau change de symbole en permanence.
+function startSpin(i) {
+  const r = reels[i];
+  r.el.classList.remove('hit'); r.el.classList.add('spinning');
+  clearInterval(r.timer);
+  r.timer = setInterval(() => { r.img.src = rand(symbols()); if (i === 0 && $('diamond').classList.contains('spin')) beep(520, .03); }, 260 + i * 40);
+}
+
+// Cloche d'école : plusieurs partiels inharmoniques avec une longue décroissance, frappée 5 fois
+function bell() {
+  if (!adminControls.isSoundEnabled) return;
+  try {
+    const c = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    for (let n = 0; n < 5; n++) {
+      const t0 = c.currentTime + n * .22;
+      [[1, .5], [2.01, .3], [2.76, .25], [4.07, .15], [5.4, .08]].forEach(([m, a]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = 'sine'; o.frequency.value = 880 * m;
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(a * .18, t0 + .005); g.gain.exponentialRampToValueAtTime(.0001, t0 + .9);
+        o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0 + 1);
+      });
+    }
+  } catch (e) {}
+}
+function stopSpin(i, src) {
+  const r = reels[i];
+  clearInterval(r.timer); r.timer = null;
+  r.el.classList.remove('spinning');
+  r.img.src = src;
+  beep(300 + i * 60, .08);
+}
+
+let busy = false, jobs = [];
+function hud(t) { $('hud').textContent = t; }
+
+const AVATAR_FALLBACK = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#445"/><circle cx="5" cy="3.6" r="2" fill="#aab"/><ellipse cx="5" cy="9" rx="3.5" ry="3" fill="#aab"/></svg>');
+function avatarOf(pseudo) { const v = adminControls.viewers.get(viewerId(pseudo)); return (v && v.profilePicture) || AVATAR_FALLBACK; }
+const timers = {};
+function popup(el, ms) { el.classList.add('show'); clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms); }
+function showVip(who, gift) {
+  $('vipImg').src = avatarOf(who); $('vipName').textContent = '@' + who;
+  $('vipSub').textContent = (gift && gift.name ? `a aligné 6 × ${gift.name}` : 'a aligné six cadeaux') + (gift && gift.value ? ` · +${gift.value} ⭐` : '');
+  popup($('vip'), 4000);
+}
+function showStars(pseudo, stars) {
+  $('scImg').src = avatarOf(pseudo); $('scName').textContent = '@' + pseudo; $('scBal').textContent = `⭐ ${stars} étoile${stars > 1 ? 's' : ''}`;
+  popup($('starCard'), 7000);
+}
+
+// Un cadeau aligné vaut autant d'étoiles que sa valeur en pièces (1 pièce = 1 étoile)
+function awardStars(who, amount) {
+  amount = Math.floor(Number(amount)); if (!(amount >= 1)) return;
+  if (liveSocket && liveSocket.readyState === 1 && window.ArcadeStars) {
+    window.ArcadeStars.award({ username: who, amount }).catch(() => {});
+  } else {
+    const id = ensureViewer(who), v = adminControls.viewers.get(id);
+    v.stars += amount; refreshPanel();
+  }
+}
+
+async function playResult(res, who, label) {
+  // Le résultat d'un tour est tiré au moment où il joue, avec la chance de victoire actuelle
+  if (res.lazy) res = Math.random() < adminControls.rtp ? adminControls.drawWeightedGift() : { id: 0, name: 'Empty', value: 0 };
+  const pool = symbols();
+  let finals;
+  if (res.id) finals = Array(6).fill(res.img);
+  else {
+    finals = Array.from({ length: 6 }, () => rand(pool));
+    if (Math.random() < .3) { const s = rand(pool); finals = Array(6).fill(s); finals[Math.floor(Math.random() * 6)] = rand(pool.filter(p => p !== s)); }
+    while (new Set(finals).size === 1) finals[5] = rand(pool);
+  }
+  const dia = $('diamond');
+  dia.classList.add('spin');
+  if (label) hud(label);
+  const fast = jobs.length > 0; // enchaînement rapide quand plusieurs tours sont en attente
+  for (let i = 0; i < 6; i++) await sleep(fast ? (i === 0 ? 500 : 130) : (i === 0 ? 1200 : 800)), stopSpin(i, finals[i]);
+  dia.classList.remove('spin');
+  if (res.id) {
+    reels.forEach(r => r.el.classList.add('hit'));
+    dia.classList.add('win'); bell(); sparkle(); showVip(who, res); awardStars(who, res.value);
+    hud(`🎉 ${who} aligne six cadeaux !`);
+    await sleep(1000);
+    dia.classList.remove('win');
+    await sleep(fast ? 1200 : 3000);
+  } else { hud(`${who} : raté…`); await sleep(fast ? 250 : 1400); }
+  reels.forEach((_, i) => startSpin(i));
+}
+
+async function drain() {
+  if (busy) return; busy = true;
+  while (jobs.length) {
+    const j = jobs.shift(); refreshPanel();
+    await playResult(j.res, j.who, j.label);
+    // Le spectateur sort de la file quand tous ses tours sont joués
+    if (!jobs.some(x => x.who === j.who)) { const id = viewerId(j.who); adminControls.queue = adminControls.queue.filter(q => q.viewerId !== id); }
+    refreshPanel();
+  }
+  busy = false; hud('');
+}
+function enqueueResults(list, who, label) {
+  adminControls.addToQueue(viewerId(who));
+  list.slice(0, 500).forEach(res => jobs.push({ res, who, label })); drain(); refreshPanel();
+}
+
+// Étincelles lancées depuis le diamant à la victoire
+function sparkle() {
+  const cv = $('spark'), ctx = cv.getContext('2d');
+  cv.width = innerWidth; cv.height = innerHeight;
+  const r = $('diamond').getBoundingClientRect();
+  const ps = Array.from({ length: 90 }, () => {
+    const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 7;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, c: rand(['#fff', '#9cf', '#ffd700', '#7ff']) };
+  });
+  (function frame() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .12; p.life -= .014; ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 4, 4); });
+    if (ps.some(p => p.life > 0)) requestAnimationFrame(frame); else ctx.clearRect(0, 0, cv.width, cv.height);
+  })();
+}
+
+// Cadeau reçu : le diamant pulse, les étoiles sont créditées, puis une partie est lancée
+function receiveGift(pseudo, coins, forceWin, live) {
+  const id = ensureViewer(pseudo);
+  const dia = $('diamond');
+  dia.classList.remove('gift'); void dia.getBoundingClientRect(); dia.classList.add('gift');
+  setTimeout(() => dia.classList.remove('gift'), 1300);
+  // Les étoiles viennent uniquement des cadeaux gagnés sur les roues (voir awardStars)
+  // Un cadeau de N pièces fait tourner la machine N fois (gratuit), chaque tour gagne selon la chance de victoire
+  const spins = Math.min(coins, 500);
+  const results = forceWin ? [adminControls.drawWeightedGift()] : Array.from({ length: spins }, () => ({ lazy: true }));
+  enqueueResults(results, pseudo, `🎁 ${pseudo} offre ${coins} pièce${coins > 1 ? 's' : ''} — ${results.length} tour${results.length > 1 ? 's' : ''} !`);
+  refreshPanel();
+}
+
+// Touches de test : G = cadeau de 100 pièces (selon la chance de victoire), W = cadeau de 100 pièces gagnant
+function testGift(forceWin) { receiveGift($('chatUser').value.trim() || 'testeur', 100, forceWin); }
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'g') testGift(false);
+  if (k === 'w') testGift(true);
+  if (k === 'm') toggleSound();
+});
+
+async function runDemo() {
+  if (busy) return;
+  const b = $('demoBanner'); b.style.display = 'block';
+  hud('🎁 Un spectateur envoie un cadeau de 100 pièces…');
+  await sleep(1500);
+  receiveGift('Démo_Viewer', 100, true);
+  while (busy || jobs.length) await sleep(300);
+  await sleep(1500); b.style.display = 'none';
+}
+
+// Connexion TikTok via le serveur (même protocole que les autres jeux)
+let liveSocket = null, tkUser = '', tkReconnect = 0;
+function tkStatus(msg, online) {
+  $('tkStatus').textContent = online ? 'CONNECTÉ' : 'HORS LIGNE';
+  $('tkStatus').classList.toggle('online', online);
+  if (msg) $('tkHint').textContent = msg;
+}
+function connectToLiveServer() {
+  if (liveSocket && liveSocket.readyState <= 1) return;
+  if (!['http:', 'https:'].includes(location.protocol)) {
+    tkStatus('La connexion TikTok nécessite le site hébergé : ouvre ce jeu depuis le serveur (/machine-cadeaux.html), pas le fichier local.', false);
+    return;
+  }
+  liveSocket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`);
+  liveSocket.addEventListener('open', () => { if (tkUser) sendConnect(); });
+  liveSocket.addEventListener('message', ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'STATUS') tkStatus(String(m.message || ''), /direct tiktok connecté/i.test(m.message || ''));
+    if (m.type === 'gift' && m.gift) onTikTokGift(m.gift);
+    if (m.type === 'comment' && m.commentData) {
+      const cd = m.commentData, av = cd.avatarDataUri || cd.avatarUrls?.[0];
+      if (av) { const id = ensureViewer(String(cd.username || cd.nickname || 'Spectateur').replace(/^@/, '')); adminControls.viewers.get(id).profilePicture = av; }
+    }
+    // « étoile » et « run » sont gérés par le serveur (portefeuille global) : voir les évènements arcade:wallet plus bas
+    if (m.type === 'comment' && m.commentData) { /* aucun traitement local du chat en direct */ }
+    if (m.type === 'viewer' && m.viewer) {
+      const v = adminControls.viewers.get(viewerId(String(m.viewer.username || '')));
+      if (v) v.profilePicture = m.viewer.avatarDataUri || '';
+    }
+  });
+  liveSocket.addEventListener('close', () => { tkStatus('Connexion au serveur interrompue.', false); clearTimeout(tkReconnect); tkReconnect = setTimeout(connectToLiveServer, 3000); });
+}
+function sendConnect() { liveSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: tkUser })); tkStatus(`Demande envoyée pour @${tkUser}.`, false); }
+function requestTikTokConnection() {
+  tkUser = $('tkUser').value.trim().replace(/^@/, '');
+  if (!tkUser) { tkStatus('Saisis ton pseudo TikTok.', false); return; }
+  if (liveSocket && liveSocket.readyState === 1) sendConnect(); else connectToLiveServer();
+}
+function onTikTokGift(g) {
+  const pseudo = String(g.username || g.nickname || 'Invité').trim().replace(/^@/, '').slice(0, 18) || 'Invité';
+  const rep = Math.max(1, Math.floor(Number(g.repeatCount) || 1));
+  let coins = Number(g.coinCount);
+  if (!Number.isSafeInteger(coins) || coins < 1) coins = Math.floor(Number(g.coinValue) * rep);
+  if (!Number.isSafeInteger(coins) || coins < 1) return;
+  const id = ensureViewer(pseudo);
+  const v = adminControls.viewers.get(id);
+  if (g.avatarDataUri || g.avatarUrls?.[0]) v.profilePicture = g.avatarDataUri || g.avatarUrls[0];
+  receiveGift(pseudo, coins, false, true);
+}
+
+// Portefeuille global (même solde que les autres jeux), alimenté par le serveur via arcade-stars.js
+function walletPlayer(p) {
+  const name = String(p.username || p.uniqueId || 'Spectateur').replace(/^@/, '').slice(0, 18);
+  const id = ensureViewer(name);
+  if (p.avatarUrl) adminControls.viewers.get(id).profilePicture = p.avatarUrl;
+  adminControls.viewers.get(id).stars = Number(p.stars) || 0;
+  return name;
+}
+window.addEventListener('arcade:wallet', e => {
+  const p = e.detail && e.detail.player; if (!p) return;
+  const name = walletPlayer(p);
+  showStars(name, Number(p.stars) || 0); refreshPanel();
+});
+// « run » : le serveur débite tout le solde global, la machine tourne autant de fois que d'étoiles dépensées
+window.addEventListener('arcade:wallet-run', e => {
+  const p = e.detail && e.detail.player, spent = Math.floor(Number(e.detail && e.detail.spent));
+  if (!p || !(spent >= 1)) return;
+  const name = walletPlayer(p);
+  enqueueResults(Array.from({ length: Math.min(spent, 500) }, () => ({ lazy: true })), name, `⭐ ${name} rejoue ${spent} étoile${spent > 1 ? 's' : ''} !`);
+});
+window.addEventListener('arcade:wallet-run-rejected', e => {
+  const m = e.detail && e.detail.message; if (m) hud(m);
+});
+
+function beep(freq, dur) {
+  if (!adminControls.isSoundEnabled) return;
+  try {
+    const c = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = freq; g.gain.value = .05; o.connect(g); g.connect(c.destination);
+    o.start(); o.stop(c.currentTime + dur);
+  } catch (e) {}
+}
+
+// Chat : « étoile » affiche le solde, « run [n] » joue n étoiles.
+function viewerId(pseudo) { return pseudo.trim().toLowerCase(); }
+function ensureViewer(pseudo) { const id = viewerId(pseudo); adminControls.addViewer(id, pseudo.trim(), ''); return id; }
+
+function handleChat(pseudo, msg) {
+  pseudo = pseudo.trim(); msg = msg.trim().toLowerCase();
+  if (!pseudo || !msg) return;
+  const id = ensureViewer(pseudo);
+  if (msg === 'étoile' || msg === 'etoile' || msg === 'étoiles') {
+    const v = adminControls.viewers.get(id);
+    const rank = adminControls.getLeaderboard().indexOf(v) + 1;
+    hud(`${pseudo} : ${v.stars} étoiles — rang ${rank}`);
+    showStars(pseudo, v.stars);
+  } else if (/^run(\s+\d+)?$/.test(msg)) {
+    const bet = parseInt(msg.split(/\s+/)[1] || '1', 10);
+    const out = adminControls.processRun(id, bet);
+    if (!out.success) { hud(`${pseudo} : ${out.message}`); return; }
+    showStars(pseudo, out.remainingStars);
+    enqueueResults(out.results.map(() => ({ lazy: true })), pseudo);
+  }
+  refreshPanel();
+}
+function sendChat() { handleChat($('chatUser').value, $('chatMsg').value); $('chatMsg').value = ''; }
+function simGift() {
+  const pseudo = $('chatUser').value.trim() || 'testeur';
+  const id = ensureViewer(pseudo);
+  const val = Math.max(1, parseInt($('giftVal').value, 10) || 1);
+  adminControls.processGift(id, 0, val); // les étoiles sont créditées ; le joueur lance avec « run »
+  hud(`${pseudo} reçoit ${val} étoiles`); refreshPanel();
+}
+
+// Panneau de contrôle
+function togglePanel() { document.body.classList.toggle('panel-open', $('panel').classList.toggle('open')); }
+document.body.classList.add('panel-open');
+document.addEventListener('keydown', e => { if (e.key === 'F2' || (e.key.toLowerCase() === 'p' && e.ctrlKey)) { e.preventDefault(); togglePanel(); } });
+$('rtp').addEventListener('input', e => { adminControls.setRTP(e.target.value / 100); $('rtpOut').textContent = e.target.value + '%'; });
+function triggerBigGift() {
+  const g = adminControls.gifts.find(x => x.id === Number($('bigGift').value));
+  if (!g) return;
+  enqueueResults([g], 'Gryphon Agency', `👑 Gros cadeau déclenché : ${g.name} (${g.value})`);
+}
+$('bgFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const url = URL.createObjectURL(f); adminControls.setBackground(f.name);
+  const v = $('bg'); v.src = url; v.style.display = 'block';
+});
+function toggleSound() {
+  const on = adminControls.toggleSound();
+  $('soundBtn').textContent = on ? '🔊 Son : ON (M)' : '🔇 Son : MUET (M)';
+}
+// File d'attente déplaçable : glisser pour la placer, 📌 pour l'épingler (position mémorisée)
+let queuePinned = true;
+(function initQueueDrag() {
+  const box = $('queueBox');
+  try {
+    const s = JSON.parse(localStorage.getItem('mc_queue_pos') || 'null');
+    if (s) { box.style.left = Math.min(s.x, innerWidth - 60) + 'px'; box.style.top = Math.min(s.y, innerHeight - 40) + 'px'; queuePinned = s.pinned !== false; }
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem('mc_queue_pos', JSON.stringify({ x: box.offsetLeft, y: box.offsetTop, pinned: queuePinned })); } catch (e) {} };
+  window.togglePin = () => { queuePinned = !queuePinned; box.classList.toggle('unpinned', !queuePinned); save(); refreshPanel(); };
+  box.classList.toggle('unpinned', !queuePinned);
+  let ox = 0, oy = 0, drag = false;
+  box.addEventListener('pointerdown', e => {
+    if (queuePinned || e.target.closest('button')) return;
+    drag = true; ox = e.clientX - box.offsetLeft; oy = e.clientY - box.offsetTop;
+    box.setPointerCapture(e.pointerId); box.classList.add('dragging');
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag) return;
+    box.style.left = Math.max(0, Math.min(innerWidth - box.offsetWidth, e.clientX - ox)) + 'px';
+    box.style.top = Math.max(0, Math.min(innerHeight - 40, e.clientY - oy)) + 'px';
+  });
+  box.addEventListener('pointerup', () => { if (drag) { drag = false; box.classList.remove('dragging'); save(); } });
+})();
+
+function toggleQueue() { $('queueBox').style.display = adminControls.toggleQueueDisplay() ? 'block' : 'none'; refreshPanel(); }
+function setBalance() {
+  const id = viewerId($('balUser').value);
+  adminControls.modifyViewerBalance(id, parseInt($('balAmt').value, 10) || 0); refreshPanel();
+}
+function addGift() {
+  const f = $('newImg').files[0], name = $('newName').value.trim();
+  if (!f || !name) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    adminControls.gifts.push({ id: nextId++, name, value: parseInt($('newVal').value, 10) || 0, img: rd.result });
+    refreshPanel();
+  };
+  rd.readAsDataURL(f);
+}
+function removeGift(id) { adminControls.updateGifts(adminControls.gifts.filter(g => g.id !== id)); refreshPanel(); }
+function exportSetup() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([adminControls.exportState()], { type: 'application/json' }));
+  a.download = 'machine-cadeaux.json'; a.click();
+}
+$('importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = adminControls.importState(await f.text());
+  hud(r.message); $('rtp').value = adminControls.rtp * 100; $('rtp').dispatchEvent(new Event('input')); refreshPanel();
+});
+$('chatMsg').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+function refreshPanel() {
+  $('giftList').innerHTML = adminControls.gifts.map(g =>
+    `<div><img src="${g.img}" alt=""><span>${g.value}</span><button onclick="removeGift(${g.id})">✕</button></div>`).join('');
+  $('board').innerHTML = adminControls.getLeaderboard().slice(0, 10).map(v => `<div><span>${v.pseudo}</span><b>${v.stars}</b></div>`).join('');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></h4>` + (adminControls.queue.map((q, i) => {
+    const n = jobs.filter(j => viewerId(j.who) === q.viewerId).length;
+    const v = adminControls.viewers.get(q.viewerId);
+    return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span>${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}</div>`;
+  }).join('') || '<div>— personne —</div>');
+  const sel = $('bigGift'), keep = sel.value;
+  sel.innerHTML = adminControls.gifts.filter(g => g.value > 100 && !adminControls.initialGiftIds.has(g.id))
+    .map(g => `<option value="${g.id}">${g.name} (${g.value})</option>`).join('');
+  if (keep) sel.value = keep;
+}
+
+reels.forEach((_, i) => startSpin(i));
+refreshPanel();
+</script>
+</body>
+</html>
