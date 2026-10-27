@@ -78,6 +78,7 @@ const protectedRoutes = new Set([
     '/jeu-foot-tiktok-v2.html',
     '/aquarium-tiktok-live.html',
     '/peche-en-mer.html',
+    '/course-karts.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
     '/monde-du-ballon.html',
@@ -116,6 +117,7 @@ const staticGameIds = [
     '/jeu-foot-tiktok-v2.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/peche-en-mer.html',
+    '/course-karts.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
     '/monde-du-ballon.html',
@@ -144,6 +146,7 @@ store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
 store.grantGameAccessToExistingCreators('/mots-associes.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
+store.grantGameAccessToExistingCreators('/course-karts.html');
 store.grantGameAccessToExistingCreators('/bouteilles-colorees.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
@@ -170,6 +173,7 @@ const staticGameTitles = {
     '/mots-associes.html': 'Mots Associés',
     '/flipper-neon.html': 'Flipper Néon',
     '/peche-en-mer.html': 'Pêche en mer',
+    '/course-karts.html': 'Course de karts Live',
     '/bouteilles-colorees.html': 'Le Jeu des Bouteilles Colorées',
     '/a-prendre-ou-a-laisser.html': 'À prendre ou à laisser',
     '/vrai-ou-faux.html': 'Vrai ou Faux',
@@ -199,6 +203,7 @@ const gameRouteIds = new Map([
     ['/mots-associes.html', '/mots-associes.html'],
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/peche-en-mer.html', '/peche-en-mer.html'],
+    ['/course-karts.html', '/course-karts.html'],
     ['/bouteilles-colorees.html', '/bouteilles-colorees.html'],
     ['/a-prendre-ou-a-laisser.html', '/a-prendre-ou-a-laisser.html'],
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
@@ -2079,6 +2084,7 @@ const server = http.createServer((req, res) => {
         ['/mots-associes.html', [path.join(__dirname, 'mots-associes.html'), 'text/html; charset=utf-8']],
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/peche-en-mer.html', [path.join(__dirname, 'peche-en-mer.html'), 'text/html; charset=utf-8']],
+        ['/course-karts.html', [path.join(__dirname, 'course-karts.html'), 'text/html; charset=utf-8']],
         ['/bouteilles-colorees.html', [bottleGameFile, 'text/html; charset=utf-8']],
         ['/a-prendre-ou-a-laisser.html', [dealGameFile, 'text/html; charset=utf-8']],
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
@@ -2111,6 +2117,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/mots-associes.png', [path.join(__dirname, 'images-vitrine', 'mots-associes.png'), 'image/png']],
         ['/images-vitrine/flipper-neon.png', [path.join(__dirname, 'images-vitrine', 'flipper-neon.png'), 'image/png']],
         ['/images-vitrine/peche-en-mer.png', [path.join(__dirname, 'images-vitrine', 'peche-en-mer.png'), 'image/png']],
+        ['/images-vitrine/course-karts.png', [path.join(__dirname, 'images-vitrine', 'course-karts.png'), 'image/png']],
         ['/images-vitrine/peche-math-fish95.png', [path.join(__dirname, 'images-vitrine', 'peche-math-fish95.png'), 'image/png']],
         ['/images-vitrine/bouteilles-colorees-apercu.png', [path.join(__dirname, 'images-vitrine', 'bouteilles-colorees-apercu.png'), 'image/png']],
         ['/images-vitrine/a-prendre-ou-a-laisser-apercu.png', [path.join(__dirname, 'images-vitrine', 'a-prendre-ou-a-laisser-apercu.png'), 'image/png']],
