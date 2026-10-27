@@ -860,6 +860,19 @@ const server = http.createServer((req, res) => {
         }
         const query = new URL(req.url, 'http://localhost').searchParams;
         try {
+            if (query.get('scope') === 'wallet') {
+                // Portefeuille propre au compte connecté : jamais les soldes d'un autre compte.
+                if (!access.canAccessGames(req)) {
+                    res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Accès aux jeux requis.' }));
+                    return;
+                }
+                const players = store.listTikTokStarLeaderboard(access.usernameForRequest(req))
+                    .filter(player => player.totalEarned > 0 || player.totalSpent > 0 || player.balance > 0);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ scope: 'wallet', players }));
+                return;
+            }
             if (query.get('scope') === 'total') {
                 if (!access.isAdmin(req)) {
                     res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -950,11 +963,13 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (pathname === '/api/admin/stars-adjust' && req.method === 'POST') {
-        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+        // Chaque membre règle uniquement les dettes de son propre portefeuille ; l'administrateur règle le sien.
+        if (!access.isAuthenticated(req) || !access.canAccessGames(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: 'Réservé à l’administrateur.' }));
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
             return;
         }
+        const walletOwner = access.usernameForRequest(req).toLowerCase();
         readJsonBody(req, res, body => {
             const send = (status, payload) => {
                 res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -967,29 +982,32 @@ const server = http.createServer((req, res) => {
             let player = store.resolveTikTokPlayer(handle);
             if (!player) {
                 if (target === 0) return send(200, { balance: 0, changed: false });
-                store.creditBrowserStars({ username: handle, amount: target, gameId: '/ajustement-admin', transactionId: `adjust:${crypto.randomUUID()}` });
+                store.creditBrowserStars({ username: handle, amount: target, gameId: '/ajustement-admin', transactionId: `adjust:${crypto.randomUUID()}`, owner: walletOwner });
                 player = store.resolveTikTokPlayer(handle);
-                return send(200, { balance: player ? player.stars : target, changed: true });
+                return send(200, { balance: store.getWalletBalance(player, walletOwner), changed: true });
             }
-            const delta = target - player.stars;
-            if (delta === 0) return send(200, { balance: player.stars, changed: false });
+            const current = store.getWalletBalance(player, walletOwner);
+            const delta = target - current;
+            if (delta === 0) return send(200, { balance: current, changed: false });
             const result = store.applyTikTokStarTransaction({
                 transactionId: `adjust:${crypto.randomUUID()}`,
                 playerId: player.id,
                 delta,
                 gameId: '/ajustement-admin',
-                reason: delta > 0 ? 'game-reward' : 'run'
+                reason: delta > 0 ? 'game-reward' : 'run',
+                owner: walletOwner
             });
             send(result.applied ? 200 : 409, { balance: result.balance, changed: result.applied });
         }, 4096);
         return;
     }
     if (pathname === '/api/admin/stars-collect' && req.method === 'POST') {
-        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+        if (!access.isAuthenticated(req) || !access.canAccessGames(req)) {
             res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: 'Réservé à l’administrateur.' }));
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
             return;
         }
+        const walletOwner = access.usernameForRequest(req).toLowerCase();
         readJsonBody(req, res, body => {
             const entries = Array.isArray(body.entries) ? body.entries.slice(0, 5000) : [];
             let applied = 0;
@@ -1007,7 +1025,7 @@ const server = http.createServer((req, res) => {
                     results.push(false);
                     continue;
                 }
-                const result = store.creditBrowserStars({ username: entry.username, amount, gameId, transactionId, absolute: entry.absolute === true });
+                const result = store.creditBrowserStars({ username: entry.username, amount, gameId, transactionId, absolute: entry.absolute === true, owner: walletOwner });
                 if (result.applied) { applied += 1; total += amount; } else { skipped += 1; }
                 results.push(Boolean(result.applied));
             }
