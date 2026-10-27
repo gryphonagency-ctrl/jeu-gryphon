@@ -401,28 +401,28 @@
     }
 
     function makeDefaultPoolConfig() {
-      const winningBalloonCount = DEFAULT_POOL_SIZE / 10;
-      const specialPrizeCount = 2;
-      const remainingPrizeCount = winningBalloonCount - specialPrizeCount * 4;
+      // Moyenne ≈ 0,87 étoile par tir (1 pièce = 1 étoile) : le jeu ne redistribue jamais plus que ce qu'il reçoit.
       const prizes = [
-        { stars: 0, count: DEFAULT_POOL_SIZE - winningBalloonCount },
-        { stars: 100, count: specialPrizeCount },
-        { stars: 50, count: specialPrizeCount },
-        { stars: 30, count: specialPrizeCount },
-        { stars: 10, count: specialPrizeCount }
+        { stars: 0, count: DEFAULT_POOL_SIZE - 5671 },
+        { stars: 1, count: 4000 },
+        { stars: 2, count: 1000 },
+        { stars: 3, count: 500 },
+        { stars: 5, count: 150 },
+        { stars: 10, count: 10 },
+        { stars: 20, count: 5 },
+        { stars: 30, count: 3 },
+        { stars: 50, count: 2 },
+        { stars: 100, count: 1 }
       ];
-      const remainingValues = Array.from({ length: 100 }, (_, index) => index + 1)
-        .filter(value => ![10, 30, 50, 100].includes(value));
-      remainingValues.forEach((stars, index) => prizes.push({
-        stars,
-        count: Math.floor(remainingPrizeCount / remainingValues.length) +
-          (index < remainingPrizeCount % remainingValues.length ? 1 : 0)
-      }));
       return prizes.map((prize, index) => ({ id: `prize-${index + 1}`, ...prize }));
     }
 
     function isLegacyDefaultPoolConfig(rows) {
-      if (!Array.isArray(rows) || rows.length !== 101) return false;
+      if (!Array.isArray(rows)) return false;
+      // Ancien bassin par défaut : 101 lots, 9 000 ballons vides et RTP d'environ 500 %.
+      if (rows.length === 101 && rows[0].stars === 0 && rows[0].count === 9000 &&
+          rows[1].stars === 100 && rows[1].count === 2) return true;
+      if (rows.length !== 101) return false;
       const legacyRows = [
         { stars: 0, count: 6000 },
         { stars: 100, count: 10 },
@@ -1487,9 +1487,26 @@
         console.error('Suppression du fond impossible :', error);
       }
     });
+    // "run N" débite N étoiles : on met N tirs en file, comme un cadeau de N pièces.
+    function runPlayerShots(username, spent) {
+      const shots = Number(spent);
+      if (!Number.isSafeInteger(shots) || shots < 2) return runPlayerShot(username);
+      const playerName = String(username || '').trim().replace(/^@/, '').slice(0, 32);
+      if (!playerName) return false;
+      if (!Number.isSafeInteger(pendingShots + shots) || !Number.isSafeInteger(totalShots + pendingShots + shots)) return false;
+      pendingShots += shots;
+      const lastGift = pendingGifts[pendingGifts.length - 1];
+      if (lastGift?.username === playerName && lastGift.giftName === 'RUN') lastGift.remaining += shots;
+      else pendingGifts.push({ username: playerName, giftName: 'RUN', remaining: shots, avatarDataUri: '', avatarUrl: '' });
+      statusLine.textContent = `🏃 RUN : @${playerName} rejoue ${formatNumber(shots)} étoiles = ${formatNumber(shots)} tirs.`;
+      saveState();
+      processShots();
+      return true;
+    }
+
     window.addEventListener('arcade:wallet-run', event => {
       const username = event.detail?.player?.username;
-      if (isRoomOwner && username) runPlayerShot(username);
+      if (isRoomOwner && username) runPlayerShots(username, event.detail?.spent);
     });
 
     const settingsPanel = document.getElementById('settingsPanel');
