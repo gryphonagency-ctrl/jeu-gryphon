@@ -35,6 +35,8 @@ const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const astraPush3dFile = path.join(__dirname, 'coin-pusher-3d-preview.html');
 const coinPusherDuckFile = path.join(__dirname, 'coin-pusher-canard.html');
+const coinPusher2dOldFile = path.join(__dirname, 'coin-pusher-tiktok-2d-ancien.html');
+const footballV2File = path.join(__dirname, 'jeu-foot-tiktok (1).html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
@@ -72,6 +74,8 @@ const protectedRoutes = new Set([
     '/coin-pusher-tiktok.html',
     '/coin-pusher-3d-preview.html',
     '/coin-pusher-canard.html',
+    '/coin-pusher-tiktok-2d-ancien.html',
+    '/jeu-foot-tiktok-v2.html',
     '/aquarium-tiktok-live.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
@@ -104,6 +108,8 @@ const staticGameIds = [
     '/coin-pusher-3d-preview.html',
     '/coin-pusher-canard.html',
     '/jeu-foot-tiktok.html',
+    '/coin-pusher-tiktok-2d-ancien.html',
+    '/jeu-foot-tiktok-v2.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
@@ -122,6 +128,8 @@ store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
+store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
+store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/bouteilles-colorees.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
@@ -138,6 +146,8 @@ const staticGameTitles = {
     '/coin-pusher-3d-preview.html': 'Astra Push 3D',
     '/coin-pusher-canard.html': 'Queen Pusher Canard',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
+    '/coin-pusher-tiktok-2d-ancien.html': 'Coin Pusher 2D (ancien)',
+    '/jeu-foot-tiktok-v2.html': 'Le Coup de Pied (v2)',
     '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/wish-lab.html': 'Wish Lab',
@@ -162,6 +172,8 @@ const gameRouteIds = new Map([
     ['/coin-pusher-3d-preview.html', '/coin-pusher-3d-preview.html'],
     ['/coin-pusher-canard.html', '/coin-pusher-canard.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
+    ['/coin-pusher-tiktok-2d-ancien.html', '/coin-pusher-tiktok-2d-ancien.html'],
+    ['/jeu-foot-tiktok-v2.html', '/jeu-foot-tiktok-v2.html'],
     ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
@@ -2035,6 +2047,8 @@ const server = http.createServer((req, res) => {
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-3d-preview.html', [astraPush3dFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-canard.html', [coinPusherDuckFile, 'text/html; charset=utf-8']],
+        ['/coin-pusher-tiktok-2d-ancien.html', [coinPusher2dOldFile, 'text/html; charset=utf-8']],
+        ['/jeu-foot-tiktok-v2.html', [footballV2File, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
