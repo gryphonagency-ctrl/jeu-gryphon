@@ -25,7 +25,9 @@
         .card { width: var(--cw); height: calc(var(--cw) * 1.25); position: relative; transform-style: preserve-3d; transition: transform .55s; }
         .card.up { transform: rotateY(180deg); }
         .card .face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 4px solid #1a0033; border-radius: 12px; backface-visibility: hidden; font-size: calc(var(--cw) * .5); box-shadow: 0 6px 14px rgba(0,0,0,.45); }
-        .card .back { background: repeating-linear-gradient(45deg, #e8312f 0 10px, #ffd23f 10px 20px); color: #1a0033; font: 400 calc(var(--cw) * .55) Rye, serif; }
+        .card .back { background: repeating-linear-gradient(45deg, #e8312f 0 10px, #ffd23f 10px 20px); color: #1a0033; }
+        .card .num { display: grid; place-items: center; width: 62%; aspect-ratio: 1; border-radius: 50%; background: #fff3c4; border: 3px solid #1a0033; font: 400 calc(var(--cw) * .42) Rye, serif; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+        .card .tag { position: absolute; top: 4px; left: 8px; font: 900 calc(var(--cw) * .17) Orbitron, sans-serif; color: #8a1a8f; }
         .card .front { background: #fff3c4; transform: rotateY(180deg); }
         .card.done .front { background: #b6ffcf; animation: pop .7s; }
         @keyframes pop { 40% { transform: rotateY(180deg) scale(1.2); } }
@@ -115,8 +117,8 @@
             </section>
             <section class="box">
                 <h3>Réglages</h3>
-                <label for="chance">Chance de paire <output id="chance-out">50%</output></label>
-                <input id="chance" type="range" min="0" max="100" step="1" value="50">
+                <label for="timeout">Temps pour jouer <output id="timeout-out">60 s</output></label>
+                <input id="timeout" type="range" min="15" max="180" step="5" value="60">
                 <div class="row">
                     <label>Min ⭐<input id="star-min" type="number" min="1" max="30" value="1"></label>
                     <label>Max ⭐<input id="star-max" type="number" min="1" max="30" value="30"></label>
@@ -129,6 +131,7 @@
                 <input id="sim-name" type="text" maxlength="24" value="Alex_TikTok 🚀" aria-label="Pseudo simulé">
                 <div class="row"><button id="sim-gift" class="btn" type="button">🎁 1 pièce</button><button id="sim-burst" class="btn" type="button">💥 ×5</button></div>
                 <button id="sim-big" class="btn" type="button">💎 Gros cadeau</button>
+                <div class="row"><input id="sim-num" type="text" inputmode="numeric" maxlength="3" placeholder="N° de carte" aria-label="Numéro écrit dans le chat"><button id="sim-say" class="btn alt" type="button">💬 Écrire dans le chat</button></div>
             </section>
             <section class="box">
                 <h3>Partie</h3>
@@ -144,11 +147,11 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'memoire-du-cirque-save';
         const ICONS = ['🎪', '🎩', '🍿', '💪', '🦁', '🐯', '🤹', '🎟️', '🚲'];
-        const PAIRS = ICONS.length, TURNS_PER_SESSION = 15;
-        const settings = { chance: 50, min: 1, max: 30, bigGift: 100, speed: 1, hideBoard: false };
+        const PAIRS = ICONS.length;
+        const settings = { timeout: 60, min: 1, max: 30, bigGift: 100, speed: 1, hideBoard: false };
         const viewers = new Map();
         const queue = [];
-        let session = null, running = false, cards = [], rewards = [], jackpotPair = 0, matched = 0, current = null;
+        let run = null, cards = [], rewards = [], jackpotPair = 0, matched = 0;
 
         const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
         const shuffle = list => { for (let i = list.length - 1; i > 0; i--) { const j = rand(0, i); [list[i], list[j]] = [list[j], list[i]]; } return list; };
@@ -179,8 +182,10 @@
             cards = deck.map((d, i) => {
                 const el = document.createElement('div');
                 el.className = 'card';
-                el.innerHTML = '<div class="face back">?</div><div class="face front"></div>';
-                el.querySelector('.front').textContent = d.icon;
+                el.innerHTML = '<div class="face back"><span class="num"></span></div><div class="face front"><span class="tag"></span><span class="ico"></span></div>';
+                el.querySelector('.num').textContent = i + 1;
+                el.querySelector('.tag').textContent = i + 1;
+                el.querySelector('.ico').textContent = d.icon;
                 grid.appendChild(el);
                 return { el, icon: d.icon, pair: d.pair, done: false, index: i };
             });
@@ -188,85 +193,108 @@
 
         function enqueue(viewer, coins, sim) {
             coins = Math.min(500, Math.max(1, Math.floor(coins)));
-            let entry = queue.find(q => q.viewer === viewer && q.sim === sim) || (session && session.entry.viewer === viewer && session.entry.sim === sim ? session.entry : null);
+            let entry = queue.find(q => q.viewer === viewer && q.sim === sim) || (run && run.entry.viewer === viewer && run.entry.sim === sim ? run.entry : null);
             if (!entry) {
                 if (queue.length >= 80) return;
-                entry = { viewer, sim, credits: 0, jackpots: 0 };
+                entry = { viewer, sim, credits: 0, big: 0 };
                 queue.push(entry);
             }
             entry.credits += coins;
-            if (coins >= settings.bigGift) entry.jackpots++;
-            runLoop();
+            if (coins >= settings.bigGift) entry.big++;
+            nextRun();
         }
 
-        async function runLoop() {
-            if (running) return;
-            running = true;
-            try {
-                while (queue.length || (session && session.left > 0)) {
-                    if (!session || session.left <= 0) {
-                        const entry = queue.shift();
-                        session = { entry, size: Math.min(TURNS_PER_SESSION, entry.credits), left: Math.min(TURNS_PER_SESSION, entry.credits), k: 0 };
-                    }
-                    const { entry } = session;
-                    session.k++; session.left--; entry.credits--;
-                    const jackpot = entry.jackpots > 0;
-                    if (jackpot) entry.jackpots--;
-                    current = entry.viewer;
-                    updateScoreboard();
-                    await playTurn(entry, jackpot);
-                    if (session.left <= 0) {
-                        if (entry.credits > 0) queue.push(entry);
-                        session = null;
-                    }
-                }
-            } finally {
-                running = false; current = null; session = null;
-                updateScoreboard();
-            }
+        /* Un jeton = une partie : le joueur écrit des numéros dans le chat jusqu'à sa première erreur */
+        function nextRun() {
+            if (run || !queue.length) return;
+            const entry = queue.shift();
+            entry.credits--;
+            const big = entry.big > 0;
+            if (big) entry.big--;
+            run = { entry, big, first: null, busy: false, pairs: 0, deadline: Date.now() + settings.timeout * 1000 };
+            say(`🎟️ @${entry.viewer.username} : écris un numéro de carte dans le chat !`);
+            updateScoreboard();
+        }
+
+        function endRun() {
+            const r = run;
+            run = null;
+            if (r && r.entry.credits > 0) queue.push(r.entry);
+            updateScoreboard();
+            nextRun();
         }
 
         function flip(card, up) { card.el.classList.toggle('up', up); }
 
-        async function playTurn(entry, jackpot) {
-            const open = cards.filter(c => !c.done);
-            if (open.length < 2) { deal(); return playTurn(entry, jackpot); }
-            const target = jackpot ? open.find(c => c.pair === jackpotPair) : null;
-            const normal = open.filter(c => c.pair !== jackpotPair);
-            const a = target || shuffle((normal.length >= 2 ? normal : open).slice())[0];
-            const partner = open.find(c => c.pair === a.pair && c !== a);
-            const others = open.filter(c => c !== a && c !== partner);
-            const win = !others.length || Math.random() * 100 < settings.chance;
-            const b = win ? partner : others[rand(0, others.length - 1)];
+        async function resetGrid() {
+            cards.forEach(c => flip(c, false));
+            await sleep(700);
+            deal();
+        }
 
-            flip(a, true); await sleep(650);
-            flip(b, true); await sleep(1100);
+        function findViewer(raw) {
+            return viewers.get(String(raw || '').replace(/^@/, '').trim().toLowerCase());
+        }
 
-            if (win) {
+        function onChat(rawName, text) {
+            if (!run || run.busy) return;
+            const viewer = findViewer(rawName);
+            if (!viewer || viewer !== run.entry.viewer) return;
+            const m = /^#?\s*(\d{1,2})\s*$/.exec(String(text || '').trim());
+            const card = m && cards[Number(m[1]) - 1];
+            if (!card || card.done || card === run.first) return;
+            pick(card);
+        }
+
+        async function pick(card) {
+            const r = run;
+            r.busy = true;
+            flip(card, true);
+            if (!r.first) {
+                r.first = card;
+                await sleep(500);
+                r.deadline = Date.now() + settings.timeout * 1000;
+                r.busy = false;
+                return;
+            }
+            const a = r.first, b = card;
+            await sleep(1100);
+            if (a.pair === b.pair) {
                 a.done = b.done = true;
                 a.el.classList.add('done'); b.el.classList.add('done');
-                matched++;
-                const reward = rewards[a.pair];
-                entry.viewer.stars += reward;
-                if (!entry.sim && window.ArcadeStars) {
-                    window.ArcadeStars.award({ username: entry.viewer.username, amount: reward })
+                matched++; r.pairs++; r.first = null;
+                const reward = a.pair === jackpotPair && !r.big ? Math.max(1, Math.min(settings.min, settings.max)) : rewards[a.pair];
+                r.entry.viewer.stars += reward;
+                if (!r.entry.sim && window.ArcadeStars) {
+                    window.ArcadeStars.award({ username: r.entry.viewer.username, amount: reward })
                         .catch(error => { console.error('Étoiles non enregistrées :', error); say('Étoiles non enregistrées : ' + error.message); });
                 }
                 floatText(`+${reward} ⭐`, b.el);
-                say(`🎉 ${entry.viewer.username} trouve une paire : ${reward} ⭐`);
+                say(`🎉 @${r.entry.viewer.username} trouve une paire : ${reward} ⭐ — il continue !`);
                 updateScoreboard(); saveGame();
                 await sleep(900);
                 if (matched >= PAIRS) {
-                    say('🎪 Toutes les paires sont trouvées ! Nouvelle donne…');
+                    say('🎪 Grille complète ! Nouvelle grille, le joueur continue.');
                     await sleep(1800);
-                    cards.forEach(c => flip(c, false));
-                    await sleep(700);
-                    deal();
+                    await resetGrid();
                 }
+                r.deadline = Date.now() + settings.timeout * 1000;
+                r.busy = false;
             } else {
-                flip(a, false); flip(b, false);
-                await sleep(700);
+                say(`❌ Erreur ! Fin de partie pour @${r.entry.viewer.username}`);
+                await sleep(900);
+                await resetGrid();
+                endRun();
             }
+        }
+
+        function tick() {
+            if (run && !run.busy && Date.now() > run.deadline) {
+                say(`⏱️ Temps écoulé pour @${run.entry.viewer.username}`);
+                if (run.first) { flip(run.first, false); run.first = null; }
+                endRun();
+            }
+            updateScoreboard();
         }
 
         function floatText(text, anchor) {
@@ -280,9 +308,11 @@
 
         function updateScoreboard() {
             const sb = $('scoreboard');
-            if (current && session) sb.innerHTML = `Joueur : <b></b> | Paires : ${matched}/${PAIRS} | Tour ${session.k}/${session.size}`;
-            else sb.innerHTML = `En attente d'un cadeau TikTok… | Paires : ${matched}/${PAIRS}`;
-            if (current && session) sb.querySelector('b').textContent = '@' + current.username;
+            if (run) {
+                const left = Math.max(0, Math.ceil((run.deadline - Date.now()) / 1000));
+                sb.innerHTML = `Joueur : <b></b> | Paires : ${matched}/${PAIRS} | Écris un numéro 1-${cards.length} · ${run.busy ? '…' : left + ' s'}`;
+                sb.querySelector('b').textContent = '@' + run.entry.viewer.username;
+            } else sb.textContent = `Offre un jeton TikTok pour jouer | Paires : ${matched}/${PAIRS}`;
         }
 
         function topViewers(n) { return [...viewers.values()].filter(v => v.stars > 0).sort((a, b) => b.stars - a.stars).slice(0, n); }
@@ -310,6 +340,9 @@
             else if (data.type === 'gift' || data.type === 'tiktok-gift') {
                 const g = data.gift ?? data;
                 enqueue(getViewer(g.username || g.nickname), coinsOf(g), false);
+            } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
+                const c = data.commentData ?? data;
+                onChat(c.username || c.uniqueId || c.nickname, c.comment ?? c.text ?? c.message);
             }
         }
         function connect() {
@@ -350,7 +383,7 @@
         /* ---------- Interface ---------- */
         function syncControls() {
             $('speed').value = settings.speed; $('speed-out').textContent = settings.speed + '×';
-            $('chance').value = settings.chance; $('chance-out').textContent = settings.chance + '%';
+            $('timeout').value = settings.timeout; $('timeout-out').textContent = settings.timeout + ' s';
             $('star-min').value = settings.min; $('star-max').value = settings.max; $('big-gift').value = settings.bigGift;
             $('hide-board').checked = settings.hideBoard;
         }
@@ -362,7 +395,7 @@
             $('sim-big').addEventListener('click', () => sim(Math.max(1, settings.bigGift)));
             $('speed').addEventListener('input', e => { settings.speed = Number(e.target.value) || 1; syncControls(); saveGame(); });
             $('speed-reset').addEventListener('click', () => { settings.speed = 1; syncControls(); saveGame(); });
-            $('chance').addEventListener('input', e => { settings.chance = Math.min(100, Math.max(0, Number(e.target.value) || 0)); syncControls(); saveGame(); });
+            $('timeout').addEventListener('input', e => { settings.timeout = Math.min(180, Math.max(15, Number(e.target.value) || 60)); syncControls(); saveGame(); });
             const stars = () => {
                 settings.min = Math.min(30, Math.max(1, Math.floor(Number($('star-min').value) || 1)));
                 settings.max = Math.min(30, Math.max(settings.min, Math.floor(Number($('star-max').value) || settings.min)));
@@ -372,7 +405,9 @@
             };
             $('star-min').addEventListener('input', stars); $('star-max').addEventListener('input', stars);
             $('big-gift').addEventListener('input', e => { settings.bigGift = Math.max(2, Math.floor(Number(e.target.value) || 100)); saveGame(); });
-            $('reshuffle').addEventListener('click', () => { if (!running) deal(); else say('Une partie est en cours.'); });
+            $('reshuffle').addEventListener('click', () => { if (!run) deal(); else say('Une partie est en cours.'); });
+            $('sim-say').addEventListener('click', () => { onChat($('sim-name').value, $('sim-num').value); $('sim-num').select(); });
+            $('sim-num').addEventListener('keydown', e => { if (e.key === 'Enter') $('sim-say').click(); });
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); refreshBoards(); saveGame(); } });
             $('eye').addEventListener('click', () => {
@@ -420,7 +455,7 @@
             let lastSig = null;
             function refresh() {
                 const rows = [];
-                if (session && current) rows.push({ now: true, viewer: session.entry.viewer, tag: `${session.k}/${session.size}` });
+                if (run) rows.push({ now: true, viewer: run.entry.viewer, tag: `${run.pairs} paire${run.pairs > 1 ? 's' : ''}` });
                 for (const q of queue) rows.push({ viewer: q.viewer, tag: '×' + q.credits, n: q.credits });
                 const sig = rows.map(r => (r.now ? '*' : '') + r.viewer.username + r.tag).join('|');
                 if (sig === lastSig) return;
@@ -451,6 +486,7 @@
         refreshBoards();
         setInterval(refreshBoards, 500);
         updateScoreboard();
+        setInterval(tick, 500);
     </script>
 </body>
 </html>
