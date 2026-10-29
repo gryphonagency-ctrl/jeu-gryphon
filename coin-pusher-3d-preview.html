@@ -145,6 +145,7 @@
 <body>
     <video id="background-video" hidden muted loop playsinline autoplay></video>
     <div id="canvas-container" aria-label="Machine Coin Pusher"></div>
+    <div style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:#9ff;font:700 13px Segoe UI,sans-serif;z-index:5;pointer-events:none">Maintiens ESPACE : poussoir turbo 🚀</div>
     <main class="ui-overlay">
         <header class="topbar">
         </header>
@@ -1837,6 +1838,19 @@
             let accumulator = 0;
             const fixedStep = 1 / 60;
             let previousPusherZ = pusherStart + pusherTravel;
+            let pusherAngle = 0;
+            let boostLevel = 0;
+            let boostHeld = false;
+            const isTyping = event => /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+            document.addEventListener('keydown', event => {
+                if (event.code !== 'Space' || isTyping(event)) return;
+                event.preventDefault();
+                boostHeld = true;
+            });
+            document.addEventListener('keyup', event => {
+                if (event.code === 'Space') boostHeld = false;
+            });
+            window.addEventListener('blur', () => { boostHeld = false; });
             function seedTable() {
                 const tints = ['#d28a5a', '#e2e6ee', '#d28a5a', '#c9ced8'];
                 let count = 0;
@@ -1871,10 +1885,11 @@
                 requestAnimationFrame(animate);
                 const delta = Math.min(clock.getDelta(), .04);
                 elapsed += delta;
-                drawGalaxy(elapsed);
+                boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, delta * 6);
+                pusherAngle += delta * 2.3 * (1 + .6 * boostLevel);
                 accumulator += delta;
-                const phase = (Math.cos(elapsed * 2.3) + 1) * .5;
-                const pusherZ = pusherStart + phase * pusherTravel;
+                const phase = (Math.cos(pusherAngle) + 1) * .5;
+                const pusherZ = pusherStart + phase * pusherTravel * (1 + .35 * boostLevel);
                 pusherBody.position.z = pusherZ;
                 pusherBody.velocity.z = (pusherZ - previousPusherZ) / Math.max(delta, .001);
                 pusherMesh.position.z = pusherZ;
