@@ -87,8 +87,7 @@
             displayPlayer(data.player, `${Number(data.spent || 0).toLocaleString('fr-FR')} étoiles dépensées.`);
             walletEvent('arcade:wallet-run', data);
         } else if (data.type === 'WALLET_RUN_REJECTED') {
-            displayPlayer(data.player, data.message || 'RUN impossible.', true);
-            displayRunRejection(data.message || 'Solde insuffisant.');
+            // Aucun message à l'écran : un RUN refusé ne doit pas s'afficher à côté du solde d'un autre joueur.
             walletEvent('arcade:wallet-run-rejected', data);
         }
     }
