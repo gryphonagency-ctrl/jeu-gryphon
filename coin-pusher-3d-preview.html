@@ -177,6 +177,12 @@
                     <button class="control secondary" id="auto-button" type="button" aria-pressed="false">Auto-drop : OFF</button>
                     <button class="control danger" id="clear-coins-button" type="button" title="Retirer immédiatement toutes les pièces du plateau">Vider les pièces</button>
                 </div>
+                <div class="controls" aria-label="Réglages du poussoir" style="flex-direction:column;align-items:stretch;gap:6px">
+                    <label for="pusher-speed" style="font-size:12px">Vitesse du poussoir <output id="pusher-speed-out">1×</output></label>
+                    <input id="pusher-speed" type="range" min="0.5" max="5" step="0.25" value="1">
+                    <label for="pusher-reach" style="font-size:12px">Poussée (course) <output id="pusher-reach-out">1×</output></label>
+                    <input id="pusher-reach" type="range" min="0.5" max="3" step="0.25" value="1">
+                </div>
                 <div class="controls" aria-label="Vidéos">
                     <label class="control tertiary" style="display:inline-flex;align-items:center;justify-content:center">Vidéo d'arrière-plan<input type="file" accept="video/*" id="background-video-input" hidden></label>
                 </div>
@@ -1841,6 +1847,20 @@
             let pusherAngle = 0;
             let boostLevel = 0;
             let boostHeld = false;
+            const pusherSettings = { speed: 1, reach: 1 };
+            try { Object.assign(pusherSettings, JSON.parse(localStorage.getItem('astra-push-pusher') || '{}')); } catch (error) { /* réglage illisible */ }
+            ['speed', 'reach'].forEach(key => {
+                const input = document.getElementById('pusher-' + key), output = document.getElementById('pusher-' + key + '-out');
+                const value = Number(pusherSettings[key]);
+                pusherSettings[key] = value >= Number(input.min) && value <= Number(input.max) ? value : 1;
+                input.value = pusherSettings[key];
+                output.textContent = pusherSettings[key] + '×';
+                input.addEventListener('input', () => {
+                    pusherSettings[key] = Number(input.value) || 1;
+                    output.textContent = pusherSettings[key] + '×';
+                    try { localStorage.setItem('astra-push-pusher', JSON.stringify(pusherSettings)); } catch (error) { /* stockage indisponible */ }
+                });
+            });
             const isTyping = event => /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
             document.addEventListener('keydown', event => {
                 if (event.code !== 'Space' || isTyping(event)) return;
@@ -1886,10 +1906,10 @@
                 const delta = Math.min(clock.getDelta(), .04);
                 elapsed += delta;
                 boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, delta * 6);
-                pusherAngle += delta * 2.3 * (1 + .6 * boostLevel);
+                pusherAngle += delta * 2.3 * pusherSettings.speed * (1 + .6 * boostLevel);
                 accumulator += delta;
                 const phase = (Math.cos(pusherAngle) + 1) * .5;
-                const pusherZ = pusherStart + phase * pusherTravel * (1 + .35 * boostLevel);
+                const pusherZ = pusherStart + phase * pusherTravel * pusherSettings.reach * (1 + .35 * boostLevel);
                 pusherBody.position.z = pusherZ;
                 pusherBody.velocity.z = (pusherZ - previousPusherZ) / Math.max(delta, .001);
                 pusherMesh.position.z = pusherZ;
