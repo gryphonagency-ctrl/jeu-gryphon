@@ -118,6 +118,7 @@
                     <label>🚀 étoiles pour le jetpack<input id="jet" type="number" min="2" max="1000" value="30"></label>
                 </div>
                 <label>Montée du jetpack (marches)<input id="jetup" type="number" min="1" max="99" value="30"></label>
+                <label>🏆 étoiles gagnées au sommet (marche 100)<input id="winstars" type="number" min="0" max="100000" value="100"></label>
                 <div class="row">
                     <label>🏍️ étoiles pour la motocross<input id="moto" type="number" min="2" max="1000" value="100"></label>
                 </div>
@@ -169,7 +170,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, moto: 100, motoUp: 50, eagle: 300, eagleUp: 80, dino: 199, hyena: 500, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, moto: 100, motoUp: 50, eagle: 300, eagleUp: 80, dino: 199, hyena: 500, rock: 20, rockBack: 15, winStars: 100, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -188,7 +189,7 @@
         }
 
         let vipTimer;
-        function showVip(viewer) {
+        function showVip(viewer, gained) {
             const el = $('vip');
             el.textContent = '';
             const pic = viewer.avatar ? document.createElement('img') : document.createElement('div');
@@ -196,10 +197,10 @@
             const box = document.createElement('div');
             const tag = document.createElement('div'); tag.className = 'vip-tag'; tag.textContent = '👑 VIP — SOMMET DU TEMPLE';
             const name = document.createElement('div'); name.className = 'vip-name'; name.textContent = '@' + viewer.username;
-            const score = document.createElement('div'); score.className = 'vip-score'; score.textContent = `${viewer.stars} ⭐ au total`;
+            const score = document.createElement('div'); score.className = 'vip-score'; score.textContent = gained > 0 ? `+${gained} ⭐ gagnées — ${viewer.stars} ⭐ au total` : `${viewer.stars} ⭐ au total`;
             box.append(tag, name, score); el.append(pic, box);
             el.classList.add('show');
-            clearTimeout(vipTimer); vipTimer = setTimeout(() => el.classList.remove('show'), 5000);
+            clearTimeout(vipTimer); vipTimer = setTimeout(() => el.classList.remove('show'), 6000);
         }
 
         /* ---------- sons simples ---------- */
@@ -1384,7 +1385,10 @@
 
         function victory(entry) {
             victories++;
-            say(`🏆 @${entry.viewer.username} mène le lion au sommet !`);
+            const winner = entry.viewer, gained = Math.max(0, Math.floor(settings.winStars) || 0);
+            if (gained > 0) award(winner, gained, !!entry.sim);
+            say(`🏆 @${winner.username} mène le lion au sommet et gagne ${gained} ⭐ !`);
+            showVip(winner, gained);
             const g = geo();
             sndWin();
             if (window.ArcadeEffects) ArcadeEffects.fireworks(g.cx, g.top, true);
@@ -1517,7 +1521,7 @@
             $('snake').value = settings.snake; $('back').value = settings.back;
             $('bus').value = settings.bus; $('busback').value = settings.busBack;
             $('jet').value = settings.jet; $('jetup').value = settings.jetUp;
-            $('moto').value = settings.moto; $('motoup').value = settings.motoUp;
+            $('moto').value = settings.moto; $('motoup').value = settings.motoUp; $('winstars').value = settings.winStars;
             $('sim-moto').textContent = `🏍️ ${settings.moto} étoiles = motocross`;
             $('eagle').value = settings.eagle; $('eagleup').value = settings.eagleUp; $('sim-eagle').textContent = `🦅 ${settings.eagle} étoiles = aigle géant`;
             $('dino').value = settings.dino; $('sim-dino').textContent = `🦖 ${settings.dino} étoiles = dinosaure`;
@@ -1571,6 +1575,7 @@
                 settings.jet = clamp(Number($('jet').value), 2, 1000, 30);
                 settings.jetUp = clamp(Number($('jetup').value), 1, 99, 30);
                 settings.moto = clamp(Number($('moto').value), 2, 1000, 100);
+                settings.winStars = clamp(Number($('winstars').value), 0, 100000, 100);
                 settings.motoUp = clamp(Number($('motoup').value), 1, 99, 50);
                 settings.eagle = clamp(Number($('eagle').value), 2, 1000, 300);
                 settings.eagleUp = clamp(Number($('eagleup').value), 1, 99, 80);
@@ -1580,7 +1585,7 @@
                 settings.rockBack = clamp(Number($('rockback').value), 0, 99, 15);
                 saveGame();
             };
-            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'moto', 'motoup', 'eagle', 'eagleup', 'dino', 'hyena', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'moto', 'motoup', 'eagle', 'eagleup', 'dino', 'hyena', 'rock', 'rockback', 'winstars'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
