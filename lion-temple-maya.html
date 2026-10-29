@@ -101,9 +101,9 @@
                 <h3>Réglages</h3>
                 <div class="row">
                     <label>⭐ au sommet<input id="summit" type="number" min="0" max="10000" value="100"></label>
-                    <label>🐍 obstacles<input id="obstacles" type="number" min="0" max="18" value="7"></label>
+                    <label>🐍 obstacles<input id="obstacles" type="number" min="0" max="60" value="33"></label>
                 </div>
-                <label>Recul après obstacle (marches)<input id="back" type="number" min="0" max="19" value="2"></label>
+                <label>Recul après obstacle (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
             </section>
             <section class="box">
                 <h3>Simulateur (sans étoiles réelles)</h3>
@@ -130,8 +130,9 @@
         'use strict';
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
-        const TOP = 20;
-        const settings = { summit: 100, obstacles: 7, back: 2, speed: 1, hideBoard: false };
+        const TOP = 100, VIS = 14;
+        const settings = { summit: 100, obstacles: 33, back: 2, speed: 1, hideBoard: false };
+        let cam = 0;
         const viewers = new Map();
         const queue = [];
         let pos = 0, posDisp = 0, seg = null, moves = [], obst = new Set(), victories = 0;
@@ -187,67 +188,154 @@
         addEventListener('resize', resize);
 
         function geo() {
-            const w = canvas.width, h = canvas.height, base = h * 0.94, top = h * 0.3;
-            return { w, h, base, top, th: (base - top) / TOP, bw: Math.min(w * 0.78, (base - top) * 1.5), cx: w / 2 };
+            const w = canvas.width, h = canvas.height;
+            return { w, h, top: h * 0.3, th: h * 0.09, SW: h * 0.3, SH: h * 0.09, ax: w * 0.4, ay: h * 0.66, cx: w * 0.4 };
         }
-        const half = (g, i) => g.bw / 2 * (1 - 0.72 * i / TOP);
-        const stepY = (g, s) => g.base - s * g.th;
-        const lionSize = g => Math.max(28, Math.min(90, g.th * 1.7));
+        const smooth = t => t * t * (3 - 2 * t);
+        const jumpT = f => Math.min(1, Math.max(0, (f - 0.4) / 0.6));
+        function heightOf(p) {
+            const n = Math.min(TOP, Math.max(0, Math.floor(p)));
+            return n >= TOP ? TOP : n + smooth(jumpT(p - n));
+        }
+        const stepX = (g, s) => g.ax + (s - cam) * g.SW;
+        const stepY = (g, s) => g.ay - (s - heightOf(cam)) * g.SH;
 
         function buildObstacles() {
             obst = new Set();
-            const n = Math.min(18, Math.max(0, settings.obstacles));
+            const n = Math.min(TOP - 2, Math.max(0, settings.obstacles));
             while (obst.size < n) obst.add(rand(2, TOP - 1));
+        }
+
+        function drawStar(x, y, r) {
+            ctx.save();
+            const glow = ctx.createRadialGradient(x, y, 2, x, y, r * 3);
+            glow.addColorStop(0, 'rgba(255,230,120,.9)'); glow.addColorStop(1, 'rgba(255,200,60,0)');
+            ctx.fillStyle = glow; ctx.fillRect(x - r * 3, y - r * 3, r * 6, r * 6);
+            ctx.beginPath();
+            for (let i = 0; i < 10; i++) {
+                const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r;
+                ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+            }
+            ctx.closePath();
+            const gr = ctx.createLinearGradient(x, y - r, x, y + r);
+            gr.addColorStop(0, '#fff3a0'); gr.addColorStop(0.5, '#ffc800'); gr.addColorStop(1, '#b87800');
+            ctx.fillStyle = gr; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#7a4a00'; ctx.stroke();
+            ctx.restore();
+        }
+
+        /* lion de profil à 4 pattes, en train de gravir les marches ; ph = phase de la foulée */
+        function drawLion(x, y, s, ph, tilt) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.42, s * 0.04, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.rotate(-tilt); ctx.scale(s, s);
+            ctx.translate(0, -Math.abs(Math.sin(ph / 2)) * 0.03);
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const fur = '#c8924a', furDark = '#9a6a30', furLight = '#e8c080';
+            const leg = (hx, hy, p, col, hind) => {
+                const a = Math.sin(p) * 0.55, lift = Math.max(0, Math.cos(p));
+                const kx = hx + Math.sin(a) * 0.2, ky = hy + Math.cos(a) * 0.2;
+                const b = a + (hind ? 1 : -1) * (0.25 + lift * 0.8);
+                const fx = kx + Math.sin(b) * 0.2, fy = ky + Math.cos(b) * 0.2 - lift * 0.05;
+                ctx.strokeStyle = col; ctx.lineWidth = hind ? 0.085 : 0.075;
+                ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+                ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(fx + 0.02, fy, 0.055, 0.032, 0, 0, Math.PI * 2); ctx.fill();
+            };
+            // queue
+            ctx.strokeStyle = furDark; ctx.lineWidth = 0.032;
+            ctx.beginPath(); ctx.moveTo(-0.4, -0.5); ctx.bezierCurveTo(-0.65, -0.58, -0.66, -0.3, -0.56, -0.22 + Math.sin(ph) * 0.03); ctx.stroke();
+            ctx.fillStyle = '#4a2208'; ctx.beginPath(); ctx.ellipse(-0.56, -0.2 + Math.sin(ph) * 0.03, 0.04, 0.06, 0.4, 0, Math.PI * 2); ctx.fill();
+            // pattes éloignées
+            leg(-0.3, -0.38, ph + Math.PI, '#8a5c28', true);
+            leg(0.3, -0.4, ph, '#8a5c28', false);
+            // corps
+            const body = ctx.createLinearGradient(0, -0.65, 0, -0.25);
+            body.addColorStop(0, furDark); body.addColorStop(0.45, fur); body.addColorStop(1, furLight);
+            ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -0.45, 0.44, 0.19, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(120,70,20,.35)'; ctx.beginPath(); ctx.ellipse(-0.27, -0.4, 0.17, 0.16, 0, 0, Math.PI * 2); ctx.fill();
+            // pattes proches
+            leg(-0.28, -0.36, ph, fur, true);
+            // crinière
+            const mc = { x: 0.38, y: -0.5 }, mg = ctx.createRadialGradient(mc.x, mc.y, 0.03, mc.x, mc.y, 0.3);
+            mg.addColorStop(0, '#a0581a'); mg.addColorStop(0.6, '#6a3410'); mg.addColorStop(1, '#2e1404');
+            ctx.fillStyle = mg; ctx.beginPath();
+            for (let i = 0; i <= 28; i++) {
+                const a = i / 28 * Math.PI * 2, r = (i % 2 ? 0.3 : 0.23) + Math.sin(i * 2.7 + ph) * 0.015;
+                ctx.lineTo(mc.x + Math.cos(a) * r, mc.y + Math.sin(a) * r * 1.05);
+            }
+            ctx.closePath(); ctx.fill();
+            leg(0.3, -0.38, ph + Math.PI, fur, false);
+            // tête
+            ctx.fillStyle = fur; ctx.beginPath(); ctx.ellipse(0.56, -0.5, 0.14, 0.12, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = furLight; ctx.beginPath(); ctx.ellipse(0.67, -0.46, 0.075, 0.058, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = fur; ctx.beginPath(); ctx.arc(0.5, -0.62, 0.04, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#5a2a0a'; ctx.beginPath(); ctx.arc(0.5, -0.62, 0.02, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#2a0e04'; ctx.beginPath(); ctx.moveTo(0.725, -0.505); ctx.lineTo(0.76, -0.49); ctx.lineTo(0.73, -0.465); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#3a1808'; ctx.lineWidth = 0.008;
+            ctx.beginPath(); ctx.moveTo(0.73, -0.465); ctx.lineTo(0.7, -0.43); ctx.lineTo(0.64, -0.43); ctx.stroke();
+            ctx.fillStyle = '#e8a010'; ctx.beginPath(); ctx.ellipse(0.62, -0.54, 0.02, 0.014, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0.624, -0.54, 0.008, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#5a2a0a'; ctx.lineWidth = 0.012;
+            ctx.beginPath(); ctx.moveTo(0.59, -0.565); ctx.lineTo(0.65, -0.55); ctx.stroke();
+            ctx.restore();
         }
 
         function drawSavanna(g) {
             const sun = ctx.createRadialGradient(g.w * 0.82, g.h * 0.3, 4, g.w * 0.82, g.h * 0.3, g.h * 0.22);
             sun.addColorStop(0, 'rgba(255,230,140,1)'); sun.addColorStop(0.35, 'rgba(255,170,40,.55)'); sun.addColorStop(1, 'rgba(255,120,0,0)');
             ctx.fillStyle = sun; ctx.fillRect(0, 0, g.w, g.h);
-            const gr = ctx.createLinearGradient(0, g.h * 0.8, 0, g.h);
-            gr.addColorStop(0, '#8a5a1a'); gr.addColorStop(1, '#4a2a08');
-            ctx.fillStyle = gr; ctx.fillRect(0, g.h * 0.86, g.w, g.h * 0.14);
-            const acacia = (x, s) => {
+            // acacias lointains qui défilent doucement
+            const span = g.w + 500, ty = g.h * 0.8 + heightOf(cam) * g.SH * 0.3;
+            [[0, 0.2], [380, 0.14], [820, 0.18], [1250, 0.12]].forEach(([off, k]) => {
+                const x = ((off - cam * g.SW * 0.25) % span + span) % span - 250, s = g.h * k;
                 ctx.fillStyle = '#1a0d04';
-                ctx.fillRect(x - s * 0.04, g.h * 0.86 - s, s * 0.08, s);
-                ctx.beginPath(); ctx.ellipse(x, g.h * 0.86 - s, s * 0.55, s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
-            };
-            acacia(g.w * 0.07, g.h * 0.2); acacia(g.w * 0.16, g.h * 0.14); acacia(g.w * 0.9, g.h * 0.18); acacia(g.w * 0.96, g.h * 0.12);
+                ctx.fillRect(x - s * 0.04, ty - s, s * 0.08, s);
+                ctx.beginPath(); ctx.ellipse(x, ty - s, s * 0.55, s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+            });
         }
 
         function drawTemple(g) {
-            const sw = Math.max(14, g.bw * 0.045);
-            for (let i = 0; i < TOP; i++) {
-                const hw = half(g, i), y = stepY(g, i + 1);
-                const gr = ctx.createLinearGradient(g.cx - hw, 0, g.cx + hw, 0);
-                gr.addColorStop(0, '#8a6a3a'); gr.addColorStop(0.5, '#d9b26a'); gr.addColorStop(1, '#8a6a3a');
-                ctx.fillStyle = gr; ctx.fillRect(g.cx - hw, y, hw * 2, g.th + 1);
-                ctx.fillStyle = 'rgba(255,240,200,.35)'; ctx.fillRect(g.cx - hw, y, hw * 2, g.th * 0.16);
-                ctx.fillStyle = 'rgba(40,20,0,.35)'; ctx.fillRect(g.cx - hw, y + g.th * 0.86, hw * 2, g.th * 0.14);
-                ctx.fillStyle = i % 2 ? '#5a3a1a' : '#6a4620'; ctx.fillRect(g.cx - sw, y, sw * 2, g.th + 1);
-                ctx.fillStyle = '#ffe6a8'; ctx.font = `800 ${Math.max(8, g.th * 0.55)}px Poppins, sans-serif`;
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(String(i + 1), g.cx, y + g.th * 0.52);
+            const from = Math.max(0, Math.floor(cam) - Math.ceil(g.ax / g.SW) - 1), to = Math.min(TOP, Math.ceil(cam + (g.w - g.ax) / g.SW) + 1);
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            for (let i = from; i <= to; i++) {
+                const x0 = stepX(g, i) - g.SW / 2, y = stepY(g, i);
+                const gr = ctx.createLinearGradient(0, y, 0, g.h);
+                gr.addColorStop(0, '#d9b26a'); gr.addColorStop(0.35, '#a8793a'); gr.addColorStop(1, '#4a2a08');
+                ctx.fillStyle = gr; ctx.fillRect(x0, y, g.SW + 1, g.h - y + 2);
+                // dessus clair façon glaçage, avec petites coulures
+                ctx.fillStyle = '#fff1c8'; ctx.fillRect(x0, y, g.SW + 1, g.SH * 0.16);
+                for (let k = 0; k < 5; k++) {
+                    const dx = x0 + g.SW * (0.1 + k * 0.2) + ((i * 7 + k * 3) % 5) * 3;
+                    ctx.beginPath(); ctx.ellipse(dx, y + g.SH * 0.16, g.SW * 0.035, g.SH * (0.1 + ((i + k) % 3) * 0.06), 0, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.fillStyle = 'rgba(40,20,0,.45)'; ctx.fillRect(x0, y, 3, g.h - y);
+                ctx.font = `800 ${g.SH * 0.7}px Poppins, sans-serif`;
+                ctx.lineWidth = 5; ctx.strokeStyle = '#5a3208'; ctx.strokeText(String(i), x0 + g.SW / 2, y + g.SH * 0.7);
+                ctx.fillStyle = '#fff'; ctx.fillText(String(i), x0 + g.SW / 2, y + g.SH * 0.7);
             }
-            const hw = half(g, TOP), ty = stepY(g, TOP);
-            const glow = ctx.createRadialGradient(g.cx, ty - g.th * 2, 4, g.cx, ty - g.th * 2, g.th * 6);
-            glow.addColorStop(0, 'rgba(255,230,120,.85)'); glow.addColorStop(1, 'rgba(255,200,60,0)');
-            ctx.fillStyle = glow; ctx.fillRect(g.cx - g.th * 6, ty - g.th * 8, g.th * 12, g.th * 12);
-            ctx.fillStyle = '#7a5528'; ctx.fillRect(g.cx - hw, ty - g.th * 2.2, hw * 2, g.th * 2.2);
-            ctx.fillStyle = '#3a1f08'; ctx.fillRect(g.cx - hw * 0.28, ty - g.th * 1.6, hw * 0.56, g.th * 1.6);
-            ctx.fillStyle = '#a07838'; ctx.fillRect(g.cx - hw * 1.1, ty - g.th * 2.7, hw * 2.2, g.th * 0.5);
-            ctx.font = `${g.th * 1.2}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`; ctx.textBaseline = 'alphabetic';
-            ctx.fillText('⭐', g.cx, ty - g.th * 2.8);
+            // temple et étoile dorée au sommet
+            const tx = stepX(g, TOP), ty = stepY(g, TOP);
+            if (tx > -g.SW * 2 && tx < g.w + g.SW * 2) {
+                const bx = tx - g.SW * 0.4, bw = g.SW * 0.8;
+                ctx.fillStyle = '#7a5528'; ctx.fillRect(bx, ty - g.SH * 2.2, bw, g.SH * 2.2);
+                ctx.fillStyle = '#3a1f08'; ctx.fillRect(tx - bw * 0.14, ty - g.SH * 1.6, bw * 0.28, g.SH * 1.6);
+                ctx.fillStyle = '#a07838'; ctx.fillRect(bx - bw * 0.06, ty - g.SH * 2.7, bw * 1.12, g.SH * 0.5);
+                drawStar(tx, ty - g.SH * 3.8, g.SH * 1.3);
+            }
         }
 
         function drawActors(g) {
-            const fs = Math.max(18, g.th * 1.1);
+            const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-            obst.forEach(s => ctx.fillText('🐍', g.cx + g.bw * 0.045 + fs * 0.4, stepY(g, s) + fs * 0.1));
-            const ls = lionSize(g), hop = seg && seg.kind === 'up' ? Math.sin(Math.PI * Math.min(1, seg.t / seg.dur)) * g.th * 0.8 : 0;
-            ctx.font = `${ls}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.fillText('🦁', g.cx, stepY(g, posDisp) - hop + ls * 0.12);
+            obst.forEach(s => { const x = stepX(g, s); if (x > -g.SW && x < g.w + g.SW) ctx.fillText('🐍', x + g.SW * 0.3, stepY(g, s)); });
+            const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
+            const lx = stepX(g, posDisp), ly = stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8;
+            // halo de lumière sur le lion
+            const halo = ctx.createRadialGradient(lx, ly - g.SH, 10, lx, ly - g.SH, g.SW * 1.2);
+            halo.addColorStop(0, 'rgba(255,230,150,.35)'); halo.addColorStop(1, 'rgba(255,200,80,0)');
+            ctx.fillStyle = halo; ctx.fillRect(lx - g.SW * 1.2, ly - g.SW * 1.4, g.SW * 2.4, g.SW * 2.4);
+            drawLion(lx, ly, g.SW * 0.8, posDisp * Math.PI * 4 + Math.PI / 2, jumpT(f) > 0 && jumpT(f) < 1 ? 0.3 : 0);
         }
 
         function floatText(text, x, y) {
@@ -305,7 +393,7 @@
             say(`🏆 @${entry.viewer.username} mène le lion au sommet : +${settings.summit} ⭐ !`);
             showVip(entry.viewer);
             const g = geo();
-            floatText(`🏆 +${settings.summit} ⭐`, g.cx, stepY(g, TOP) - g.th * 4);
+            floatText(`🏆 +${settings.summit} ⭐`, stepX(g, TOP), stepY(g, TOP) - g.th * 4);
             sndWin();
             if (window.ArcadeEffects) ArcadeEffects.fireworks(g.cx, g.top, true);
             resetAt = clock + 4;
@@ -328,7 +416,7 @@
                 obst.delete(done.hit);
                 sndDown();
                 say(`🐍 @${done.who.username} bute sur un obstacle : le lion recule de ${done.hit - done.to} marche${done.hit - done.to > 1 ? 's' : ''} !`);
-                const g = geo(); floatText('🐍', g.cx, stepY(g, done.hit) - g.th * 2);
+                const g = geo(); floatText('🐍', stepX(g, done.hit), stepY(g, done.hit) - g.th * 2);
             }
             if (done.win) victory(done.win);
         }
@@ -355,6 +443,7 @@
             } else if (!seg && !moves.length && !resetAt && queue.length && clock >= nextAt) planStep();
             stepSeg(dt);
             const g = geo();
+            cam += (posDisp - cam) * Math.min(1, dt * 6);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawSavanna(g); drawTemple(g); drawActors(g);
             updateScoreboard();
@@ -451,7 +540,7 @@
             const nums = () => {
                 const clamp = (v, lo, hi, d) => Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.floor(v))) : d;
                 settings.summit = clamp(Number($('summit').value), 0, 10000, 100);
-                settings.obstacles = clamp(Number($('obstacles').value), 0, 18, 7);
+                settings.obstacles = clamp(Number($('obstacles').value), 0, 60, 33);
                 settings.back = clamp(Number($('back').value), 0, 19, 2);
                 saveGame();
             };
