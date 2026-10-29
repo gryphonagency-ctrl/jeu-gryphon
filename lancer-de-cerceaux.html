@@ -176,7 +176,7 @@
         /* ---------- quilles ---------- */
         function buildPins() {
             pins = [];
-            ROWS.forEach((n, r) => { for (let i = 0; i < n; i++) pins.push({ row: r, nx: (i - (n - 1) / 2) * 0.13, filled: false, pending: false, color: '#fff' }); });
+            ROWS.forEach((n, r) => { for (let i = 0; i < n; i++) pins.push({ row: r, nx: (i - (n - 1) / 2) * 0.13, filled: false, pending: false, color: '#fff', hasRing: false, ringY: RING_TOP, ringColor: '#fff' }); });
         }
 
         const canvas = $('scene'), ctx = canvas.getContext('2d');
@@ -205,24 +205,56 @@
             ctx.beginPath(); ctx.moveTo(w * 0.26, top); ctx.lineTo(-w * 0.02, h); ctx.moveTo(w * 0.74, top); ctx.lineTo(w * 1.02, h); ctx.stroke();
         }
 
+        const RING_REST = 0.98, RING_TOP = -1.8, RING_RX = 0.82, RING_RY = 0.31;
+
+        function pinPath(x, y, s) {
+            const X = v => x + v * s, Y = v => y + v * s;
+            ctx.beginPath();
+            ctx.moveTo(X(0), Y(-1.58));
+            ctx.bezierCurveTo(X(0.3), Y(-1.58), X(0.38), Y(-1.2), X(0.3), Y(-1.0));
+            ctx.bezierCurveTo(X(0.2), Y(-0.8), X(0.22), Y(-0.65), X(0.4), Y(-0.3));
+            ctx.bezierCurveTo(X(0.66), Y(0.1), X(0.6), Y(0.7), X(0.38), Y(1.1));
+            ctx.lineTo(X(-0.38), Y(1.1));
+            ctx.bezierCurveTo(X(-0.6), Y(0.7), X(-0.66), Y(0.1), X(-0.4), Y(-0.3));
+            ctx.bezierCurveTo(X(-0.22), Y(-0.65), X(-0.2), Y(-0.8), X(-0.3), Y(-1.0));
+            ctx.bezierCurveTo(X(-0.38), Y(-1.2), X(-0.3), Y(-1.58), X(0), Y(-1.58));
+            ctx.closePath();
+        }
+
+        function ringHalf(x, y, s, p, front) {
+            ctx.save();
+            ctx.strokeStyle = p.ringColor; ctx.lineWidth = s * 0.26;
+            ctx.shadowColor = p.ringColor; ctx.shadowBlur = s * 0.4;
+            ctx.beginPath();
+            ctx.ellipse(x, y + p.ringY * s, s * RING_RX, s * RING_RY, 0, front ? 0 : Math.PI, front ? Math.PI : Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
         function drawPin(p) {
             const { x, y, s } = pinGeom(p);
             ctx.save();
-            ctx.fillStyle = 'rgba(0,0,0,.28)';
-            ctx.beginPath(); ctx.ellipse(x, y + s * 1.05, s * 0.8, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.strokeStyle = '#3a2a4a'; ctx.lineWidth = Math.max(1, s * 0.07);
-            ctx.beginPath(); ctx.ellipse(x, y + s * 0.15, s * 0.58, s * 0.95, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            ctx.fillRect(x - s * 0.2, y - s * 1.15, s * 0.4, s * 0.7);
-            ctx.beginPath(); ctx.arc(x, y - s * 1.2, s * 0.36, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#e8312f';
-            ctx.fillRect(x - s * 0.21, y - s * 0.95, s * 0.42, s * 0.12);
-            ctx.fillRect(x - s * 0.24, y - s * 0.72, s * 0.48, s * 0.1);
-            if (p.filled) {
-                ctx.strokeStyle = p.color; ctx.lineWidth = s * 0.28;
-                ctx.shadowColor = p.color; ctx.shadowBlur = s * 0.6;
-                ctx.beginPath(); ctx.ellipse(x, y - s * 0.62, s * 0.78, s * 0.3, 0, 0, Math.PI * 2); ctx.stroke();
-            }
+            ctx.fillStyle = 'rgba(0,0,0,.3)';
+            ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 1.08, s * 0.7, s * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+            if (p.hasRing) ringHalf(x, y, s, p, false);
+            const g = ctx.createLinearGradient(x - s * 0.62, 0, x + s * 0.62, 0);
+            g.addColorStop(0, '#9da3b8'); g.addColorStop(0.28, '#ffffff'); g.addColorStop(0.55, '#f1f2f8'); g.addColorStop(1, '#8c92aa');
+            ctx.fillStyle = g; ctx.strokeStyle = 'rgba(40,30,60,.55)'; ctx.lineWidth = Math.max(1, s * 0.05);
+            pinPath(x, y, s); ctx.fill(); ctx.stroke();
+            ctx.save();
+            pinPath(x, y, s); ctx.clip();
+            ctx.fillStyle = '#d62828';
+            ctx.fillRect(x - s, y - s * 0.84, s * 2, s * 0.13);
+            ctx.fillRect(x - s, y - s * 0.6, s * 2, s * 0.1);
+            const sh = ctx.createLinearGradient(x - s * 0.62, 0, x + s * 0.62, 0);
+            sh.addColorStop(0, 'rgba(0,0,0,.18)'); sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.22)');
+            ctx.fillStyle = sh; ctx.fillRect(x - s, y - s * 1.7, s * 2, s * 2.9);
             ctx.restore();
+            ctx.fillStyle = 'rgba(255,255,255,.75)';
+            ctx.beginPath(); ctx.ellipse(x - s * 0.17, y + s * 0.15, s * 0.07, s * 0.38, 0.05, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(x - s * 0.1, y - s * 1.32, s * 0.06, s * 0.1, 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            if (p.hasRing) ringHalf(x, y, s, p, true);
         }
 
         function drawRing(r) {
@@ -249,8 +281,21 @@
             const target = hit ? free[rand(0, free.length - 1)] : pins[rand(0, pins.length - 1)];
             if (hit) target.pending = true;
             const color = COLORS[rand(0, COLORS.length - 1)], o = throwOrigin(), g = pinGeom(target);
-            const miss = hit ? 0 : (Math.random() < 0.5 ? -1 : 1) * g.s * (1.7 + Math.random() * 1.2);
-            rings.push({ t: 0, hit, pin: target, color, ox: o.x, oy: o.y, tx: g.x + miss, ty: hit ? g.y - g.s * 0.62 : g.y + g.s * 0.9, x: o.x, y: o.y, size: 40, rot: 0, alpha: 1, phase: 'fly', run });
+            let tx = g.x, ty = g.y - g.s * 1.8;
+            if (!hit) {
+                ty = g.y + g.s * RING_REST;
+                // un raté atterrit à côté de la quille, jamais sur une autre quille
+                const clear = (px) => pins.every(q => {
+                    const h = pinGeom(q);
+                    return Math.abs(px - h.x) > (h.s * (RING_RX + 0.5)) || Math.abs(ty - (h.y + h.s * RING_REST)) > (h.s + g.s) * 0.3;
+                });
+                for (let i = 0; i < 12; i++) {
+                    const cand = g.x + (Math.random() < 0.5 ? -1 : 1) * g.s * (1.8 + Math.random() * 2.4 + i * 0.25);
+                    tx = cand;
+                    if (clear(cand)) break;
+                }
+            }
+            rings.push({ t: 0, hit, pin: target, color, ox: o.x, oy: o.y, tx, ty, x: o.x, y: o.y, size: 40, rot: 0, alpha: 1, phase: 'fly', run });
             run.left--; run.thrown++;
             sndThrow();
         }
@@ -258,18 +303,24 @@
         function landed(r) {
             const owner = r.run.entry;
             if (r.hit) {
-                r.pin.pending = false; r.pin.filled = true; r.pin.color = r.color;
-                r.run.hits++;
-                award(owner.viewer, settings.ringStars, owner.sim);
-                const g = pinGeom(r.pin);
-                floatText(`+${settings.ringStars} ⭐`, g.x, g.y - g.s * 2);
-                sndHit();
-                r.phase = 'done';
-                if (pins.every(p => p.filled)) rackComplete(r.run);
+                r.phase = 'drop'; r.dt = 0;
+                r.pin.hasRing = true; r.pin.ringColor = r.color; r.pin.ringY = RING_TOP;
             } else {
                 r.phase = 'bounce'; r.bt = 0; r.bx = r.tx; r.by = r.ty; r.vx = (r.tx - r.ox) * 0.4;
                 sndMiss();
             }
+        }
+
+        function settled(r) {
+            const owner = r.run.entry;
+            r.pin.pending = false; r.pin.filled = true; r.pin.color = r.color; r.pin.ringY = RING_REST;
+            r.run.hits++;
+            award(owner.viewer, settings.ringStars, owner.sim);
+            const g = pinGeom(r.pin);
+            floatText(`+${settings.ringStars} ⭐`, g.x, g.y - g.s * 2);
+            sndHit();
+            r.phase = 'done';
+            if (pins.every(p => p.filled)) rackComplete(r.run);
         }
 
         function rackComplete(rn) {
@@ -288,9 +339,16 @@
                 const t = Math.min(1, r.t), arc = canvas.height * 0.3;
                 r.x = r.ox + (r.tx - r.ox) * t;
                 r.y = r.oy + (r.ty - r.oy) * t - 4 * arc * t * (1 - t);
-                r.size = 40 + (Math.max(10, pinGeom(r.pin).s * 0.85) - 40) * t;
+                r.size = 40 + (Math.max(10, pinGeom(r.pin).s * RING_RX) - 40) * t;
                 r.rot = Math.sin(t * 9) * 0.25;
                 if (t >= 1) landed(r);
+            } else if (r.phase === 'drop') {
+                r.dt += dt / 0.45;
+                const t = Math.min(1, r.dt);
+                const e = t < 0.85 ? (t / 0.85) ** 2 : 1;
+                const bounce = t >= 0.85 ? Math.sin((t - 0.85) / 0.15 * Math.PI) * 0.06 : 0;
+                r.pin.ringY = RING_TOP + (RING_REST - RING_TOP) * e - bounce;
+                if (t >= 1) settled(r);
             } else if (r.phase === 'bounce') {
                 r.bt += dt;
                 r.x = r.bx + r.vx * r.bt;
@@ -362,7 +420,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawLane();
             [...pins].sort((a, b) => a.row - b.row).forEach(drawPin);
-            rings.forEach(drawRing);
+            rings.forEach(r => { if (r.phase !== 'drop') drawRing(r); });
             updateScoreboard();
             requestAnimationFrame(frame);
         }
