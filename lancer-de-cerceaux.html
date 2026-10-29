@@ -31,6 +31,12 @@
         #board { position: absolute; z-index: 4; left: 10px; top: 20vh; width: 190px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 12px; background: rgba(15,0,40,.7); font-size: 12px; }
         #board h4 { margin: 0 0 4px; color: #ffd36b; font: 900 11px Orbitron, sans-serif; }
         #board ol { margin: 0; padding-left: 20px; } #board li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #vip { position: absolute; z-index: 8; left: 50%; top: 24%; display: flex; align-items: center; gap: 16px; padding: 14px 28px 14px 16px; border: 3px solid #ffd36b; border-radius: 22px; background: linear-gradient(135deg, #5b0a8f, #c2185b); box-shadow: 0 0 30px rgba(255,211,107,.8), 0 10px 40px rgba(0,0,0,.6); transform: translate(-50%, -30px) scale(.7); opacity: 0; pointer-events: none; transition: .45s cubic-bezier(.2,1.4,.4,1); }
+        #vip.show { transform: translate(-50%, 0) scale(1); opacity: 1; }
+        #vip img, #vip .vip-ph { width: 84px; height: 84px; border-radius: 50%; border: 4px solid #ffd36b; object-fit: cover; background: #3a0a5a; display: grid; place-items: center; font-size: 40px; }
+        #vip .vip-tag { font: 900 13px Orbitron, sans-serif; letter-spacing: 3px; color: #ffd36b; }
+        #vip .vip-name { font: 900 clamp(22px, 3vw, 38px) Orbitron, sans-serif; color: #fff; text-shadow: 0 2px 0 #000; }
+        #vip .vip-score { font: 900 clamp(18px, 2.2vw, 28px) Orbitron, sans-serif; color: #ffe27a; }
         .toast { position: fixed; z-index: 9; left: 16px; bottom: 16px; max-width: 70vw; padding: 8px 14px; border: 1px solid rgba(255,200,80,.6); border-radius: 12px; background: rgba(40,12,85,.88); font-size: 14px; opacity: 0; transform: translateY(14px); transition: .25s; pointer-events: none; }
         .toast.show { opacity: 1; transform: none; }
         .panel { flex: 0 0 300px; width: 300px; height: 100%; display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,.2); background: rgba(15,6,38,.97); z-index: 5; }
@@ -78,6 +84,7 @@
         <aside id="board" aria-label="Classement"><h4>🏆 CLASSEMENT</h4><ol id="board-list"></ol></aside>
         <div class="clowns" aria-hidden="true"><span class="clown">🤡</span><span class="clown">🎪</span></div>
     </main>
+    <div id="vip" role="status" aria-live="polite"></div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <aside id="panel" class="panel" aria-label="Panneau de contrôle du streamer">
@@ -137,13 +144,13 @@
         'use strict';
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lancer-de-cerceaux-save';
-        const settings = { hit: 45, ringStars: 1, bonus: 5, batch: 15, speed: 1, hideBoard: false };
+        const settings = { hit: 67, ringStars: 1, bonus: 5, batch: 15, speed: 1, hideBoard: false };
         const viewers = new Map();
         const queue = [];
         const COLORS = ['#ff3d6e', '#ffd23f', '#2de2e6', '#7cff6b', '#ff8a00', '#b388ff'];
         const ROWS = [4, 3, 2, 1];
         const THROW_GAP = 0.8, FLIGHT = 0.85;
-        let run = null, pins = [], rings = [], clock = 0, nextThrow = 0, rackResetAt = 0;
+        let run = null, pins = [], rings = [], clock = 0, nextThrow = 0, rackResetAt = 0, throwCount = 0;
 
         const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
         let toastTimer;
@@ -152,8 +159,23 @@
         function getViewer(raw) {
             const username = String(raw || 'Spectateur').replace(/^@/, '').trim().slice(0, 32) || 'Spectateur';
             const key = username.toLowerCase();
-            if (!viewers.has(key)) viewers.set(key, { username, stars: 0 });
+            if (!viewers.has(key)) viewers.set(key, { username, stars: 0, avatar: '' });
             return viewers.get(key);
+        }
+
+        let vipTimer;
+        function showVip(viewer) {
+            const el = $('vip');
+            el.textContent = '';
+            const pic = viewer.avatar ? document.createElement('img') : document.createElement('div');
+            if (viewer.avatar) { pic.src = viewer.avatar; pic.alt = ''; pic.referrerPolicy = 'no-referrer'; } else { pic.className = 'vip-ph'; pic.textContent = '🤡'; }
+            const box = document.createElement('div');
+            const tag = document.createElement('div'); tag.className = 'vip-tag'; tag.textContent = '👑 VIP — GRILLE COMPLÈTE';
+            const name = document.createElement('div'); name.className = 'vip-name'; name.textContent = '@' + viewer.username;
+            const score = document.createElement('div'); score.className = 'vip-score'; score.textContent = `${viewer.stars} ⭐ au total`;
+            box.append(tag, name, score); el.append(pic, box);
+            el.classList.add('show');
+            clearTimeout(vipTimer); vipTimer = setTimeout(() => el.classList.remove('show'), 5000);
         }
 
         /* ---------- sons simples ---------- */
@@ -203,6 +225,27 @@
             }
             ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 4;
             ctx.beginPath(); ctx.moveTo(w * 0.26, top); ctx.lineTo(-w * 0.02, h); ctx.moveTo(w * 0.74, top); ctx.lineTo(w * 1.02, h); ctx.stroke();
+            drawCarpet(top);
+        }
+
+        function drawCarpet(top) {
+            const w = canvas.width, h = canvas.height, y0 = h * 0.4, y1 = h * 0.9, span = h - top;
+            const half = y => w * (0.24 + 0.26 * (y - top) / span) * 0.9;
+            const g = ctx.createLinearGradient(0, y0, 0, y1);
+            g.addColorStop(0, '#8f0f1d'); g.addColorStop(1, '#d6202f');
+            ctx.save();
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.moveTo(w / 2 - half(y0), y0); ctx.lineTo(w / 2 + half(y0), y0); ctx.lineTo(w / 2 + half(y1), y1); ctx.lineTo(w / 2 - half(y1), y1); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,211,107,.45)'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(w / 2 - half(y0) * 0.93, y0 + 4); ctx.lineTo(w / 2 + half(y0) * 0.93, y0 + 4); ctx.lineTo(w / 2 + half(y1) * 0.93, y1 - 4); ctx.lineTo(w / 2 - half(y1) * 0.93, y1 - 4); ctx.closePath(); ctx.stroke();
+            const ty = h * 0.855;
+            ctx.translate(w / 2, ty); ctx.scale(1, 0.55);
+            ctx.font = `900 ${Math.max(14, w * 0.04)}px Orbitron, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 6; ctx.fillStyle = '#ffd36b';
+            ctx.fillText('GRYPHON AGENCY', 0, 0);
+            ctx.restore();
         }
 
         const RING_REST = 0.98, RING_TOP = -1.8, RING_RX = 0.82, RING_RY = 0.31;
@@ -277,7 +320,7 @@
 
         function throwRing() {
             const free = pins.filter(p => !p.filled && !p.pending);
-            const hit = free.length > 0 && Math.random() * 100 < settings.hit;
+            const hit = free.length > 0 && (settings.hit === 67 ? ++throwCount % 3 !== 0 : Math.random() * 100 < settings.hit);
             const target = hit ? free[rand(0, free.length - 1)] : pins[rand(0, pins.length - 1)];
             if (hit) target.pending = true;
             const color = COLORS[rand(0, COLORS.length - 1)], o = throwOrigin(), g = pinGeom(target);
@@ -327,6 +370,7 @@
             const owner = rn.entry;
             award(owner.viewer, settings.bonus, owner.sim);
             say(`🎳 @${owner.viewer.username} remplit toutes les quilles : +${settings.bonus} ⭐ bonus !`);
+            showVip(owner.viewer);
             const g = pinGeom(pins[pins.length - 1]);
             floatText(`🎳 +${settings.bonus} ⭐`, canvas.width / 2, g.y - g.s * 4);
             if (window.ArcadeEffects) ArcadeEffects.fireworks(canvas.width / 2, canvas.height * 0.45, true);
@@ -451,7 +495,10 @@
             if (data.type === 'STATUS') setStatus(data.message || 'Statut TikTok reçu.');
             else if (data.type === 'gift' || data.type === 'tiktok-gift') {
                 const g = data.gift ?? data;
-                enqueue(getViewer(g.uniqueId || g.username || g.nickname), coinsOf(g), false);
+                const v = getViewer(g.uniqueId || g.username || g.nickname);
+                const pic = g.avatarUrl || (Array.isArray(g.avatarUrls) && g.avatarUrls[0]) || '';
+                if (/^https?:\/\//i.test(pic)) v.avatar = pic;
+                enqueue(v, coinsOf(g), false);
             }
         }
         function connect() {
@@ -483,6 +530,7 @@
                 const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
                 if (!s) return;
                 Object.assign(settings, s.settings || {});
+                if (settings.hit === 45) settings.hit = 67;
                 if (s.username) $('username').value = s.username;
                 if (s.wsUrl) $('ws-url').value = s.wsUrl;
                 for (const v of s.viewers || []) getViewer(v.username).stars = Number(v.stars) || 0;
