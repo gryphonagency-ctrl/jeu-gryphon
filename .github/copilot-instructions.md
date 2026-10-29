@@ -16,6 +16,7 @@ Le serveur injecte `/arcade-effects.js` dans toutes les pages de jeu ; ne pas le
 - Panneau de contrôle masquable : vitesse réglable, file d'attente détachable, connexion TikTok, simulateur, classement masquable.
 - Étoiles : `ArcadeStars.award` uniquement pour de vrais gains, jamais en simulation. Évènement `arcade:wallet-run` pour le RUN (voir `ARCADE-STARS.md`).
 - Capture de vitrine sans panneau dans `images-vitrine/`, carte dans `accueil.html`.
+- Import / export / sauvegarde : ajouter dans le bloc « Partie » du panneau `<div data-save-key="ID-DU-JEU-save"></div>` (clé localStorage du jeu). `arcade-effects.js` y monte les boutons Exporter, Importer, Sauvegarder et Restaurer.
 
 ## Enregistrer un jeu dans `serveur.js`
 `protectedRoutes`, `staticGameIds`, `grantGameAccessToExistingCreators`, `staticGameTitles`, `gameRouteIds`, la table des fichiers statiques, et la route de l'image `/images-vitrine/x.png`.

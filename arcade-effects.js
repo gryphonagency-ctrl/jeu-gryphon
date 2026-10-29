@@ -331,6 +331,68 @@
         });
     }
 
+    /* ---------- Import / export / sauvegarde (tout bloc [data-save-key]) ---------- */
+    const SAVE_FORMAT = 'griffon-arcade-save', SAVE_MAX = 2000000;
+    function readSave(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+    function backupNow(key) {
+        const raw = readSave(key);
+        if (!raw) return false;
+        try { localStorage.setItem(key + '-backup', JSON.stringify({ at: Date.now(), data: raw })); return true; } catch (e) { return false; }
+    }
+    function exportSave(key) {
+        const raw = readSave(key);
+        if (!raw) return false;
+        const file = JSON.stringify({ format: SAVE_FORMAT, game: key, exportedAt: new Date().toISOString(), data: JSON.parse(raw) }, null, 2);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([file], { type: 'application/json' }));
+        a.download = `${key}-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        return true;
+    }
+    function importSave(key, text) {
+        if (text.length > SAVE_MAX) throw new Error('Fichier trop volumineux.');
+        const parsed = JSON.parse(text);
+        if (!parsed || parsed.format !== SAVE_FORMAT || typeof parsed.data !== 'object' || parsed.data === null || Array.isArray(parsed.data)) throw new Error('Fichier de sauvegarde invalide.');
+        if (parsed.game !== key) throw new Error('Cette sauvegarde appartient à un autre jeu.');
+        backupNow(key);
+        localStorage.setItem(key, JSON.stringify(parsed.data));
+    }
+    function mountSaveTools(box) {
+        const key = box.dataset.saveKey;
+        if (!key || box.dataset.ready) return;
+        box.dataset.ready = '1';
+        box.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px';
+        const msg = document.createElement('div');
+        msg.style.cssText = 'grid-column:1/-1;font-size:11px;opacity:.85;min-height:14px';
+        const make = (label, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn alt'; b.textContent = label; b.addEventListener('click', fn);
+            box.appendChild(b); return b;
+        };
+        const say = t => { msg.textContent = t; };
+        const file = document.createElement('input');
+        file.type = 'file'; file.accept = 'application/json,.json'; file.hidden = true;
+        file.addEventListener('change', async () => {
+            const f = file.files && file.files[0]; file.value = '';
+            if (!f) return;
+            try { importSave(key, await f.text()); say('Import réussi, rechargement…'); setTimeout(() => location.reload(), 600); }
+            catch (e) { say('Import impossible : ' + e.message); }
+        });
+        make('💾 Exporter', () => say(exportSave(key) ? 'Sauvegarde exportée.' : 'Rien à exporter pour le moment.'));
+        make('📂 Importer', () => file.click());
+        make('🛟 Sauvegarder', () => say(backupNow(key) ? 'Sauvegarde locale faite.' : 'Rien à sauvegarder.'));
+        make('↩ Restaurer', () => {
+            let b = null; try { b = JSON.parse(localStorage.getItem(key + '-backup')); } catch (e) { }
+            if (!b || typeof b.data !== 'string') { say('Aucune sauvegarde locale.'); return; }
+            if (!confirm('Restaurer la sauvegarde du ' + new Date(b.at).toLocaleString('fr-FR') + ' ?')) return;
+            localStorage.setItem(key, b.data); location.reload();
+        });
+        box.append(file, msg);
+    }
+    function initSaveTools() { document.querySelectorAll('[data-save-key]').forEach(mountSaveTools); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSaveTools); else initSaveTools();
+
     window.ArcadeEffects = {
         config, paperPlane, giftBurst, fireworks, setSound, handleMessage: handle,
         simulateShare: () => handle({ type: 'share', shareData: { messageId: '' } }),
