@@ -336,6 +336,12 @@ function injectArcadeScripts(html) {
     let content = html;
     const walletScript = '<script src="/arcade-stars.js"></script>';
     const presenceScript = '<script src="/arcade-presence.js" defer></script>';
+    const effectsScript = '<script src="/arcade-effects.js"></script>';
+    if (!/<script\b[^>]*src=["']\/arcade-effects\.js["']/i.test(content)) {
+        content = /<head\b[^>]*>/i.test(content)
+            ? content.replace(/<head\b[^>]*>/i, match => `${match}${effectsScript}`)
+            : insertBeforeDocumentEnd(content, effectsScript);
+    }
     if (!/<script\b[^>]*src=["']\/arcade-stars\.js["']/i.test(content)) {
         content = /<head\b[^>]*>/i.test(content)
             ? content.replace(/<head\b[^>]*>/i, match => `${match}${walletScript}`)
@@ -2137,6 +2143,7 @@ const server = http.createServer((req, res) => {
     const routes = new Map([
         ['/', [homepageFile, 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
+        ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/pousoire.html', [gameFile, 'text/html; charset=utf-8']],
         ['/pendu', [hangmanFile, 'text/html; charset=utf-8']],

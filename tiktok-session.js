@@ -203,6 +203,18 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         });
     });
 
+    connection.on('share', message => {
+        const identity = getTikTokIdentity(message.user);
+        send({
+            type: 'share',
+            shareData: {
+                messageId: String(message.common?.msgId || ''),
+                username: identity.uniqueId || identity.username,
+                nickname: identity.nickname
+            }
+        });
+    });
+
     connection.on('like', message => {
         const likeCount = Math.floor(Number(message.likeCount) || 0);
         if (likeCount < 1) return;
