@@ -204,13 +204,14 @@
         function buildObstacles() { obst = new Set(); ballAt.clear(); }
 
         /* un cadeau du bon nombre d'étoiles lâche une boule de bowling sur la marche juste devant le lion */
-        const ballAt = new Map();
+        const ballAt = new Map(), ROLL_STEPS = 7, ROLL_SPEED = 5;
         function dropSnake(viewer) {
             const s = pos + 1;
             if (s >= TOP) return false;
             obst.add(s);
             if (!ballAt.has(s)) ballAt.set(s, []);
             ballAt.get(s).push({ t: clock, hit: false });
+            nextAt = Math.max(nextAt, clock + ROLL_STEPS / ROLL_SPEED + 0.1);
             say(`🎳 @${viewer.username} lâche une boule de bowling sur la marche ${s} !`);
             return true;
         }
@@ -376,7 +377,7 @@
             ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
             ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(12, Math.min(g.SH * 0.36, lw / 38))}px Poppins, sans-serif`;
-            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🎳 ${settings.snake} étoiles = une boule de bowling tombe devant le lion : il recule de ${settings.back} marches`]];
+            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🎳 ${settings.snake} étoiles = une boule de bowling dévale les marches vers le lion : il recule de ${settings.back} marches`]];
             rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.3 + k * 0.4)); });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
@@ -425,17 +426,27 @@
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
             ballAt.forEach((list, s) => {
-                const x = stepX(g, s) + g.SW * 0.3;
-                if (x < -g.SW || x > g.w + g.SW) return;
                 list.forEach((b, i) => {
-                    const r = g.SH * 0.42, rest = stepY(g, s) - r - (i % 4) * r * 0.5 - Math.floor(i / 4) * r * 1.6, el = clock - b.t, D = 0.7;
-                    const bx = x + ((i % 4) - 1.5) * r * 0.9;
-                    let y = rest, rot = el * 6;
-                    if (el < D) { const k = el / D; y = rest - (1 - k * k) * g.h * 0.9; rot = k * 9; }
-                    else if (el < D + 0.35) { const k = (el - D) / 0.35; y = rest - Math.sin(Math.PI * k) * r * 1.4; rot = 9 + k * 2; }
-                    else rot = 11.5 + i;
-                    if (!b.hit && el >= D) { b.hit = true; sndHit(); }
-                    drawBowlingBall(bx, y, r, rot);
+                    const r = g.SH * 0.42, el = clock - b.t;
+                    const ox = ((i % 4) - 1.5) * r * 0.9, oy = (i % 4) * r * 0.5 + Math.floor(i / 4) * r * 1.6;
+                    // p = position fractionnaire de la boule : elle dévale les marches de s+ROLL_STEPS jusqu'à s
+                    const p = Math.max(s, s + ROLL_STEPS - el * ROLL_SPEED);
+                    let x, y, rot;
+                    if (p > s) {
+                        const k = Math.floor(p), q = 1 - (p - k);
+                        const top = stepY(g, k + 1) - r, low = stepY(g, k) - r;
+                        x = stepX(g, p) + g.SW * 0.3 + ox;
+                        y = top + (low - top) * q * q - Math.sin(Math.PI * q) * r * 0.25 - oy * Math.max(0, 1 - (p - s));
+                        rot = (p - s) * g.SW / r;
+                    } else {
+                        const after = el - ROLL_STEPS / ROLL_SPEED;
+                        const hop = after < 0.3 ? Math.abs(Math.sin(after / 0.3 * Math.PI)) * r * 0.5 * (1 - after / 0.3) : 0;
+                        x = stepX(g, s) + g.SW * 0.3 + ox; y = stepY(g, s) - r - oy - hop;
+                        rot = i + after * 1.5 * Math.max(0, 1 - after);
+                        if (!b.hit) { b.hit = true; sndHit(); }
+                    }
+                    if (x < -g.SW || x > g.w + g.SW * 2) return;
+                    drawBowlingBall(x, y, r, rot);
                 });
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
