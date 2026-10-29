@@ -331,5 +331,9 @@
         });
     }
 
-    window.ArcadeEffects = { config, paperPlane, giftBurst, fireworks, setSound, handleMessage: handle };
+    window.ArcadeEffects = {
+        config, paperPlane, giftBurst, fireworks, setSound, handleMessage: handle,
+        simulateShare: () => handle({ type: 'share', shareData: { messageId: '' } }),
+        simulateBigGift: (username, coins) => handle({ type: 'gift', gift: { messageId: '', uniqueId: username || 'spectateur', coinCount: coins || config.bigGiftCoins } })
+    };
 })();

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gryphon Agency — Modèle de jeu TikTok Live</title>
+<!-- Effets communs Griffon Arcade (avion en papier, bulle + feu d'artifice, sons) : injectés aussi par le serveur, sans doublon. -->
+<script src="/arcade-effects.js"></script>
+<style>
+    html, body { margin: 0; height: 100%; background: #1a0033; color: #fff; font-family: Arial, sans-serif; }
+    main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+    #scoreboard { font-size: 24px; font-weight: 700; }
+    #sim { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+    #sim button { padding: 8px 12px; border-radius: 8px; border: 0; background: #ff2e93; color: #fff; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+    <h1>Nom du jeu</h1>
+    <div id="scoreboard" role="status">En attente d'un joueur…</div>
+    <!-- Zone de jeu ici -->
+</main>
+
+<aside id="sim" aria-label="Simulateur">
+    <button id="sim-gift" type="button">🎁 Cadeau 1 pièce</button>
+    <button id="sim-big" type="button">💎 Gros cadeau (100)</button>
+    <button id="sim-share" type="button">✈️ Partage du live</button>
+</aside>
+
+<script>
+    /* Règles standard Griffon Arcade :
+       - un cadeau d'1 pièce lance une action de jeu ;
+       - un gros cadeau (>= 100 pièces) déclenche la bulle + feu d'artifice sonorisé (automatique côté arcade-effects.js) ;
+       - un partage du live déclenche l'avion en papier (automatique) ;
+       - les étoiles réelles ne sont jamais créditées en simulation. */
+    const BIG_GIFT = 100;
+
+    function onGift(username, coins) {
+        // TODO : mettre le joueur en file d'attente / lancer l'action du jeu
+    }
+
+    function handleMessage(data) {
+        if (data.type === 'gift') {
+            const g = data.gift || data;
+            onGift(g.uniqueId || g.username || g.nickname, Number(g.coinCount) || 1);
+        }
+        // Les messages 'share' et les gros cadeaux sont déjà traités par ArcadeEffects.
+    }
+
+    function connect(username, url) {
+        const ws = new WebSocket(url);
+        ws.addEventListener('message', e => { try { handleMessage(JSON.parse(e.data)); } catch (err) { } });
+        ws.addEventListener('open', () => ws.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username })));
+        return ws;
+    }
+
+    document.getElementById('sim-gift').onclick = () => onGift('Alex_TikTok', 1);
+    document.getElementById('sim-big').onclick = () => { onGift('Alex_TikTok', BIG_GIFT); ArcadeEffects.simulateBigGift('Alex_TikTok', BIG_GIFT); };
+    document.getElementById('sim-share').onclick = () => ArcadeEffects.simulateShare();
+</script>
+</body>
+</html>
