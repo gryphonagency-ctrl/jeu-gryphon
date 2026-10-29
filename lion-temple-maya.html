@@ -201,19 +201,31 @@
         const stepX = (g, s) => g.ax + (s - cam) * g.SW;
         const stepY = (g, s) => g.ay - (s - heightOf(cam)) * g.SH;
 
-        function buildObstacles() { obst = new Set(); ballAt.clear(); }
+        function buildObstacles() { obst = new Set(); rolls.length = 0; }
 
-        /* un cadeau du bon nombre d'étoiles lâche une boule de bowling sur la marche juste devant le lion */
-        const ballAt = new Map(), ROLL_STEPS = 7, ROLL_SPEED = 5;
+        /* un cadeau du bon nombre d'étoiles lâche une boule qui dévale les marches, heurte le lion puis sort du décor */
+        const rolls = [], ROLL_STEPS = 7, ROLL_SPEED = 5;
         function dropSnake(viewer) {
-            const s = pos + 1;
-            if (s >= TOP) return false;
-            obst.add(s);
-            if (!ballAt.has(s)) ballAt.set(s, []);
-            ballAt.get(s).push({ t: clock, hit: false });
-            nextAt = Math.max(nextAt, clock + ROLL_STEPS / ROLL_SPEED + 0.1);
-            say(`🎳 @${viewer.username} lâche une boule de bowling sur la marche ${s} !`);
+            if (resetAt) return false;
+            rolls.push({ t: clock, start: Math.min(TOP, Math.ceil(posDisp) + ROLL_STEPS), who: viewer, hit: false });
+            say(`🎳 @${viewer.username} lâche une boule de bowling !`);
             return true;
+        }
+        function updateRolls() {
+            for (let i = rolls.length - 1; i >= 0; i--) {
+                const b = rolls[i], p = b.start - (clock - b.t) * ROLL_SPEED;
+                if (!b.hit && p <= posDisp + 0.3) {
+                    b.hit = true; sndHit();
+                    const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, settings.back));
+                    if (target < base) {
+                        pos = target; seg = null; moves = [{ to: target, kind: 'fall' }];
+                        sndDown();
+                        say(`🎳 @${b.who.username} : la boule de bowling fait reculer le lion de ${base - target} marche${base - target > 1 ? 's' : ''} !`);
+                        const g = geo(); floatText('🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
+                    }
+                }
+                if (p < -14) rolls.splice(i, 1);
+            }
         }
         function gift(viewer, coins, sim) {
             if (Math.floor(coins) === settings.snake) dropSnake(viewer);
@@ -295,33 +307,95 @@
         }
 
         /* temples mayas en silhouette qui défilent sans fin (deux plans) + braises et lueur pulsante */
-        function mayaTemple(x, base, s, col, lit) {
-            ctx.fillStyle = col;
-            const tiers = 6;
+        function mayaTemple(x, base, s, col, lit, d) {
+            // d = 0 (lointain, brumeux) .. 1 (proche, détaillé)
+            const tiers = 9, th = s * 0.075, bw = s;
+            const stone = (a) => `rgba(${Math.round(120 - 50 * (1 - d))},${Math.round(84 - 40 * (1 - d))},${Math.round(52 - 25 * (1 - d))},${a})`;
             for (let k = 0; k < tiers; k++) {
-                const w = s * (1 - k * 0.13), h = s * 0.1;
-                ctx.fillRect(x - w / 2, base - (k + 1) * h, w, h + 1);
+                const w = bw * (1 - k * 0.085), y = base - (k + 1) * th, xl = x - w / 2;
+                const gr = ctx.createLinearGradient(xl, 0, xl + w, 0);
+                gr.addColorStop(0, stone(0.95)); gr.addColorStop(0.45, col); gr.addColorStop(1, 'rgba(10,4,0,.9)');
+                ctx.fillStyle = gr; ctx.fillRect(xl, y, w, th + 1);
+                ctx.fillStyle = 'rgba(255,190,110,.22)'; ctx.fillRect(xl, y, w, Math.max(1, th * 0.12));
+                if (d > 0.5) {
+                    // frise sculptée : motifs en grecque
+                    ctx.fillStyle = 'rgba(15,6,0,.35)';
+                    const m = Math.max(3, Math.round(w / (th * 0.9)));
+                    for (let j = 0; j < m; j++) ctx.fillRect(xl + (j + 0.2) * w / m, y + th * 0.3, w / m * 0.45, th * 0.4);
+                }
             }
-            const top = base - tiers * s * 0.1;
-            ctx.fillRect(x - s * 0.12, top - s * 0.14, s * 0.24, s * 0.14);
-            ctx.fillRect(x - s * 0.16, top - s * 0.18, s * 0.32, s * 0.05);
-            ctx.fillRect(x - s * 0.02, top - s * 0.3, s * 0.04, s * 0.12);
+            // grand escalier central
+            const topY = base - tiers * th, sw = bw * 0.16;
+            const sg = ctx.createLinearGradient(0, topY, 0, base);
+            sg.addColorStop(0, 'rgba(255,200,120,.35)'); sg.addColorStop(1, 'rgba(30,12,2,.7)');
+            ctx.fillStyle = sg; ctx.beginPath();
+            ctx.moveTo(x - sw * 0.45, topY); ctx.lineTo(x + sw * 0.45, topY); ctx.lineTo(x + sw, base); ctx.lineTo(x - sw, base); ctx.closePath(); ctx.fill();
+            if (d > 0.5) {
+                ctx.strokeStyle = 'rgba(20,8,0,.55)'; ctx.lineWidth = 1;
+                for (let k = 1; k < 26; k++) {
+                    const yy = topY + (base - topY) * k / 26, hw = sw * 0.45 + (sw * 0.55) * k / 26;
+                    ctx.beginPath(); ctx.moveTo(x - hw, yy); ctx.lineTo(x + hw, yy); ctx.stroke();
+                }
+            }
+            // sanctuaire sommital + crête décorée
+            const sh = s * 0.17, sww = s * 0.3;
+            ctx.fillStyle = col; ctx.fillRect(x - sww / 2, topY - sh, sww, sh);
+            ctx.fillStyle = stone(0.95); ctx.fillRect(x - sww / 2 - s * 0.015, topY - sh - s * 0.03, sww + s * 0.03, s * 0.03);
+            ctx.fillStyle = col;
+            ctx.beginPath(); ctx.moveTo(x - sww * 0.42, topY - sh - s * 0.03); ctx.lineTo(x - sww * 0.3, topY - sh - s * 0.2); ctx.lineTo(x + sww * 0.3, topY - sh - s * 0.2); ctx.lineTo(x + sww * 0.42, topY - sh - s * 0.03); ctx.closePath(); ctx.fill();
+            ctx.fillRect(x - sww * 0.28, topY - sh - s * 0.3, sww * 0.56, s * 0.1);
+            // porte sombre + piliers
+            ctx.fillStyle = 'rgba(8,2,0,.95)'; ctx.fillRect(x - sww * 0.2, topY - sh * 0.82, sww * 0.4, sh * 0.82);
+            ctx.fillStyle = stone(0.9); ctx.fillRect(x - sww * 0.04, topY - sh * 0.82, sww * 0.08, sh * 0.82);
+            // torches avec flammes vacillantes
+            [-1, 1].forEach(sd => {
+                const tx = x + sd * sw * 0.9, ty = base - th * 3;
+                ctx.fillStyle = '#2a1204'; ctx.fillRect(tx - 1.5, ty - s * 0.05, 3, s * 0.05);
+                const fl = 1 + 0.25 * Math.sin(clock * 9 + x + sd);
+                const fg = ctx.createRadialGradient(tx, ty - s * 0.07, 1, tx, ty - s * 0.07, s * 0.09 * fl);
+                fg.addColorStop(0, 'rgba(255,230,140,.95)'); fg.addColorStop(0.4, 'rgba(255,140,30,.5)'); fg.addColorStop(1, 'rgba(255,80,0,0)');
+                ctx.fillStyle = fg; ctx.fillRect(tx - s * 0.1, ty - s * 0.17, s * 0.2, s * 0.2);
+            });
             if (lit) {
-                ctx.fillStyle = `rgba(255,200,90,${0.55 + 0.25 * Math.sin(clock * 2 + x)})`;
-                ctx.fillRect(x - s * 0.04, top - s * 0.1, s * 0.08, s * 0.08);
+                const gl = ctx.createRadialGradient(x, topY - sh * 0.4, 1, x, topY - sh * 0.4, s * 0.35);
+                const a = 0.35 + 0.15 * Math.sin(clock * 2 + x);
+                gl.addColorStop(0, `rgba(255,190,80,${a})`); gl.addColorStop(1, 'rgba(255,120,0,0)');
+                ctx.fillStyle = gl; ctx.fillRect(x - s * 0.4, topY - s * 0.6, s * 0.8, s * 0.7);
             }
+        }
+        function jungle(g, y, amp, col, sp, seed) {
+            ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, g.h);
+            const off = clock * sp + cam * g.SW * 0.1;
+            for (let px = 0; px <= g.w + 20; px += 20) {
+                const u = px + off;
+                ctx.lineTo(px, y - amp * (0.55 + 0.3 * Math.sin(u * 0.011 + seed) + 0.25 * Math.sin(u * 0.037 + seed * 2) + 0.12 * Math.sin(u * 0.09 + seed * 3)));
+            }
+            ctx.lineTo(g.w + 20, g.h); ctx.closePath(); ctx.fill();
         }
         function drawMayaBackdrop(g) {
             const t = clock;
-            const layers = [{ sp: 14, s: g.h * 0.55, y: g.h * 0.9, gap: g.w * 0.75, col: 'rgba(70,24,6,.55)', lit: false },
-                            { sp: 30, s: g.h * 0.38, y: g.h * 0.96, gap: g.w * 0.5, col: 'rgba(30,10,2,.8)', lit: true }];
+            // étoiles et lune
+            for (let i = 0; i < 40; i++) {
+                const sx = (i * 173.7) % g.w, sy = (i * 61.3) % (g.h * 0.4);
+                ctx.fillStyle = `rgba(255,240,210,${0.25 + 0.25 * Math.sin(t * 2 + i)})`; ctx.fillRect(sx, sy, 1.6, 1.6);
+            }
+            const layers = [{ sp: 8, s: g.h * 0.62, y: g.h * 0.86, gap: g.w * 0.95, col: 'rgba(120,70,40,.5)', lit: false, d: 0.15, par: 0.03 },
+                            { sp: 18, s: g.h * 0.5, y: g.h * 0.93, gap: g.w * 0.7, col: 'rgba(70,36,16,.8)', lit: true, d: 0.55, par: 0.07 },
+                            { sp: 34, s: g.h * 0.38, y: g.h * 1.0, gap: g.w * 0.55, col: 'rgba(38,16,6,.95)', lit: true, d: 1, par: 0.14 }];
             layers.forEach((L, li) => {
                 const n = Math.ceil(g.w / L.gap) + 2, span = n * L.gap;
+                if (li === 0) jungle(g, g.h * 0.86, g.h * 0.12, 'rgba(60,30,14,.55)', 6, 1);
+                if (li === 1) jungle(g, g.h * 0.93, g.h * 0.1, 'rgba(34,16,6,.75)', 14, 4);
                 for (let i = 0; i < n; i++) {
-                    const x = ((i * L.gap - t * L.sp - cam * g.SW * (li ? 0.12 : 0.05)) % span + span) % span - L.gap;
-                    mayaTemple(x, L.y, L.s * (0.85 + 0.15 * ((i * 7) % 3) / 2), L.col, L.lit);
+                    const x = ((i * L.gap - t * L.sp - cam * g.SW * L.par) % span + span) % span - L.gap;
+                    mayaTemple(x, L.y, L.s * (0.88 + 0.12 * ((i * 7) % 3) / 2), L.col, L.lit, L.d);
                 }
+                // brume entre les plans
+                const mg = ctx.createLinearGradient(0, L.y - L.s * 0.5, 0, L.y);
+                mg.addColorStop(0, 'rgba(255,170,90,0)'); mg.addColorStop(1, `rgba(255,170,90,${0.1 + 0.05 * Math.sin(t * 0.5 + li)})`);
+                ctx.fillStyle = mg; ctx.fillRect(0, L.y - L.s * 0.5, g.w, L.s * 0.5);
             });
+            jungle(g, g.h * 1.0, g.h * 0.16, 'rgba(14,6,2,.95)', 24, 7);
             // braises qui montent
             for (let i = 0; i < 28; i++) {
                 const ph = (t * (0.05 + (i % 5) * 0.02) + i * 0.137) % 1;
@@ -425,29 +499,22 @@
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-            ballAt.forEach((list, s) => {
-                list.forEach((b, i) => {
-                    const r = g.SH * 0.42, el = clock - b.t;
-                    const ox = ((i % 4) - 1.5) * r * 0.9, oy = (i % 4) * r * 0.5 + Math.floor(i / 4) * r * 1.6;
-                    // p = position fractionnaire de la boule : elle dévale les marches de s+ROLL_STEPS jusqu'à s
-                    const p = Math.max(s, s + ROLL_STEPS - el * ROLL_SPEED);
-                    let x, y, rot;
-                    if (p > s) {
-                        const k = Math.floor(p), q = 1 - (p - k);
-                        const top = stepY(g, k + 1) - r, low = stepY(g, k) - r;
-                        x = stepX(g, p) + g.SW * 0.3 + ox;
-                        y = top + (low - top) * q * q - Math.sin(Math.PI * q) * r * 0.25 - oy * Math.max(0, 1 - (p - s));
-                        rot = (p - s) * g.SW / r;
-                    } else {
-                        const after = el - ROLL_STEPS / ROLL_SPEED;
-                        const hop = after < 0.3 ? Math.abs(Math.sin(after / 0.3 * Math.PI)) * r * 0.5 * (1 - after / 0.3) : 0;
-                        x = stepX(g, s) + g.SW * 0.3 + ox; y = stepY(g, s) - r - oy - hop;
-                        rot = i + after * 1.5 * Math.max(0, 1 - after);
-                        if (!b.hit) { b.hit = true; sndHit(); }
-                    }
-                    if (x < -g.SW || x > g.w + g.SW * 2) return;
-                    drawBowlingBall(x, y, r, rot);
-                });
+            rolls.forEach((b, i) => {
+                const r = g.SH * 0.42, el = clock - b.t, p = b.start - el * ROLL_SPEED;
+                let x, y, rot = el * 9;
+                if (p > 0) {
+                    const k = Math.floor(p), q = 1 - (p - k);
+                    const top = stepY(g, k + 1) - r, low = stepY(g, k) - r;
+                    x = stepX(g, p) + g.SW * 0.3;
+                    y = top + (low - top) * q * q - Math.sin(Math.PI * q) * r * 0.25;
+                } else {
+                    // au-delà de la marche 0 : la boule quitte la plate-forme et tombe hors du décor
+                    const t = -p / ROLL_SPEED;
+                    x = stepX(g, p) + g.SW * 0.3;
+                    y = stepY(g, 0) - r + t * t * g.h * 2.2;
+                }
+                if (x < -g.SW || x > g.w + g.SW * 2 || y > g.h + r * 2) return;
+                drawBowlingBall(x, y, r, rot);
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
@@ -498,10 +565,6 @@
             if (target >= TOP) {
                 moves.push({ to: TOP, kind: 'up', win: entry });
                 pos = TOP;
-            } else if (obst.has(target)) {
-                const landing = Math.max(0, target - Math.max(0, settings.back));
-                moves.push({ to: target, kind: 'up' }, { to: landing, kind: 'fall', hit: target, who: entry.viewer });
-                pos = landing;
             } else {
                 moves.push({ to: target, kind: 'up' });
                 pos = target;
@@ -530,14 +593,6 @@
             if (k < 1) return;
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
-            if (done.hit) {
-                const list = ballAt.get(done.hit);
-                if (list) list.shift();
-                if (!list || !list.length) { obst.delete(done.hit); ballAt.delete(done.hit); }
-                sndDown();
-                say(`🎳 @${done.who.username} : la boule de bowling fait reculer le lion de ${done.hit - done.to} marche${done.hit - done.to > 1 ? 's' : ''} !`);
-                const g = geo(); floatText('🎳 STRIKE !', stepX(g, done.hit), stepY(g, done.hit) - g.th * 2);
-            }
             if (done.win) victory(done.win);
         }
 
@@ -562,6 +617,7 @@
                 seg = Object.assign({ from: posDisp, t: 0, dur: m.kind === 'up' ? 0.45 : 0.7 }, m);
             } else if (!seg && !moves.length && !resetAt && queue.length && clock >= nextAt) planStep();
             stepSeg(dt);
+            updateRolls();
             const g = geo();
             cam += (posDisp - cam) * Math.min(1, dt * 6);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
