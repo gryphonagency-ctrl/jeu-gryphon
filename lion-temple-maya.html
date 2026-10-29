@@ -108,6 +108,10 @@
                 </div>
                 <label>Recul du lion sur le bus (marches)<input id="busback" type="number" min="0" max="99" value="10"></label>
                 <div class="row">
+                    <label>🪨 étoiles pour le rocher<input id="rock" type="number" min="2" max="1000" value="20"></label>
+                </div>
+                <label>Recul du lion sur le rocher (marches)<input id="rockback" type="number" min="0" max="99" value="15"></label>
+                <div class="row">
                     <label>🚀 étoiles pour le jetpack<input id="jet" type="number" min="2" max="1000" value="30"></label>
                 </div>
                 <label>Montée du jetpack (marches)<input id="jetup" type="number" min="1" max="99" value="30"></label>
@@ -123,6 +127,8 @@
                 <button id="drop-ball" class="btn" type="button">🎳 Lâcher une boule (touche B)</button>
                 <button id="sim-bus" class="btn" type="button">🚌 5 étoiles = bus</button>
                 <button id="drop-bus" class="btn" type="button">🚌 Lancer le bus (touche N)</button>
+                <button id="sim-rock" class="btn" type="button">🪨 20 étoiles = rocher</button>
+                <button id="drop-rock" class="btn" type="button">🪨 Lancer un rocher (touche R)</button>
                 <button id="sim-jet" class="btn" type="button">🚀 30 étoiles = jetpack</button>
                 <button id="drop-jet" class="btn" type="button">🚀 Jetpack (touche J)</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
@@ -144,7 +150,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -219,35 +225,41 @@
 
         /* un cadeau du bon nombre d'étoiles lâche une boule qui dévale les marches, heurte le lion puis sort du décor */
         const rolls = [], ROLL_STEPS = 7, ROLL_SPEED = 5, BUS_STEPS = 9, BUS_SPEED = 4;
-        const rollPos = b => b.start - (clock - b.t) * (b.bus ? BUS_SPEED : ROLL_SPEED);
-        function dropSnake(viewer, bus) {
+        const ROCK_STEPS = 8, ROCK_SPEED = 4.5;
+        const rollPos = b => b.start - (clock - b.t) * (b.bus ? BUS_SPEED : b.rock ? ROCK_SPEED : ROLL_SPEED);
+        // kind : true = bus, 'rock' = rocher, sinon boule de bowling
+        function dropSnake(viewer, kind) {
             if (resetAt) return false;
-            rolls.push({ t: clock, start: Math.ceil(posDisp) + (bus ? BUS_STEPS : ROLL_STEPS), who: viewer, hit: false, bus: !!bus });
+            const bus = kind === true, rock = kind === 'rock';
+            rolls.push({ t: clock, start: Math.ceil(posDisp) + (bus ? BUS_STEPS : rock ? ROCK_STEPS : ROLL_STEPS), who: viewer, hit: false, bus, rock, seed: Math.random() * 100 });
             if (bus) { say(`🚌 @${viewer.username} lance le bus !`); sndHorn(); }
+            else if (rock) { say(`🪨 @${viewer.username} fait dégringoler un rocher !`); beep(80, 40, 0.8, 'sawtooth', 0.12); }
             else say(`🎳 @${viewer.username} lâche une boule de bowling !`);
             return true;
         }
         function updateRolls() {
             for (let i = rolls.length - 1; i >= 0; i--) {
                 const b = rolls[i], p = rollPos(b);
-                if (!b.hit && p <= posDisp + (b.bus ? 0.65 : 0.3)) {
+                if (!b.hit && p <= posDisp + (b.bus ? 0.65 : b.rock ? 0.5 : 0.3)) {
                     b.hit = true; sndHit();
-                    if (b.bus) setTimeout(sndHit, 110);
-                    const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, b.bus ? settings.busBack : settings.back));
+                    if (b.bus || b.rock) setTimeout(sndHit, 110);
+                    const back = b.bus ? settings.busBack : b.rock ? settings.rockBack : settings.back;
+                    const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, back));
                     if (target < base) {
-                        pos = target; seg = null; moves = [{ to: target, kind: 'fall', dur: b.bus ? 1.2 : 0.7 }];
+                        pos = target; seg = null; moves = [{ to: target, kind: 'fall', dur: b.bus ? 1.2 : b.rock ? 1.0 : 0.7 }];
                         sndDown();
-                        const n = base - target, what = b.bus ? 'le bus' : 'la boule de bowling';
-                        say(`${b.bus ? '🚌' : '🎳'} @${b.who.username} : ${what} fait reculer le lion de ${n} marche${n > 1 ? 's' : ''} !`);
-                        const g = geo(); floatText(b.bus ? '🚌 CARAMBOLAGE !' : '🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
+                        const n = base - target, what = b.bus ? 'le bus' : b.rock ? 'le rocher' : 'la boule de bowling';
+                        say(`${b.bus ? '🚌' : b.rock ? '🪨' : '🎳'} @${b.who.username} : ${what} fait reculer le lion de ${n} marche${n > 1 ? 's' : ''} !`);
+                        const g = geo(); floatText(b.bus ? '🚌 CARAMBOLAGE !' : b.rock ? '🪨 ÉCRASÉ !' : '🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
                     }
                 }
-                if (p < (b.bus ? -20 : -14)) rolls.splice(i, 1);
+                if (p < (b.bus ? -20 : b.rock ? -16 : -14)) rolls.splice(i, 1);
             }
         }
         function gift(viewer, coins, sim) {
             const c = Math.floor(coins);
             if (c === settings.jet) jetpack(viewer);
+            else if (c === settings.rock) dropSnake(viewer, 'rock');
             else if (c === settings.bus) dropSnake(viewer, true);
             else if (c === settings.snake) dropSnake(viewer);
             else enqueue(viewer, coins, sim);
@@ -672,18 +684,29 @@
                     ctx.fillText(bad ? `🎳 BOULE −${settings.back}` : '⭐ 1 = +1 marche', bx + bw / 2, by + bh / 2);
                 }
             }
-            // bannière sous les marches : ce qui fait avancer ou bloquer, en étoiles
-            const lw = Math.min(g.w * 0.94, 940), lh = g.SH * 1.5, lx = (g.w - lw) / 2, ly = g.h - lh - 8;
+            // bannière sous les marches en 2 colonnes : à gauche ce qui fait monter le lion, à droite ce qui le fait descendre
+            const lw = Math.min(g.w * 0.94, 940), lh = g.SH * 2.1, lx = (g.w - lw) / 2, ly = g.h - lh - 8, cw = lw / 2;
             ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
             ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(11, Math.min(g.SH * 0.27, lw / 46))}px Poppins, sans-serif`;
-            const rows = [
-                ['#c8ffc8', '⭐ 1 étoile = +1 marche'],
-                ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack : le lion s'envole`],
-                ['#ffb0b0', `🎳 ${settings.snake} étoiles = boule de bowling : le lion recule`],
-                ['#ffd28a', `🚌 ${settings.bus} étoiles = bus : le lion recule`]
+            ctx.strokeStyle = 'rgba(255,200,80,.35)'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(lx + cw, ly + lh * 0.1); ctx.lineTo(lx + cw, ly + lh * 0.9); ctx.stroke();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const fz = Math.max(11, Math.min(g.SH * 0.27, lw / 46));
+            const cols = [
+                ['⬆️ FONT MONTER', '#9dffa0', [
+                    ['#c8ffc8', '⭐ 1 étoile = +1 marche'],
+                    ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack`]]],
+                ['⬇️ FONT DESCENDRE', '#ff9a8a', [
+                    ['#ffb0b0', `🎳 ${settings.snake} étoiles = boule de bowling`],
+                    ['#ffd28a', `🚌 ${settings.bus} étoiles = bus`],
+                    ['#e6d5bd', `🪨 ${settings.rock} étoiles = rocher`]]]
             ];
-            rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.14 + k * 0.24)); });
+            cols.forEach(([title, tc, items], c) => {
+                const cx = lx + cw * (c + 0.5), mw = cw - 28;
+                ctx.font = `800 ${fz * 1.1}px Poppins, sans-serif`; ctx.fillStyle = tc; ctx.fillText(title, cx, ly + lh * 0.14, mw);
+                ctx.font = `800 ${fz}px Poppins, sans-serif`;
+                items.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], cx, ly + lh * (0.34 + k * 0.22), mw); });
+            });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
             if (tx > -g.SW * 2 && tx < g.w + g.SW * 2) {
@@ -810,27 +833,86 @@
             ctx.restore();
         }
 
+        /* rocher : bloc de granit irrégulier, facettes et fissures qui tournent, éclairage fixe venant du soleil, mousse, ombre portée */
+        function drawRock(x, y, r, rot, seed) {
+            const N = 13, pts = [];
+            for (let i = 0; i < N; i++) {
+                const a = i / N * Math.PI * 2, k = 0.82 + 0.3 * hash(seed + i * 3.7);
+                pts.push([Math.cos(a) * r * k, Math.sin(a) * r * k * 0.94]);
+            }
+            const path = () => {
+                ctx.beginPath();
+                pts.forEach(([px, py], i) => {
+                    const c = Math.cos(rot), s = Math.sin(rot), X = x + px * c - py * s, Y = y + px * s + py * c;
+                    i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+                });
+                ctx.closePath();
+            };
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.95, r * 0.95, r * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+            const bg = ctx.createRadialGradient(x - r * 0.4, y - r * 0.5, r * 0.1, x, y, r * 1.2);
+            bg.addColorStop(0, '#d8d1c3'); bg.addColorStop(0.35, '#a39c8f'); bg.addColorStop(0.75, '#6d655a'); bg.addColorStop(1, '#3a332b');
+            ctx.fillStyle = bg; path(); ctx.fill();
+            ctx.save(); path(); ctx.clip();
+            ctx.translate(x, y); ctx.rotate(rot);
+            // facettes : plans clairs et sombres selon leur orientation
+            for (let i = 0; i < N; i++) {
+                const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % N], m = hash(seed + i * 1.9 + 40);
+                ctx.fillStyle = m > 0.5 ? 'rgba(255,248,230,.16)' : 'rgba(0,0,0,.1)';
+                ctx.beginPath(); ctx.moveTo(ax * 0.15, ay * 0.15); ctx.lineTo(ax, ay); ctx.lineTo(bx, by); ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = 'rgba(20,14,8,.45)'; ctx.lineWidth = r * 0.025;
+                ctx.beginPath(); ctx.moveTo(ax * 0.15, ay * 0.15); ctx.lineTo(ax * 0.8, ay * 0.8); ctx.stroke();
+            }
+            // fissures et grain de la pierre
+            ctx.strokeStyle = 'rgba(15,10,5,.6)'; ctx.lineWidth = r * 0.02;
+            for (let k = 0; k < 3; k++) {
+                let cx = (hash(seed + k * 5) - 0.5) * r, cy = (hash(seed + k * 5 + 1) - 0.5) * r;
+                ctx.beginPath(); ctx.moveTo(cx, cy);
+                for (let j = 0; j < 4; j++) { cx += (hash(seed + k * 9 + j) - 0.4) * r * 0.3; cy += (hash(seed + k * 9 + j + 20) - 0.3) * r * 0.25; ctx.lineTo(cx, cy); }
+                ctx.stroke();
+            }
+            for (let i = 0; i < 60; i++) {
+                ctx.fillStyle = hash(seed + i * 2.3) > 0.5 ? 'rgba(255,245,220,.25)' : 'rgba(0,0,0,.3)';
+                ctx.beginPath(); ctx.arc((hash(seed + i) - 0.5) * r * 1.8, (hash(seed + i + 80) - 0.5) * r * 1.8, r * (0.01 + 0.02 * hash(seed + i + 9)), 0, Math.PI * 2); ctx.fill();
+            }
+            // taches de mousse
+            for (let k = 0; k < 3; k++) {
+                const mx = (hash(seed + k * 11 + 3) - 0.5) * r * 1.4, my = (hash(seed + k * 11 + 4) - 0.5) * r * 1.4;
+                const mg = ctx.createRadialGradient(mx, my, 0, mx, my, r * 0.28); mg.addColorStop(0, 'rgba(84,120,40,.75)'); mg.addColorStop(1, 'rgba(84,120,40,0)');
+                ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mx, my, r * 0.28, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            // ombrage de volume (éclairage fixe) et reflet
+            ctx.save(); path(); ctx.clip();
+            const sh = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.3, x + r * 0.25, y + r * 0.3, r * 1.2);
+            sh.addColorStop(0, 'rgba(255,230,180,.18)');             sh.addColorStop(0.5, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.4)');
+            ctx.fillStyle = sh; ctx.fillRect(x - r * 1.3, y - r * 1.3, r * 2.6, r * 2.6);
+            ctx.restore();
+            ctx.strokeStyle = 'rgba(15,10,5,.75)'; ctx.lineWidth = r * 0.04; path(); ctx.stroke();
+            ctx.restore();
+        }
+
         function drawActors(g) {
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
             rolls.forEach((b, i) => {
                 if (b.bus) return;
-                const r = g.SH * 0.42, el = clock - b.t, p = rollPos(b);
-                let x, y, rot = el * 9;
+                const r = g.SH * (b.rock ? 0.8 : 0.42), el = clock - b.t, p = rollPos(b);
+                let x, y, rot = el * (b.rock ? 4 : 9);
                 if (p > 0) {
                     const k = Math.floor(p), q = 1 - (p - k);
                     const top = stepY(g, k + 1) - r, low = stepY(g, k) - r;
                     x = stepX(g, p) + g.SW * 0.3;
-                    y = top + (low - top) * q * q - Math.sin(Math.PI * q) * r * 0.25;
+                    y = top + (low - top) * q * q - Math.sin(Math.PI * q) * r * (b.rock ? 0.4 : 0.25);
                 } else {
-                    // au-delà de la marche 0 : la boule quitte la plate-forme et tombe hors du décor
-                    const t = -p / ROLL_SPEED;
+                    // au-delà de la marche 0 : l'objet quitte la plate-forme et tombe hors du décor
+                    const t = -p / (b.rock ? ROCK_SPEED : ROLL_SPEED);
                     x = stepX(g, p) + g.SW * 0.3;
                     y = stepY(g, 0) - r + t * t * g.h * 2.2;
                 }
                 if (x < -g.SW || x > g.w + g.SW * 2 || y > g.h + r * 2) return;
-                drawBowlingBall(x, y, r, rot);
+                if (b.rock) drawRock(x, y, r, rot, b.seed); else drawBowlingBall(x, y, r, rot);
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             const flying = !!(seg && seg.kind === 'jet'), jk = flying ? Math.min(1, seg.t / seg.dur) : 0;
@@ -1022,6 +1104,8 @@
             $('snake').value = settings.snake; $('back').value = settings.back;
             $('bus').value = settings.bus; $('busback').value = settings.busBack;
             $('jet').value = settings.jet; $('jetup').value = settings.jetUp;
+            $('rock').value = settings.rock; $('rockback').value = settings.rockBack;
+            $('sim-rock').textContent = `🪨 ${settings.rock} étoiles = rocher`;
             $('hide-board').checked = settings.hideBoard;
         }
         function bindUi() {
@@ -1035,6 +1119,8 @@
             $('sim-bus').addEventListener('click', () => sim(settings.bus));
             $('drop-bus').addEventListener('click', () => dropSnake({ username: 'Streamer' }, true));
             $('sim-jet').addEventListener('click', () => sim(settings.jet));
+            $('sim-rock').addEventListener('click', () => sim(settings.rock));
+            $('drop-rock').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'rock'));
             $('drop-jet').addEventListener('click', () => jetpack({ username: 'Streamer' }));
             $('sim-big').addEventListener('click', () => {
                 sim(100);
@@ -1051,9 +1137,11 @@
                 settings.busBack = clamp(Number($('busback').value), 0, 99, 10);
                 settings.jet = clamp(Number($('jet').value), 2, 1000, 30);
                 settings.jetUp = clamp(Number($('jetup').value), 1, 99, 30);
+                settings.rock = clamp(Number($('rock').value), 2, 1000, 20);
+                settings.rockBack = clamp(Number($('rockback').value), 0, 99, 15);
                 saveGame();
             };
-            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
@@ -1067,6 +1155,7 @@
                 if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
                 if (e.code === 'KeyB') { e.preventDefault(); dropSnake({ username: 'Streamer' }); }
                 else if (e.code === 'KeyN') { e.preventDefault(); dropSnake({ username: 'Streamer' }, true); }
+                else if (e.code === 'KeyR') { e.preventDefault(); dropSnake({ username: 'Streamer' }, 'rock'); }
                 else if (e.code === 'KeyJ') { e.preventDefault(); jetpack({ username: 'Streamer' }); }
                 else if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); sim(1); }
             });
