@@ -85,6 +85,7 @@ const protectedRoutes = new Set([
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
     '/machine-a-pinces.html',
+    '/memoire-du-cirque.html',
     '/mots-associes.html',
     '/flipper-neon.html',
     '/bouteilles-colorees.html',
@@ -145,6 +146,7 @@ store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
 store.grantGameAccessToExistingCreators('/machine-a-pinces.html');
+store.grantGameAccessToExistingCreators('/memoire-du-cirque.html');
 store.grantGameAccessToExistingCreators('/mots-associes.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
@@ -173,6 +175,7 @@ const staticGameTitles = {
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
     '/machine-a-pinces.html': 'Machine à Pinces',
+    '/memoire-du-cirque.html': 'Mémoire du Cirque',
     '/mots-associes.html': 'Mots Associés',
     '/flipper-neon.html': 'Flipper Néon',
     '/peche-en-mer.html': 'Pêche en mer',
@@ -204,6 +207,7 @@ const gameRouteIds = new Map([
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
     ['/machine-a-pinces.html', '/machine-a-pinces.html'],
+    ['/memoire-du-cirque.html', '/memoire-du-cirque.html'],
     ['/mots-associes.html', '/mots-associes.html'],
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/peche-en-mer.html', '/peche-en-mer.html'],
@@ -2155,6 +2159,7 @@ const server = http.createServer((req, res) => {
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
         ['/machine-a-pinces.html', [path.join(__dirname, 'machine-a-pinces.html'), 'text/html; charset=utf-8']],
+        ['/memoire-du-cirque.html', [path.join(__dirname, 'memoire-du-cirque.html'), 'text/html; charset=utf-8']],
         ['/mots-associes.html', [path.join(__dirname, 'mots-associes.html'), 'text/html; charset=utf-8']],
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/peche-en-mer.html', [path.join(__dirname, 'peche-en-mer.html'), 'text/html; charset=utf-8']],
@@ -2189,6 +2194,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
         ['/images-vitrine/machine-a-pinces.png', [path.join(__dirname, 'images-vitrine', 'machine-a-pinces.png'), 'image/png']],
+        ['/images-vitrine/memoire-du-cirque.png', [path.join(__dirname, 'images-vitrine', 'memoire-du-cirque.png'), 'image/png']],
         ['/images-vitrine/mots-associes.png', [path.join(__dirname, 'images-vitrine', 'mots-associes.png'), 'image/png']],
         ['/images-vitrine/flipper-neon.png', [path.join(__dirname, 'images-vitrine', 'flipper-neon.png'), 'image/png']],
         ['/images-vitrine/peche-en-mer.png', [path.join(__dirname, 'images-vitrine', 'peche-en-mer.png'), 'image/png']],
