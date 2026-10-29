@@ -982,7 +982,11 @@
             '/course-karts.html': { title: 'Course de karts Live', description: 'Écris « go » pour rejoindre la course : karts ou motos sur un circuit en 8, objets sur la piste, 10 étoiles pour le gagnant.', action: 'Faire avancer', color: '#f6a64a', scene: 'plush' },
             '/flipper-neon.html': { title: 'Flipper Néon', description: 'Un flipper futuriste : les cadeaux ajoutent des obstacles, des billes et modifient la physique.', action: 'Lancer la bille', color: '#00f0ff', scene: 'plush' },
             '/machine-cadeaux.html': { title: 'Machine à Cadeaux', description: 'Six roues de cadeaux tournent en continu : quand six cadeaux identiques s’alignent, le diamant clignote et le gagnant devient VIP.', action: 'Lancer les roues', color: '#6ec6ff', scene: 'giftreels' },
-            '/bouteilles-colorees.html': { title: 'Le Jeu des Bouteilles Colorées', description: 'Chaque cadeau fait tomber une bouteille colorée : attrape-la et découvre les étoiles gagnées.', action: 'Lâcher une bouteille', color: '#4fd0ff', scene: 'plush' }
+            '/bouteilles-colorees.html': { title: 'Le Jeu des Bouteilles Colorées', description: 'Chaque cadeau fait tomber une bouteille colorée : attrape-la et découvre les étoiles gagnées.', action: 'Lâcher une bouteille', color: '#4fd0ff', scene: 'plush' },
+            '/machine-a-pinces.html': { title: 'Machine à Pinces', description: 'Chaque cadeau fait descendre la pince : attrape une peluche et gagne des étoiles.', action: 'Descendre la pince', color: '#ff8ad8', scene: 'claw' },
+            '/memoire-du-cirque.html': { title: 'Mémoire du Cirque', description: 'Retrouve les paires de cartes une à une : 1 étoile par paire, +5 étoiles si la grille est complète.', action: 'Retourner une carte', color: '#ffc93c', scene: 'memory' },
+            '/lancer-de-cerceaux.html': { title: 'Lancer de Cerceaux', description: '1 pièce = 1 cerceau : réussis à lancer sur les quilles, 1 étoile par quille.', action: 'Lancer un cerceau', color: '#6ee0ff', scene: 'hoops' },
+            '/lion-temple-maya.html': { title: 'Lion dans la Savane', description: '1 pièce = 1 marche : fais grimper le lion jusqu’au temple maya, ou envoie bus, rocher, dinosaure et hyènes pour le faire reculer.', action: 'Faire monter le lion', color: '#ffb347', scene: 'lion' }
         };
         const previewPalette = ['#ff695e', '#54c9ff', '#ffc54f', '#7ce28b', '#d18cff', '#ff73b7', '#51e0da', '#d1df58'];
         const gamePreviewDialog = document.getElementById('game-preview-dialog');
@@ -1233,14 +1237,68 @@
 
         function drawNewGamePreview(context, definition, state, time) {
             const scene = definition.scene;
-            if (!['astra', 'marbles', 'ducks', 'duckpusher', 'wheel', 'truefalse', 'briefcases', 'plush', 'giftreels'].includes(scene)) return false;
+            if (!['astra', 'marbles', 'ducks', 'duckpusher', 'wheel', 'truefalse', 'briefcases', 'plush', 'giftreels', 'claw', 'memory', 'hoops', 'lion'].includes(scene)) return false;
             const width = 360;
             const height = gamePreviewCanvas.height / (gamePreviewCanvas.width / 360);
             const age = Math.max(0, (time - state.actionStartedAt) / 1000);
             const pulse = .75 + Math.sin(time / 110) * .25;
             context.save();
             context.textAlign = 'center';
-            if (scene === 'astra') {
+            if (scene === 'claw') {
+                const cycle = Math.min(1, age / 3.2), down = cycle < .4 ? cycle / .4 : cycle < .6 ? 1 : 1 - (cycle - .6) / .4;
+                const cx = 80 + (state.actions % 4) * 62, cy = height * (.12 + down * .5);
+                context.strokeStyle = '#d9dde8'; context.lineWidth = 3;
+                context.beginPath(); context.moveTo(cx, 0); context.lineTo(cx, cy); context.stroke();
+                context.lineWidth = 4;
+                const open = cycle < .5 ? .5 : .12;
+                [-1, 1].forEach(side => { context.beginPath(); context.moveTo(cx, cy); context.lineTo(cx + side * (12 + open * 20), cy + 16); context.stroke(); });
+                context.font = '28px Segoe UI Emoji, sans-serif';
+                context.fillText('🧸', cx, cycle < .5 ? height * .78 : cy + 28);
+                context.font = '800 14px Segoe UI, sans-serif';
+                context.fillStyle = '#fff3a0'; context.shadowColor = '#000'; context.shadowBlur = 6;
+                context.globalAlpha = Math.min(1, Math.max(0, cycle - .85) * 7);
+                context.fillText(`+${[3, 12, 7, 25, 18][state.actions % 5]} ⭐`, width / 2, height * .92);
+            } else if (scene === 'memory') {
+                const faces = ['🤡', '🎪', '🎈', '🎠', '🤹', '🎭'];
+                const found = Math.min(6, state.actions);
+                for (let index = 0; index < 12; index++) {
+                    const col = index % 4, row = Math.floor(index / 4), x = 75 + col * 62, y = height * (.2 + row * .22);
+                    const open = index % 6 < found;
+                    context.fillStyle = open ? 'rgba(255,255,255,.92)' : '#c0392b';
+                    context.fillRect(x - 22, y, 44, height * .19);
+                    if (open) { context.font = '22px Segoe UI Emoji, sans-serif'; context.fillText(faces[index % 6], x, y + height * .14); }
+                }
+                context.font = '800 13px Segoe UI, sans-serif';
+                context.fillStyle = '#fff3a0'; context.shadowColor = '#000'; context.shadowBlur = 6;
+                context.fillText(`${Math.min(6, state.actions)} paire${state.actions > 1 ? 's' : ''} ⭐`, width / 2, height * .92);
+            } else if (scene === 'hoops') {
+                for (let index = 0; index < 5; index++) {
+                    const x = 70 + index * 55, y = height * .78;
+                    context.fillStyle = '#e8d8b0'; context.fillRect(x - 3, y - 20, 6, 22);
+                    context.beginPath(); context.arc(x, y - 20, 6, 0, Math.PI * 2); context.fill();
+                }
+                const fly = Math.min(1, age / 1.1), target = 70 + (state.actions % 5) * 55;
+                const hx = 40 + (target - 40) * fly, hy = height * (.2 + fly * .5) - Math.sin(fly * Math.PI) * 30;
+                context.strokeStyle = '#ff5a5a'; context.lineWidth = 4;
+                context.beginPath(); context.ellipse(hx, hy, 18, 7, 0, 0, Math.PI * 2); context.stroke();
+                if (fly >= 1) {
+                    context.font = '800 14px Segoe UI, sans-serif'; context.fillStyle = '#fff3a0';
+                    context.shadowColor = '#000'; context.shadowBlur = 6; context.fillText('+1 ⭐', target, height * .5);
+                }
+            } else if (scene === 'lion') {
+                const step = Math.min(6, state.actions);
+                for (let index = 0; index < 7; index++) {
+                    context.fillStyle = index % 2 ? '#7a4620' : '#8c5528';
+                    context.fillRect(30 + index * 44, height * (.78 - index * .09), 44, height * (.22 + index * .09));
+                    context.fillStyle = '#6cbf3a'; context.fillRect(30 + index * 44, height * (.78 - index * .09), 44, 5);
+                }
+                const rise = Math.min(1, age / .5), from = Math.max(0, step - 1), pos = from + (step - from) * rise;
+                context.font = '30px Segoe UI Emoji, sans-serif';
+                context.fillText('🦁', 52 + pos * 44, height * (.78 - pos * .09) - 4 - Math.abs(Math.sin(rise * Math.PI)) * 12);
+                context.font = '800 13px Segoe UI, sans-serif';
+                context.fillStyle = '#fff3a0'; context.shadowColor = '#000'; context.shadowBlur = 6;
+                context.fillText(`Marche ${step}/100`, width / 2, height * .1);
+            } else if (scene === 'astra') {
                 const count = Math.min(6, state.actions);
                 for (let index = 0; index < count; index++) {
                     const fall = Math.min(1, Math.max(0, age - index * .12) / .9);
@@ -1695,6 +1753,11 @@
                 '/peluches-mutantes.html': ['Une peluche mutante tombe !', 'Encore une peluche : combien d’étoiles ?'],
                 '/machine-cadeaux.html': ['Les six roues tournent !', 'Six cadeaux identiques alignés : le diamant clignote !'],
                 '/bouteilles-colorees.html': ['Une bouteille tombe !', 'Encore une bouteille : combien d’étoiles ?'],
+                '/machine-a-pinces.html': ['La pince descend sur une peluche !', 'Encore une prise : combien d’étoiles ?'],
+                '/memoire-du-cirque.html': ['Une paire est trouvée !', 'Continue : une erreur et la partie s’arrête !'],
+                '/lancer-de-cerceaux.html': ['Le cerceau vole vers les quilles !', 'Encore un lancer : vise la quille !'],
+                '/lion-temple-maya.html': ['Le lion monte d’une marche !', 'Plus que quelques marches avant le temple !'],
+                '/wish-lab.html': ['La potion pétille : une créature apparaît !', 'Mélange réussi : le labo s’illumine !']
                 '/wish-lab.html': ['La potion pétille : une créature apparaît !', 'Mélange réussi : le labo s’illumine !']
             };
             gamePreviewStatus.textContent = messages[gameId][(state.actions - 1) % messages[gameId].length];
