@@ -112,6 +112,7 @@
                     <button id="sim-burst" class="btn" type="button">💥 ×10</button>
                 </div>
                 <button id="sim-snake" class="btn" type="button">🎳 2 étoiles = boule</button>
+                <button id="drop-ball" class="btn" type="button">🎳 Lâcher une boule (touche B)</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
@@ -205,10 +206,11 @@
         /* un cadeau du bon nombre d'étoiles lâche une boule de bowling sur la marche juste devant le lion */
         const ballAt = new Map();
         function dropSnake(viewer) {
-            let s = pos + 1;
-            while (s < TOP && obst.has(s)) s++;
+            const s = pos + 1;
             if (s >= TOP) return false;
-            obst.add(s); ballAt.set(s, { t: clock, hit: false });
+            obst.add(s);
+            if (!ballAt.has(s)) ballAt.set(s, []);
+            ballAt.get(s).push({ t: clock, hit: false });
             say(`🎳 @${viewer.username} lâche une boule de bowling sur la marche ${s} !`);
             return true;
         }
@@ -422,17 +424,19 @@
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-            obst.forEach(s => {
+            ballAt.forEach((list, s) => {
                 const x = stepX(g, s) + g.SW * 0.3;
                 if (x < -g.SW || x > g.w + g.SW) return;
-                const b = ballAt.get(s) || { t: clock - 9, hit: true };
-                const r = g.SH * 0.42, rest = stepY(g, s) - r, el = clock - b.t, D = 0.7;
-                let y = rest, rot = el * 6;
-                if (el < D) { const k = el / D; y = rest - (1 - k * k) * g.h * 0.9; rot = k * 9; }
-                else if (el < D + 0.35) { const k = (el - D) / 0.35; y = rest - Math.sin(Math.PI * k) * r * 1.4; rot = 9 + k * 2; }
-                else rot = 11.5;
-                if (!b.hit && el >= D) { b.hit = true; sndHit(); }
-                drawBowlingBall(x, y, r, rot);
+                list.forEach((b, i) => {
+                    const r = g.SH * 0.42, rest = stepY(g, s) - r - (i % 4) * r * 0.5 - Math.floor(i / 4) * r * 1.6, el = clock - b.t, D = 0.7;
+                    const bx = x + ((i % 4) - 1.5) * r * 0.9;
+                    let y = rest, rot = el * 6;
+                    if (el < D) { const k = el / D; y = rest - (1 - k * k) * g.h * 0.9; rot = k * 9; }
+                    else if (el < D + 0.35) { const k = (el - D) / 0.35; y = rest - Math.sin(Math.PI * k) * r * 1.4; rot = 9 + k * 2; }
+                    else rot = 11.5 + i;
+                    if (!b.hit && el >= D) { b.hit = true; sndHit(); }
+                    drawBowlingBall(bx, y, r, rot);
+                });
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
@@ -516,7 +520,9 @@
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
             if (done.hit) {
-                obst.delete(done.hit); ballAt.delete(done.hit);
+                const list = ballAt.get(done.hit);
+                if (list) list.shift();
+                if (!list || !list.length) { obst.delete(done.hit); ballAt.delete(done.hit); }
                 sndDown();
                 say(`🎳 @${done.who.username} : la boule de bowling fait reculer le lion de ${done.hit - done.to} marche${done.hit - done.to > 1 ? 's' : ''} !`);
                 const g = geo(); floatText('🎳 STRIKE !', stepX(g, done.hit), stepY(g, done.hit) - g.th * 2);
@@ -634,6 +640,7 @@
             $('sim-gift').addEventListener('click', () => sim(1));
             $('sim-burst').addEventListener('click', () => sim(10));
             $('sim-snake').addEventListener('click', () => sim(settings.snake));
+            $('drop-ball').addEventListener('click', () => dropSnake({ username: 'Streamer' }));
             $('sim-big').addEventListener('click', () => {
                 sim(100);
                 if (window.ArcadeEffects) ArcadeEffects.simulateBigGift(simName(), 100);
@@ -657,7 +664,11 @@
                 $('eye').setAttribute('aria-label', hidden ? 'Afficher le panneau' : 'Masquer le panneau');
                 setTimeout(resize, 50);
             });
-            document.addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|BUTTON/.test(e.target.tagName)) { e.preventDefault(); sim(1); } });
+            document.addEventListener('keydown', e => {
+                if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+                if (e.code === 'KeyB') { e.preventDefault(); dropSnake({ username: 'Streamer' }); }
+                else if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); sim(1); }
+            });
         }
 
         function bindQueueWindow() {
