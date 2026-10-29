@@ -100,9 +100,9 @@
             <section class="box">
                 <h3>Réglages</h3>
                 <div class="row">
-                    <label>🐍 étoiles pour lâcher un serpent<input id="snake" type="number" min="2" max="1000" value="2"></label>
+                    <label>🎳 étoiles pour lâcher une boule<input id="snake" type="number" min="2" max="1000" value="2"></label>
                 </div>
-                <label>Recul du lion sur un serpent (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
+                <label>Recul du lion sur une boule (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
             </section>
             <section class="box">
                 <h3>Simulateur (sans étoiles réelles)</h3>
@@ -111,7 +111,7 @@
                     <button id="sim-gift" class="btn" type="button">🎁 1 pièce</button>
                     <button id="sim-burst" class="btn" type="button">💥 ×10</button>
                 </div>
-                <button id="sim-snake" class="btn" type="button">🐍 2 étoiles = serpent</button>
+                <button id="sim-snake" class="btn" type="button">🎳 2 étoiles = boule</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
@@ -200,16 +200,16 @@
         const stepX = (g, s) => g.ax + (s - cam) * g.SW;
         const stepY = (g, s) => g.ay - (s - heightOf(cam)) * g.SH;
 
-        function buildObstacles() { obst = new Set(); }
+        function buildObstacles() { obst = new Set(); ballAt.clear(); }
 
-        /* un cadeau du bon nombre d'étoiles lâche un serpent sur la marche juste devant le lion */
+        /* un cadeau du bon nombre d'étoiles lâche une boule de bowling sur la marche juste devant le lion */
+        const ballAt = new Map();
         function dropSnake(viewer) {
             let s = pos + 1;
             while (s < TOP && obst.has(s)) s++;
             if (s >= TOP) return false;
-            obst.add(s);
-            say(`🐍 @${viewer.username} lâche un serpent sur la marche ${s} !`);
-            sndHit();
+            obst.add(s); ballAt.set(s, { t: clock, hit: false });
+            say(`🎳 @${viewer.username} lâche une boule de bowling sur la marche ${s} !`);
             return true;
         }
         function gift(viewer, coins, sim) {
@@ -366,7 +366,7 @@
                     ctx.fillStyle = bad ? 'rgba(120,10,10,.8)' : 'rgba(20,60,20,.7)';
                     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, bh / 2); ctx.fill();
                     ctx.font = `800 ${bh * 0.62}px Poppins, sans-serif`; ctx.fillStyle = bad ? '#ffb0b0' : '#c8ffc8';
-                    ctx.fillText(bad ? `🐍 SERPENT −${settings.back}` : '⭐ 1 = +1 marche', bx + bw / 2, by + bh / 2);
+                    ctx.fillText(bad ? `🎳 BOULE −${settings.back}` : '⭐ 1 = +1 marche', bx + bw / 2, by + bh / 2);
                 }
             }
             // bannière sous les marches : ce qui fait avancer ou bloquer, en étoiles
@@ -374,7 +374,7 @@
             ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
             ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(12, Math.min(g.SH * 0.36, lw / 38))}px Poppins, sans-serif`;
-            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🐍 ${settings.snake} étoiles = un serpent tombe devant le lion : il recule de ${settings.back} marches`]];
+            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🎳 ${settings.snake} étoiles = une boule de bowling tombe devant le lion : il recule de ${settings.back} marches`]];
             rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.3 + k * 0.4)); });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
@@ -387,11 +387,54 @@
             }
         }
 
+        /* boule de bowling : résine bleu nuit marbrée, trous de doigts, reflet net, ombre portée */
+        function drawBowlingBall(x, y, r, rot) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.98, r * 0.85, r * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
+            const base = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.05, x, y, r);
+            base.addColorStop(0, '#5a7cc8'); base.addColorStop(0.35, '#1c3a8c'); base.addColorStop(0.8, '#0a1440'); base.addColorStop(1, '#03060f');
+            ctx.fillStyle = base; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            // marbrure tournante
+            ctx.translate(x, y); ctx.rotate(rot);
+            for (let i = 0; i < 4; i++) {
+                ctx.strokeStyle = i % 2 ? 'rgba(160,120,255,.28)' : 'rgba(90,200,255,.25)'; ctx.lineWidth = r * 0.12;
+                ctx.beginPath(); ctx.ellipse(r * 0.1 * i - r * 0.1, r * 0.05 * i, r * (0.7 - i * 0.1), r * (0.28 + i * 0.05), i * 0.7, 0, Math.PI * 1.4); ctx.stroke();
+            }
+            // trous de doigts (tournent avec la boule)
+            [[-0.18, -0.52, 0.11], [0.18, -0.52, 0.11], [0, -0.28, 0.13]].forEach(([hx, hy, hr]) => {
+                const hg = ctx.createRadialGradient(hx * r, hy * r - hr * r * 0.3, 0, hx * r, hy * r, hr * r * 1.2);
+                hg.addColorStop(0, '#000'); hg.addColorStop(0.75, '#05070f'); hg.addColorStop(1, 'rgba(60,80,140,.7)');
+                ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(hx * r, hy * r, hr * r, 0, Math.PI * 2); ctx.fill();
+            });
+            ctx.rotate(-rot); ctx.translate(-x, -y);
+            // ombrage de volume et reflets
+            const sh = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.4, x + r * 0.2, y + r * 0.25, r * 1.15);
+            sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.6)');
+            ctx.fillStyle = sh; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(x - r * 0.42, y - r * 0.48, r * 0.2, r * 0.11, -0.7, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.ellipse(x + r * 0.3, y + r * 0.55, r * 0.35, r * 0.1, -0.5, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            ctx.save(); ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        }
+
         function drawActors(g) {
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-            obst.forEach(s => { const x = stepX(g, s); if (x > -g.SW && x < g.w + g.SW) ctx.fillText('🐍', x + g.SW * 0.3, stepY(g, s)); });
+            obst.forEach(s => {
+                const x = stepX(g, s) + g.SW * 0.3;
+                if (x < -g.SW || x > g.w + g.SW) return;
+                const b = ballAt.get(s) || { t: clock - 9, hit: true };
+                const r = g.SH * 0.42, rest = stepY(g, s) - r, el = clock - b.t, D = 0.7;
+                let y = rest, rot = el * 6;
+                if (el < D) { const k = el / D; y = rest - (1 - k * k) * g.h * 0.9; rot = k * 9; }
+                else if (el < D + 0.35) { const k = (el - D) / 0.35; y = rest - Math.sin(Math.PI * k) * r * 1.4; rot = 9 + k * 2; }
+                else rot = 11.5;
+                if (!b.hit && el >= D) { b.hit = true; sndHit(); }
+                drawBowlingBall(x, y, r, rot);
+            });
+            ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
             const lx = stepX(g, posDisp), ly = stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8;
             // halo de lumière sur le lion
@@ -473,10 +516,10 @@
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
             if (done.hit) {
-                obst.delete(done.hit);
+                obst.delete(done.hit); ballAt.delete(done.hit);
                 sndDown();
-                say(`🐍 @${done.who.username} bute sur un obstacle : le lion recule de ${done.hit - done.to} marche${done.hit - done.to > 1 ? 's' : ''} !`);
-                const g = geo(); floatText('🐍', stepX(g, done.hit), stepY(g, done.hit) - g.th * 2);
+                say(`🎳 @${done.who.username} : la boule de bowling fait reculer le lion de ${done.hit - done.to} marche${done.hit - done.to > 1 ? 's' : ''} !`);
+                const g = geo(); floatText('🎳 STRIKE !', stepX(g, done.hit), stepY(g, done.hit) - g.th * 2);
             }
             if (done.win) victory(done.win);
         }
