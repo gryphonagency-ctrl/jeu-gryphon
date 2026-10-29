@@ -100,10 +100,9 @@
             <section class="box">
                 <h3>Réglages</h3>
                 <div class="row">
-                    <label>⭐ au sommet<input id="summit" type="number" min="0" max="10000" value="100"></label>
-                    <label>🐍 obstacles<input id="obstacles" type="number" min="0" max="60" value="33"></label>
+                    <label>🐍 étoiles pour lâcher un serpent<input id="snake" type="number" min="2" max="1000" value="2"></label>
                 </div>
-                <label>Recul après obstacle (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
+                <label>Recul du lion sur un serpent (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
             </section>
             <section class="box">
                 <h3>Simulateur (sans étoiles réelles)</h3>
@@ -112,6 +111,7 @@
                     <button id="sim-gift" class="btn" type="button">🎁 1 pièce</button>
                     <button id="sim-burst" class="btn" type="button">💥 ×10</button>
                 </div>
+                <button id="sim-snake" class="btn" type="button">🐍 2 étoiles = serpent</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
@@ -131,7 +131,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { summit: 100, obstacles: 33, back: 2, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -200,10 +200,21 @@
         const stepX = (g, s) => g.ax + (s - cam) * g.SW;
         const stepY = (g, s) => g.ay - (s - heightOf(cam)) * g.SH;
 
-        function buildObstacles() {
-            obst = new Set();
-            const n = Math.min(TOP - 2, Math.max(0, settings.obstacles));
-            while (obst.size < n) obst.add(rand(2, TOP - 1));
+        function buildObstacles() { obst = new Set(); }
+
+        /* un cadeau du bon nombre d'étoiles lâche un serpent sur la marche juste devant le lion */
+        function dropSnake(viewer) {
+            let s = pos + 1;
+            while (s < TOP && obst.has(s)) s++;
+            if (s >= TOP) return false;
+            obst.add(s);
+            say(`🐍 @${viewer.username} lâche un serpent sur la marche ${s} !`);
+            sndHit();
+            return true;
+        }
+        function gift(viewer, coins, sim) {
+            if (Math.floor(coins) === settings.snake) dropSnake(viewer);
+            else enqueue(viewer, coins, sim);
         }
 
         function drawStar(x, y, r) {
@@ -317,17 +328,16 @@
                     ctx.fillStyle = bad ? 'rgba(120,10,10,.8)' : 'rgba(20,60,20,.7)';
                     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, bh / 2); ctx.fill();
                     ctx.font = `800 ${bh * 0.62}px Poppins, sans-serif`; ctx.fillStyle = bad ? '#ffb0b0' : '#c8ffc8';
-                    ctx.fillText(bad ? `🐍 BLOQUE −${settings.back}` : '⭐ 1 = +1 marche', bx + bw / 2, by + bh / 2);
+                    ctx.fillText(bad ? `🐍 SERPENT −${settings.back}` : '⭐ 1 = +1 marche', bx + bw / 2, by + bh / 2);
                 }
             }
-            // légende fixe : ce qui fait avancer ou bloquer, en étoiles
-            const lw = Math.min(g.w * 0.34, 300), lh = g.SH * 2.3, lx = g.w - lw - 14, ly = g.h * 0.2;
-            ctx.fillStyle = 'rgba(30,6,0,.72)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 12); ctx.fill();
-            ctx.strokeStyle = 'rgba(255,200,80,.6)'; ctx.lineWidth = 1.5; ctx.stroke();
-            ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(12, g.SH * 0.26)}px Poppins, sans-serif`;
-            const rows = [['#ffe27a', '⭐ 1 étoile = +1 marche'], ['#c8ffc8', '⭐ 100 étoiles = +100'], ['#ffb0b0', `🐍 Serpent = −${settings.back} marches`], ['#ffe27a', `🏆 Sommet = +${settings.summit} ⭐`]];
-            rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + 12, ly + lh * (0.14 + k * 0.24)); });
-            ctx.textAlign = 'center';
+            // bannière sous les marches : ce qui fait avancer ou bloquer, en étoiles
+            const lw = Math.min(g.w * 0.92, 900), lh = g.SH * 0.9, lx = (g.w - lw) / 2, ly = g.h - lh - 10;
+            ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(12, Math.min(g.SH * 0.36, lw / 38))}px Poppins, sans-serif`;
+            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🐍 ${settings.snake} étoiles = un serpent tombe devant le lion : il recule de ${settings.back} marches`]];
+            rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.3 + k * 0.4)); });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
             if (tx > -g.SW * 2 && tx < g.w + g.SW * 2) {
@@ -404,11 +414,10 @@
 
         function victory(entry) {
             victories++;
-            award(entry.viewer, settings.summit, entry.sim);
-            say(`🏆 @${entry.viewer.username} mène le lion au sommet : +${settings.summit} ⭐ !`);
+            say(`🏆 @${entry.viewer.username} mène le lion au sommet !`);
             showVip(entry.viewer);
             const g = geo();
-            floatText(`🏆 +${settings.summit} ⭐`, stepX(g, TOP), stepY(g, TOP) - g.th * 4);
+            floatText('🏆 Sommet !', stepX(g, TOP), stepY(g, TOP) - g.th * 4);
             sndWin();
             if (window.ArcadeEffects) ArcadeEffects.fireworks(g.cx, g.top, true);
             resetAt = clock + 4;
@@ -494,7 +503,7 @@
                 const v = getViewer(g.uniqueId || g.username || g.nickname);
                 const pic = g.avatarUrl || (Array.isArray(g.avatarUrls) && g.avatarUrls[0]) || '';
                 if (/^https?:\/\//i.test(pic)) v.avatar = pic;
-                enqueue(v, coinsOf(g), false);
+                gift(v, coinsOf(g), false);
             }
         }
         function connect() {
@@ -514,7 +523,7 @@
         window.addEventListener('arcade:wallet-run', e => {
             const p = e.detail && e.detail.player, spent = Math.floor(Number(e.detail && e.detail.spent) || 0);
             const name = p && (p.username || p.uniqueId || p.nickname);
-            if (name && spent > 0) enqueue(getViewer(name), spent, false);
+            if (name && spent > 0) gift(getViewer(name), spent, false);
         });
 
         /* ---------- Sauvegarde ---------- */
@@ -536,15 +545,16 @@
         /* ---------- Interface ---------- */
         function syncControls() {
             $('speed').value = settings.speed; $('speed-out').textContent = settings.speed + '×';
-            $('summit').value = settings.summit; $('obstacles').value = settings.obstacles; $('back').value = settings.back;
+            $('snake').value = settings.snake; $('back').value = settings.back;
             $('hide-board').checked = settings.hideBoard;
         }
         function bindUi() {
             $('connect').addEventListener('click', () => { connect(); saveGame(); });
             const simName = () => $('sim-name').value.trim() || 'Spectateur démo';
-            const sim = n => enqueue(getViewer(simName()), n, true);
+            const sim = n => gift(getViewer(simName()), n, true);
             $('sim-gift').addEventListener('click', () => sim(1));
             $('sim-burst').addEventListener('click', () => sim(10));
+            $('sim-snake').addEventListener('click', () => sim(settings.snake));
             $('sim-big').addEventListener('click', () => {
                 sim(100);
                 if (window.ArcadeEffects) ArcadeEffects.simulateBigGift(simName(), 100);
@@ -554,12 +564,11 @@
             $('speed-reset').addEventListener('click', () => { settings.speed = 1; syncControls(); saveGame(); });
             const nums = () => {
                 const clamp = (v, lo, hi, d) => Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.floor(v))) : d;
-                settings.summit = clamp(Number($('summit').value), 0, 10000, 100);
-                settings.obstacles = clamp(Number($('obstacles').value), 0, 60, 33);
+                settings.snake = clamp(Number($('snake').value), 2, 1000, 2);
                 settings.back = clamp(Number($('back').value), 0, 19, 2);
                 saveGame();
             };
-            ['summit', 'obstacles', 'back'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
