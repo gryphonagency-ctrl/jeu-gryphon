@@ -120,6 +120,10 @@
                 </div>
                 <label>Montée de la motocross (marches)<input id="motoup" type="number" min="1" max="99" value="50"></label>
                 <div class="row">
+                    <label>🦅 étoiles pour l'aigle géant<input id="eagle" type="number" min="2" max="1000" value="300"></label>
+                </div>
+                <label>Montée de l'aigle (marches)<input id="eagleup" type="number" min="1" max="99" value="80"></label>
+                <div class="row">
                     <label>🦖 étoiles pour le dinosaure<input id="dino" type="number" min="2" max="1000" value="199"></label>
                 </div>
                 <div class="row">
@@ -134,20 +138,13 @@
                     <button id="sim-burst" class="btn" type="button">💥 ×10</button>
                 </div>
                 <button id="sim-snake" class="btn" type="button">🎳 2 étoiles = boule</button>
-                <button id="drop-ball" class="btn" type="button">🎳 Lâcher une boule</button>
                 <button id="sim-bus" class="btn" type="button">🚌 5 étoiles = bus</button>
-                <button id="drop-bus" class="btn" type="button">🚌 Lancer le bus</button>
                 <button id="sim-rock" class="btn" type="button">🪨 20 étoiles = rocher</button>
-                <button id="drop-rock" class="btn" type="button">🪨 Lancer un rocher</button>
                 <button id="sim-jet" class="btn" type="button">🚀 30 étoiles = jetpack</button>
-                <button id="drop-jet" class="btn" type="button">🚀 Jetpack</button>
                 <button id="sim-moto" class="btn" type="button">🏍️ 100 étoiles = motocross</button>
-                <button id="drop-moto" class="btn" type="button">🏍️ Lancer la motocross</button>
+                <button id="sim-eagle" class="btn" type="button">🦅 300 étoiles = aigle géant</button>
                 <button id="sim-dino" class="btn" type="button">🦖 199 étoiles = dinosaure</button>
-                <button id="drop-dino" class="btn" type="button">🦖 Lâcher le dinosaure</button>
                 <button id="sim-hyena" class="btn" type="button">🐺 500 étoiles = hyènes</button>
-                <button id="drop-hyena" class="btn" type="button">🐺 Lâcher la horde de hyènes</button>
-                <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
             <section class="box">
@@ -166,7 +163,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, moto: 100, motoUp: 50, dino: 199, hyena: 500, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, moto: 100, motoUp: 50, eagle: 300, eagleUp: 80, dino: 199, hyena: 500, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -281,6 +278,7 @@
             const c = Math.floor(coins);
             if (c === settings.hyena) dropSnake(viewer, 'hyena');
             else if (c === settings.dino) dropSnake(viewer, 'dino');
+            else if (c === settings.eagle) eagle(viewer);
             else if (c === settings.moto) motocross(viewer);
             else if (c === settings.jet) jetpack(viewer);
             else if (c === settings.rock) dropSnake(viewer, 'rock');
@@ -311,6 +309,19 @@
             pos = target; current = viewer;
             say(`🏍️ @${viewer.username} lance la motocross : +${n} marche${n > 1 ? 's' : ''} à toute vitesse !`);
             sndMoto();
+            return true;
+        }
+
+        /* aigle géant : il fond sur le lion, l'attrape dans ses serres et l'emporte de settings.eagleUp marches, puis repart sans lui */
+        let eagleEnd = -99;
+        function eagle(viewer) {
+            if (resetAt || pos >= TOP) return false;
+            const target = Math.min(TOP, pos + Math.max(0, settings.eagleUp)), n = target - pos;
+            if (n <= 0) return false;
+            moves.push({ to: target, kind: 'eagle', dur: 2.2 + n * 0.035, win: target >= TOP ? { viewer } : undefined });
+            pos = target; current = viewer;
+            say(`🦅 @${viewer.username} appelle l'aigle géant : +${n} marche${n > 1 ? 's' : ''} dans les airs !`);
+            beep(1900, 800, 0.7, 'sawtooth', 0.1); beep(1500, 700, 0.6, 'sawtooth', 0.08, 0.25);
             return true;
         }
 
@@ -733,7 +744,8 @@
                 ['⬆️ FONT MONTER', '#9dffa0', [
                     ['#c8ffc8', '⭐ 1 étoile = +1 marche'],
                     ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack`],
-                    ['#ffd9a0', `🏍️ ${settings.moto} étoiles = motocross`]]],
+                    ['#ffd9a0', `🏍️ ${settings.moto} étoiles = motocross`],
+                    ['#f3e2b8', `🦅 ${settings.eagle} étoiles = aigle géant`]]],
                 ['⬇️ FONT DESCENDRE', '#ff9a8a', [
                     ['#ffb0b0', `🎳 ${settings.snake} étoiles = boule de bowling`],
                     ['#ffd28a', `🚌 ${settings.bus} étoiles = bus`],
@@ -1212,9 +1224,11 @@
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             const flying = !!(seg && seg.kind === 'jet'), jk = flying ? Math.min(1, seg.t / seg.dur) : 0;
+            const carried = !!(seg && seg.kind === 'eagle'), ek = carried ? Math.min(1, seg.t / seg.dur) : 0, ea = clock - eagleEnd;
             const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
-            const lift = flying ? Math.sin(Math.PI * Math.min(1, jk * 1.15)) * g.SH * 1.5 : 0;
-            const lx = stepX(g, posDisp), ly = (flying ? stepY(g, posDisp) : stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8) - lift;
+            const hang = carried ? g.SH * 1.1 * Math.min(1, Math.max(0, (ek - 0.2) / 0.06)) * Math.min(1, (1 - ek) / 0.08) : 0;
+            const lift = flying ? Math.sin(Math.PI * Math.min(1, jk * 1.15)) * g.SH * 1.5 : hang;
+            const lx = stepX(g, posDisp), ly = (flying || carried ? stepY(g, posDisp) : stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8) - lift;
             const jet = flying ? { fl: 1 } : (clock < jetUntil ? { fl: Math.max(0, (jetUntil - clock) / 0.7) } : null);
             // halo de lumière sur le lion
             const halo = ctx.createRadialGradient(lx, ly - g.SH, 10, lx, ly - g.SH, g.SW * 1.2);
@@ -1230,6 +1244,90 @@
                 if (mo >= 0 && mo < 0.9) drawMoto(g, lx - motoU * 0.85 + mo * mo * g.SW * 9 + mo * g.SW, stepY(g, posDisp) - motoU * 0.06, motoU, motoAng, 0, false, 1 - mo / 0.9, 0);
             }
             rolls.forEach(b => { if (b.bus) drawBus(g, b); else if (b.dino) drawDino(g, b); else if (b.hyena) drawHyenas(g, b); });
+            // aigle : plonge vers le lion, l'emporte dans ses serres, puis repart vers le ciel
+            const eu = g.SW * 0.3, gripY = ly - g.SW * 0.6 * 1.15, bodyY = gripY - eu * 1.05, ex = lx - g.SW * 0.05;
+            if (carried) {
+                if (ek < 0.22) {
+                    const t = ek / 0.22, r = 1 - t * t * (3 - 2 * t);
+                    drawEagle(ex + r * g.SW * 5, bodyY - r * g.h * 0.55 + Math.sin(clock * 9) * eu * 0.08, eu, clock * 9, 0.35 * r, false);
+                } else drawEagle(ex, bodyY + Math.sin(clock * 5) * eu * 0.05, eu, clock * 6, 0, true);
+            } else if (ea >= 0 && ea < 1.6) {
+                const t = ea / 1.6;
+                drawEagle(ex + t * g.SW * 5, bodyY - t * t * g.h * 0.9, eu, clock * 8, -0.3 * t, false, 1 - t * t);
+            }
+        }
+
+        /* aigle royal de profil (il regarde vers la gauche) : tête blanche, bec crochu doré, ailes à longues rémiges qui battent, queue en éventail,
+           serres jaunes qui agrippent le lion quand grip = true */
+        function drawEagle(x, y, u, ph, tilt, grip, alpha) {
+            const flap = Math.sin(ph) * 0.75;
+            ctx.save();
+            ctx.globalAlpha = alpha == null ? 1 : alpha;
+            ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(u, u);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            const wing = (ang, dark) => {
+                ctx.save(); ctx.translate(0.15, -0.3); ctx.rotate(ang);
+                const wg = ctx.createLinearGradient(0, 0, 3.3, 0.6);
+                wg.addColorStop(0, dark ? '#2a1a0e' : '#4a2f18'); wg.addColorStop(0.6, dark ? '#3a2512' : '#6b4524'); wg.addColorStop(1, '#1b1109');
+                ctx.fillStyle = wg; ctx.strokeStyle = '#1a0f07'; ctx.lineWidth = 0.03;
+                ctx.beginPath(); ctx.moveTo(0, 0.25);
+                ctx.bezierCurveTo(0.8, -0.35, 2.2, -0.45, 3.5, -0.05);
+                ctx.lineTo(3.25, 0.25); ctx.lineTo(3.4, 0.55); ctx.lineTo(3.0, 0.45); ctx.lineTo(3.0, 0.85);
+                ctx.lineTo(2.6, 0.65); ctx.lineTo(2.55, 1.05); ctx.lineTo(2.1, 0.8); ctx.lineTo(2.0, 1.15);
+                ctx.lineTo(1.5, 0.9); ctx.lineTo(1.3, 1.1); ctx.lineTo(0.7, 0.85); ctx.lineTo(0, 0.7);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 0.025;
+                for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(0.6 + k * 0.45, 0.1); ctx.lineTo(0.75 + k * 0.45, 0.85 + (k % 2) * 0.12); ctx.stroke(); }
+                ctx.fillStyle = 'rgba(210,170,110,.45)';
+                for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.ellipse(0.55 + k * 0.5, 0.05, 0.3, 0.1, 0.1, 0, Math.PI * 2); ctx.fill(); }
+                ctx.restore();
+            };
+            wing(-Math.PI / 2 - flap + 0.35, true);
+            // queue en éventail blanche à bout sombre
+            ctx.fillStyle = '#f2ede2'; ctx.strokeStyle = '#8a7f6a'; ctx.lineWidth = 0.025;
+            ctx.beginPath(); ctx.moveTo(0.7, 0); ctx.lineTo(2.0, -0.18 + flap * 0.05); ctx.lineTo(2.1, 0.12); ctx.lineTo(1.95, 0.4); ctx.lineTo(0.8, 0.35); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = 'rgba(120,110,90,.5)';
+            for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(0.9, 0.03 + k * 0.08); ctx.lineTo(2.0, -0.1 + k * 0.17); ctx.stroke(); }
+            // corps
+            const body = ctx.createLinearGradient(0, -0.6, 0, 0.6);
+            body.addColorStop(0, '#6b4524'); body.addColorStop(0.55, '#4a2f18'); body.addColorStop(1, '#2a190c');
+            ctx.fillStyle = body; ctx.strokeStyle = '#1a0f07'; ctx.lineWidth = 0.03;
+            ctx.beginPath(); ctx.moveTo(-0.85, -0.2); ctx.bezierCurveTo(-0.6, -0.65, 0.5, -0.62, 1.0, -0.12);
+            ctx.bezierCurveTo(1.05, 0.3, 0.3, 0.6, -0.3, 0.55); ctx.bezierCurveTo(-0.8, 0.45, -0.95, 0.1, -0.85, -0.2); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = 'rgba(210,170,110,.35)'; ctx.lineWidth = 0.03;
+            for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(-0.35 + k * 0.2, 0.05 + (k % 2) * 0.12, 0.13, 0.2, Math.PI - 0.2); ctx.stroke(); }
+            // pattes à plumes (culottes) et serres
+            const thigh = ctx.createLinearGradient(0, 0.2, 0, 0.7); thigh.addColorStop(0, '#d9c8a0'); thigh.addColorStop(1, '#8c6a3a');
+            [[0.1, 0.12], [-0.28, 0]].forEach(([lx2, dx]) => {
+                const spread = grip ? 0.1 : 0.25;
+                ctx.fillStyle = thigh; ctx.strokeStyle = '#4a2f18'; ctx.lineWidth = 0.025;
+                ctx.beginPath(); ctx.ellipse(lx2, 0.4, 0.2, 0.28, 0.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                const fx = lx2 - spread * 0.4 + dx * 0.2, fy = grip ? 1.1 : 0.95;
+                ctx.strokeStyle = '#e8b82a'; ctx.lineWidth = 0.13;
+                ctx.beginPath(); ctx.moveTo(lx2, 0.6); ctx.lineTo(fx, fy); ctx.stroke();
+                ctx.lineWidth = 0.09;
+                [-0.26, -0.08, 0.1].forEach(o => {
+                    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(fx + o * 1.2, fy + 0.2, fx + o * (grip ? 0.5 : 0.9), fy + (grip ? 0.3 : 0.38)); ctx.stroke();
+                    ctx.strokeStyle = '#1b1109'; ctx.lineWidth = 0.05; ctx.beginPath(); ctx.moveTo(fx + o * (grip ? 0.5 : 0.9), fy + (grip ? 0.3 : 0.38)); ctx.lineTo(fx + o * 0.6, fy + 0.46); ctx.stroke();
+                    ctx.strokeStyle = '#e8b82a'; ctx.lineWidth = 0.09;
+                });
+            });
+            // cou et tête blancs
+            ctx.fillStyle = '#f5f0e4'; ctx.strokeStyle = '#a89c84'; ctx.lineWidth = 0.025;
+            ctx.beginPath(); ctx.moveTo(-0.6, -0.4); ctx.bezierCurveTo(-0.75, -0.75, -1.1, -0.8, -1.25, -0.58);
+            ctx.bezierCurveTo(-1.35, -0.4, -1.2, -0.2, -1.0, -0.12); ctx.lineTo(-0.7, 0.1); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // bec crochu
+            const bk = ctx.createLinearGradient(-1.8, -0.5, -1.2, -0.2); bk.addColorStop(0, '#f5c93a'); bk.addColorStop(1, '#c8901a');
+            ctx.fillStyle = bk; ctx.strokeStyle = '#7a5410'; ctx.lineWidth = 0.025;
+            ctx.beginPath(); ctx.moveTo(-1.22, -0.68); ctx.bezierCurveTo(-1.6, -0.72, -1.85, -0.55, -1.8, -0.32);
+            ctx.bezierCurveTo(-1.74, -0.38, -1.7, -0.36, -1.66, -0.28); ctx.lineTo(-1.25, -0.3); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#3a2808'; ctx.beginPath(); ctx.moveTo(-1.25, -0.4); ctx.lineTo(-1.62, -0.36); ctx.stroke();
+            // œil jaune, arcade sourcilière sévère
+            ctx.fillStyle = '#ffd21c'; ctx.beginPath(); ctx.arc(-1.12, -0.56, 0.065, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(-1.14, -0.56, 0.035, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#7a6d55'; ctx.lineWidth = 0.04; ctx.beginPath(); ctx.moveTo(-1.02, -0.66); ctx.lineTo(-1.3, -0.58); ctx.stroke();
+            wing(-Math.PI / 2 - flap, false);
+            ctx.restore();
         }
 
         function floatText(text, x, y) {
@@ -1294,13 +1392,16 @@
         function stepSeg(dt) {
             if (!seg) return;
             seg.t += dt;
-            const k = Math.min(1, seg.t / seg.dur), e = seg.kind === 'up' ? k : k * k * (3 - 2 * k);
+            const k = Math.min(1, seg.t / seg.dur);
+            let e = seg.kind === 'up' ? k : k * k * (3 - 2 * k);
+            if (seg.kind === 'eagle') { const q = Math.min(1, Math.max(0, (k - 0.22) / 0.78)); e = q * q * (3 - 2 * q); }
             posDisp = seg.from + (seg.to - seg.from) * e;
             if (k < 1) return;
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
             if (done.kind === 'jet') jetUntil = clock + 0.7;
             if (done.kind === 'moto') motoEnd = clock;
+            if (done.kind === 'eagle') eagleEnd = clock;
             if (done.win) victory(done.win);
         }
 
@@ -1327,7 +1428,7 @@
             stepSeg(dt);
             updateRolls();
             const g = geo();
-            cam += (posDisp - cam) * Math.min(1, dt * (seg && (seg.kind === 'jet' || seg.kind === 'moto') ? 18 : 6));
+            cam += (posDisp - cam) * Math.min(1, dt * (seg && (seg.kind === 'jet' || seg.kind === 'moto') ? 18 : seg && seg.kind === 'eagle' ? 9 : 6));
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawSavanna(g); drawTemple(g); drawActors(g);
             updateScoreboard();
@@ -1411,6 +1512,7 @@
             $('jet').value = settings.jet; $('jetup').value = settings.jetUp;
             $('moto').value = settings.moto; $('motoup').value = settings.motoUp;
             $('sim-moto').textContent = `🏍️ ${settings.moto} étoiles = motocross`;
+            $('eagle').value = settings.eagle; $('eagleup').value = settings.eagleUp; $('sim-eagle').textContent = `🦅 ${settings.eagle} étoiles = aigle géant`;
             $('dino').value = settings.dino; $('sim-dino').textContent = `🦖 ${settings.dino} étoiles = dinosaure`;
             $('hyena').value = settings.hyena; $('sim-hyena').textContent = `🐺 ${settings.hyena} étoiles = hyènes`;
             $('rock').value = settings.rock; $('rockback').value = settings.rockBack;
@@ -1424,24 +1526,13 @@
             $('sim-gift').addEventListener('click', () => sim(1));
             $('sim-burst').addEventListener('click', () => sim(10));
             $('sim-snake').addEventListener('click', () => sim(settings.snake));
-            $('drop-ball').addEventListener('click', () => dropSnake({ username: 'Streamer' }));
             $('sim-bus').addEventListener('click', () => sim(settings.bus));
-            $('drop-bus').addEventListener('click', () => dropSnake({ username: 'Streamer' }, true));
             $('sim-jet').addEventListener('click', () => sim(settings.jet));
             $('sim-moto').addEventListener('click', () => sim(settings.moto));
+            $('sim-eagle').addEventListener('click', () => sim(settings.eagle));
             $('sim-dino').addEventListener('click', () => sim(settings.dino));
             $('sim-hyena').addEventListener('click', () => sim(settings.hyena));
-            $('drop-hyena').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'hyena'));
-            $('drop-dino').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'dino'));
-            $('drop-moto').addEventListener('click', () => motocross({ username: 'Streamer' }));
             $('sim-rock').addEventListener('click', () => sim(settings.rock));
-            $('drop-rock').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'rock'));
-            $('drop-jet').addEventListener('click', () => jetpack({ username: 'Streamer' }));
-            $('sim-big').addEventListener('click', () => {
-                const v = getViewer(simName());
-                enqueue(v, 100, true);
-                if (window.ArcadeEffects) ArcadeEffects.simulateBigGift(simName(), 100);
-            });
             $('sim-share').addEventListener('click', () => { if (window.ArcadeEffects) ArcadeEffects.simulateShare(); });
             $('speed').addEventListener('input', e => { settings.speed = Number(e.target.value) || 1; syncControls(); saveGame(); });
             $('speed-reset').addEventListener('click', () => { settings.speed = 1; syncControls(); saveGame(); });
@@ -1455,13 +1546,15 @@
                 settings.jetUp = clamp(Number($('jetup').value), 1, 99, 30);
                 settings.moto = clamp(Number($('moto').value), 2, 1000, 100);
                 settings.motoUp = clamp(Number($('motoup').value), 1, 99, 50);
+                settings.eagle = clamp(Number($('eagle').value), 2, 1000, 300);
+                settings.eagleUp = clamp(Number($('eagleup').value), 1, 99, 80);
                 settings.dino = clamp(Number($('dino').value), 2, 1000, 199);
                 settings.hyena = clamp(Number($('hyena').value), 2, 1000, 500);
                 settings.rock = clamp(Number($('rock').value), 2, 1000, 20);
                 settings.rockBack = clamp(Number($('rockback').value), 0, 99, 15);
                 saveGame();
             };
-            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'moto', 'motoup', 'dino', 'hyena', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'moto', 'motoup', 'eagle', 'eagleup', 'dino', 'hyena', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
