@@ -103,6 +103,14 @@
                     <label>🎳 étoiles pour lâcher une boule<input id="snake" type="number" min="2" max="1000" value="2"></label>
                 </div>
                 <label>Recul du lion sur une boule (marches)<input id="back" type="number" min="0" max="99" value="2"></label>
+                <div class="row">
+                    <label>🚌 étoiles pour lancer le bus<input id="bus" type="number" min="2" max="1000" value="5"></label>
+                </div>
+                <label>Recul du lion sur le bus (marches)<input id="busback" type="number" min="0" max="99" value="10"></label>
+                <div class="row">
+                    <label>🚀 étoiles pour le jetpack<input id="jet" type="number" min="2" max="1000" value="10"></label>
+                </div>
+                <label>Montée du jetpack (marches)<input id="jetup" type="number" min="1" max="99" value="30"></label>
             </section>
             <section class="box">
                 <h3>Simulateur (sans étoiles réelles)</h3>
@@ -113,6 +121,10 @@
                 </div>
                 <button id="sim-snake" class="btn" type="button">🎳 2 étoiles = boule</button>
                 <button id="drop-ball" class="btn" type="button">🎳 Lâcher une boule (touche B)</button>
+                <button id="sim-bus" class="btn" type="button">🚌 5 étoiles = bus</button>
+                <button id="drop-bus" class="btn" type="button">🚌 Lancer le bus (touche N)</button>
+                <button id="sim-jet" class="btn" type="button">🚀 10 étoiles = jetpack</button>
+                <button id="drop-jet" class="btn" type="button">🚀 Jetpack (touche J)</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
@@ -132,7 +144,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { snake: 2, back: 2, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 10, jetUp: 30, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -181,6 +193,8 @@
         const sndUp = () => beep(300, 600, 0.2, 'triangle', 0.14);
         const sndDown = () => beep(520, 160, 0.4, 'sawtooth', 0.09);
         const sndHit = () => beep(140, 70, 0.25, 'square', 0.1);
+        const sndHorn = () => { beep(220, 220, 0.45, 'sawtooth', 0.1); beep(277, 277, 0.45, 'sawtooth', 0.08); };
+        const sndJet = () => { beep(90, 380, 2, 'sawtooth', 0.07); beep(140, 520, 2, 'square', 0.04); };
         const sndWin = () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => beep(f, f, 0.3, 'triangle', 0.18, i * 0.12));
 
         /* ---------- temple ---------- */
@@ -204,32 +218,51 @@
         function buildObstacles() { obst = new Set(); rolls.length = 0; }
 
         /* un cadeau du bon nombre d'étoiles lâche une boule qui dévale les marches, heurte le lion puis sort du décor */
-        const rolls = [], ROLL_STEPS = 7, ROLL_SPEED = 5;
-        function dropSnake(viewer) {
+        const rolls = [], ROLL_STEPS = 7, ROLL_SPEED = 5, BUS_STEPS = 9, BUS_SPEED = 4;
+        const rollPos = b => b.start - (clock - b.t) * (b.bus ? BUS_SPEED : ROLL_SPEED);
+        function dropSnake(viewer, bus) {
             if (resetAt) return false;
-            rolls.push({ t: clock, start: Math.min(TOP, Math.ceil(posDisp) + ROLL_STEPS), who: viewer, hit: false });
-            say(`🎳 @${viewer.username} lâche une boule de bowling !`);
+            rolls.push({ t: clock, start: Math.ceil(posDisp) + (bus ? BUS_STEPS : ROLL_STEPS), who: viewer, hit: false, bus: !!bus });
+            if (bus) { say(`🚌 @${viewer.username} lance le bus !`); sndHorn(); }
+            else say(`🎳 @${viewer.username} lâche une boule de bowling !`);
             return true;
         }
         function updateRolls() {
             for (let i = rolls.length - 1; i >= 0; i--) {
-                const b = rolls[i], p = b.start - (clock - b.t) * ROLL_SPEED;
-                if (!b.hit && p <= posDisp + 0.3) {
+                const b = rolls[i], p = rollPos(b);
+                if (!b.hit && p <= posDisp + (b.bus ? 0.65 : 0.3)) {
                     b.hit = true; sndHit();
-                    const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, settings.back));
+                    if (b.bus) setTimeout(sndHit, 110);
+                    const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, b.bus ? settings.busBack : settings.back));
                     if (target < base) {
-                        pos = target; seg = null; moves = [{ to: target, kind: 'fall' }];
+                        pos = target; seg = null; moves = [{ to: target, kind: 'fall', dur: b.bus ? 1.2 : 0.7 }];
                         sndDown();
-                        say(`🎳 @${b.who.username} : la boule de bowling fait reculer le lion de ${base - target} marche${base - target > 1 ? 's' : ''} !`);
-                        const g = geo(); floatText('🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
+                        const n = base - target, what = b.bus ? 'le bus' : 'la boule de bowling';
+                        say(`${b.bus ? '🚌' : '🎳'} @${b.who.username} : ${what} fait reculer le lion de ${n} marche${n > 1 ? 's' : ''} !`);
+                        const g = geo(); floatText(b.bus ? '🚌 CARAMBOLAGE !' : '🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
                     }
                 }
-                if (p < -14) rolls.splice(i, 1);
+                if (p < (b.bus ? -20 : -14)) rolls.splice(i, 1);
             }
         }
         function gift(viewer, coins, sim) {
-            if (Math.floor(coins) === settings.snake) dropSnake(viewer);
+            const c = Math.floor(coins);
+            if (c === settings.jet) jetpack(viewer);
+            else if (c === settings.bus) dropSnake(viewer, true);
+            else if (c === settings.snake) dropSnake(viewer);
             else enqueue(viewer, coins, sim);
+        }
+        /* jetpack : le lion s'envole et grimpe de settings.jetUp marches d'un coup (sans dépasser le sommet) */
+        let jetUntil = 0;
+        function jetpack(viewer) {
+            if (resetAt || pos >= TOP) return false;
+            const target = Math.min(TOP, pos + Math.max(0, settings.jetUp)), n = target - pos;
+            if (n <= 0) return false;
+            moves.push({ to: target, kind: 'jet', dur: 1.6 + n * 0.03, win: target >= TOP ? { viewer } : undefined });
+            pos = target; current = viewer;
+            say(`🚀 @${viewer.username} équipe le lion d'un jetpack : +${n} marche${n > 1 ? 's' : ''} !`);
+            sndJet();
+            return true;
         }
 
         function drawStar(x, y, r) {
@@ -251,7 +284,7 @@
 
         /* lion adulte debout de profil, rendu volumétrique façon 3D : éclairage chaud venant du soleil, pelage texturé, crinière en mèches */
         const hash = n => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
-        function drawLion(x, y, s, ph, tilt) {
+        function drawLion(x, y, s, ph, tilt, jet) {
             ctx.save();
             ctx.translate(x, y);
             const sh = ctx.createRadialGradient(0, 0, 2, 0, 0, s * 0.4);
@@ -259,7 +292,7 @@
             ctx.fillStyle = sh; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.4, s * 0.05, 0, 0, Math.PI * 2); ctx.fill();
             ctx.rotate(-tilt); ctx.scale(s, s);
             ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            const walking = !!seg, amp = walking ? 1 : 0;
+            const walking = !!seg && !jet, amp = walking ? 1 : 0;
             const breath = Math.sin(clock * 2.2) * 0.008, sA = Math.cos(ph) * amp;
             ctx.translate(0, -(walking ? Math.abs(Math.sin(ph / 2)) * 0.015 : 0));
 
@@ -340,6 +373,48 @@
                 ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - 0.012, py + 0.02); ctx.stroke();
             }
             ctx.restore();
+
+            // jetpack : deux propulseurs cylindriques sur le dos, sangles sur le poitrail, flammes quand il vole
+            if (jet) {
+                const metal = (x0, w) => { const g = ctx.createLinearGradient(x0, 0, x0 + w, 0); g.addColorStop(0, '#4d5560'); g.addColorStop(0.3, '#e4eaf2'); g.addColorStop(0.6, '#9aa4b0'); g.addColorStop(1, '#3a414a'); return g; };
+                const thruster = (x0, shade) => {
+                    const w = 0.115, top = -1.34, bot = -0.84;
+                    if (jet.fl > 0.02) {
+                        const fx = x0 + w / 2, fy = -0.74, len = (0.5 + 0.12 * Math.sin(clock * 55 + x0 * 9) + 0.06 * Math.sin(clock * 90)) * jet.fl;
+                        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+                        const glow = ctx.createRadialGradient(fx, fy + len * 0.3, 0.01, fx, fy + len * 0.3, 0.4);
+                        glow.addColorStop(0, `rgba(255,170,60,${0.5 * jet.fl})`); glow.addColorStop(1, 'rgba(255,100,0,0)');
+                        ctx.fillStyle = glow; ctx.fillRect(fx - 0.4, fy - 0.1, 0.8, len + 0.5);
+                        [[0.075, 'rgba(255,240,190,.95)', 'rgba(255,140,20,.85)', 1], [0.04, 'rgba(220,240,255,1)', 'rgba(120,170,255,.5)', 0.6]].forEach(([fw, c0, c1, lk]) => {
+                            const gr = ctx.createLinearGradient(0, fy, 0, fy + len * lk); gr.addColorStop(0, c0); gr.addColorStop(0.4, c1); gr.addColorStop(1, 'rgba(255,60,0,0)');
+                            const sway = Math.sin(clock * 40 + x0 * 7) * 0.02;
+                            ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(fx - fw, fy);
+                            ctx.quadraticCurveTo(fx - fw * 1.3, fy + len * lk * 0.5, fx + sway, fy + len * lk);
+                            ctx.quadraticCurveTo(fx + fw * 1.3, fy + len * lk * 0.5, fx + fw, fy); ctx.fill();
+                        });
+                        ctx.restore();
+                    }
+                    // tuyère
+                    ctx.fillStyle = '#23272d'; ctx.beginPath(); ctx.moveTo(x0 + 0.015, bot); ctx.lineTo(x0 + w - 0.015, bot); ctx.lineTo(x0 + w + 0.01, -0.74); ctx.lineTo(x0 - 0.01, -0.74); ctx.closePath(); ctx.fill();
+                    if (jet.fl > 0.02) { ctx.fillStyle = `rgba(255,150,40,${0.7 * jet.fl})`; ctx.fillRect(x0 - 0.01, -0.755, w + 0.02, 0.016); }
+                    // cuve
+                    ctx.save(); ctx.translate(0, 0);
+                    ctx.fillStyle = metal(x0, w); ctx.beginPath(); ctx.roundRect(x0, top, w, bot - top, 0.035); ctx.fill();
+                    ctx.fillStyle = shade; ctx.fillRect(x0, -1.12, w, 0.07); ctx.fillRect(x0, -0.96, w, 0.03);
+                    ctx.fillStyle = '#c4281a'; ctx.beginPath(); ctx.moveTo(x0, top + 0.01); ctx.quadraticCurveTo(x0 + w / 2, top - 0.1, x0 + w, top + 0.01); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(x0 + w * 0.22, top + 0.03, 0.012, bot - top - 0.08);
+                    ctx.restore();
+                };
+                // châssis et cadre de maintien
+                ctx.fillStyle = '#2b3037'; ctx.beginPath(); ctx.roundRect(-0.44, -1.28, 0.3, 0.05, 0.015); ctx.fill(); ctx.beginPath(); ctx.roundRect(-0.44, -0.92, 0.3, 0.05, 0.015); ctx.fill();
+                thruster(-0.43, '#c4281a'); thruster(-0.31, '#e8a317');
+                ctx.fillStyle = '#4a5560'; ctx.beginPath(); ctx.arc(-0.31, -1.1, 0.012, 0, Math.PI * 2); ctx.fill();
+                // sangles en cuir sur le poitrail + boucle
+                ctx.strokeStyle = '#3b2210'; ctx.lineWidth = 0.035;
+                ctx.beginPath(); ctx.moveTo(-0.2, -1.3); ctx.quadraticCurveTo(-0.02, -1.22, 0.16, -0.96); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-0.2, -0.9); ctx.quadraticCurveTo(0.0, -0.9, 0.17, -0.97); ctx.stroke();
+                ctx.fillStyle = '#d4af37'; ctx.fillRect(0.0, -1.14, 0.045, 0.045);
+            }
 
             // membres du côté proche
             leg(false, Math.max(0, sA)); arm(false, -sA);
@@ -598,12 +673,17 @@
                 }
             }
             // bannière sous les marches : ce qui fait avancer ou bloquer, en étoiles
-            const lw = Math.min(g.w * 0.92, 900), lh = g.SH * 0.9, lx = (g.w - lw) / 2, ly = g.h - lh - 10;
+            const lw = Math.min(g.w * 0.94, 940), lh = g.SH * 1.5, lx = (g.w - lw) / 2, ly = g.h - lh - 8;
             ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
             ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(12, Math.min(g.SH * 0.36, lw / 38))}px Poppins, sans-serif`;
-            const rows = [['#c8ffc8', '⭐ 1 étoile = +1 marche'], ['#ffb0b0', `🎳 ${settings.snake} étoiles = une boule de bowling dévale les marches vers le lion : il recule de ${settings.back} marches`]];
-            rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.3 + k * 0.4)); });
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(11, Math.min(g.SH * 0.27, lw / 46))}px Poppins, sans-serif`;
+            const rows = [
+                ['#c8ffc8', '⭐ 1 étoile = +1 marche'],
+                ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack : le lion s'envole et monte de ${settings.jetUp} marches`],
+                ['#ffb0b0', `🎳 ${settings.snake} étoiles = boule de bowling : le lion recule de ${settings.back} marches`],
+                ['#ffd28a', `🚌 ${settings.bus} étoiles = bus qui dévale les marches : le lion recule de ${settings.busBack} marches`]
+            ];
+            rows.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], lx + lw / 2, ly + lh * (0.14 + k * 0.24)); });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
             if (tx > -g.SW * 2 && tx < g.w + g.SW * 2) {
@@ -646,12 +726,97 @@
             ctx.save(); ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         }
 
+        /* bus urbain jaune de profil : carrosserie vernie, vitres avec passagers, roues qui tournent, phare allumé, roule le long des marches */
+        function drawBus(g, b) {
+            const p = rollPos(b), el = clock - b.t, u = g.SH * 0.95, ang = Math.atan2(g.SH, g.SW), L = 9.62;
+            let x = stepX(g, p) - g.SW * 0.5, y = stepY(g, p) - u * 0.03, tilt = -ang;
+            if (p < 0) { const t = -p / BUS_SPEED; y += t * t * g.h * 0.9; tilt -= t * 0.35; }
+            if (x > g.w + u * 2 || x + L * u * Math.cos(ang) < -u * 2 || y > g.h + u * 4) return;
+            const rot = -(el * BUS_SPEED * Math.hypot(g.SW, g.SH)) / (0.5 * u);
+            ctx.save();
+            ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(u, u);
+            if (p > 0) ctx.translate(0, -Math.abs(Math.sin(p * Math.PI)) * 0.05);
+            ctx.lineJoin = 'round';
+            ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.beginPath(); ctx.ellipse(L / 2, 0.05, L / 2 + 0.2, 0.13, 0, 0, Math.PI * 2); ctx.fill();
+            const body = () => {
+                ctx.beginPath(); ctx.moveTo(0.06, -0.62); ctx.lineTo(0.02, -1.7); ctx.quadraticCurveTo(0.04, -2.55, 0.7, -2.86);
+                ctx.lineTo(9.25, -2.86); ctx.quadraticCurveTo(L, -2.86, L, -2.5); ctx.lineTo(L, -0.62); ctx.closePath();
+            };
+            // climatiseur de toit
+            const ac = ctx.createLinearGradient(0, -3.1, 0, -2.84); ac.addColorStop(0, '#f0f0f0'); ac.addColorStop(1, '#8c8c8c');
+            ctx.fillStyle = ac; ctx.beginPath(); ctx.roundRect(3.6, -3.1, 2.3, 0.26, 0.07); ctx.fill();
+            ctx.fillStyle = '#5c5c5c'; for (let k = 0; k < 6; k++) ctx.fillRect(3.8 + k * 0.33, -3.05, 0.18, 0.04);
+            // carrosserie
+            const bg = ctx.createLinearGradient(0, -2.86, 0, -0.6);
+            bg.addColorStop(0, '#ffe873'); bg.addColorStop(0.25, '#ffcc1f'); bg.addColorStop(0.6, '#f2ab00'); bg.addColorStop(1, '#9c6400');
+            ctx.fillStyle = bg; body(); ctx.fill();
+            ctx.save(); body(); ctx.clip();
+            const gl = ctx.createLinearGradient(0, -2.86, 0, -1.5); gl.addColorStop(0, 'rgba(255,255,255,.45)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gl; ctx.fillRect(0, -2.86, L, 1.4);
+            ctx.fillStyle = '#1b1b1b'; ctx.fillRect(0, -1.08, L, 0.16);
+            ctx.fillStyle = '#c01818'; ctx.fillRect(0, -0.9, L, 0.045);
+            const sk = ctx.createLinearGradient(0, -0.86, 0, -0.6); sk.addColorStop(0, 'rgba(0,0,0,.05)'); sk.addColorStop(1, 'rgba(0,0,0,.45)');
+            ctx.fillStyle = sk; ctx.fillRect(0, -0.86, L, 0.3);
+            const glass = (gx, gy, gw, gh, seed, pax) => {
+                ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 0.1); ctx.clip();
+                const gg = ctx.createLinearGradient(0, gy, 0, gy + gh); gg.addColorStop(0, '#9fd0e8'); gg.addColorStop(0.5, '#2f5a78'); gg.addColorStop(1, '#0e1f2b');
+                ctx.fillStyle = gg; ctx.fillRect(gx, gy, gw, gh);
+                if (pax && hash(seed) > 0.3) {
+                    ctx.fillStyle = 'rgba(8,14,20,.8)';
+                    ctx.beginPath(); ctx.arc(gx + gw * (0.35 + hash(seed + 5) * 0.3), gy + gh * 0.5, 0.13, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(gx + gw * (0.35 + hash(seed + 5) * 0.3), gy + gh * 0.95, 0.24, 0.3, 0, Math.PI, 0); ctx.fill();
+                }
+                ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.beginPath();
+                ctx.moveTo(gx + gw * 0.15, gy); ctx.lineTo(gx + gw * 0.5, gy); ctx.lineTo(gx + gw * 0.15 - gh * 0.25, gy + gh); ctx.lineTo(gx - gh * 0.25, gy + gh); ctx.closePath(); ctx.fill();
+                ctx.restore();
+                ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.035; ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 0.1); ctx.stroke();
+            };
+            glass(0.16, -2.62, 0.82, 0.98, 1, false);
+            glass(1.1, -2.6, 0.5, 1.42, 2, false); glass(1.64, -2.6, 0.5, 1.42, 3, false);
+            for (let k = 0; k < 5; k++) glass(2.35 + k * 1.32, -2.62, 1.2, 0.98, 10 + k, true);
+            ctx.save(); ctx.translate(5.5, -1.34); ctx.scale(0.01, 0.01);
+            ctx.font = '800 38px Poppins, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#3a2500'; ctx.fillText('★ GRIFFON AGENCY ★', 0, 0); ctx.restore();
+            ctx.strokeStyle = 'rgba(80,50,0,.5)'; ctx.lineWidth = 0.02; ctx.beginPath(); ctx.moveTo(2.25, -2.62); ctx.lineTo(2.25, -1.08); ctx.stroke();
+            ctx.restore();
+            ctx.strokeStyle = '#6b4600'; ctx.lineWidth = 0.035; body(); ctx.stroke();
+            // phare, calandre, pare-chocs, rétroviseur, feux arrière
+            const hl = ctx.createRadialGradient(-0.25, -1.0, 0, -0.25, -1.0, 1.3);
+            ctx.save(); ctx.globalCompositeOperation = 'lighter'; hl.addColorStop(0, 'rgba(255,248,200,.5)'); hl.addColorStop(1, 'rgba(255,240,160,0)'); ctx.fillStyle = hl; ctx.fillRect(-1.6, -2.3, 1.7, 2.6); ctx.restore();
+            ctx.fillStyle = '#fffbe0'; ctx.beginPath(); ctx.ellipse(0.08, -1.0, 0.12, 0.2, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#555'; ctx.lineWidth = 0.025; ctx.stroke();
+            ctx.fillStyle = '#222'; ctx.fillRect(0.0, -1.58, 0.1, 0.4);
+            ctx.fillStyle = '#4a4a4a'; ctx.beginPath(); ctx.roundRect(-0.12, -0.8, 0.34, 0.2, 0.05); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(9.45, -0.8, 0.3, 0.2, 0.05); ctx.fill();
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 0.03; ctx.beginPath(); ctx.moveTo(0.2, -2.5); ctx.lineTo(-0.12, -2.28); ctx.stroke();
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.roundRect(-0.24, -2.45, 0.14, 0.3, 0.04); ctx.fill();
+            const tl = ctx.createLinearGradient(9.5, 0, 9.7, 0); tl.addColorStop(0, '#ff3a2a'); tl.addColorStop(1, '#8a0a0a');
+            ctx.fillStyle = tl; ctx.beginPath(); ctx.roundRect(9.5, -1.55, 0.16, 0.42, 0.04); ctx.fill();
+            // passages de roues et roues
+            [1.75, 7.7].forEach(cx => {
+                ctx.fillStyle = '#0b0b0b'; ctx.beginPath(); ctx.arc(cx, -0.5, 0.7, Math.PI, 0); ctx.fill();
+                ctx.strokeStyle = '#7a5200'; ctx.lineWidth = 0.03; ctx.stroke();
+                ctx.save(); ctx.translate(cx, -0.5);
+                const tr = ctx.createRadialGradient(0, 0, 0.3, 0, 0, 0.5); tr.addColorStop(0, '#3a3a3a'); tr.addColorStop(0.7, '#141414'); tr.addColorStop(1, '#050505');
+                ctx.fillStyle = tr; ctx.beginPath(); ctx.arc(0, 0, 0.5, 0, Math.PI * 2); ctx.fill();
+                ctx.rotate(rot);
+                const rg = ctx.createRadialGradient(-0.08, -0.08, 0.02, 0, 0, 0.32); rg.addColorStop(0, '#f4f4f4'); rg.addColorStop(1, '#8a8f96');
+                ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(0, 0, 0.32, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#555'; ctx.lineWidth = 0.035;
+                for (let k = 0; k < 5; k++) { const a = k * Math.PI * 2 / 5; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 0.28, Math.sin(a) * 0.28); ctx.stroke(); }
+                ctx.fillStyle = '#2a2a2a'; ctx.beginPath(); ctx.arc(0, 0, 0.08, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
         function drawActors(g) {
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
             rolls.forEach((b, i) => {
-                const r = g.SH * 0.42, el = clock - b.t, p = b.start - el * ROLL_SPEED;
+                if (b.bus) return;
+                const r = g.SH * 0.42, el = clock - b.t, p = rollPos(b);
                 let x, y, rot = el * 9;
                 if (p > 0) {
                     const k = Math.floor(p), q = 1 - (p - k);
@@ -668,13 +833,17 @@
                 drawBowlingBall(x, y, r, rot);
             });
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+            const flying = !!(seg && seg.kind === 'jet'), jk = flying ? Math.min(1, seg.t / seg.dur) : 0;
             const n = Math.min(TOP, Math.floor(posDisp)), f = posDisp - n;
-            const lx = stepX(g, posDisp), ly = stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8;
+            const lift = flying ? Math.sin(Math.PI * Math.min(1, jk * 1.15)) * g.SH * 1.5 : 0;
+            const lx = stepX(g, posDisp), ly = (flying ? stepY(g, posDisp) : stepY(g, heightOf(posDisp)) - Math.sin(Math.PI * jumpT(f)) * g.SH * 0.8) - lift;
+            const jet = flying ? { fl: 1 } : (clock < jetUntil ? { fl: Math.max(0, (jetUntil - clock) / 0.7) } : null);
             // halo de lumière sur le lion
             const halo = ctx.createRadialGradient(lx, ly - g.SH, 10, lx, ly - g.SH, g.SW * 1.2);
             halo.addColorStop(0, 'rgba(255,230,150,.35)'); halo.addColorStop(1, 'rgba(255,200,80,0)');
             ctx.fillStyle = halo; ctx.fillRect(lx - g.SW * 1.2, ly - g.SW * 1.4, g.SW * 2.4, g.SW * 2.4);
-            drawLion(lx - g.SW * 0.05, ly, g.SW * 0.6, posDisp * Math.PI * 4 + Math.PI / 2, jumpT(f) > 0 && jumpT(f) < 1 ? 0.3 : 0);
+            drawLion(lx - g.SW * 0.05, ly, g.SW * 0.6, posDisp * Math.PI * 4 + Math.PI / 2, flying ? 0.22 : (jumpT(f) > 0 && jumpT(f) < 1 ? 0.3 : 0), jet);
+            rolls.forEach(b => { if (b.bus) drawBus(g, b); });
         }
 
         function floatText(text, x, y) {
@@ -744,6 +913,7 @@
             if (k < 1) return;
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
+            if (done.kind === 'jet') jetUntil = clock + 0.7;
             if (done.win) victory(done.win);
         }
 
@@ -770,7 +940,7 @@
             stepSeg(dt);
             updateRolls();
             const g = geo();
-            cam += (posDisp - cam) * Math.min(1, dt * 6);
+            cam += (posDisp - cam) * Math.min(1, dt * (seg && seg.kind === 'jet' ? 18 : 6));
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawSavanna(g); drawTemple(g); drawActors(g);
             updateScoreboard();
@@ -849,6 +1019,8 @@
         function syncControls() {
             $('speed').value = settings.speed; $('speed-out').textContent = settings.speed + '×';
             $('snake').value = settings.snake; $('back').value = settings.back;
+            $('bus').value = settings.bus; $('busback').value = settings.busBack;
+            $('jet').value = settings.jet; $('jetup').value = settings.jetUp;
             $('hide-board').checked = settings.hideBoard;
         }
         function bindUi() {
@@ -859,6 +1031,10 @@
             $('sim-burst').addEventListener('click', () => sim(10));
             $('sim-snake').addEventListener('click', () => sim(settings.snake));
             $('drop-ball').addEventListener('click', () => dropSnake({ username: 'Streamer' }));
+            $('sim-bus').addEventListener('click', () => sim(settings.bus));
+            $('drop-bus').addEventListener('click', () => dropSnake({ username: 'Streamer' }, true));
+            $('sim-jet').addEventListener('click', () => sim(settings.jet));
+            $('drop-jet').addEventListener('click', () => jetpack({ username: 'Streamer' }));
             $('sim-big').addEventListener('click', () => {
                 sim(100);
                 if (window.ArcadeEffects) ArcadeEffects.simulateBigGift(simName(), 100);
@@ -870,9 +1046,13 @@
                 const clamp = (v, lo, hi, d) => Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.floor(v))) : d;
                 settings.snake = clamp(Number($('snake').value), 2, 1000, 2);
                 settings.back = clamp(Number($('back').value), 0, 19, 2);
+                settings.bus = clamp(Number($('bus').value), 2, 1000, 5);
+                settings.busBack = clamp(Number($('busback').value), 0, 99, 10);
+                settings.jet = clamp(Number($('jet').value), 2, 1000, 10);
+                settings.jetUp = clamp(Number($('jetup').value), 1, 99, 30);
                 saveGame();
             };
-            ['snake', 'back'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
@@ -885,6 +1065,8 @@
             document.addEventListener('keydown', e => {
                 if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
                 if (e.code === 'KeyB') { e.preventDefault(); dropSnake({ username: 'Streamer' }); }
+                else if (e.code === 'KeyN') { e.preventDefault(); dropSnake({ username: 'Streamer' }, true); }
+                else if (e.code === 'KeyJ') { e.preventDefault(); jetpack({ username: 'Streamer' }); }
                 else if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); sim(1); }
             });
         }
