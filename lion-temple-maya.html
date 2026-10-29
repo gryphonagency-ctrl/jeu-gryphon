@@ -115,6 +115,13 @@
                     <label>🚀 étoiles pour le jetpack<input id="jet" type="number" min="2" max="1000" value="30"></label>
                 </div>
                 <label>Montée du jetpack (marches)<input id="jetup" type="number" min="1" max="99" value="30"></label>
+                <div class="row">
+                    <label>🏍️ étoiles pour la motocross<input id="moto" type="number" min="2" max="1000" value="100"></label>
+                </div>
+                <label>Montée de la motocross (marches)<input id="motoup" type="number" min="1" max="99" value="50"></label>
+                <div class="row">
+                    <label>🦖 étoiles pour le dinosaure<input id="dino" type="number" min="2" max="1000" value="199"></label>
+                </div>
             </section>
             <section class="box">
                 <h3>Simulateur (sans étoiles réelles)</h3>
@@ -131,6 +138,10 @@
                 <button id="drop-rock" class="btn" type="button">🪨 Lancer un rocher (touche R)</button>
                 <button id="sim-jet" class="btn" type="button">🚀 30 étoiles = jetpack</button>
                 <button id="drop-jet" class="btn" type="button">🚀 Jetpack (touche J)</button>
+                <button id="sim-moto" class="btn" type="button">🏍️ 100 étoiles = motocross</button>
+                <button id="drop-moto" class="btn" type="button">🏍️ Lancer la motocross (touche M)</button>
+                <button id="sim-dino" class="btn" type="button">🦖 199 étoiles = dinosaure</button>
+                <button id="drop-dino" class="btn" type="button">🦖 Lâcher le dinosaure (touche D)</button>
                 <button id="sim-big" class="btn" type="button">💎 100 pièces = 100 marches</button>
                 <button id="sim-share" class="btn" type="button">✈️ Partage du live</button>
             </section>
@@ -150,7 +161,7 @@
         const $ = id => document.getElementById(id);
         const SAVE_KEY = 'lion-temple-maya-save';
         const TOP = 100, VIS = 14;
-        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
+        const settings = { snake: 2, back: 2, bus: 5, busBack: 10, jet: 30, jetUp: 30, moto: 100, motoUp: 50, dino: 199, rock: 20, rockBack: 15, speed: 1, hideBoard: false };
         let cam = 0;
         const viewers = new Map();
         const queue = [];
@@ -200,6 +211,8 @@
         const sndDown = () => beep(520, 160, 0.4, 'sawtooth', 0.09);
         const sndHit = () => beep(140, 70, 0.25, 'square', 0.1);
         const sndHorn = () => { beep(220, 220, 0.45, 'sawtooth', 0.1); beep(277, 277, 0.45, 'sawtooth', 0.08); };
+        const sndRoar = () => { beep(110, 60, 1.4, 'sawtooth', 0.14); beep(160, 70, 1.4, 'square', 0.06); };
+        const sndMoto = () => { beep(70, 300, 2.4, 'sawtooth', 0.06); beep(140, 600, 2.4, 'square', 0.03); };
         const sndJet = () => { beep(90, 380, 2, 'sawtooth', 0.07); beep(140, 520, 2, 'square', 0.04); };
         const sndWin = () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => beep(f, f, 0.3, 'triangle', 0.18, i * 0.12));
 
@@ -225,40 +238,43 @@
 
         /* un cadeau du bon nombre d'étoiles lâche une boule qui dévale les marches, heurte le lion puis sort du décor */
         const rolls = [], ROLL_STEPS = 7, ROLL_SPEED = 5, BUS_STEPS = 9, BUS_SPEED = 4;
-        const ROCK_STEPS = 8, ROCK_SPEED = 4.5;
-        const rollPos = b => b.start - (clock - b.t) * (b.bus ? BUS_SPEED : b.rock ? ROCK_SPEED : ROLL_SPEED);
-        // kind : true = bus, 'rock' = rocher, sinon boule de bowling
+        const ROCK_STEPS = 8, ROCK_SPEED = 4.5, DINO_STEPS = 11, DINO_SPEED = 3.2;
+        const rollPos = b => b.start - (clock - b.t) * (b.bus ? BUS_SPEED : b.rock ? ROCK_SPEED : b.dino ? DINO_SPEED : ROLL_SPEED);
+        // kind : true = bus, 'rock' = rocher, 'dino' = dinosaure, sinon boule de bowling
         function dropSnake(viewer, kind) {
             if (resetAt) return false;
-            const bus = kind === true, rock = kind === 'rock';
-            rolls.push({ t: clock, start: Math.ceil(posDisp) + (bus ? BUS_STEPS : rock ? ROCK_STEPS : ROLL_STEPS), who: viewer, hit: false, bus, rock, seed: Math.random() * 100 });
+            const bus = kind === true, rock = kind === 'rock', dino = kind === 'dino';
+            rolls.push({ t: clock, start: Math.ceil(posDisp) + (bus ? BUS_STEPS : rock ? ROCK_STEPS : dino ? DINO_STEPS : ROLL_STEPS), who: viewer, hit: false, bus, rock, dino, seed: Math.random() * 100 });
             if (bus) { say(`🚌 @${viewer.username} lance le bus !`); sndHorn(); }
             else if (rock) { say(`🪨 @${viewer.username} fait dégringoler un rocher !`); beep(80, 40, 0.8, 'sawtooth', 0.12); }
+            else if (dino) { say(`🦖 @${viewer.username} réveille un dinosaure géant !`); sndRoar(); }
             else say(`🎳 @${viewer.username} lâche une boule de bowling !`);
             return true;
         }
         function updateRolls() {
             for (let i = rolls.length - 1; i >= 0; i--) {
                 const b = rolls[i], p = rollPos(b);
-                if (!b.hit && p <= posDisp + (b.bus ? 0.65 : b.rock ? 0.5 : 0.3)) {
+                if (!b.hit && p <= posDisp + (b.dino ? 1.6 : b.bus ? 0.65 : b.rock ? 0.5 : 0.3)) {
                     b.hit = true; sndHit();
-                    if (b.bus || b.rock) setTimeout(sndHit, 110);
-                    const back = b.bus ? settings.busBack : b.rock ? settings.rockBack : settings.back;
+                    if (b.bus || b.rock || b.dino) setTimeout(sndHit, 110);
+                    const back = b.dino ? 999 : b.bus ? settings.busBack : b.rock ? settings.rockBack : settings.back;
                     const base = Math.floor(posDisp + 0.5), target = Math.max(0, base - Math.max(0, back));
                     if (target < base) {
-                        pos = target; seg = null; moves = [{ to: target, kind: 'fall', dur: b.bus ? 1.2 : b.rock ? 1.0 : 0.7 }];
+                        pos = target; seg = null; moves = [{ to: target, kind: 'fall', dur: b.dino ? 1.8 : b.bus ? 1.2 : b.rock ? 1.0 : 0.7 }];
                         sndDown();
-                        const n = base - target, what = b.bus ? 'le bus' : b.rock ? 'le rocher' : 'la boule de bowling';
-                        say(`${b.bus ? '🚌' : b.rock ? '🪨' : '🎳'} @${b.who.username} : ${what} fait reculer le lion de ${n} marche${n > 1 ? 's' : ''} !`);
-                        const g = geo(); floatText(b.bus ? '🚌 CARAMBOLAGE !' : b.rock ? '🪨 ÉCRASÉ !' : '🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
+                        const n = base - target, what = b.dino ? 'le dinosaure' : b.bus ? 'le bus' : b.rock ? 'le rocher' : 'la boule de bowling';
+                        say(b.dino ? `🦖 @${b.who.username} : le dinosaure renvoie le lion à la marche 0 !` : `${b.bus ? '🚌' : b.rock ? '🪨' : '🎳'} @${b.who.username} : ${what} fait reculer le lion de ${n} marche${n > 1 ? 's' : ''} !`);
+                        const g = geo(); floatText(b.dino ? '🦖 DÉVORÉ !' : b.bus ? '🚌 CARAMBOLAGE !' : b.rock ? '🪨 ÉCRASÉ !' : '🎳 STRIKE !', stepX(g, posDisp), stepY(g, posDisp) - g.th * 2);
                     }
                 }
-                if (p < (b.bus ? -20 : b.rock ? -16 : -14)) rolls.splice(i, 1);
+                if (p < (b.dino ? -22 : b.bus ? -20 : b.rock ? -16 : -14)) rolls.splice(i, 1);
             }
         }
         function gift(viewer, coins, sim) {
             const c = Math.floor(coins);
-            if (c === settings.jet) jetpack(viewer);
+            if (c === settings.dino) dropSnake(viewer, 'dino');
+            else if (c === settings.moto) motocross(viewer);
+            else if (c === settings.jet) jetpack(viewer);
             else if (c === settings.rock) dropSnake(viewer, 'rock');
             else if (c === settings.bus) dropSnake(viewer, true);
             else if (c === settings.snake) dropSnake(viewer);
@@ -274,6 +290,19 @@
             pos = target; current = viewer;
             say(`🚀 @${viewer.username} équipe le lion d'un jetpack : +${n} marche${n > 1 ? 's' : ''} !`);
             sndJet();
+            return true;
+        }
+
+        /* motocross : le lion monte de settings.motoUp marches à toute vitesse, puis la moto repart sans lui */
+        let motoEnd = -99;
+        function motocross(viewer) {
+            if (resetAt || pos >= TOP) return false;
+            const target = Math.min(TOP, pos + Math.max(0, settings.motoUp)), n = target - pos;
+            if (n <= 0) return false;
+            moves.push({ to: target, kind: 'moto', dur: 1.2 + n * 0.025, win: target >= TOP ? { viewer } : undefined });
+            pos = target; current = viewer;
+            say(`🏍️ @${viewer.username} lance la motocross : +${n} marche${n > 1 ? 's' : ''} à toute vitesse !`);
+            sndMoto();
             return true;
         }
 
@@ -304,7 +333,7 @@
             ctx.fillStyle = sh; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.4, s * 0.05, 0, 0, Math.PI * 2); ctx.fill();
             ctx.rotate(-tilt); ctx.scale(s, s);
             ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            const walking = !!seg && !jet, amp = walking ? 1 : 0;
+            const walking = !!seg && !jet && seg.kind !== 'moto', amp = walking ? 1 : 0;
             const breath = Math.sin(clock * 2.2) * 0.008, sA = Math.cos(ph) * amp;
             ctx.translate(0, -(walking ? Math.abs(Math.sin(ph / 2)) * 0.015 : 0));
 
@@ -685,7 +714,7 @@
                 }
             }
             // bannière sous les marches en 2 colonnes : à gauche ce qui fait monter le lion, à droite ce qui le fait descendre
-            const lw = Math.min(g.w * 0.94, 940), lh = g.SH * 2.1, lx = (g.w - lw) / 2, ly = g.h - lh - 8, cw = lw / 2;
+            const lw = Math.min(g.w * 0.94, 940), lh = g.SH * 2.5, lx = (g.w - lw) / 2, ly = g.h - lh - 8, cw = lw / 2;
             ctx.fillStyle = 'rgba(30,6,0,.82)'; ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 14); ctx.fill();
             ctx.strokeStyle = 'rgba(255,200,80,.7)'; ctx.lineWidth = 2; ctx.stroke();
             ctx.strokeStyle = 'rgba(255,200,80,.35)'; ctx.lineWidth = 1.5;
@@ -695,17 +724,19 @@
             const cols = [
                 ['⬆️ FONT MONTER', '#9dffa0', [
                     ['#c8ffc8', '⭐ 1 étoile = +1 marche'],
-                    ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack`]]],
+                    ['#c8e6ff', `🚀 ${settings.jet} étoiles = jetpack`],
+                    ['#ffd9a0', `🏍️ ${settings.moto} étoiles = motocross`]]],
                 ['⬇️ FONT DESCENDRE', '#ff9a8a', [
                     ['#ffb0b0', `🎳 ${settings.snake} étoiles = boule de bowling`],
                     ['#ffd28a', `🚌 ${settings.bus} étoiles = bus`],
-                    ['#e6d5bd', `🪨 ${settings.rock} étoiles = rocher`]]]
+                    ['#e6d5bd', `🪨 ${settings.rock} étoiles = rocher`],
+                    ['#b8f0a0', `🦖 ${settings.dino} étoiles = dinosaure`]]]
             ];
             cols.forEach(([title, tc, items], c) => {
                 const cx = lx + cw * (c + 0.5), mw = cw - 28;
                 ctx.font = `800 ${fz * 1.1}px Poppins, sans-serif`; ctx.fillStyle = tc; ctx.fillText(title, cx, ly + lh * 0.14, mw);
                 ctx.font = `800 ${fz}px Poppins, sans-serif`;
-                items.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], cx, ly + lh * (0.34 + k * 0.22), mw); });
+                items.forEach((r, k) => { ctx.fillStyle = r[0]; ctx.fillText(r[1], cx, ly + lh * (0.31 + k * 0.19), mw); });
             });
             // temple et étoile dorée au sommet
             const tx = stepX(g, TOP), ty = stepY(g, TOP);
@@ -892,12 +923,194 @@
             ctx.restore();
         }
 
+        /* tyrannosaure géant de profil (il marche vers la gauche, donc descend les marches) : peau écailleuse olive, ventre clair, rayures,
+           mâchoire ouverte avec dents, œil jaune à pupille fendue, pattes qui piétinent en cadence, queue qui balance */
+        function drawDino(g, b) {
+            const p = rollPos(b), el = clock - b.t, u = g.SH * 0.62, ang = Math.atan2(g.SH, g.SW);
+            let x = stepX(g, p) + g.SW * 0.3, y = stepY(g, p), tilt = -ang;
+            if (p < 0) { const t = -p / DINO_SPEED; y += t * t * g.h * 0.6; tilt -= t * 0.25; }
+            if (x > g.w + u * 8 || x < -u * 8 || y > g.h + u * 6) return;
+            const ph = el * 4.2 * Math.PI / 1.6, roar = Math.max(0, Math.sin(el * 2.1)) * 0.5 + (b.hit ? 0.45 : 0);
+            ctx.save();
+            ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(u, u); ctx.translate(-5, p > 0 ? -Math.abs(Math.sin(ph)) * 0.08 : 0);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(5.2, 0.05, 5.4, 0.18, 0, 0, Math.PI * 2); ctx.fill();
+            const skin = ctx.createLinearGradient(0, -5.6, 0, -1.6);
+            skin.addColorStop(0, '#6f7a34'); skin.addColorStop(0.45, '#58632a'); skin.addColorStop(0.75, '#8c9144'); skin.addColorStop(1, '#cdbf86');
+            const dark = ctx.createLinearGradient(0, -3, 0, 0); dark.addColorStop(0, '#46501f'); dark.addColorStop(1, '#262c10');
+            const sway = Math.sin(ph * 0.5) * 0.25;
+            const leg = (hx, phase, shade) => {
+                const s = Math.sin(phase), c = Math.cos(phase), lift = Math.max(0, c) * 0.6;
+                const F = [hx - 0.1 + s * 1.0, -lift], A = [F[0] + 0.5, F[1] - 0.95], K = [hx - 0.95 + s * 0.3, -1.75 - lift * 0.3], H = [hx, -2.6];
+                ctx.strokeStyle = shade ? '#2c3314' : '#4c5724'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(H[0], H[1]); ctx.lineTo(K[0], K[1]); ctx.stroke();
+                ctx.lineWidth = 0.85; ctx.beginPath(); ctx.moveTo(K[0], K[1]); ctx.lineTo(A[0], A[1]); ctx.stroke();
+                ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(F[0], F[1] - 0.1); ctx.stroke();
+                ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(F[0], F[1] - 0.15); ctx.lineTo(F[0] - 0.75, F[1] - 0.12); ctx.stroke();
+                ctx.fillStyle = '#e8dcc0';
+                for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(F[0] - 0.95 - 0, F[1] - 0.26 + k * 0.1); ctx.lineTo(F[0] - 1.22, F[1] - 0.12 + k * 0.08); ctx.lineTo(F[0] - 0.95, F[1] - 0.04 + k * 0.08); ctx.fill(); }
+            };
+            leg(5.0, ph + Math.PI, true);
+            // queue
+            ctx.fillStyle = skin; ctx.beginPath(); ctx.moveTo(6.4, -4.1); ctx.bezierCurveTo(8, -3.9 + sway, 9.6, -3.3 + sway, 11.2, -2.7 + sway * 2);
+            ctx.bezierCurveTo(9.6, -2.55 + sway, 8, -2.5, 6.8, -2.1); ctx.closePath(); ctx.fill();
+            // corps
+            const body = () => {
+                ctx.beginPath(); ctx.moveTo(1.8, -5.05);
+                ctx.bezierCurveTo(3.0, -5.15, 4.8, -4.95, 6.5, -4.15);
+                ctx.bezierCurveTo(7.2, -3.8, 7.2, -2.6, 6.6, -2.2);
+                ctx.bezierCurveTo(6, -1.85, 5.4, -1.75, 5.0, -1.7);
+                ctx.bezierCurveTo(3.8, -1.55, 2.8, -2.0, 2.25, -2.8);
+                ctx.bezierCurveTo(1.9, -3.15, 1.7, -3.5, 1.7, -3.95); ctx.closePath();
+            };
+            ctx.fillStyle = skin; body(); ctx.fill();
+            ctx.save(); body(); ctx.clip();
+            // rayures dorsales sombres et écailles
+            ctx.fillStyle = 'rgba(25,30,8,.38)';
+            for (let k = 0; k < 7; k++) { ctx.beginPath(); ctx.moveTo(2.6 + k * 0.62, -5.3); ctx.quadraticCurveTo(2.9 + k * 0.62, -4.3, 2.5 + k * 0.62 + 0.4, -3.4); ctx.lineTo(2.85 + k * 0.62 + 0.4, -3.4); ctx.quadraticCurveTo(3.4 + k * 0.62, -4.3, 3.05 + k * 0.62, -5.3); ctx.fill(); }
+            for (let k = 0; k < 110; k++) {
+                ctx.fillStyle = hash(k * 3.1) > 0.5 ? 'rgba(255,255,200,.13)' : 'rgba(0,0,0,.16)';
+                ctx.beginPath(); ctx.arc(1.8 + hash(k) * 5.2, -5 + hash(k + 50) * 3.3, 0.05 + hash(k + 90) * 0.06, 0, Math.PI * 2); ctx.fill();
+            }
+            // ventre plissé et volume
+            ctx.strokeStyle = 'rgba(80,60,20,.3)'; ctx.lineWidth = 0.04;
+            for (let k = 0; k < 7; k++) { ctx.beginPath(); ctx.moveTo(2.4 + k * 0.5, -2.7 + k * 0.1); ctx.quadraticCurveTo(2.5 + k * 0.5, -2.2, 2.6 + k * 0.5, -1.6); ctx.stroke(); }
+            const vol = ctx.createLinearGradient(0, -5.2, 0, -1.6); vol.addColorStop(0, 'rgba(255,240,170,.28)'); vol.addColorStop(0.4, 'rgba(0,0,0,0)'); vol.addColorStop(1, 'rgba(0,0,0,.25)');
+            ctx.fillStyle = vol; ctx.fillRect(1.5, -5.4, 6, 4);
+            ctx.restore();
+            ctx.strokeStyle = 'rgba(20,24,6,.6)'; ctx.lineWidth = 0.05; body(); ctx.stroke();
+            // petits bras griffus
+            ctx.strokeStyle = '#555f27'; ctx.lineWidth = 0.34;
+            ctx.beginPath(); ctx.moveTo(2.5, -3.3); ctx.lineTo(1.85, -2.75); ctx.lineTo(1.5, -2.95 + Math.sin(ph) * 0.12); ctx.stroke();
+            ctx.fillStyle = '#efe6cc'; ctx.beginPath(); ctx.moveTo(1.5, -3.1); ctx.lineTo(1.2, -2.9); ctx.lineTo(1.5, -2.82); ctx.fill();
+            // tête
+            ctx.save(); ctx.translate(0, Math.sin(ph) * 0.04);
+            ctx.fillStyle = skin; ctx.beginPath();
+            ctx.moveTo(-1.55, -4.5); ctx.bezierCurveTo(-1.5, -5.25, -0.7, -5.65, 0.4, -5.55); ctx.bezierCurveTo(1.2, -5.45, 1.9, -5.1, 2.0, -4.6);
+            ctx.lineTo(1.5, -3.9); ctx.lineTo(-1.3, -3.95); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = 'rgba(20,24,6,.25)'; ctx.beginPath(); ctx.moveTo(-1.5, -4.5); ctx.bezierCurveTo(-1.4, -5.0, -0.8, -5.2, 0, -5.0); ctx.lineTo(-0.3, -4.3); ctx.closePath(); ctx.fill();
+            // mâchoire inférieure articulée
+            ctx.save(); ctx.translate(1.4, -3.85); ctx.rotate(roar * 0.55);
+            ctx.fillStyle = '#9aa05a'; ctx.beginPath(); ctx.moveTo(-2.55, 0.1); ctx.lineTo(0.1, -0.05); ctx.lineTo(0.15, 0.4); ctx.bezierCurveTo(-0.9, 0.55, -1.9, 0.4, -2.5, 0.25); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#7a1f1f'; ctx.fillRect(-2.2, -0.06, 2.2, 0.12);
+            ctx.fillStyle = '#f4ecd6';
+            for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(-2.4 + k * 0.38, 0.08); ctx.lineTo(-2.3 + k * 0.38, -0.3); ctx.lineTo(-2.15 + k * 0.38, 0.08); ctx.fill(); }
+            ctx.restore();
+            // gueule intérieure et dents du haut
+            ctx.fillStyle = '#5a1414'; ctx.beginPath(); ctx.moveTo(-1.25, -3.95); ctx.lineTo(1.45, -3.9); ctx.lineTo(1.4, -3.78 + roar * 0.25); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#f7f0dc';
+            for (let k = 0; k < 7; k++) { ctx.beginPath(); ctx.moveTo(-1.3 + k * 0.4, -3.95); ctx.lineTo(-1.2 + k * 0.4, -3.52); ctx.lineTo(-1.05 + k * 0.4, -3.95); ctx.fill(); }
+            // narine, arcade sourcilière, œil
+            ctx.fillStyle = '#1a1d08'; ctx.beginPath(); ctx.ellipse(-1.25, -4.85, 0.09, 0.05, -0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#3f4a1c'; ctx.beginPath(); ctx.moveTo(-0.1, -5.25); ctx.quadraticCurveTo(0.5, -5.55, 1.1, -5.1); ctx.lineTo(0.9, -4.9); ctx.quadraticCurveTo(0.5, -5.2, -0.1, -5.0); ctx.fill();
+            const eg = ctx.createRadialGradient(0.52, -5.0, 0.01, 0.52, -5.0, 0.2); eg.addColorStop(0, '#fff3a0'); eg.addColorStop(0.7, '#e5b800'); eg.addColorStop(1, '#8a5a00');
+            ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(0.52, -5.0, 0.17, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(0.53, -5.0, 0.035, 0.13, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            leg(5.7, ph, false);
+            ctx.restore();
+        }
+
+        /* motocross de profil (orange, fourche dorée, pneus à crampons, échappement chromé) ; origine = contact de la roue arrière, x vers l'avant
+           lion : jambes masquées sous la selle, bras posés sur le guidon */
+        function drawMoto(g, ox, oy, u, ang, wheelie, withLion, alpha, ph) {
+            const wr = clock * 26, R = 0.66, FX = 2.2;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(ox, oy); ctx.rotate(-(ang + wheelie));
+            ctx.save(); ctx.scale(u, u);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            // ombre et poussière
+            ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(FX / 2, 0.04, 1.7, 0.1, 0, 0, Math.PI * 2); ctx.fill();
+            for (let k = 0; k < 9; k++) {
+                const t = ((clock * 3 + k / 9) % 1), px = -0.5 - t * 3.4, py = -0.2 - t * 0.9 + hash(k) * 0.3, pr = 0.16 + t * 0.55;
+                ctx.fillStyle = `rgba(176,134,86,${0.5 * (1 - t)})`; ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+            }
+            const wheel = cx => {
+                ctx.save(); ctx.translate(cx, -R);
+                ctx.fillStyle = '#101010'; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+                ctx.save(); ctx.rotate(wr);
+                ctx.fillStyle = '#2a2a2a';
+                for (let k = 0; k < 18; k++) { ctx.save(); ctx.rotate(k / 18 * Math.PI * 2); ctx.fillRect(R - 0.1, -0.05, 0.12, 0.1); ctx.restore(); }
+                ctx.restore();
+                const rim = ctx.createRadialGradient(-0.1, -0.1, 0.1, 0, 0, R * 0.78); rim.addColorStop(0, '#f2f2f2'); rim.addColorStop(1, '#7c7c7c');
+                ctx.strokeStyle = rim; ctx.lineWidth = 0.07; ctx.beginPath(); ctx.arc(0, 0, R * 0.74, 0, Math.PI * 2); ctx.stroke();
+                ctx.save(); ctx.rotate(wr); ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.022;
+                for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 0.08, Math.sin(a) * 0.08); ctx.lineTo(Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.72); ctx.stroke(); }
+                ctx.restore();
+                ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.arc(0, 0, 0.2, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#d9a82a'; ctx.beginPath(); ctx.arc(0, 0, 0.09, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.04; ctx.beginPath(); ctx.arc(0, 0, R - 0.03, -2.6, -1.7); ctx.stroke();
+                ctx.restore();
+            };
+            // arrière : roue, bras oscillant, échappement
+            wheel(0);
+            const alu = ctx.createLinearGradient(0, -1.2, 0, -0.5); alu.addColorStop(0, '#e8e8e8'); alu.addColorStop(1, '#6e6e6e');
+            ctx.strokeStyle = alu; ctx.lineWidth = 0.2; ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(1.05, -0.88); ctx.stroke();
+            ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 0.1; ctx.beginPath(); ctx.moveTo(0.3, -0.62); ctx.lineTo(1.2, -1.35); ctx.stroke();
+            ctx.fillStyle = '#d8d8d8'; ctx.fillRect(0.55, -1.18, 0.11, 0.42);
+            const pipe = ctx.createLinearGradient(0, -1.6, 0, -1.0); pipe.addColorStop(0, '#ffffff'); pipe.addColorStop(0.5, '#a8a8a8'); pipe.addColorStop(1, '#555');
+            ctx.strokeStyle = pipe; ctx.lineWidth = 0.17;
+            ctx.beginPath(); ctx.moveTo(1.7, -1.05); ctx.bezierCurveTo(1.2, -0.75, 0.6, -1.05, 0.1, -1.38); ctx.stroke();
+            ctx.fillStyle = '#c8c8c8'; ctx.beginPath(); ctx.roundRect(-0.22, -1.55, 0.7, 0.32, 0.12); ctx.fill();
+            ctx.fillStyle = '#222'; ctx.beginPath(); ctx.ellipse(-0.22, -1.39, 0.05, 0.14, 0, 0, Math.PI * 2); ctx.fill();
+            // moteur
+            const mg = ctx.createLinearGradient(0, -1.4, 0, -0.55); mg.addColorStop(0, '#6a6a6a'); mg.addColorStop(1, '#262626');
+            ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(1.05, -1.4, 0.95, 0.85, 0.1); ctx.fill();
+            const cyl = ctx.createLinearGradient(1.2, 0, 1.9, 0); cyl.addColorStop(0, '#9a9a9a'); cyl.addColorStop(1, '#444');
+            ctx.fillStyle = cyl; ctx.beginPath(); ctx.moveTo(1.25, -1.4); ctx.lineTo(1.7, -1.9); ctx.lineTo(2.0, -1.8); ctx.lineTo(1.9, -1.4); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.03;
+            for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(1.35 + k * 0.1, -1.45 - k * 0.1); ctx.lineTo(1.95 + k * 0.03, -1.4 - k * 0.1 + 0.02); ctx.stroke(); }
+            ctx.fillStyle = '#d9a82a'; ctx.beginPath(); ctx.arc(1.5, -0.95, 0.13, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#7a7a7a'; ctx.beginPath(); ctx.arc(1.5, -0.95, 0.06, 0, Math.PI * 2); ctx.fill();
+            // garde-boue arrière et plaque numéro
+            const orange = ctx.createLinearGradient(0, -1.9, 0, -1.2); orange.addColorStop(0, '#ff9a3c'); orange.addColorStop(0.5, '#f26a00'); orange.addColorStop(1, '#a43c00');
+            ctx.fillStyle = orange; ctx.beginPath(); ctx.moveTo(-0.55, -1.2); ctx.quadraticCurveTo(0.2, -1.75, 1.0, -1.6); ctx.lineTo(1.1, -1.42); ctx.quadraticCurveTo(0.3, -1.45, -0.45, -1.1); ctx.closePath(); ctx.fill();
+            ctx.save(); ctx.translate(0.2, -1.42); ctx.rotate(-0.3);
+            ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.roundRect(-0.28, -0.3, 0.56, 0.52, 0.08); ctx.fill();
+            ctx.fillStyle = '#111'; ctx.font = '800 0.36px Poppins, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('1', 0, -0.03);
+            ctx.restore();
+
+            if (withLion) {
+                ctx.restore(); ctx.save();
+                ctx.beginPath(); ctx.rect(-u * 3, -u * 9, u * 9, u * 9 - u * 1.5); ctx.clip();
+                drawLion(u * 0.85, -u * 0.5, g.SW * 0.6, ph, 0.28, null);
+                ctx.restore(); ctx.save(); ctx.scale(u, u);
+                ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            }
+
+            // selle, réservoir et carénages
+            ctx.fillStyle = '#141414'; ctx.beginPath(); ctx.moveTo(-0.1, -1.55); ctx.quadraticCurveTo(0.7, -1.7, 1.55, -1.62); ctx.lineTo(1.6, -1.42); ctx.quadraticCurveTo(0.7, -1.42, -0.05, -1.35); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = orange; ctx.beginPath(); ctx.moveTo(1.4, -1.5); ctx.quadraticCurveTo(1.8, -2.05, 2.25, -1.95); ctx.lineTo(2.2, -1.5); ctx.quadraticCurveTo(1.8, -1.38, 1.4, -1.5); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(1.55, -1.52); ctx.quadraticCurveTo(1.9, -1.9, 2.1, -1.85); ctx.lineTo(2.1, -1.6); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#101010'; ctx.font = '800 0.2px Poppins, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('GA', 1.9, -1.64);
+            // roue avant et fourche dorée
+            wheel(FX);
+            const fork = ctx.createLinearGradient(1.7, 0, 2.3, 0); fork.addColorStop(0, '#fff1a6'); fork.addColorStop(0.5, '#d6a02a'); fork.addColorStop(1, '#8a5e10');
+            ctx.strokeStyle = fork; ctx.lineWidth = 0.17; ctx.beginPath(); ctx.moveTo(FX, -R); ctx.lineTo(2.0, -1.35); ctx.stroke();
+            ctx.strokeStyle = '#c9c9c9'; ctx.lineWidth = 0.13; ctx.beginPath(); ctx.moveTo(2.0, -1.35); ctx.lineTo(1.78, -2.2); ctx.stroke();
+            ctx.fillStyle = '#2a2a2a'; ctx.beginPath(); ctx.roundRect(1.62, -2.28, 0.32, 0.14, 0.05); ctx.fill();
+            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.09; ctx.beginPath(); ctx.moveTo(1.55, -2.35); ctx.lineTo(1.98, -2.3); ctx.stroke();
+            ctx.fillStyle = '#e0e0e0'; ctx.beginPath(); ctx.arc(FX, -R, 0.3, 0, Math.PI * 2); ctx.strokeStyle = '#999'; ctx.lineWidth = 0.03; ctx.stroke();
+            // garde-boue avant et plaque
+            ctx.fillStyle = orange; ctx.beginPath(); ctx.moveTo(1.45, -1.55); ctx.quadraticCurveTo(2.1, -1.55, 2.72, -1.05); ctx.lineTo(2.62, -0.98); ctx.quadraticCurveTo(2.1, -1.35, 1.5, -1.4); ctx.closePath(); ctx.fill();
+            ctx.save(); ctx.translate(1.95, -2.0); ctx.rotate(0.25);
+            ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.roundRect(-0.0, -0.1, 0.46, 0.5, 0.08); ctx.fill();
+            ctx.fillStyle = '#111'; ctx.font = '800 0.34px Poppins, sans-serif'; ctx.fillText('1', 0.23, 0.17);
+            ctx.restore();
+            if (withLion) {
+                ctx.strokeStyle = '#c98a3c'; ctx.lineWidth = 0.26; ctx.beginPath();                 ctx.moveTo(1.0, -1.85); ctx.quadraticCurveTo(1.45, -1.95, 1.78, -2.06); ctx.stroke();
+                                ctx.fillStyle = '#b97a30'; ctx.beginPath(); ctx.arc(1.8, -2.06, 0.19, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            ctx.restore();
+        }
+
         function drawActors(g) {
             const fs = Math.max(18, g.SH * 0.9);
             ctx.font = `${fs}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
             rolls.forEach((b, i) => {
-                if (b.bus) return;
+                if (b.bus || b.dino) return;
                 const r = g.SH * (b.rock ? 0.8 : 0.42), el = clock - b.t, p = rollPos(b);
                 let x, y, rot = el * (b.rock ? 4 : 9);
                 if (p > 0) {
@@ -924,8 +1137,16 @@
             const halo = ctx.createRadialGradient(lx, ly - g.SH, 10, lx, ly - g.SH, g.SW * 1.2);
             halo.addColorStop(0, 'rgba(255,230,150,.35)'); halo.addColorStop(1, 'rgba(255,200,80,0)');
             ctx.fillStyle = halo; ctx.fillRect(lx - g.SW * 1.2, ly - g.SW * 1.4, g.SW * 2.4, g.SW * 2.4);
-            drawLion(lx - g.SW * 0.05, ly, g.SW * 0.6, posDisp * Math.PI * 4 + Math.PI / 2, flying ? 0.22 : (jumpT(f) > 0 && jumpT(f) < 1 ? 0.3 : 0), jet);
-            rolls.forEach(b => { if (b.bus) drawBus(g, b); });
+            const riding = !!(seg && seg.kind === 'moto'), mo = clock - motoEnd;
+            const motoU = g.SH * 1.25, motoAng = Math.atan2(g.SH, g.SW);
+            if (riding) {
+                const mk = Math.min(1, seg.t / seg.dur), wheelie = 0.42 * Math.max(0, 1 - mk * 5) + 0.05 * Math.sin(clock * 18);
+                drawMoto(g, lx - motoU * 0.85, stepY(g, posDisp) - motoU * 0.06 + Math.sin(clock * 40) * motoU * 0.03, motoU, motoAng, wheelie, true, 1, posDisp * Math.PI * 4 + Math.PI / 2);
+            } else {
+                drawLion(lx - g.SW * 0.05, ly, g.SW * 0.6, posDisp * Math.PI * 4 + Math.PI / 2, flying ? 0.22 : (jumpT(f) > 0 && jumpT(f) < 1 ? 0.3 : 0), jet);
+                if (mo >= 0 && mo < 0.9) drawMoto(g, lx - motoU * 0.85 + mo * mo * g.SW * 9 + mo * g.SW, stepY(g, posDisp) - motoU * 0.06, motoU, motoAng, 0, false, 1 - mo / 0.9, 0);
+            }
+            rolls.forEach(b => { if (b.bus) drawBus(g, b); else if (b.dino) drawDino(g, b); });
         }
 
         function floatText(text, x, y) {
@@ -996,6 +1217,7 @@
             const done = seg; seg = null; posDisp = done.to; nextAt = clock + (done.kind === 'fall' ? 0.5 : 0.18);
             if (done.kind === 'up') sndUp();
             if (done.kind === 'jet') jetUntil = clock + 0.7;
+            if (done.kind === 'moto') motoEnd = clock;
             if (done.win) victory(done.win);
         }
 
@@ -1022,7 +1244,7 @@
             stepSeg(dt);
             updateRolls();
             const g = geo();
-            cam += (posDisp - cam) * Math.min(1, dt * (seg && seg.kind === 'jet' ? 18 : 6));
+            cam += (posDisp - cam) * Math.min(1, dt * (seg && (seg.kind === 'jet' || seg.kind === 'moto') ? 18 : 6));
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawSavanna(g); drawTemple(g); drawActors(g);
             updateScoreboard();
@@ -1104,6 +1326,9 @@
             $('snake').value = settings.snake; $('back').value = settings.back;
             $('bus').value = settings.bus; $('busback').value = settings.busBack;
             $('jet').value = settings.jet; $('jetup').value = settings.jetUp;
+            $('moto').value = settings.moto; $('motoup').value = settings.motoUp;
+            $('sim-moto').textContent = `🏍️ ${settings.moto} étoiles = motocross`;
+            $('dino').value = settings.dino; $('sim-dino').textContent = `🦖 ${settings.dino} étoiles = dinosaure`;
             $('rock').value = settings.rock; $('rockback').value = settings.rockBack;
             $('sim-rock').textContent = `🪨 ${settings.rock} étoiles = rocher`;
             $('hide-board').checked = settings.hideBoard;
@@ -1119,11 +1344,16 @@
             $('sim-bus').addEventListener('click', () => sim(settings.bus));
             $('drop-bus').addEventListener('click', () => dropSnake({ username: 'Streamer' }, true));
             $('sim-jet').addEventListener('click', () => sim(settings.jet));
+            $('sim-moto').addEventListener('click', () => sim(settings.moto));
+            $('sim-dino').addEventListener('click', () => sim(settings.dino));
+            $('drop-dino').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'dino'));
+            $('drop-moto').addEventListener('click', () => motocross({ username: 'Streamer' }));
             $('sim-rock').addEventListener('click', () => sim(settings.rock));
             $('drop-rock').addEventListener('click', () => dropSnake({ username: 'Streamer' }, 'rock'));
             $('drop-jet').addEventListener('click', () => jetpack({ username: 'Streamer' }));
             $('sim-big').addEventListener('click', () => {
-                sim(100);
+                const v = getViewer(simName());
+                enqueue(v, 100, true);
                 if (window.ArcadeEffects) ArcadeEffects.simulateBigGift(simName(), 100);
             });
             $('sim-share').addEventListener('click', () => { if (window.ArcadeEffects) ArcadeEffects.simulateShare(); });
@@ -1137,11 +1367,14 @@
                 settings.busBack = clamp(Number($('busback').value), 0, 99, 10);
                 settings.jet = clamp(Number($('jet').value), 2, 1000, 30);
                 settings.jetUp = clamp(Number($('jetup').value), 1, 99, 30);
+                settings.moto = clamp(Number($('moto').value), 2, 1000, 100);
+                settings.motoUp = clamp(Number($('motoup').value), 1, 99, 50);
+                settings.dino = clamp(Number($('dino').value), 2, 1000, 199);
                 settings.rock = clamp(Number($('rock').value), 2, 1000, 20);
                 settings.rockBack = clamp(Number($('rockback').value), 0, 99, 15);
                 saveGame();
             };
-            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
+            ['snake', 'back', 'bus', 'busback', 'jet', 'jetup', 'moto', 'motoup', 'dino', 'rock', 'rockback'].forEach(id => $(id).addEventListener('input', nums));
             $('reset-climb').addEventListener('click', climbReset);
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
             $('reset-board').addEventListener('click', () => { if (confirm('Remettre le classement à zéro ?')) { viewers.forEach(v => { v.stars = 0; }); victories = 0; refreshBoards(); saveGame(); } });
@@ -1156,6 +1389,8 @@
                 if (e.code === 'KeyB') { e.preventDefault(); dropSnake({ username: 'Streamer' }); }
                 else if (e.code === 'KeyN') { e.preventDefault(); dropSnake({ username: 'Streamer' }, true); }
                 else if (e.code === 'KeyR') { e.preventDefault(); dropSnake({ username: 'Streamer' }, 'rock'); }
+                else if (e.code === 'KeyD') { e.preventDefault(); dropSnake({ username: 'Streamer' }, 'dino'); }
+                else if (e.code === 'KeyM') { e.preventDefault(); motocross({ username: 'Streamer' }); }
                 else if (e.code === 'KeyJ') { e.preventDefault(); jetpack({ username: 'Streamer' }); }
                 else if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); sim(1); }
             });
