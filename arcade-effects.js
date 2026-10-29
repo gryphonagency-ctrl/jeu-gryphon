@@ -21,7 +21,7 @@
         style.textContent = `
 #arcade-effects-layer{position:fixed;inset:0;pointer-events:none;z-index:2147483000;overflow:hidden}
 #arcade-effects-layer canvas{position:absolute;inset:0;width:100%;height:100%}
-.ae-plane{position:absolute;left:0;top:0;width:34px;height:34px;opacity:.8;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.ae-plane{position:absolute;left:0;top:0;width:680px;height:680px;opacity:.8;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .ae-plane svg{width:100%;height:100%;display:block}
 .ae-bubble{position:absolute;bottom:-130px;width:88px;display:flex;flex-direction:column;align-items:center;gap:6px;will-change:transform,opacity}
 .ae-bubble .ae-orb{position:relative;width:88px;height:88px;border-radius:50%;padding:5px;box-sizing:border-box;
@@ -78,7 +78,7 @@
         const steps = 12, frames = [];
         for (let i = 0; i <= steps; i++) {
             const t = i / steps;
-            const x = -50 + t * (w + 100);
+            const x = -700 + t * (w + 1400);
             const y = y0 - rise * t + Math.sin(t * Math.PI * 3) * 18;
             const angle = -18 + Math.cos(t * Math.PI * 3) * 10;
             frames.push({ transform: `translate(${x}px,${y}px) rotate(${angle}deg)`, opacity: i === 0 || i === steps ? 0 : 0.8, offset: t });
@@ -245,14 +245,14 @@
                 const speed = power * (0.55 + Math.random() * 0.6);
                 particles.push({
                     x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
-                    life: 0, max: 70 + Math.random() * 40, size: 2 + Math.random() * 2.2,
+                    life: 0, max: 85 + Math.random() * 45, size: 8 + Math.random() * 8.8,
                     color: i % 3 === 0 ? alt : color
                 });
             }
         };
-        burst(cx, cy, 90, 6.2);
-        setTimeout(() => burst(cx - 70 + Math.random() * 140, cy - 30 + Math.random() * 60, 60, 4.6), 260);
-        setTimeout(() => burst(cx - 90 + Math.random() * 180, cy + Math.random() * 70, 60, 4.2), 520);
+        burst(cx, cy, 200, 24.8);
+        setTimeout(() => burst(cx - 280 + Math.random() * 560, cy - 120 + Math.random() * 240, 140, 18.4), 260);
+        setTimeout(() => burst(cx - 360 + Math.random() * 720, cy + Math.random() * 280, 140, 16.8), 520);
         if (!raf) raf = requestAnimationFrame(frame);
     }
 

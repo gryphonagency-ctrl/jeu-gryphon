@@ -66,7 +66,7 @@
             <section class="box">
                 <h3>Vitesse de la pince</h3>
                 <label for="speed">Mouvement et descente <output id="speed-out">1×</output></label>
-                <input id="speed" type="range" min="0.5" max="4" step="0.25" value="1">
+                <input id="speed" type="range" min="0.5" max="12" step="0.25" value="1">
                 <button id="speed-reset" class="btn alt" type="button">↺ Vitesse normale</button>
             </section>
             <div id="qwin" class="qwin docked" aria-label="File d'attente des joueurs">
@@ -294,12 +294,15 @@
 
         /* ---------- File d'attente et pince ---------- */
         function enqueue(viewer, count, sim) {
-            count = Math.min(500, Math.max(1, Math.floor(count) || 1));
+            count = Math.min(100000, Math.max(1, Math.floor(count) || 1));
             const big = count >= settings.bigGift;
             const playing = session && session.left > 0 && session.entry.viewer === viewer ? session.entry : null;
             const entry = playing || queue.find(q => q.viewer === viewer);
-            if (entry) { entry.credits += count; if (big) entry.jackpots++; }
-            else if (queue.length < 80) queue.push({ viewer, sim: !!sim, credits: count, jackpots: big ? 1 : 0 });
+            if (entry) {
+                entry.credits += count; if (big) entry.jackpots++;
+                if (entry === playing) { session.left += count; session.size += count; }
+            }
+            else queue.push({ viewer, sim: !!sim, credits: count, jackpots: big ? 1 : 0 });
             sfx.coin();
             say(big ? `💎 ${viewer.username} offre un GROS cadeau (${count} pièces) !` : `🪙 ${viewer.username} insère ${count > 1 ? count + ' pièces' : '1 pièce'} !`);
         }
@@ -319,7 +322,7 @@
             jackpot = !!target.jackpot;
             if (!session || session.left <= 0) {
                 queue.shift();
-                session = { entry, size: Math.min(TURNS_PER_SESSION, entry.credits), left: 0, k: 0 };
+                session = { entry, size: entry.credits, left: 0, k: 0 };
                 session.left = session.size;
             }
             entry.credits--;
@@ -1176,7 +1179,8 @@
         function setStatus(message) { $('live-status').textContent = message; }
 
         function coinsOf(gift) {
-            const diamonds = Math.max(1, Math.floor(Number(gift.diamondCount ?? gift.diamonds) || 1));
+            if (Number.isFinite(Number(gift.coinCount)) && Number(gift.coinCount) >= 1) return Math.floor(Number(gift.coinCount));
+            const diamonds = Math.max(1, Math.floor(Number(gift.diamondCount ?? gift.diamonds ?? gift.coinValue) || 1));
             const repeat = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
             return diamonds * repeat;
         }
