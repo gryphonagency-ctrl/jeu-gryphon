@@ -12,6 +12,8 @@
         #stage { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 1.2vh;
             background: linear-gradient(180deg, #1a0000 0%, #5a1a00 45%, #d48800 100%); }
         #scene { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+        #bgvideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+        #bgvideo[hidden] { display: none; }
         .title { position: relative; z-index: 2; margin: 2.5vh 0 0; font: 400 clamp(20px, 3.4vw, 46px) Rye, serif; color: #ffe27a; text-shadow: 0 3px 0 #7a2a00, 0 0 18px rgba(255,200,60,.7); text-align: center; }
         #scoreboard { position: relative; z-index: 2; padding: 6px 18px; border: 2px solid #ffd36b; border-radius: 999px; background: rgba(30,6,0,.75); font: 800 clamp(13px, 1.6vw, 22px) Poppins, sans-serif; text-shadow: 2px 2px #000; text-align: center; }
         #scoreboard b { color: #ffd36b; }
@@ -66,6 +68,7 @@
 </head>
 <body>
     <main id="stage" aria-label="Lion dans la Savane, ascension du temple maya, Gryphon Agency">
+        <video id="bgvideo" hidden muted loop playsinline autoplay></video>
         <canvas id="scene"></canvas>
         <h1 class="title">Lion dans la Savane · Temple Maya</h1>
         <div id="scoreboard" role="status">En attente d'un joueur…</div>
@@ -149,6 +152,8 @@
             </section>
             <section class="box">
                 <h3>Partie</h3>
+                <label class="btn alt" style="text-align:center;cursor:pointer">🎬 Vidéo d'arrière-plan<input id="bgvideo-input" type="file" accept="video/*" hidden></label>
+                <button id="bgvideo-clear" class="btn alt" type="button" hidden>🗑️ Retirer la vidéo</button>
                 <label class="check"><input id="hide-board" type="checkbox"> Masquer le classement à l'écran</label>
                 <ol id="private-board" class="private-board" hidden></ol>
                 <button id="reset-climb" class="btn alt" type="button">🦁 Recommencer la montée</button>
@@ -158,6 +163,7 @@
         </div>
     </aside>
 
+    <script src="/arcade-effects.js"></script>
     <script>
         'use strict';
         const $ = id => document.getElementById(id);
@@ -167,7 +173,7 @@
         let cam = 0;
         const viewers = new Map();
         const queue = [];
-        let pos = 0, posDisp = 0, seg = null, moves = [], obst = new Set(), victories = 0;
+        let pos = 0, posDisp = 0, seg = null, moves = [], obst = new Set(), victories = 0, bgVideoOn = false;
         let clock = 0, nextAt = 0, resetAt = 0, current = null;
 
         const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -655,6 +661,7 @@
         }
 
         function drawSavanna(g) {
+            if (bgVideoOn) return;
             const sun = ctx.createRadialGradient(g.w * 0.82, g.h * 0.3, 4, g.w * 0.82, g.h * 0.3, g.h * 0.22);
             sun.addColorStop(0, 'rgba(255,230,140,1)'); sun.addColorStop(0.35, 'rgba(255,170,40,.55)'); sun.addColorStop(1, 'rgba(255,120,0,0)');
             ctx.fillStyle = sun; ctx.fillRect(0, 0, g.w, g.h);
@@ -1522,7 +1529,26 @@
         function bindUi() {
             $('connect').addEventListener('click', () => { connect(); saveGame(); });
             const simName = () => $('sim-name').value.trim() || 'Spectateur démo';
-            const sim = n => gift(getViewer(simName()), n, true);
+            const sim = n => {
+                const name = simName();
+                gift(getViewer(name), n, true);
+                if (n >= 100 && window.ArcadeEffects) ArcadeEffects.simulateBigGift(name, n);
+            };
+            let bgUrl = null;
+            const setBgVideo = file => {
+                if (bgUrl) URL.revokeObjectURL(bgUrl);
+                const v = $('bgvideo');
+                bgUrl = file ? URL.createObjectURL(file) : null;
+                bgVideoOn = !!file;
+                if (file) { v.src = bgUrl; v.hidden = false; v.play().catch(() => { }); }
+                else { v.pause(); v.removeAttribute('src'); v.load(); v.hidden = true; }
+                $('bgvideo-clear').hidden = !file;
+            };
+            $('bgvideo-input').addEventListener('change', e => {
+                const f = e.target.files && e.target.files[0]; e.target.value = '';
+                if (f && /^video\//.test(f.type)) setBgVideo(f);
+            });
+            $('bgvideo-clear').addEventListener('click', () => setBgVideo(null));
             $('sim-gift').addEventListener('click', () => sim(1));
             $('sim-burst').addEventListener('click', () => sim(10));
             $('sim-snake').addEventListener('click', () => sim(settings.snake));
