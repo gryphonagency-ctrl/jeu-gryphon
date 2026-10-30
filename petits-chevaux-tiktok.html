@@ -137,7 +137,9 @@
     .file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
     .file-label { display: grid; place-items: center; }
     .horse-list { display: grid; gap: 7px; max-height: 340px; overflow: auto; }
-    .horse-form { display: grid; grid-template-columns: minmax(0, 1fr) 48px 30px 30px; align-items: center; gap: 6px; padding: 7px; border: 1px solid #e9e5c322; background: #0c17109c; }
+    .horse-form { display: grid; grid-template-columns: minmax(0, 1fr) 96px 30px 30px; align-items: center; gap: 6px; padding: 7px; border: 1px solid #e9e5c322; background: #0c17109c; }
+    .horse-flag-select { min-width: 0; width: 100%; height: 32px; padding: 0 3px; border: 1px solid var(--line); background: #0c1710; color: var(--ink); font-size: 11px; }
+    .winner-flag { display: block; width: clamp(150px, 26vw, 280px); height: auto; aspect-ratio: 3 / 2; margin: 10px auto; border: 4px solid var(--gold); box-shadow: 0 6px 24px #000a; object-fit: cover; }
     .horse-form input { height: 32px; padding: 0 5px; font-size: 11px; }
     .horse-form .horse-color { width: 30px; height: 30px; padding: 2px; }
     .remove-horse { width: 30px; height: 30px; padding: 0; border: 1px solid #e9978170; background: #36221e; color: #ffd1c7; cursor: pointer; }
@@ -217,8 +219,8 @@
           <svg class="race-track" id="raceTrack" viewBox="0 0 1000 650" role="img" aria-label="Course en ligne droite, avec une voie par cheval, un départ et une arrivée"></svg>
         </div>
         <div class="winner-banner" id="winnerBanner" aria-live="assertive">
-          <strong class="winner-kicker">VICTOIRE — CHEVAL N°</strong>
-          <strong class="winner-number" id="winnerNumber"></strong>
+          <strong class="winner-kicker">VICTOIRE</strong>
+          <img class="winner-flag" id="winnerFlag" alt="Drapeau du cheval gagnant">
           <strong class="winner-horse" id="winnerHorse"></strong>
           <span id="winnerName"></span>
           <span class="winner-reward" id="winnerReward"></span>
@@ -274,7 +276,7 @@
 
         <section class="panel horses-panel">
           <h2>Personnaliser les chevaux</h2>
-          <p class="muted">Règle le nom, le numéro (1 à 99) et la couleur de chaque cheval, puis ajoute ou retire des concurrents (8 à 10). Les cadeaux configurés font avancer le cheval associé.</p>
+          <p class="muted">Règle le nom, le drapeau (50 au choix) et la couleur de chaque cheval, puis ajoute ou retire des concurrents (8 à 10). Les cadeaux configurés font avancer le cheval associé.</p>
           <div class="horse-list" id="horseList"></div>
           <button class="button add-horse" id="addHorseButton" type="button">＋ Ajouter un cheval</button>
           <div class="horse-legend" id="horseLegend" aria-label="Légende des chevaux"></div>
@@ -342,9 +344,21 @@
     const DEFAULT_RTP = 10;
     const DEFAULT_RACE_TARGET = 150;
     const HORSE_COLORS = ['#de6456', '#458cdb', '#e6ad42', '#72ae71', '#b179d0', '#ec7baf', '#54b6b5', '#c5c95c', '#e18343', '#8699df'];
+    const FLAGS = [
+      ['fr', 'France'], ['br', 'Brésil'], ['ar', 'Argentine'], ['pt', 'Portugal'], ['es', 'Espagne'], ['it', 'Italie'], ['de', 'Allemagne'], ['gb-eng', 'Angleterre'],
+      ['be', 'Belgique'], ['nl', 'Pays-Bas'], ['ch', 'Suisse'], ['ma', 'Maroc'], ['dz', 'Algérie'], ['tn', 'Tunisie'], ['sn', 'Sénégal'], ['ci', 'Côte d’Ivoire'],
+      ['cm', 'Cameroun'], ['eg', 'Égypte'], ['ng', 'Nigeria'], ['gh', 'Ghana'], ['za', 'Afrique du Sud'], ['cd', 'RD Congo'], ['tr', 'Turquie'], ['sa', 'Arabie saoudite'],
+      ['jp', 'Japon'], ['kr', 'Corée du Sud'], ['cn', 'Chine'], ['in', 'Inde'], ['au', 'Australie'], ['nz', 'Nouvelle-Zélande'], ['ca', 'Canada'], ['us', 'États-Unis'],
+      ['mx', 'Mexique'], ['co', 'Colombie'], ['uy', 'Uruguay'], ['cl', 'Chili'], ['pe', 'Pérou'], ['ec', 'Équateur'], ['gb-sct', 'Écosse'], ['gb-wls', 'Pays de Galles'],
+      ['ie', 'Irlande'], ['se', 'Suède'], ['no', 'Norvège'], ['dk', 'Danemark'], ['pl', 'Pologne'], ['hr', 'Croatie'], ['rs', 'Serbie'], ['gr', 'Grèce'],
+      ['ro', 'Roumanie'], ['ua', 'Ukraine']
+    ];
+    const flagUrl = code => `https://flagcdn.com/w80/${code}.png`;
+    const flagName = code => (FLAGS.find(item => item[0] === code) || ['', code])[1];
+    const DEFAULT_FLAGS = ['fr', 'br', 'ar', 'pt', 'es', 'it', 'de', 'gb-eng'];
     const DEFAULT_HORSES = [
       'Éclair', 'Caramel', 'Pistache', 'Tonnerre', 'Nuage', 'Pépito', 'Câlin', 'Galopin'
-    ].map((name, index) => ({ id: `horse-${index + 1}`, name, number: index + 1, color: HORSE_COLORS[index], progress: 0 }));
+    ].map((name, index) => ({ id: `horse-${index + 1}`, name, number: index + 1, flag: DEFAULT_FLAGS[index], color: HORSE_COLORS[index], progress: 0 }));
     const GIFT_CATALOG = [
       { name: 'TikTok', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/tiktok.png' },
       { name: 'Piment', coins: 1, image: 'images-vitrine/petit-trot-cadeaux/piment.png' },
@@ -409,6 +423,7 @@
           ? Number(horse.number)
           : index + 1,
         color: /^#[0-9a-f]{6}$/i.test(horse.color) ? horse.color : HORSE_COLORS[index % HORSE_COLORS.length],
+        flag: FLAGS.some(item => item[0] === horse.flag) ? horse.flag : FLAGS[index % FLAGS.length][0],
         progress: Math.max(0, Math.min(99.5, Number(horse.progress) || 0))
       };
     }
@@ -573,8 +588,7 @@
       <rect x="${START_X - 6}" y="${TRACK_TOP - 6}" width="${FINISH_X - START_X + 26}" height="${TRACK_BOTTOM - TRACK_TOP + 12}" rx="6" fill="url(#dirt)"/>
       <rect x="0" y="606" width="1000" height="14" fill="url(#fence)"/>
       <text class="track-label" x="${START_X}" y="88" text-anchor="middle" font-size="14">DÉPART</text>
-      <text class="track-label" x="${FINISH_X - 8}" y="88" text-anchor="middle" font-size="14">ARRIVÉE</text>
-      <text x="500" y="636" text-anchor="middle" font-family="Trebuchet MS, sans-serif" font-weight="800" font-size="17" fill="#fff3cf" stroke="#14261a" stroke-width="4" paint-order="stroke">🎁 Envoie le cadeau de ton cheval pour le faire galoper !</text>`;
+      <text class="track-label" x="${FINISH_X - 8}" y="88" text-anchor="middle" font-size="14">ARRIVÉE</text>`;
     }
 
     function horseMarkup(horse, index, scale) {
@@ -597,7 +611,7 @@
         <circle cx="127" cy="14" r="2" fill="#120d0b"/>
         <path d="M100,40 C104,26 110,14 116,6 C112,18 109,30 108,46Z" fill="${coat.mane}"/>
         <rect x="58" y="35" width="26" height="19" rx="3" fill="${silks}" stroke="#fff" stroke-width="1.5"/>
-        <text class="saddle-number" x="71" y="49" text-anchor="middle" font-family="Trebuchet MS, sans-serif" font-weight="900" font-size="13" fill="#fff" stroke="#111" stroke-width="2.5" paint-order="stroke"></text>
+        <image class="saddle-flag" x="59" y="37" width="24" height="15" preserveAspectRatio="none" href="${flagUrl(horse.flag)}"/>
         <path d="M62,36 C62,20 76,13 85,17 C90,24 86,34 78,38Z" fill="${silks}"/>
         <path d="M78,22 L102,34" stroke="${silks}" stroke-width="5" stroke-linecap="round" fill="none"/>
         <path d="M102,34 L121,24" stroke="#111" stroke-width="1.2" fill="none"/>
@@ -629,9 +643,9 @@
           const giftSize = Math.min(laneHeight - 8, 46);
           const badge = svgNode('g', { class: 'lane-badge' });
           badge.append(svgNode('rect', { x: 18, y: y + 1, width: 164, height: laneHeight - 4, rx: 8, fill: '#0b150e', 'fill-opacity': .72, stroke: horse.color, 'stroke-width': 2, class: 'badge-frame' }));
-          badge.append(svgNode('circle', { class: 'horse-number-bubble', cx: 38, cy: mid, r: Math.min(13, laneHeight / 3), fill: horse.color }));
-          const number = svgNode('text', { class: 'horse-number-label', x: 38, y: mid + 4, 'text-anchor': 'middle' });
-          badge.append(number);
+          const flagW = Math.min(30, laneHeight * .75);
+          badge.append(svgNode('image', { class: 'badge-flag', x: 24, y: mid - flagW * .33, width: flagW, height: flagW * .66, preserveAspectRatio: 'none' }));
+          badge.append(svgNode('rect', { class: 'badge-flag-border', x: 24, y: mid - flagW * .33, width: flagW, height: flagW * .66, fill: 'none', stroke: '#fff6dc', 'stroke-width': 1.5 }));
           badge.append(svgNode('image', { class: 'horse-gift-icon', x: 58, y: mid - giftSize / 2, width: giftSize, height: giftSize, preserveAspectRatio: 'xMidYMid meet', 'aria-hidden': 'true' }));
           badge.append(svgNode('text', { class: 'gift-fallback', x: 58 + giftSize / 2, y: mid + 8, 'text-anchor': 'middle', 'font-size': 26, 'aria-hidden': 'true' }));
           badge.append(svgNode('text', { class: 'badge-name', x: 58 + giftSize + 6, y: mid - 2 }));
@@ -674,11 +688,10 @@
         }
         marker.style.transform = `translate(${x}px, ${y}px)`;
         marker.querySelector('.crown').style.display = leaderProgress > 0 && horse.progress === leaderProgress ? '' : 'none';
-        marker.querySelector('.saddle-number').textContent = String(horse.number);
+        marker.querySelector('.saddle-flag').setAttribute('href', flagUrl(horse.flag));
         bars[index].setAttribute('width', String(horse.progress / 100 * (FINISH_X - START_X)));
-        badge.querySelector('.horse-number-bubble').setAttribute('fill', horse.color);
+        badge.querySelector('.badge-flag').setAttribute('href', flagUrl(horse.flag));
         badge.querySelector('.badge-frame').setAttribute('stroke', horse.color);
-        badge.querySelector('.horse-number-label').textContent = String(horse.number);
         badge.querySelector('.badge-pct').textContent = `${Math.floor(horse.progress)} %`;
         const gift = game.giftPresets.find(item => item.horseId === horse.id);
         const catalogGift = gift && GIFT_CATALOG.find(item => normalize(item.name) === normalize(gift.name));
@@ -695,7 +708,7 @@
           giftImage.style.display = 'none';
           giftFallback.style.display = '';
         }
-        marker.querySelector('title').textContent =  `${horse.name} n° ${horse.number} · ${gift?.name || 'aucun cadeau'} · ${formatCoins(raceTotals[horse.id] || 0)} / ${formatCoins(game.raceTarget)} · ${Math.floor(horse.progress)} %`;
+        marker.querySelector('title').textContent =  `${horse.name} · ${flagName(horse.flag)} · ${gift?.name || 'aucun cadeau'} · ${formatCoins(raceTotals[horse.id] || 0)} / ${formatCoins(game.raceTarget)} · ${Math.floor(horse.progress)} %`;
       }
       renderHorseLegend();
     }
@@ -723,15 +736,18 @@
         name.maxLength = 20;
         name.setAttribute('aria-label', `Nom du cheval ${index + 1}`);
         name.dataset.field = 'name';
-        const number = document.createElement('input');
-        number.type = 'number';
-        number.min = '1';
-        number.max = '99';
-        number.step = '1';
-        number.value = String(horse.number);
-        number.title = `Numéro de ${horse.name}`;
-        number.setAttribute('aria-label', `Numéro de ${horse.name} (1 à 99)`);
-        number.dataset.field = 'number';
+        const number = document.createElement('select');
+        number.className = 'horse-flag-select';
+        for (const [code, label] of FLAGS) {
+          const option = document.createElement('option');
+          option.value = code;
+          option.textContent = label;
+          number.append(option);
+        }
+        number.value = horse.flag;
+        number.title = `Drapeau de ${horse.name}`;
+        number.setAttribute('aria-label', `Drapeau de ${horse.name}`);
+        number.dataset.field = 'flag';
         const color = document.createElement('input');
         color.type = 'color';
         color.value = horse.color;
@@ -1085,7 +1101,7 @@
       }
       game.players[playerKey] = player;
       $('raceStatus').textContent = `${horse.name} franchit la ligne !`;
-      $('winnerNumber').textContent = String(game.horses.indexOf(horse) + 1).padStart(2, '0');
+      $('winnerFlag').src = flagUrl(horse.flag);
       $('winnerHorse').textContent = `🐎 ${horse.name} remporte la course !`;
       $('winnerName').textContent = `Pseudo du gagnant : @${username}`;
       $('winnerReward').textContent = `${reward.toLocaleString('fr-FR')} étoiles gagnées · ${game.rtp} % des ${formatCoins(game.raceCoins)} de la course`;
@@ -1243,17 +1259,9 @@
       if (!horse) return;
       if (field === 'name') horse.name = event.target.value.slice(0, 20);
       if (field === 'color' && /^#[0-9a-f]{6}$/i.test(event.target.value)) horse.color = event.target.value;
-      if (field === 'number') {
-        const number = Number(event.target.value);
-        if (!Number.isSafeInteger(number) || number < 1 || number > 99 ||
-            game.horses.some(item => item.id !== horse.id && item.number === number)) {
-          $('saveStatus').textContent = 'Choisis un numéro unique compris entre 1 et 99.';
-          return;
-        }
-        horse.number = number;
-      }
+      if (field === 'flag' && FLAGS.some(item => item[0] === event.target.value)) horse.flag = event.target.value;
       renderHorseLegend();
-      if (field === 'color' || field === 'number') renderTrack();
+      if (field === 'color' || field === 'flag') renderTrack();
       saveGame();
     });
 
@@ -1379,7 +1387,7 @@
       game.horses.push(cleanHorse({
         id: `horse-${Date.now()}`,
         name: `Cheval ${index + 1}`,
-        number: Array.from({ length: 99 }, (_, number) => number + 1).find(number => !game.horses.some(horse => horse.number === number)),
+        flag: (FLAGS.find(item => !game.horses.some(horse => horse.flag === item[0])) || FLAGS[0])[0],
         color: HORSE_COLORS[index % HORSE_COLORS.length],
         progress: 0
       }, index));
