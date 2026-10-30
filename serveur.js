@@ -61,7 +61,20 @@ const homepageFile = path.join(__dirname, 'accueil.html');
 const liveTtsFile = path.join(__dirname, 'live-tts.html');
 const presenceScriptFile = path.join(__dirname, 'arcade-presence.js');
 const arcadeStarsFile = path.join(__dirname, 'arcade-stars.js');
+const retroFightFile = path.join(__dirname, 'combat-retro.html');
+const arenaGameFile = path.join(__dirname, 'tir-corde-goku.html');
+const arenaAssets = {
+    'three.min.js': 'text/javascript; charset=utf-8',
+    'luffy-new.png': 'image/png', 'luffy-walk.png': 'image/png',
+    'goku-3d.png': 'image/png', 'goku-idle.png': 'image/png', 'goku-walk2.png': 'image/png',
+    'freezer-cut.png': 'image/png', 'freezer-walk.png': 'image/png',
+    'beerus-cut.png': 'image/png', 'beerus-walk.png': 'image/png',
+    'naruto-cut.png': 'image/png', 'naruto-walk.png': 'image/png',
+    'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png'
+};
 const protectedRoutes = new Set([
+    '/combat-retro.html',
+    '/arene-combattants.html',
     '/pousoire.html',
     '/pendu',
     '/pendu.html',
@@ -109,6 +122,8 @@ const protectedRoutes = new Set([
     '/ballon-foot-reel.jpg'
 ]);
 const staticGameIds = [
+    '/combat-retro.html',
+    '/arene-combattants.html',
     '/pousoire.html',
     '/pendu.html',
     '/plinko.html',
@@ -161,7 +176,11 @@ store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
+store.grantGameAccessToExistingCreators('/arene-combattants.html');
+store.grantGameAccessToExistingCreators('/combat-retro.html');
 const staticGameTitles = {
+    '/combat-retro.html': 'Combat Rétro Arcade',
+    '/arene-combattants.html': 'L’Arène des Combattants TikTok',
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
     '/plinko.html': 'Gryphon Plinko',
@@ -196,6 +215,8 @@ const staticGameTitles = {
     '/inedexd.html': 'Six Boîtes'
 };
 const gameRouteIds = new Map([
+    ['/combat-retro.html', '/combat-retro.html'],
+    ['/arene-combattants.html', '/arene-combattants.html'],
     ['/pousoire.html', '/pousoire.html'],
     ['/pendu', '/pendu.html'],
     ['/pendu.html', '/pendu.html'],
@@ -2153,6 +2174,11 @@ const server = http.createServer((req, res) => {
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
+        ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
+        ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
+        ['/images-vitrine/combat-retro.png', [path.join(__dirname, 'images-vitrine', 'combat-retro.png'), 'image/png']],
+        ['/images-vitrine/arene-combattants.png', [path.join(__dirname, 'images-vitrine', 'arene-combattants.png'), 'image/png']],
+        ...Object.entries(arenaAssets).map(([name, type]) => ['/' + name, [path.join(__dirname, name), type]]),
         ['/pousoire.html', [gameFile, 'text/html; charset=utf-8']],
         ['/pendu', [hangmanFile, 'text/html; charset=utf-8']],
         ['/pendu.html', [hangmanFile, 'text/html; charset=utf-8']],
