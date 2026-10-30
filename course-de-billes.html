@@ -697,11 +697,12 @@ addEventListener('keydown', e => {
 $('start-btn').onclick = () => { $('start').remove(); openControl(); say('Course de billes prête.'); if ('speechSynthesis' in window) speechSynthesis.getVoices(); };
 
 /* ---------- Rendu 3D : le toboggan vu d'en bas, départ tout en haut ---------- */
-const S3 = 0.01, DEPTH = 1.0, TILT = 0.5, FOV3 = 58;
+const S3 = 0.01, DEPTH = 0.8, TILT = 0.5, FOV3 = 58;
 let view3d = typeof THREE !== 'undefined' && !/[?&]2d\b/.test(location.search);
 let renderer3, scene3, camera3, track3, ground3, gateMesh3, glW = 0, glH = 0, ov3 = 0;
 const spinner3 = [], marbleObjs = new Map();
-const RAMP_COLORS = [0x2db7ff, 0xff4f9a, 0x7cff5a, 0xffc233];
+const BG3 = 'linear-gradient(#e4e9f0,#a9b5c5 60%,#76859a)', FOG3 = 0xb4bfce;
+const springGeo = new Map();
 
 function canvasTex(w, h, draw) {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -710,10 +711,10 @@ function canvasTex(w, h, draw) {
     t.anisotropy = 4;
     return t;
 }
-function textPlane(text, w, h, color, font) {
+function textPlane(text, w, h, color, font, sw, stroke) {
     const t = canvasTex(1024, Math.round(1024 * h / w), (g, cw, ch) => {
-        g.clearRect(0, 0, cw, ch); g.font = `900 ${Math.round(ch * 0.7)}px ${font || 'Impact, Arial'}`;
-        g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = ch * 0.1; g.strokeStyle = '#000'; g.fillStyle = color;
+        g.clearRect(0, 0, cw, ch); g.font = `700 ${Math.round(ch * 0.62)}px ${font || 'Arial'}`;
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = ch * (sw === undefined ? 0.06 : sw); g.lineJoin = 'round'; g.strokeStyle = stroke || '#1f2937'; g.fillStyle = color;
         g.strokeText(text, cw / 2, ch / 2); g.fillText(text, cw / 2, ch / 2);
     });
     return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
@@ -725,14 +726,36 @@ function init3D() {
     const el = renderer3.domElement;
     el.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:1;display:block';
     document.body.insertBefore(el, cv); cv.style.display = 'none';
-    document.documentElement.style.background = document.body.style.background = 'linear-gradient(#040815,#0c1a3a 60%,#14234a)';
+    document.documentElement.style.background = document.body.style.background = BG3;
     scene3 = new THREE.Scene();
-    scene3.fog = new THREE.Fog(0x070e22, 30, 120);
+    scene3.fog = new THREE.Fog(FOG3, 40, 150);
     camera3 = new THREE.PerspectiveCamera(FOV3, 1, 0.5, 400);
     scene3.add(camera3);
-    const flash = new THREE.PointLight(0xffffff, 1.3, 80, 1); camera3.add(flash);
-    scene3.add(new THREE.HemisphereLight(0xb4ccff, 0x1a2548, 0.85));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(6, 14, 20); scene3.add(sun);
+    const flash = new THREE.PointLight(0xffffff, 0.25, 80, 1); camera3.add(flash);
+    scene3.add(new THREE.HemisphereLight(0xffffff, 0x6f7c90, 0.45));
+    const sun = new THREE.DirectionalLight(0xfff6e8, 0.55); sun.position.set(6, 14, 20); scene3.add(sun);
+    try {
+        // environnement type studio pour les reflets (métal, verre, bitume)
+        const eq = canvasTex(512, 256, (g, w, h) => {
+            const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#b9c4d2'); gr.addColorStop(1, '#4b5666');
+            g.fillStyle = gr; g.fillRect(0, 0, w, h);
+            g.fillStyle = '#fff'; for (const x of [60, 190, 320, 450]) g.fillRect(x, 40, 60, 36);
+        });
+        eq.mapping = THREE.EquirectangularReflectionMapping;
+        const pm = new THREE.PMREMGenerator(renderer3);
+        scene3.environment = pm.fromEquirectangular(eq).texture;
+    } catch (e) { /* reflets indisponibles */ }
+}
+function springMesh(r) {
+    const key = Math.round(r * 1000);
+    let geo = springGeo.get(key);
+    if (!geo) {
+        const pts = [], len = DEPTH - 0.1, turns = 5, rad = r * 0.7;
+        for (let i = 0; i <= turns * 24; i++) { const a = i / 24 * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * rad, Math.sin(a) * rad, 0.04 + len * i / (turns * 24))); }
+        geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), turns * 24 * 2, 0.035, 6, false);
+        springGeo.set(key, geo);
+    }
+    return geo;
 }
 function buildTrack3D() {
     track3dDirty = false;
@@ -743,88 +766,90 @@ function buildTrack3D() {
     const top = WALL_TOP, bottom = FINISH + 700, H = (bottom - top) * S3, midY = Y((top + bottom) / 2);
 
     const gridTex = canvasTex(512, 512, (g, w, h) => {
-        const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#12224a'); gr.addColorStop(1, '#0a1433');
-        g.fillStyle = gr; g.fillRect(0, 0, w, h);
-        g.strokeStyle = 'rgba(120,170,255,.28)'; g.lineWidth = 3;
-        for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(0, i * h / 4); g.lineTo(w, i * h / 4); g.moveTo(i * w / 4, 0); g.lineTo(i * w / 4, h); g.stroke(); }
+        g.fillStyle = '#9aa5b5'; g.fillRect(0, 0, w, h);
+        for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${90 + Math.random() * 60 | 0},${100 + Math.random() * 60 | 0},${115 + Math.random() * 60 | 0},.07)`; g.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
+        g.strokeStyle = 'rgba(70,85,105,.35)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, w - 3, h - 3);
     });
     gridTex.wrapS = gridTex.wrapT = THREE.RepeatWrapping; gridTex.repeat.set(W * S3 / 5, H / 5);
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.7, metalness: 0.2 }));
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.9, metalness: 0, envMapIntensity: 0.25 }));
     wall.position.set(0, midY, -0.02); track3.add(wall);
 
-    // parois latérales métalliques avec rampe lumineuse
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0x8a97b3, roughness: 0.3, metalness: 0.85 });
+    // parois latérales en acier brossé
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0xc3ccd8, roughness: 0.3, metalness: 0.95 });
     for (const sx of [-1, 1]) {
         const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, DEPTH + 0.3), sideMat);
         w.position.set(sx * (W * S3 / 2 + 0.25), midY, DEPTH / 2 - 0.05); track3.add(w);
-        const neon = new THREE.Mesh(new THREE.BoxGeometry(0.1, H, 0.1), new THREE.MeshBasicMaterial({ color: sx < 0 ? 0x38bdf8 : 0xff4fa6 }));
-        neon.position.set(sx * (W * S3 / 2 - 0.02), midY, DEPTH + 0.12); track3.add(neon);
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.06, H, 0.06), new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 0.4, metalness: 0.6 }));
+        strip.position.set(sx * (W * S3 / 2 - 0.02), midY, DEPTH + 0.12); track3.add(strip);
     }
-    // montants en travers (cadres du tube) pour donner de la profondeur
-    const ribMat = new THREE.MeshStandardMaterial({ color: 0x55627f, roughness: 0.35, metalness: 0.8 });
+    // montants en travers pour donner de la profondeur
+    const ribMat = new THREE.MeshStandardMaterial({ color: 0x9aa6b6, roughness: 0.3, metalness: 0.9 });
     for (let y = 400; y < FINISH + 600; y += 800) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(W * S3 + 1, 0.18, 0.18), ribMat);
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(W * S3 + 1, 0.12, 0.12), ribMat);
         rib.position.set(0, Y(y), DEPTH + 0.2); track3.add(rib);
     }
 
-    const rampTex = canvasTex(256, 64, (g, w, h) => {
-        g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-        g.fillStyle = 'rgba(0,0,0,.16)';
-        for (let i = -2; i < 8; i++) { g.beginPath(); g.moveTo(i * 40, h); g.lineTo(i * 40 + 20, h); g.lineTo(i * 40 + 52, 0); g.lineTo(i * 40 + 32, 0); g.fill(); }
+    // route : bitume sombre, bordures blanches et pointillés centraux
+    const roadTex = canvasTex(1024, 128, (g, w, h) => {
+        g.fillStyle = '#353b44'; g.fillRect(0, 0, w, h);
+        for (let i = 0; i < 5000; i++) { const v = 40 + Math.random() * 40 | 0; g.fillStyle = `rgba(${v},${v + 4},${v + 10},.5)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+        g.fillStyle = '#e8ecf1'; g.fillRect(0, h * 0.08, w, h * 0.07); g.fillRect(0, h * 0.85, w, h * 0.07);
+        for (let x = 0; x < w; x += 128) g.fillRect(x, h * 0.46, 64, h * 0.08);
     });
-    rampTex.wrapS = THREE.RepeatWrapping; rampTex.repeat.set(4, 1);
-    const pegMat = new THREE.MeshStandardMaterial({ color: 0xff6fb5, roughness: 0.2, metalness: 0.4, emissive: 0x4a0a2a });
-    const spinMat = new THREE.MeshStandardMaterial({ color: 0xffb020, roughness: 0.3, metalness: 0.5, emissive: 0x3a2200 });
-    let rampN = 0;
+    const railMat = new THREE.MeshStandardMaterial({ color: 0xd5dce6, roughness: 0.25, metalness: 0.95 });
+    const pegMat = new THREE.MeshStandardMaterial({ color: 0xd3dae4, roughness: 0.2, metalness: 1 });
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.15, metalness: 0.3 });
+    const spinMat = new THREE.MeshStandardMaterial({ color: 0xc0c9d6, roughness: 0.3, metalness: 0.9 });
     for (const s of statics) {
         const b = s.body, p = b.position;
         if (s.kind === 'ramp') {
             const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
-            const col = RAMP_COLORS[rampN++ % RAMP_COLORS.length];
             const g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0); g.rotation.z = -b.angle;
-            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), new THREE.MeshStandardMaterial({ color: col, map: rampTex, roughness: 0.22, metalness: 0.4, emissive: col, emissiveIntensity: 0.12 }));
+            const road = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.75, metalness: 0.05 });
+            const body = new THREE.MeshStandardMaterial({ color: 0x4a515c, roughness: 0.6, metalness: 0.4 });
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), [body, body, road, body, road, body]);
             slab.position.z = DEPTH / 2; g.add(slab);
-            const neonMat = new THREE.MeshBasicMaterial({ color: col });
-            for (const sy of [-1, 1]) {
-                const n = new THREE.Mesh(new THREE.BoxGeometry(w * S3, 0.07, 0.07), neonMat);
-                n.position.set(0, sy * h * S3 / 2, DEPTH + 0.02); g.add(n);
-            }
+            const lip = new THREE.Mesh(new THREE.BoxGeometry(w * S3, 0.07, 0.07), railMat);
+            lip.position.set(0, h * S3 / 2, DEPTH + 0.03); g.add(lip);
             track3.add(g);
         } else if (s.kind === 'peg') {
-            const m = new THREE.Mesh(new THREE.CylinderGeometry(b.circleRadius * S3, b.circleRadius * S3, DEPTH, 20), pegMat);
-            m.rotation.x = Math.PI / 2; m.position.set(X(p.x), Y(p.y), DEPTH / 2); track3.add(m);
+            const r = b.circleRadius * S3, g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0);
+            g.add(new THREE.Mesh(springMesh(r), pegMat));
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r * 0.9, 0.05, 20), pegMat); base.rotation.x = Math.PI / 2; base.position.z = 0.03; g.add(base);
+            const head = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.14, 24), headMat); head.rotation.x = Math.PI / 2; head.position.z = DEPTH - 0.05; g.add(head);
+            track3.add(g);
         } else if (s.kind === 'spinner') {
             const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
             const g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), DEPTH / 2);
-            g.add(new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH * 0.8), spinMat));
-            const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, DEPTH * 1.1, 16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 }));
+            g.add(new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH * 0.7), spinMat));
+            const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, DEPTH * 1.05, 20), new THREE.MeshStandardMaterial({ color: 0x3b4350, metalness: 0.9, roughness: 0.3 }));
             hub.rotation.x = Math.PI / 2; g.add(hub);
             track3.add(g); spinner3.push({ g, body: b });
         }
     }
     for (const z of mudZones) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(W * S3, z.h * S3, DEPTH * 0.9), new THREE.MeshStandardMaterial({ color: 0x7a4a1a, transparent: true, opacity: 0.5, roughness: 0.9 }));
+        const m = new THREE.Mesh(new THREE.BoxGeometry(W * S3, z.h * S3, DEPTH * 0.9), new THREE.MeshStandardMaterial({ color: 0x8a6a45, transparent: true, opacity: 0.38, roughness: 0.95 }));
         m.position.set(0, Y(z.y + z.h / 2), DEPTH * 0.45); track3.add(m);
-        const t = textPlane('BOUE — ralentit', 8, 0.9, '#ffe7c2', 'Arial'); t.position.set(0, Y(z.y + z.h / 2), DEPTH + 0.03); track3.add(t);
+        const t = textPlane('BOUE — ralentit', 5, 0.5, '#fff4e0', 'Arial', 0.08, '#5a4630'); t.position.set(0, Y(z.y + z.h / 2), DEPTH + 0.03); track3.add(t);
     }
     // départ : barrière, damier et bannière
-    gateMesh3 = new THREE.Mesh(new THREE.BoxGeometry(W * S3, 0.3, DEPTH), new THREE.MeshStandardMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.75, emissive: 0x6a0a1c }));
+    gateMesh3 = new THREE.Mesh(new THREE.BoxGeometry(W * S3, 0.22, DEPTH), new THREE.MeshStandardMaterial({ color: 0x66707f, transparent: true, opacity: 0.85, metalness: 0.8, roughness: 0.3 }));
     gateMesh3.position.set(0, Y(20), DEPTH / 2); track3.add(gateMesh3);
-    const checker = () => canvasTex(256, 32, (g, w, h) => { for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#000'; g.fillRect(i * 8, j * 8, 8, 8); } });
+    const checker = () => canvasTex(256, 32, (g, w, h) => { for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#1f2937'; g.fillRect(i * 8, j * 8, 8, 8); } });
     const startLine = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, 0.6), new THREE.MeshBasicMaterial({ map: checker() }));
     startLine.position.set(0, Y(60), 0.01); track3.add(startLine);
-    const sb = textPlane('DÉPART', 9, 2.4, '#ff4d6d'); sb.position.set(0, Y(-240), DEPTH + 0.05); track3.add(sb);
+    const sb = textPlane('DÉPART', 7, 1.6, '#ffffff'); sb.position.set(0, Y(-240), DEPTH + 0.05); track3.add(sb);
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, 0.9), new THREE.MeshBasicMaterial({ map: checker() }));
     fl.position.set(0, Y(FINISH), 0.01); track3.add(fl);
-    const fb = textPlane('ARRIVÉE', 9, 2.4, '#fbbf24'); fb.position.set(0, Y(FINISH - 380), DEPTH + 0.05); track3.add(fb);
+    const fb = textPlane('ARRIVÉE', 7, 1.6, '#ffffff'); fb.position.set(0, Y(FINISH - 380), DEPTH + 0.05); track3.add(fb);
     for (let y = 1000; y < FINISH - 200; y += 1000) {
-        const t = textPlane(`${Math.round((FINISH - y) / 10)} m`, 4, 1, 'rgba(255,255,255,.75)', 'Arial'); t.position.set(X(150), Y(y), DEPTH + 0.03); track3.add(t);
+        const t = textPlane(`${Math.round((FINISH - y) / 10)} m`, 3, 0.7, '#ffffff', 'Arial', 0.1, '#4b5668'); t.position.set(X(150), Y(y), DEPTH + 0.03); track3.add(t);
     }
     track3.updateMatrixWorld(true);
 
     if (ground3) scene3.remove(ground3);
     const gy = new THREE.Vector3(0, Y(bottom), 0); track3.localToWorld(gy);
-    ground3 = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x0b1226, roughness: 0.35, metalness: 0.6 }));
+    ground3 = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6e7a8c, roughness: 0.7, metalness: 0.1, envMapIntensity: 0.3 }));
     ground3.rotation.x = -Math.PI / 2; ground3.position.set(0, gy.y - 0.5, gy.z); scene3.add(ground3);
 }
 const labelCache = new Map();
@@ -841,9 +866,12 @@ function makeMarbleTex(m) {
 }
 function makeLabel(name, gold) {
     const t = canvasTex(512, 128, (g, w, h) => {
-        g.font = '800 64px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 12; g.strokeStyle = '#000';
-        g.fillStyle = gold ? '#fbbf24' : '#fff'; const s = name.slice(0, 14);
-        g.strokeText(s, w / 2, h / 2); g.fillText(s, w / 2, h / 2);
+        g.font = '700 60px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        const s = name.slice(0, 14), tw = Math.min(w - 8, g.measureText(s).width + 56);
+        g.fillStyle = 'rgba(24,32,46,.72)'; g.beginPath();
+        if (g.roundRect) g.roundRect((w - tw) / 2, 22, tw, 84, 42); else g.rect((w - tw) / 2, 22, tw, 84);
+        g.fill();
+        g.fillStyle = gold ? '#fbbf24' : '#fff'; g.fillText(s, w / 2, h / 2 + 2);
     });
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false }));
     sp.scale.set(3.4, 0.85, 1); sp.renderOrder = 10;
@@ -854,7 +882,7 @@ function marbleObj(m) {
     if (o && o.m === m) return o;
     if (o) { track3.remove(o.g); }
     const g = new THREE.Group(), r = R * S3 * 1.25;
-    const mat = new THREE.MeshStandardMaterial({ map: makeMarbleTex(m), roughness: 0.18, metalness: 0.15, transparent: true });
+    const mat = new THREE.MeshPhysicalMaterial({ map: makeMarbleTex(m), roughness: 0.1, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.05, transparent: true });
     const core = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mat);
     const shell = new THREE.Mesh(new THREE.SphereGeometry(r * 1.07, 24, 16), new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, shininess: 140, specular: 0xffffff, depthWrite: false }));
     const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 1.6, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfb923c, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -890,9 +918,9 @@ function render3D(now) {
     if (glW !== vw || glH !== vh) { glW = vw; glH = vh; renderer3.setSize(vw, vh); camera3.aspect = vw / vh; camera3.updateProjectionMatrix(); }
     if (track3dDirty || !track3) buildTrack3D();
     const vid = bgVideoOn();
-    document.documentElement.style.background = document.body.style.background = vid ? 'transparent' : 'linear-gradient(#040815,#0c1a3a 60%,#14234a)';
+    document.documentElement.style.background = document.body.style.background = vid ? 'transparent' : BG3;
     bgVideo.style.opacity = vid ? String(Math.max(0.2, 1 - CFG.videoDim)) : '';
-    scene3.fog.color.set(vid ? 0x000000 : 0x070e22); scene3.fog.near = vid ? 1e5 : 30; scene3.fog.far = vid ? 2e5 : 120;
+    scene3.fog.color.set(vid ? 0x000000 : FOG3); scene3.fog.near = vid ? 1e5 : 40; scene3.fog.far = vid ? 2e5 : 150;
     gateMesh3.visible = gateOn;
     for (const s of spinner3) s.g.rotation.z = -s.body.angle;
     updateMarbles3D(now);
@@ -902,7 +930,7 @@ function render3D(now) {
     const vf = -cam.y * S3, asp = vw / vh, tanV = Math.tan(FOV3 * Math.PI / 360);
     const dist = Math.max(11, (W * S3 * 0.36) / (tanV * Math.min(asp, 1.6)));
     const minV = -(FINISH + 500) * S3;
-    const fPos = new THREE.Vector3(0, Math.max(minV, vf - dist * 0.5), dist * 0.85), fLook = new THREE.Vector3(0, vf + dist * 0.12, 0.3);
+    const fPos = new THREE.Vector3(0, Math.max(minV, vf - dist * 0.2), dist * 1.0), fLook = new THREE.Vector3(0, vf + dist * 0.12, 0.3);
     const H = (FINISH + 800) * S3, fit = Math.max(H / 2 / tanV, (W * S3 / 2 + 1) / (tanV * asp)) * 1.08;
     const oPos = new THREE.Vector3(0, -(FINISH / 2) * S3, fit), oLook = new THREE.Vector3(0, -(FINISH / 2) * S3, 0);
     const pos = fPos.lerp(oPos, ov3), look = fLook.lerp(oLook, ov3);
