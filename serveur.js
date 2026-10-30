@@ -2604,6 +2604,8 @@ function broadcastSessionMessage(session, messageData) {
     }
 }
 
+const MIN_RUN_STARS = 5;
+
 function processTikTokWalletCommand(session, messageData, player) {
     if (messageData.type !== 'comment' || !player) return;
     player = store.resolveTikTokPlayer(player.id) || player;
@@ -2622,8 +2624,8 @@ function processTikTokWalletCommand(session, messageData, player) {
     if (!runMatch) return;
     const requested = runMatch[1] ? Number(runMatch[1]) : 0;
     const balance = store.getWalletBalance(player, walletOwner);
-    const amount = requested > 0 ? Math.min(requested, balance) : balance;
-    if (amount < 1) {
+    const amount = requested > 0 ? Math.min(Math.max(requested, MIN_RUN_STARS), balance) : balance;
+    if (amount < MIN_RUN_STARS) {
         broadcastSessionMessage(session, {
             type: 'WALLET_RUN_REJECTED',
             player: getPublicTikTokPlayer(player, walletOwner),
