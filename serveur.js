@@ -131,6 +131,9 @@ const freeTrialRoutes = new Set([
     '/pendu.html',
     '/mots-associes.html',
     '/qui-veut-gagner-des-etoiles.html',
+    '/lion-temple-maya.html',
+    '/petits-chevaux-tiktok.html',
+    '/jeu-foot-tiktok.html',
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [
