@@ -2279,7 +2279,11 @@ const server = http.createServer((req, res) => {
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
     ]);
-    const route = routes.get(pathname);
+    let route = routes.get(pathname);
+    const giftImageMatch = /^\/images-vitrine\/petit-trot-cadeaux\/([a-z0-9-]+\.png)$/.exec(pathname);
+    if (!route && giftImageMatch) {
+        route = [path.join(__dirname, 'images-vitrine', 'petit-trot-cadeaux', giftImageMatch[1]), 'image/png'];
+    }
 
     if (pathname.startsWith('/uploaded-games/')) {
         if (!access.canAccessGames(req)) {
