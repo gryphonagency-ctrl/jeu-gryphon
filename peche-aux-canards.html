@@ -38,6 +38,11 @@ button:active { transform: scale(.96); }
 #panel h5 { grid-column: 1 / -1; margin: 0; color: #fbbf24; font-size: 2vh; cursor: move; user-select: none; }
 #panel button { font-size: 1.8vh; }
 #panel .wide { grid-column: 1 / -1; }
+#extra-box .row { display: flex; gap: .6vh; }
+#extra-box input { width: 30%; min-width: 0; font-size: 1.8vh; }
+#extra-box .xrow { display: flex; justify-content: space-between; align-items: center; color: #fff; font-size: 1.8vh; margin-top: .5vh; }
+#extra-box small { color: #9fb2d6; display: block; margin-top: .5vh; }
+#extra-list { max-height: 18vh; overflow-y: auto; }
 #eye, #eye2 { position: fixed; z-index: 11; bottom: .8vh; opacity: .45; padding: .6vh .8vw; }
 #eye { right: .8vw; } #eye2 { right: 4.2vw; }
 #eye:hover, #eye2:hover { opacity: 1; }
@@ -76,13 +81,23 @@ body.no-hud #left, body.no-hud #log { display: none; }
     <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
     <button id="b-reset" class="alt" type="button">↺ Nouvelle partie (R)</button>
     <button id="b-hud" class="alt wide" type="button">📊 Cacher les tableaux (T)</button>
+    <button id="b-extra" class="alt wide" type="button">🦆 Canards bonus ▾</button>
+    <div id="extra-box" class="wide" style="display:none">
+        <div class="row">
+            <input id="x-stars" type="number" min="0" max="100000" value="5" aria-label="Étoiles par canard" title="Étoiles par canard">
+            <input id="x-count" type="number" min="1" max="500" value="1" aria-label="Nombre de canards" title="Nombre de canards">
+            <button id="x-add" type="button">Ajouter</button>
+        </div>
+        <small>⭐ par canard · nombre · ajoutés tout de suite dans la mare et à chaque nouvelle partie.</small>
+        <div id="extra-list"></div>
+    </div>
 </div>
 <button id="eye2" class="alt" type="button" title="Masquer / afficher les tableaux (T)">📊</button>
 <button id="eye" class="alt" type="button" title="Masquer / afficher le panneau de contrôle (H)">👁</button>
 
 <script>
 const WS_URL = 'wss://jeu6boite.onrender.com';
-const TOTAL = 3000, PRIZES = 500, VISIBLE = 750;
+const TOTAL = 3000, PRIZES = 750, VISIBLE = 750;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let vw = 0, vh = 0, dpr = 1, bg = null;
@@ -125,10 +140,33 @@ const SPR_W = 40, SPR_H = 32;
 let ducks = [], reserve = [], stars = new Map(), pending = [], popups = [], ripples = [], log = [];
 let totalFished = 0, gameOver = false, duckScale = 0.5;
 function pad() { return 34 * duckScale + 24; }
+// Canards ajoutés par le streamer (mémorisés) : { stars, count }
+let extras = [];
+try { extras = (JSON.parse(localStorage.getItem('peche-canards-extras') || '[]') || []).filter(e => e && e.stars >= 0 && e.count > 0).slice(0, 200); } catch (e) { extras = []; }
+function saveExtras() { try { localStorage.setItem('peche-canards-extras', JSON.stringify(extras)); } catch (e) { } }
+function renderExtras() {
+    const box = $('extra-list');
+    box.innerHTML = '';
+    extras.forEach((e, i) => {
+        const row = document.createElement('div'); row.className = 'xrow';
+        const label = document.createElement('span'); label.textContent = `${e.count} × ${e.stars} ⭐`;
+        const del = document.createElement('button'); del.type = 'button'; del.className = 'alt'; del.textContent = '✕';
+        del.title = 'Retirer des prochaines parties';
+        del.onclick = () => { extras.splice(i, 1); saveExtras(); renderExtras(); };
+        row.append(label, del); box.appendChild(row);
+    });
+    if (!extras.length) box.innerHTML = '<small>Aucun canard bonus.</small>';
+}
+function addExtraDucks(stars, count) {
+    for (let k = 0; k < count; k++) reserve.splice(Math.floor(Math.random() * (reserve.length + 1)), 0, stars);
+    for (let k = 0; k < Math.min(count, 200); k++) spawnDuck();
+    gameOver = false; $('end').style.display = 'none'; updateHud();
+}
 function buildPrizes() {
     const p = new Array(TOTAL).fill(0);
-    for (let i = 0; i < PRIZES; i++) p[i] = i < 5 ? 50 : 1 + Math.floor(49 * Math.pow(Math.random(), 2.2));
-    for (let i = TOTAL - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    for (let i = 0; i < PRIZES; i++) p[i] = 1 + Math.floor(Math.random() * 2);
+    for (const e of extras) for (let k = 0; k < e.count; k++) p.push(e.stars);
+    for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
     return p;
 }
 function spawnDuck() {
@@ -459,6 +497,13 @@ $('t1').onclick = () => testGift(1); $('t10').onclick = () => testGift(10);
 $('t100').onclick = () => testGift(100); $('t500').onclick = () => testGift(500);
 $('b-mute').onclick = () => setMuted(!muted);
 $('b-reset').onclick = newGame; $('restart').onclick = newGame;
+$('b-extra').onclick = () => { const b = $('extra-box'); b.style.display = b.style.display === 'none' ? 'block' : 'none'; };
+$('x-add').onclick = () => {
+    const stars = Math.max(0, Math.min(100000, Math.floor(Number($('x-stars').value) || 0)));
+    const count = Math.max(1, Math.min(500, Math.floor(Number($('x-count').value) || 1)));
+    extras.push({ stars, count }); saveExtras(); renderExtras(); addExtraDucks(stars, count);
+};
+renderExtras();
 const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
 $('eye').onclick = togglePanel;
 const toggleHud = () => { const off = document.body.classList.toggle('no-hud'); $('b-hud').textContent = off ? '📊 Afficher les tableaux (T)' : '📊 Cacher les tableaux (T)'; };
