@@ -9,6 +9,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; color: #fff; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
 canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .hud { position: fixed; z-index: 5; pointer-events: none; }
+body.no-hud .hud { display: none !important; }
 #board { left: 1.2vw; top: 1.2vh; width: min(300px, 40vw); background: rgba(10,16,32,.82); border: .25vh solid #334c7a; border-radius: 1.4vh; padding: 1vh 1vw; font-size: 2vh; }
 #board h4 { margin: 0 0 .6vh; color: #fbbf24; letter-spacing: .08em; font-size: 2vh; }
 #board .r { display: flex; align-items: center; gap: .7vw; padding: .3vh 0; white-space: nowrap; overflow: hidden; }
@@ -84,6 +85,7 @@ button:active { transform: scale(.96); }
     <button id="b-like" class="alt" type="button">❤ +20 likes</button>
     <button id="b-ctrl" class="alt" type="button">🎛 Panneau de commande</button>
     <button id="b-view" class="wide" type="button">🛰 Vue du dessus (V)</button>
+    <button id="b-hud" class="alt wide" type="button">📊 Cacher les tableaux (T)</button>
     <button id="b-mute" class="alt" type="button">🔊 Voix (M)</button>
     <button id="b-reset" class="alt" type="button">↺ Reset</button>
 </div>
@@ -95,6 +97,12 @@ button:active { transform: scale(.96); }
 <script>
 if (typeof Matter === 'undefined') {
     document.write('<script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"><\/script>');
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+if (typeof THREE === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>');
 }
 </script>
 <script>
@@ -122,6 +130,7 @@ const world = engine.world;
 const statics = [];   // { body, kind }
 const spinners = [];
 const mudZones = [];
+let track3dDirty = true;
 
 function addStatic(body, kind, opts = {}) {
     body.isStatic = true;
@@ -132,7 +141,7 @@ function addStatic(body, kind, opts = {}) {
 }
 function buildTrack() {
     for (const s of statics) Composite.remove(world, s.body);
-    statics.length = 0; spinners.length = 0; mudZones.length = 0;
+    statics.length = 0; spinners.length = 0; mudZones.length = 0; track3dDirty = true;
     const lv = Math.max(4, Math.min(40, Math.round(CFG.levels)));
     FINISH = 700 + (lv - 1) * CFG.spacing + 800;
     const wallH = FINISH + 700 - WALL_TOP;
@@ -669,8 +678,11 @@ $('b-mute').onclick = () => setMuted(!muted);
 $('b-reset').onclick = resetRace;
 const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
 $('eye').onclick = togglePanel;
+const toggleHud = () => { const off = document.body.classList.toggle('no-hud'); $('b-hud').textContent = off ? '📊 Afficher les tableaux (T)' : '📊 Cacher les tableaux (T)'; };
+$('b-hud').onclick = toggleHud;
 addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
+    if (e.key === 't' || e.key === 'T') toggleHud();
     if (e.key === 'm' || e.key === 'M') setMuted(!muted);
     if (e.key === 'h' || e.key === 'H') togglePanel();
     if (e.key === 'v' || e.key === 'V') setView(!topView);
@@ -679,10 +691,225 @@ addEventListener('keydown', e => {
     const p = $('panel'), h = $('panel-handle');
     let ox = 0, oy = 0, on = false;
     h.addEventListener('pointerdown', e => { on = true; const r = p.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top; h.setPointerCapture(e.pointerId); });
-    h.addEventListener('pointermove', e => { if (!on) return; p.style.left = (e.clientX - ox) + 'px'; p.style.top = (e.clientY - oy) + 'px'; p.style.right = 'auto'; p.style.bottom = 'auto'; });
+    h.addEventListener('pointermove', e => { if (!on) return; p.style.left = Math.max(0, Math.min(innerWidth - 60, e.clientX - ox)) + 'px'; p.style.top = Math.max(0, Math.min(innerHeight - 40, e.clientY - oy)) + 'px'; p.style.right = 'auto'; p.style.bottom = 'auto'; });
     h.addEventListener('pointerup', () => { on = false; });
 })();
 $('start-btn').onclick = () => { $('start').remove(); openControl(); say('Course de billes prête.'); if ('speechSynthesis' in window) speechSynthesis.getVoices(); };
+
+/* ---------- Rendu 3D : le toboggan vu d'en bas, départ tout en haut ---------- */
+const S3 = 0.01, DEPTH = 1.0, TILT = 0.5, FOV3 = 58;
+let view3d = typeof THREE !== 'undefined' && !/[?&]2d\b/.test(location.search);
+let renderer3, scene3, camera3, track3, ground3, gateMesh3, glW = 0, glH = 0, ov3 = 0;
+const spinner3 = [], marbleObjs = new Map();
+const RAMP_COLORS = [0x2db7ff, 0xff4f9a, 0x7cff5a, 0xffc233];
+
+function canvasTex(w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.anisotropy = 4;
+    return t;
+}
+function textPlane(text, w, h, color, font) {
+    const t = canvasTex(1024, Math.round(1024 * h / w), (g, cw, ch) => {
+        g.clearRect(0, 0, cw, ch); g.font = `900 ${Math.round(ch * 0.7)}px ${font || 'Impact, Arial'}`;
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = ch * 0.1; g.strokeStyle = '#000'; g.fillStyle = color;
+        g.strokeText(text, cw / 2, ch / 2); g.fillText(text, cw / 2, ch / 2);
+    });
+    return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
+}
+function init3D() {
+    try { renderer3 = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
+    catch (e) { view3d = false; return; }
+    renderer3.setPixelRatio(dpr);
+    const el = renderer3.domElement;
+    el.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:1;display:block';
+    document.body.insertBefore(el, cv); cv.style.display = 'none';
+    document.documentElement.style.background = document.body.style.background = 'linear-gradient(#040815,#0c1a3a 60%,#14234a)';
+    scene3 = new THREE.Scene();
+    scene3.fog = new THREE.Fog(0x070e22, 30, 120);
+    camera3 = new THREE.PerspectiveCamera(FOV3, 1, 0.5, 400);
+    scene3.add(camera3);
+    const flash = new THREE.PointLight(0xffffff, 1.3, 80, 1); camera3.add(flash);
+    scene3.add(new THREE.HemisphereLight(0xb4ccff, 0x1a2548, 0.85));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(6, 14, 20); scene3.add(sun);
+}
+function buildTrack3D() {
+    track3dDirty = false;
+    if (track3) { scene3.remove(track3); track3.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    spinner3.length = 0;
+    track3 = new THREE.Group(); track3.rotation.x = -TILT; scene3.add(track3);
+    const X = x => (x - W / 2) * S3, Y = y => -y * S3;
+    const top = WALL_TOP, bottom = FINISH + 700, H = (bottom - top) * S3, midY = Y((top + bottom) / 2);
+
+    const gridTex = canvasTex(512, 512, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#12224a'); gr.addColorStop(1, '#0a1433');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        g.strokeStyle = 'rgba(120,170,255,.28)'; g.lineWidth = 3;
+        for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(0, i * h / 4); g.lineTo(w, i * h / 4); g.moveTo(i * w / 4, 0); g.lineTo(i * w / 4, h); g.stroke(); }
+    });
+    gridTex.wrapS = gridTex.wrapT = THREE.RepeatWrapping; gridTex.repeat.set(W * S3 / 5, H / 5);
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.7, metalness: 0.2 }));
+    wall.position.set(0, midY, -0.02); track3.add(wall);
+
+    // parois latérales métalliques avec rampe lumineuse
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0x8a97b3, roughness: 0.3, metalness: 0.85 });
+    for (const sx of [-1, 1]) {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, DEPTH + 0.3), sideMat);
+        w.position.set(sx * (W * S3 / 2 + 0.25), midY, DEPTH / 2 - 0.05); track3.add(w);
+        const neon = new THREE.Mesh(new THREE.BoxGeometry(0.1, H, 0.1), new THREE.MeshBasicMaterial({ color: sx < 0 ? 0x38bdf8 : 0xff4fa6 }));
+        neon.position.set(sx * (W * S3 / 2 - 0.02), midY, DEPTH + 0.12); track3.add(neon);
+    }
+    // montants en travers (cadres du tube) pour donner de la profondeur
+    const ribMat = new THREE.MeshStandardMaterial({ color: 0x55627f, roughness: 0.35, metalness: 0.8 });
+    for (let y = 400; y < FINISH + 600; y += 800) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(W * S3 + 1, 0.18, 0.18), ribMat);
+        rib.position.set(0, Y(y), DEPTH + 0.2); track3.add(rib);
+    }
+
+    const rampTex = canvasTex(256, 64, (g, w, h) => {
+        g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(0,0,0,.16)';
+        for (let i = -2; i < 8; i++) { g.beginPath(); g.moveTo(i * 40, h); g.lineTo(i * 40 + 20, h); g.lineTo(i * 40 + 52, 0); g.lineTo(i * 40 + 32, 0); g.fill(); }
+    });
+    rampTex.wrapS = THREE.RepeatWrapping; rampTex.repeat.set(4, 1);
+    const pegMat = new THREE.MeshStandardMaterial({ color: 0xff6fb5, roughness: 0.2, metalness: 0.4, emissive: 0x4a0a2a });
+    const spinMat = new THREE.MeshStandardMaterial({ color: 0xffb020, roughness: 0.3, metalness: 0.5, emissive: 0x3a2200 });
+    let rampN = 0;
+    for (const s of statics) {
+        const b = s.body, p = b.position;
+        if (s.kind === 'ramp') {
+            const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
+            const col = RAMP_COLORS[rampN++ % RAMP_COLORS.length];
+            const g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0); g.rotation.z = -b.angle;
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), new THREE.MeshStandardMaterial({ color: col, map: rampTex, roughness: 0.22, metalness: 0.4, emissive: col, emissiveIntensity: 0.12 }));
+            slab.position.z = DEPTH / 2; g.add(slab);
+            const neonMat = new THREE.MeshBasicMaterial({ color: col });
+            for (const sy of [-1, 1]) {
+                const n = new THREE.Mesh(new THREE.BoxGeometry(w * S3, 0.07, 0.07), neonMat);
+                n.position.set(0, sy * h * S3 / 2, DEPTH + 0.02); g.add(n);
+            }
+            track3.add(g);
+        } else if (s.kind === 'peg') {
+            const m = new THREE.Mesh(new THREE.CylinderGeometry(b.circleRadius * S3, b.circleRadius * S3, DEPTH, 20), pegMat);
+            m.rotation.x = Math.PI / 2; m.position.set(X(p.x), Y(p.y), DEPTH / 2); track3.add(m);
+        } else if (s.kind === 'spinner') {
+            const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
+            const g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), DEPTH / 2);
+            g.add(new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH * 0.8), spinMat));
+            const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, DEPTH * 1.1, 16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 }));
+            hub.rotation.x = Math.PI / 2; g.add(hub);
+            track3.add(g); spinner3.push({ g, body: b });
+        }
+    }
+    for (const z of mudZones) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(W * S3, z.h * S3, DEPTH * 0.9), new THREE.MeshStandardMaterial({ color: 0x7a4a1a, transparent: true, opacity: 0.5, roughness: 0.9 }));
+        m.position.set(0, Y(z.y + z.h / 2), DEPTH * 0.45); track3.add(m);
+        const t = textPlane('BOUE — ralentit', 8, 0.9, '#ffe7c2', 'Arial'); t.position.set(0, Y(z.y + z.h / 2), DEPTH + 0.03); track3.add(t);
+    }
+    // départ : barrière, damier et bannière
+    gateMesh3 = new THREE.Mesh(new THREE.BoxGeometry(W * S3, 0.3, DEPTH), new THREE.MeshStandardMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.75, emissive: 0x6a0a1c }));
+    gateMesh3.position.set(0, Y(20), DEPTH / 2); track3.add(gateMesh3);
+    const checker = () => canvasTex(256, 32, (g, w, h) => { for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#000'; g.fillRect(i * 8, j * 8, 8, 8); } });
+    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, 0.6), new THREE.MeshBasicMaterial({ map: checker() }));
+    startLine.position.set(0, Y(60), 0.01); track3.add(startLine);
+    const sb = textPlane('DÉPART', 9, 2.4, '#ff4d6d'); sb.position.set(0, Y(-240), DEPTH + 0.05); track3.add(sb);
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, 0.9), new THREE.MeshBasicMaterial({ map: checker() }));
+    fl.position.set(0, Y(FINISH), 0.01); track3.add(fl);
+    const fb = textPlane('ARRIVÉE', 9, 2.4, '#fbbf24'); fb.position.set(0, Y(FINISH - 380), DEPTH + 0.05); track3.add(fb);
+    for (let y = 1000; y < FINISH - 200; y += 1000) {
+        const t = textPlane(`${Math.round((FINISH - y) / 10)} m`, 4, 1, 'rgba(255,255,255,.75)', 'Arial'); t.position.set(X(150), Y(y), DEPTH + 0.03); track3.add(t);
+    }
+    track3.updateMatrixWorld(true);
+
+    if (ground3) scene3.remove(ground3);
+    const gy = new THREE.Vector3(0, Y(bottom), 0); track3.localToWorld(gy);
+    ground3 = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x0b1226, roughness: 0.35, metalness: 0.6 }));
+    ground3.rotation.x = -Math.PI / 2; ground3.position.set(0, gy.y - 0.5, gy.z); scene3.add(ground3);
+}
+const labelCache = new Map();
+function makeMarbleTex(m) {
+    const img = avatarCache.get(m.id);
+    return canvasTex(512, 256, (g, w, h) => {
+        g.fillStyle = `hsl(${m.h} 70% 45%)`; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(255,255,255,.25)'; for (let i = 0; i < 8; i++) g.fillRect(i * 64, 0, 32, h);
+        for (const cx of [128, 384]) {
+            if (img) { g.save(); g.beginPath(); g.arc(cx, 128, 74, 0, 7); g.clip(); g.drawImage(img, cx - 74, 54, 148, 148); g.restore(); }
+            else { g.fillStyle = '#fff'; g.font = '900 120px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((m.name[0] || '?').toUpperCase(), cx, 136); }
+        }
+    });
+}
+function makeLabel(name, gold) {
+    const t = canvasTex(512, 128, (g, w, h) => {
+        g.font = '800 64px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 12; g.strokeStyle = '#000';
+        g.fillStyle = gold ? '#fbbf24' : '#fff'; const s = name.slice(0, 14);
+        g.strokeText(s, w / 2, h / 2); g.fillText(s, w / 2, h / 2);
+    });
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false }));
+    sp.scale.set(3.4, 0.85, 1); sp.renderOrder = 10;
+    return sp;
+}
+function marbleObj(m) {
+    let o = marbleObjs.get(m.id);
+    if (o && o.m === m) return o;
+    if (o) { track3.remove(o.g); }
+    const g = new THREE.Group(), r = R * S3 * 1.25;
+    const mat = new THREE.MeshStandardMaterial({ map: makeMarbleTex(m), roughness: 0.18, metalness: 0.15, transparent: true });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mat);
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(r * 1.07, 24, 16), new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, shininess: 140, specular: 0xffffff, depthWrite: false }));
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 1.6, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfb923c, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    g.add(core, shell, halo);
+    o = { m, g, core, mat, shell, halo, hasImg: avatarCache.has(m.id), label: null, gold: null };
+    marbleObjs.set(m.id, o); track3.add(g);
+    return o;
+}
+function updateMarbles3D(now) {
+    const ranked = allActive().sort((a, b) => b.body.position.y - a.body.position.y);
+    const showNames = ranked.length <= 12;
+    for (const [id, o] of marbleObjs) if (marbles.get(id) !== o.m) { track3.remove(o.g); o.mat.map.dispose(); marbleObjs.delete(id); }
+    for (const m of marbles.values()) {
+        const o = marbleObj(m), p = m.body.position;
+        if (!o.hasImg && avatarCache.has(m.id)) { o.hasImg = true; o.mat.map.dispose(); o.mat.map = makeMarbleTex(m); o.mat.needsUpdate = true; }
+        o.g.position.set((p.x - W / 2) * S3, -p.y * S3, DEPTH / 2);
+        o.core.rotation.z = -m.body.angle;
+        const boosted = now < m.boostUntil && !m.ejected;
+        o.halo.material.opacity = boosted ? 0.35 : m.like > 2 && !m.ejected ? Math.min(0.3, m.like / 60) : 0;
+        o.halo.material.color.set(boosted ? 0xfb923c : 0xf43f5e);
+        const fade = m.ejected ? Math.max(0.15, 1 - (now - m.ejectedAt) / 3500) : 1;
+        o.mat.opacity = fade; o.shell.material.opacity = 0.16 * fade;
+        const lead = ranked[0] === m, wantLabel = !topView && !m.ejected && (showNames || ranked.indexOf(m) < 6);
+        if (wantLabel && (!o.label || o.gold !== lead)) {
+            if (o.label) { o.g.remove(o.label); o.label.material.map.dispose(); }
+            o.label = makeLabel(m.name, lead); o.gold = lead; o.label.position.set(0, R * S3 + 0.55, 0.3); o.g.add(o.label);
+        }
+        if (o.label) o.label.visible = wantLabel;
+    }
+}
+function render3D(now) {
+    if (!renderer3) { init3D(); if (!view3d) return; }
+    if (glW !== vw || glH !== vh) { glW = vw; glH = vh; renderer3.setSize(vw, vh); camera3.aspect = vw / vh; camera3.updateProjectionMatrix(); }
+    if (track3dDirty || !track3) buildTrack3D();
+    const vid = bgVideoOn();
+    document.documentElement.style.background = document.body.style.background = vid ? 'transparent' : 'linear-gradient(#040815,#0c1a3a 60%,#14234a)';
+    bgVideo.style.opacity = vid ? String(Math.max(0.2, 1 - CFG.videoDim)) : '';
+    scene3.fog.color.set(vid ? 0x000000 : 0x070e22); scene3.fog.near = vid ? 1e5 : 30; scene3.fog.far = vid ? 2e5 : 120;
+    gateMesh3.visible = gateOn;
+    for (const s of spinner3) s.g.rotation.z = -s.body.angle;
+    updateMarbles3D(now);
+
+    // caméra : sous les billes, qui regarde le toboggan monter vers le départ
+    ov3 += ((topView ? 1 : 0) - ov3) * 0.08;
+    const vf = -cam.y * S3, asp = vw / vh, tanV = Math.tan(FOV3 * Math.PI / 360);
+    const dist = Math.max(11, (W * S3 * 0.36) / (tanV * Math.min(asp, 1.6)));
+    const minV = -(FINISH + 500) * S3;
+    const fPos = new THREE.Vector3(0, Math.max(minV, vf - dist * 0.5), dist * 0.85), fLook = new THREE.Vector3(0, vf + dist * 0.12, 0.3);
+    const H = (FINISH + 800) * S3, fit = Math.max(H / 2 / tanV, (W * S3 / 2 + 1) / (tanV * asp)) * 1.08;
+    const oPos = new THREE.Vector3(0, -(FINISH / 2) * S3, fit), oLook = new THREE.Vector3(0, -(FINISH / 2) * S3, 0);
+    const pos = fPos.lerp(oPos, ov3), look = fLook.lerp(oLook, ov3);
+    track3.localToWorld(pos); track3.localToWorld(look);
+    camera3.position.copy(pos); camera3.lookAt(look);
+    renderer3.render(scene3, camera3);
+}
 
 /* ---------- Démarrage ---------- */
 let last = performance.now(), acc = 0;
@@ -693,7 +920,7 @@ function frame(now) {
     if (n === 4) acc = 0;
     if (phase === 'lobby' && autoStartAt && now >= autoStartAt) startCountdown();
     if (phase === 'done' && now >= winnerTimer) resetRace();
-    updateCamera(); drawWorld(now); updateHud(now);
+    updateCamera(); if (view3d) render3D(now); else drawWorld(now); updateHud(now);
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -738,7 +965,7 @@ $('b-like').onclick = () => runCommand('like');
 function openControl() { try { window.open('course-de-billes-controle.html', 'cb-control', 'width=480,height=820'); } catch (e) { /* popup bloqué */ } }
 $('b-ctrl').onclick = openControl;
 
-window.__game = { onLike, applyConfig, get CFG() { return CFG; }, get FINISH() { return FINISH; }, marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); drawWorld(performance.now()); updateHud(performance.now()); }, get phase() { return phase; }, cam };
+window.__game = { onLike, applyConfig, get CFG() { return CFG; }, get FINISH() { return FINISH; }, marbles, onGift, startCountdown, resetRace, step(n) { for (let i = 0; i < n; i++) physicsStep(performance.now()); }, render() { for (let i = 0; i < 60; i++) updateCamera(); if (view3d) render3D(performance.now()); else drawWorld(performance.now()); updateHud(performance.now()); }, get view3d() { return view3d; }, get phase() { return phase; }, cam };
 </script>
 </body>
 </html>
