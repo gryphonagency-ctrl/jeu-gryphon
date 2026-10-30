@@ -499,7 +499,20 @@
         const ANSWER_REVEAL_DELAY_SECONDS = 20;
         const BASE_QUESTION_COUNT = QUESTIONS_DATABASE.flat().length;
 
-        let currentLevelIndex = 0, currentQuestionObj = null, selectedOption = null, ttsEnabled = true, jokersUsed = {}, liveVotes = { A: 0, B: 0, C: 0, D: 0 };
+        let currentLevelIndex = 0, currentQuestionObj = null, selectedOption = null, ttsEnabled = false, ttsAllowed = false, jokersUsed = {}, liveVotes = { A: 0, B: 0, C: 0, D: 0 };
+        // La voix IA est réservée aux comptes abonnés : les joueurs en essai gratuit ne peuvent pas l'activer.
+        fetch('/api/session', { credentials: 'same-origin' })
+            .then(response => response.json())
+            .then(session => { ttsAllowed = Boolean(session.authenticated && session.canAccessGames); })
+            .catch(() => { ttsAllowed = false; })
+            .finally(() => {
+                ttsEnabled = ttsAllowed;
+                const button = document.getElementById('ttsToggle');
+                if (button) {
+                    button.innerText = ttsAllowed ? 'IA Voix: ON' : 'IA Voix: abonnés';
+                    button.title = ttsAllowed ? '' : 'La voix IA est réservée aux abonnés';
+                }
+            });
         let tiktokSocket = null, gameWon = false, answerLocked = false, winnerKey = null, finalistKey = null, introAudioContext = null;
         let answerRevealInterval = 0, autoAdvanceTimer = 0, answerRevealReady = false, chatAnswersScored = false;
         let answerAnnouncementPending = false, answerAnnouncementCallback = null;
@@ -1565,6 +1578,10 @@
         }
 
         function toggleTTS() {
+            if (!ttsAllowed) {
+                document.getElementById('aiStatusText').innerText = 'Voix réservée aux abonnés';
+                return;
+            }
             ttsEnabled = !ttsEnabled;
             document.getElementById('ttsToggle').innerText = ttsEnabled ? "IA Voix: ON" : "IA Voix: OFF";
             if (!ttsEnabled && 'speechSynthesis' in window) {

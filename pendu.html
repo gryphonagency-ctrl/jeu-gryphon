@@ -755,8 +755,21 @@
 
         let voiceReady = false;
         let autoTimer = null;
+        // La voix IA est réservée aux comptes abonnés : les joueurs en essai gratuit ne peuvent pas l'activer.
+        let ttsAllowed = false;
+        function lockVoiceButtons() {
+            const enableButton = document.getElementById('voice-enable');
+            enableButton.textContent = '🔒 Voix de l\'IA réservée aux abonnés';
+            enableButton.disabled = true;
+            document.getElementById('voice-replay').disabled = true;
+        }
+        fetch('/api/session', { credentials: 'same-origin' })
+            .then(response => response.json())
+            .then(session => { ttsAllowed = Boolean(session.authenticated && session.canAccessGames); })
+            .catch(() => { ttsAllowed = false; })
+            .finally(() => { if (!ttsAllowed) lockVoiceButtons(); });
         function speakNow(text) {
-            if (!('speechSynthesis' in window) || !text) return;
+            if (!ttsAllowed || !('speechSynthesis' in window) || !text) return;
             const synth = window.speechSynthesis;
             synth.cancel();
             synth.resume();
@@ -771,7 +784,7 @@
             if (puzzle) speakNow(`Manche ${round}. Indice : ${puzzle.clue}`);
         }
         function enableVoice() {
-            if (voiceReady) return;
+            if (voiceReady || !ttsAllowed) return;
             voiceReady = true;
             document.getElementById('voice-enable').textContent = '🔊 Voix de l\'IA activée';
             speakClue();
