@@ -127,7 +127,9 @@ try { Object.assign(CFG, JSON.parse(localStorage.getItem('cb-config') || '{}'));
 const engine = Engine.create();
 engine.gravity.y = CFG.gravity;
 const world = engine.world;
-const statics = [];   // { body, kind }
+const statics = [];   // { body, kind, seg }
+const segs = [];      // segments indépendants : { y0, y1, items, on }
+let curSeg = -1;
 const spinners = [];
 const mudZones = [];
 let track3dDirty = true;
@@ -136,8 +138,23 @@ function addStatic(body, kind, opts = {}) {
     body.isStatic = true;
     Body.set(body, { restitution: opts.restitution ?? 0.3, friction: 0.02, frictionStatic: 0 });
     Composite.add(world, body);
-    statics.push({ body, kind });
+    const s = { body, kind, seg: curSeg };
+    statics.push(s);
+    if (curSeg >= 0) segs[curSeg].items.push(s);
     return body;
+}
+/* Seuls les segments proches des billes sont actifs dans le moteur physique (et affichés en 3D) */
+function updateSegments() {
+    let lo = Infinity, hi = -Infinity;
+    for (const m of marbles.values()) if (!m.ejected) { lo = Math.min(lo, m.body.position.y); hi = Math.max(hi, m.body.position.y); }
+    if (lo === Infinity) { lo = 0; hi = 0; }
+    lo -= 1500; hi += 2400;
+    for (const sg of segs) {
+        const on = sg.y1 > lo && sg.y0 < hi;
+        if (on === sg.on) continue;
+        for (const it of sg.items) on ? Composite.add(world, it.body) : Composite.remove(world, it.body);
+        sg.on = on;
+    }
 }
 const boostZones = [];
 function rail(x1, y1, x2, y2, kind = 'rail', thick = 24, ext = 0) {
@@ -171,8 +188,9 @@ Events.on(engine, 'collisionStart', ev => {
    Un module = 4 × spacing : sortie vers un couloir latéral, virages lisses dans le couloir central, bumpers, pale, retour, zone d'accélération. */
 function buildTrack() {
     for (const s of statics) Composite.remove(world, s.body);
-    statics.length = 0; spinners.length = 0; mudZones.length = 0; boostZones.length = 0; track3dDirty = true;
-    const mods = Math.max(1, Math.min(10, Math.round(CFG.levels / 4)));
+    statics.length = 0; segs.length = 0; curSeg = -1; spinners.length = 0; mudZones.length = 0; boostZones.length = 0; track3dDirty = true;
+    const qm = parseInt(new URLSearchParams(location.search).get('modules'), 10);
+    const mods = qm > 0 ? Math.min(qm, 10) : Math.max(1, Math.min(10, Math.round(CFG.levels / 4)));
     const S = Math.max(480, CFG.spacing), TOP = 700, CW = 360, MID = W / 2;
     FINISH = TOP + mods * 4 * S + 300;
     const wallH = FINISH + 700 - WALL_TOP;
@@ -186,6 +204,7 @@ function buildTrack() {
     const LH = 170;
     for (let m = 0; m < mods; m++) {
         const y0 = TOP + m * 4 * S;
+        segs.push({ y0, y1: y0 + 4 * S + 300, items: [], on: true }); curSeg = m;
         for (const sx of [-1, 1]) {
             const px = d => MID + sx * d;
             // parois du couloir central, avec une sortie (0.5–1.2) et un retour (2.7–3.4)
@@ -218,6 +237,7 @@ function buildTrack() {
         // zone d'accélération dans le couloir principal
         boostZones.push({ x: MID - CW, y: y0 + 3.45 * S, w: CW * 2, h: 0.45 * S, dx: 0, dy: 1, ang: Math.PI / 2, len: 0.45 * S, cx: MID, cy: y0 + 3.675 * S });
     }
+    curSeg = -1;
 }
 buildTrack();
 const gate = Bodies.rectangle(W / 2, 20, W, 30, { isStatic: true });
@@ -367,6 +387,7 @@ function resetRace() {
 
 /* ---------- Boucle physique ---------- */
 function physicsStep(now) {
+    updateSegments();
     for (const s of spinners) Body.setAngle(s.body, s.body.angle + s.speed);
     for (const m of marbles.values()) {
         const b = m.body;
@@ -757,7 +778,7 @@ $('start-btn').onclick = () => { $('start').remove(); openControl(); say('Course
 /* ---------- Rendu 3D : le toboggan vu d'en bas, départ tout en haut ---------- */
 const S3 = 0.01, DEPTH = 0.8, TILT = 0.5, FOV3 = 58;
 let view3d = typeof THREE !== 'undefined' && !/[?&]2d\b/.test(location.search);
-let renderer3, scene3, camera3, track3, ground3, gateMesh3, glW = 0, glH = 0, ov3 = 0;
+let renderer3, scene3, camera3, track3, ground3, gateMesh3, glW = 0, glH = 0, ov3 = 0, bank3 = 0;
 const spinner3 = [], marbleObjs = new Map();
 const BG3 = 'linear-gradient(#e4e9f0,#a9b5c5 60%,#76859a)', FOG3 = 0xb4bfce;
 const springGeo = new Map();
@@ -878,7 +899,14 @@ function buildTrack3D() {
     });
     const steelMat = new THREE.MeshStandardMaterial({ color: 0xb4bfcd, roughness: 0.3, metalness: 0.95 });
     const rubberMat = new THREE.MeshStandardMaterial({ color: 0x2b313b, roughness: 0.7, metalness: 0.1 });
+    const segMeshes = [];
     for (const s of statics) {
+        const n0 = track3.children.length;
+        buildStatic3(s);
+        if (s.seg >= 0) for (let i = n0; i < track3.children.length; i++) segMeshes.push([s.seg, track3.children[i]]);
+    }
+    track3.userData.segMeshes = segMeshes;
+    function buildStatic3(s) {
         const b = s.body, p = b.position;
         if (s.kind === 'ramp' || s.kind === 'rail') {
             const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
@@ -1022,6 +1050,7 @@ function render3D(now) {
     scene3.fog.color.set(vid ? 0x000000 : FOG3); scene3.fog.near = vid ? 1e5 : 40; scene3.fog.far = vid ? 2e5 : 150;
     gateMesh3.visible = gateOn;
     for (const s of spinner3) s.g.rotation.z = -s.body.angle;
+    for (const [i, o] of track3.userData.segMeshes || []) o.visible = topView || !segs[i] || segs[i].on;
     updateMarbles3D(now);
 
     // caméra : sous les billes, qui regarde le toboggan monter vers le départ
@@ -1035,6 +1064,11 @@ function render3D(now) {
     const pos = fPos.lerp(oPos, ov3), look = fLook.lerp(oLook, ov3);
     track3.localToWorld(pos); track3.localToWorld(look);
     camera3.position.copy(pos); camera3.lookAt(look);
+    // inclinaison dans les virages : la piste bascule du côté où les billes tournent, comme une voiture
+    let lvx = 0, ln = 0;
+    if (phase === 'race') { const lead = [...marbles.values()].filter(m => !m.ejected).sort((a, b) => b.body.position.y - a.body.position.y).slice(0, 5); for (const m of lead) { lvx += m.body.velocity.x; ln++; } }
+    bank3 += ((ln ? Math.max(-0.22, Math.min(0.22, lvx / ln * 0.035)) : 0) - bank3) * 0.04;
+    camera3.rotateZ(bank3 * (1 - ov3));
     renderer3.render(scene3, camera3);
 }
 
