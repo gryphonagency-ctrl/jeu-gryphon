@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pico Turbo - Course aux Anneaux - Gryphon Agency</title>
+<title>Nouvelle version de Sonic - Gryphon Agency</title>
 <script src="/arcade-effects.js"></script>
 <style>
   html, body { margin: 0; height: 100%; background: #0a1030; color: #fff; font-family: 'Arial Black', Arial, sans-serif; }
@@ -22,9 +22,11 @@
   #rules { position: fixed; left: 0; right: 0; bottom: 0; height: 30px; background: #c8210c; border-top: 2px solid #fff; overflow: hidden; z-index: 6; display: flex; align-items: center; }
   #rules span { white-space: nowrap; font: bold 14px Arial; animation: slide 28s linear infinite; padding-left: 100%; }
   @keyframes slide { to { transform: translateX(-100%); } }
-  #live { position: fixed; left: 8px; bottom: 36px; font: 12px Arial; z-index: 6; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-  #live input { padding: 4px 6px; font-size: 12px; }
-  #live button { padding: 4px 8px; }
+  #live { position: fixed; left: 50%; transform: translateX(-50%); bottom: 42px; font: bold 17px Arial; z-index: 6; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center;
+    background: rgba(10,16,48,.88); border: 2px solid #ffd23f; border-radius: 14px; padding: 10px 14px; max-width: 94vw; box-shadow: 0 4px 18px rgba(0,0,0,.6); }
+  #live input { padding: 9px 12px; font-size: 17px; border-radius: 8px; border: 2px solid #4a1d96; }
+  #live button { padding: 9px 16px; font-size: 17px; font-weight: bold; border-radius: 8px; border: 0; cursor: pointer; background: #ffd23f; }
+  #live #in-go { background: #fe2c55; color: #fff; }
 </style>
 </head>
 <body>
@@ -32,15 +34,15 @@
   <canvas id="c" width="960" height="540"></canvas>
   <div id="intro">
     <img src="sonic-accueil.png" alt="Aperçu">
-    <h1>PICO TURBO — LA COURSE AUX ANNEAUX</h1>
+    <h1>NOUVELLE VERSION DE SONIC</h1>
     <p>Vos cadeaux font sauter, foncer et transformer la mascotte !</p>
     <button class="btn" id="go">LANCER LE JEU</button>
   </div>
 </div>
 
 <div id="live">
-  <input id="in-user" placeholder="@pseudo TikTok du live" size="18">
-  <input id="in-url" size="26" value="wss://jeu6boite.onrender.com">
+  <input id="in-user" placeholder="@pseudo TikTok du live" size="22">
+  <input id="in-url" size="30" value="wss://jeu6boite.onrender.com">
   <button id="in-go">Connecter</button>
   <span id="live-status">Non connecté</span>
   <button id="snd">🔊</button>
@@ -90,6 +92,7 @@ const LEVELS = [
 const LV = () => LEVELS[S.level];
 
 function startLevel(i) {
+  levelDonors = {}; S.vip = null;
   S.level = i; S.dist = 0; S.lives = 3; S.loop = null; S.clear = 0; S.banner = 190; S.boost = 0;
   obstacles = []; rings = []; loops = []; bridges = []; pits = []; spawnIn = 60;
   Object.assign(P, { y: GROUND, vy: 0, air: 0, fall: false });
@@ -116,9 +119,19 @@ function jump() {
 function turbo() { if (!S.run || S.over) return; S.boost = 180; S.inv = Math.max(S.inv, 180); tone(200, .35, 'sawtooth', 800); }
 function superMode() { if (!S.run || S.over) return; S.superT = 600; S.inv = Math.max(S.inv, 600); tone(300, .6, 'sawtooth', 1200); }
 
-function onGift(user, coins) {
+const avatarUrls = {}, avatarImgs = {};
+let levelDonors = {};
+const prizeFor = lv => 10 + 5 * lv;
+function avatarImg(user) {
+  const url = avatarUrls[user]; if (!url) return null;
+  if (!avatarImgs[user] || avatarImgs[user].src !== url) { const im = new Image(); im.src = url; avatarImgs[user] = im; }
+  return avatarImgs[user];
+}
+function onGift(user, coins, avatar) {
   coins = Number(coins) || 1; user = user || 'inconnu';
   donors[user] = (donors[user] || 0) + coins;
+  levelDonors[user] = (levelDonors[user] || 0) + coins;
+  if (avatar) avatarUrls[user] = avatar;
   if (coins >= BIG_GIFT) { superMode(); toast('💎 @' + user + ' → SUPER PICO !'); }
   else if (coins >= 5) { turbo(); toast('🔥 @' + user + ' → TURBO !'); }
   else { jump(); toast('🎁 @' + user + ' → SAUT'); }
@@ -198,7 +211,9 @@ function update() {
   const v = S.speed * mult;
   S.dist += v;
   if (S.dist / 10 >= LV().len) {
-    S.clear = S.level >= LEVELS.length - 1 ? 480 : 200; S.won = S.level >= LEVELS.length - 1;
+    const top = Object.entries(levelDonors).sort((a, b) => b[1] - a[1])[0];
+    S.vip = top ? { user: top[0], stars: prizeFor(S.level) } : null;
+    S.clear = (S.level >= LEVELS.length - 1 ? 480 : 200) + (S.vip ? 280 : 0); S.won = S.level >= LEVELS.length - 1;
     obstacles = []; rings = []; pits = []; bridges = []; loops = [];
     toast(S.won ? '🏆 VICTOIRE ! Les 8 niveaux sont terminés' : '✅ Niveau ' + (S.level + 1) + ' terminé !');
     tone(700, .5, 'square', 1400);
@@ -492,9 +507,25 @@ function draw() {
     g.fillStyle = '#ffd23f'; g.font = 'bold 40px Arial Black'; g.fillText(L.name.toUpperCase(), W / 2, 225); g.globalAlpha = 1;
   }
   if (S.clear) {
-    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 170, W, 120);
-    g.fillStyle = '#ffd23f'; g.font = 'bold 46px Arial Black'; g.fillText(S.won ? '🏆 VICTOIRE TOTALE !' : 'NIVEAU ' + (S.level + 1) + ' TERMINÉ !', W / 2, 218);
-    g.fillStyle = '#fff'; g.font = 'bold 22px Arial'; g.fillText(S.won ? S.rings + ' anneaux au total — retour au niveau 1 bientôt' : 'Prochain : ' + LEVELS[S.level + 1].name, W / 2, 262);
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 90, W, 110);
+    g.fillStyle = '#ffd23f'; g.font = 'bold 46px Arial Black'; g.fillText(S.won ? '🏆 VICTOIRE TOTALE !' : 'NIVEAU ' + (S.level + 1) + ' TERMINÉ !', W / 2, 135);
+    g.fillStyle = '#fff'; g.font = 'bold 22px Arial'; g.fillText(S.won ? S.rings + ' anneaux au total' : 'Prochain : ' + LEVELS[S.level + 1].name, W / 2, 180);
+    if (S.vip) {
+      const bx = W / 2 - 330, by = 215, bw = 660, bh = 150, cxA = bx + 95, cyA = by + bh / 2;
+      const bgG = g.createLinearGradient(bx, by, bx + bw, by + bh); bgG.addColorStop(0, '#3b2a00'); bgG.addColorStop(.5, '#7a5a00'); bgG.addColorStop(1, '#3b2a00');
+      g.fillStyle = bgG; g.strokeStyle = '#ffd23f'; g.lineWidth = 5; g.shadowColor = '#ffd23f'; g.shadowBlur = 25;
+      g.beginPath(); g.roundRect(bx, by, bw, bh, 22); g.fill(); g.stroke(); g.shadowBlur = 0;
+      g.fillStyle = '#ffd23f'; g.font = 'bold 16px Arial Black'; g.textAlign = 'left'; g.fillText('👑 BANNIÈRE VIP — GAGNANT DU NIVEAU ' + (S.level + 1), bx + 190, by + 30);
+      g.save(); g.beginPath(); g.arc(cxA, cyA, 55, 0, 7); g.closePath(); g.clip();
+      const im = avatarImg(S.vip.user);
+      if (im && im.complete && im.naturalWidth) g.drawImage(im, cxA - 55, cyA - 55, 110, 110);
+      else { g.fillStyle = '#4a1d96'; g.fillRect(cxA - 55, cyA - 55, 110, 110); g.fillStyle = '#fff'; g.font = 'bold 54px Arial Black'; g.textAlign = 'center'; g.fillText(S.vip.user.charAt(0).toUpperCase(), cxA, cyA + 2); g.textAlign = 'left'; }
+      g.restore();
+      g.strokeStyle = '#ffd23f'; g.lineWidth = 5; g.beginPath(); g.arc(cxA, cyA, 57, 0, 7); g.stroke();
+      g.fillStyle = '#fff'; g.font = 'bold 34px Arial Black'; g.fillText('@' + S.vip.user.slice(0, 20), bx + 190, by + 78);
+      g.fillStyle = '#ffd23f'; g.font = 'bold 30px Arial Black'; g.fillText('⭐ ' + S.vip.stars + ' étoiles gagnées !', bx + 190, by + 122);
+      g.textAlign = 'center';
+    }
   }
   if (S.over) {
     g.fillStyle = 'rgba(0,0,0,.65)'; g.fillRect(0, 190, W, 150);
@@ -531,7 +562,10 @@ document.getElementById('in-go').onclick = () => {
     const type = String(m.type || m.event || '').toLowerCase(), d = m.data || m;
     if (type === 'gift' || type === 'tiktok-gift') {
       const x = d.gift ?? d; if (x.messageId) { if (seen.has(x.messageId)) return; seen.add(x.messageId); }
-      onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)));
+      onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)), x.avatarDataUri || x.avatarUrl || x.profilePictureUrl || x.profilePicture || '');
+    } else if (type === 'viewer' && (d.viewer || d.uniqueId)) {
+      const v = d.viewer || d, url = v.avatarDataUri || v.avatarUrl || v.profilePictureUrl || '';
+      if (url) for (const id of [v.uniqueId, v.username, v.nickname]) if (id) avatarUrls[id] = url;
     } else if (type === 'status' && d.message) setLive(String(d.message));
   };
   ws.onerror = () => setLive('Erreur de connexion'); ws.onclose = () => setLive('Déconnecté');

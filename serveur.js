@@ -183,7 +183,7 @@ store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 const staticGameTitles = {
-    '/course-anneaux.html': 'Pico Turbo - Course aux Anneaux',
+    '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
     '/pousoire.html': 'Table à pièces',
