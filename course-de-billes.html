@@ -829,17 +829,25 @@ function buildTrack3D() {
         g.strokeStyle = 'rgba(160,200,255,.35)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, w - 3, h - 3);
     });
     gridTex.wrapS = gridTex.wrapT = THREE.RepeatWrapping; gridTex.repeat.set(W * S3 / 5, H / 5);
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.9, metalness: 0, envMapIntensity: 0.25 }));
-    wall.position.set(0, midY, -0.02); track3.add(wall);
-
-    // parois latérales en acier brossé
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0xc3ccd8, roughness: 0.3, metalness: 0.95 });
-    for (const sx of [-1, 1]) {
-        const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, DEPTH + 0.3), sideMat);
-        w.position.set(sx * (W * S3 / 2 + 0.25), midY, DEPTH / 2 - 0.05); track3.add(w);
-        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.06, H, 0.06), new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 0.4, metalness: 0.6 }));
-        strip.position.set(sx * (W * S3 / 2 - 0.02), midY, DEPTH + 0.12); track3.add(strip);
+    // gouttière continue : fond concave qui remonte en parois courbes de chaque côté
+    const halfW = W * S3 / 2, lip = 1.4, shellW = (halfW + lip) * 2, rise = DEPTH + 1.1;
+    const shellGeo = new THREE.PlaneGeometry(shellW, H, 64, 1);
+    const sp = shellGeo.attributes.position;
+    for (let i = 0; i < sp.count; i++) {
+        const u = Math.abs(sp.getX(i)) / (shellW / 2);
+        sp.setZ(i, -0.05 + rise * Math.pow(u, 3));
     }
+    shellGeo.computeVertexNormals();
+    const wall = new THREE.Mesh(shellGeo, new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.55, metalness: 0.1, envMapIntensity: 0.4, side: THREE.DoubleSide }));
+    wall.position.set(0, midY, -0.02); track3.add(wall);
+    gridTex.repeat.set(shellW / 5, H / 5);
+
+    // lèvres blanches brillantes en haut des parois concaves
+    for (const sx of [-1, 1]) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.14, H, 0.14), new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.15, clearcoat: 1 }));
+        strip.position.set(sx * shellW / 2, midY, -0.05 + rise); track3.add(strip);
+    }
+
     // montants en travers pour donner de la profondeur
     const ribMat = new THREE.MeshStandardMaterial({ color: 0x9aa6b6, roughness: 0.3, metalness: 0.9 });
     for (let y = 400; y < 0; y += 800) {
