@@ -24,6 +24,10 @@ body.no-hud .hud { display: none !important; }
 #feed { left: 1.2vw; bottom: 1.5vh; width: min(420px, 60vw); display: flex; flex-direction: column; gap: .6vh; }
 #feed div { background: rgba(10,16,32,.85); border-left: .6vh solid #38bdf8; border-radius: .8vh; padding: .7vh 1vw; font-size: 2.1vh; animation: pop .3s; }
 #feed .boost { border-color: #f59e0b; } #feed .eject { border-color: #ef4444; }
+#stars { left: 50%; bottom: 1.5vh; transform: translateX(-50%); display: flex; gap: 1.2vw; align-items: stretch; background: rgba(10,16,32,.82); border: .25vh solid #fbbf24; border-radius: 1.4vh; padding: .8vh 1.2vw; font-size: clamp(11px, 1.9vh, 22px); box-shadow: 0 0 2vh rgba(251,191,36,.35); white-space: nowrap; }
+#stars .t { font: 900 1.1em Impact, Arial; color: #fbbf24; letter-spacing: .06em; align-self: center; }
+#stars .c { padding-left: 1.2vw; border-left: .2vh solid rgba(255,255,255,.2); line-height: 1.35; }
+#stars .c b { color: #fbbf24; }
 @keyframes pop { from { transform: translateX(-30px); opacity: 0; } }
 #big { left: 0; right: 0; top: 30vh; text-align: center; font: 900 clamp(60px, 26vh, 320px) Impact, Arial; color: #fff; text-shadow: 0 0 4vh #38bdf8, 0 .6vh 0 #000; display: none; }
 #big.show { display: block; animation: bigpop .9s; }
@@ -62,6 +66,7 @@ button:active { transform: scale(.96); }
 <div class="hud" id="status">EN ATTENTE<small>Envoyez un cadeau pour entrer en piste</small></div>
 <div class="hud" id="progress"></div>
 <div class="hud" id="feed"></div>
+<div class="hud" id="stars"><span class="t">⭐ ÉTOILES</span><div class="c"><b>1 étoile</b> : rejoins la course<br>et accélère ta bille 🚀</div><div class="c"><b>5 étoiles</b> : éjecte la bille<br>en tête de la course 💥</div><div class="c"><b>Tap / like</b> : avance<br>plus vite ❤️</div></div>
 <div class="hud" id="big"></div>
 <div id="banner"><div class="box"><h2>🏁 FINISH !</h2><div id="banner-pic"></div><div class="name" id="banner-name"></div><div class="podium" id="banner-podium"></div></div></div>
 
@@ -111,7 +116,8 @@ const $ = id => document.getElementById(id);
 const WS_URL = 'wss://jeu6boite.onrender.com';
 
 /* ---------- Parcours ---------- */
-const W = 2000, WALL_TOP = -1800;
+const W0 = 2000, XK = 1.45, W = Math.round(W0 * XK), WALL_TOP = -1800;
+const tx = x => W / 2 + (x - W0 / 2) * XK; // écarte tous les éléments du parcours vers les côtés
 let FINISH = 9300;
 const R = 26;
 
@@ -157,28 +163,30 @@ function updateSegments() {
     }
 }
 const boostZones = [];
-function rail(x1, y1, x2, y2, kind = 'rail', thick = 24, ext = 0) {
+function rail(x1, y1, x2, y2, kind = 'rail', thick = 24, ext = 0) { return railRaw(tx(x1), y1, tx(x2), y2, kind, thick, ext); }
+function railRaw(x1, y1, x2, y2, kind = 'rail', thick = 24, ext = 0) {
     const len = Math.hypot(x2 - x1, y2 - y1) + ext;
     return addStatic(Bodies.rectangle((x1 + x2) / 2, (y1 + y2) / 2, len, thick, { angle: Math.atan2(y2 - y1, x2 - x1) }), kind, { restitution: 0.1 });
 }
 /* Surface lisse : courbe en U (pente forte au départ qui s'adoucit jusqu'à l'horizontale), faite de petits segments jointifs */
 function swoop(x1, y1, x2, H, n = 14) {
+    x1 = tx(x1); x2 = tx(x2);
     let px = x1, py = y1;
     for (let i = 1; i <= n; i++) {
         const t = i / n, x = x1 + (x2 - x1) * t, y = y1 + H * (0.25 * t + 0.75 * (1 - (1 - t) * (1 - t)));
-        rail(px, py, x, y, 'ramp', 26, 6);
+        railRaw(px, py, x, y, 'ramp', 26, 6);
         px = x; py = y;
     }
 }
 const loopZones = [];
 function prop(x, y, speed, r = 34) {
-    const b = addStatic(Bodies.circle(x, y, r), 'prop', { restitution: 0.9 });
+    const b = addStatic(Bodies.circle(tx(x), y, r), 'prop', { restitution: 0.9 });
     b.label = 'prop'; b.propDir = speed > 0 ? 1 : -1;
     spinners.push({ body: b, speed });
     return b;
 }
 function bumper(x, y, r = 40) {
-    const b = addStatic(Bodies.circle(x, y, r), 'bumper', { restitution: 1 });
+    const b = addStatic(Bodies.circle(tx(x), y, r), 'bumper', { restitution: 1 });
     b.label = 'bumper';
     return b;
 }
@@ -203,7 +211,7 @@ function buildTrack() {
     statics.length = 0; segs.length = 0; curSeg = -1; spinners.length = 0; loopZones.length = 0; mudZones.length = 0; boostZones.length = 0; track3dDirty = true;
     const qm = parseInt(new URLSearchParams(location.search).get('modules'), 10);
     const mods = qm > 0 ? Math.min(qm, 14) : Math.max(1, Math.min(14, Math.round(CFG.levels / 4)));
-    const S = Math.max(480, CFG.spacing), TOP = 700, CW = 360, MID = W / 2;
+    const S = Math.max(480, CFG.spacing), TOP = 700, CW = 360, MID = W0 / 2;
     FINISH = TOP + mods * 4 * S + 300;
     const wallH = FINISH + 700 - WALL_TOP;
     const wallY = WALL_TOP + wallH / 2;
@@ -212,7 +220,7 @@ function buildTrack() {
     addStatic(Bodies.rectangle(W / 2, FINISH + 700, W + 80, 60), 'wall');
     // entonnoirs de départ vers le toboggan central
     swoop(0, 330, MID - 330, 360);
-    swoop(W, 330, MID + 330, 360);
+    swoop(W0, 330, MID + 330, 360);
     const LH = 170;
     for (let m = 0; m < mods; m++) {
         const y0 = TOP + m * 4 * S;
@@ -227,7 +235,7 @@ function buildTrack() {
             swoop(px(CW + 20), y0 + 1.45 * S, px(930), LH);
             swoop(px(990), y0 + 2.9 * S, px(250), 200);
             for (const y1 of [y0 + 1.45 * S]) {
-                boostZones.push({ x: px(655) - 150, y: y1 + LH * 0.75 - 110, w: 300, h: 140, dx: sx * 0.9, dy: 0.35, ang: sx * 0.31, len: 300, cx: px(655), cy: y1 + LH * 0.75 - 14 });
+                boostZones.push({ x: tx(px(655)) - 150 * XK, y: y1 + LH * 0.75 - 110, w: 300 * XK, h: 140, dx: sx * 0.9, dy: 0.35, ang: sx * 0.31, len: 300 * XK, cx: tx(px(655)), cy: y1 + LH * 0.75 - 14 });
             }
             if (CFG.spinners) prop(px(780), y0 + 1.95 * S, sx * 0.07);
             if (CFG.pegs) { bumper(px(700), y0 + 1.2 * S, 34); bumper(px(640), y0 + 3.2 * S, 34); bumper(px(560), y0 + 1.75 * S, 30); bumper(px(800), y0 + 2.25 * S, 30); bumper(px(560), y0 + 2.7 * S, 30); }
@@ -243,7 +251,7 @@ function buildTrack() {
             rail(MID + CW - 12, zy, MID + TW, zy + 120, 'ramp', 20);
             rail(MID - TW, zy + 100, MID - TW, zy + 440, 'wall', 20);
             rail(MID + TW, zy + 100, MID + TW, zy + 440, 'wall', 20);
-            loopZones.push({ x: MID - TW, y: zy + 120, w: TW * 2, h: 320, seg: curSeg });
+            loopZones.push({ x: tx(MID - TW), y: zy + 120, w: TW * 2 * XK, h: 320, seg: curSeg });
         }
         if (CFG.spinners) { prop(MID, y0 + 0.65 * S, m % 2 ? 0.08 : -0.08); prop(MID - 215, y0 + 2.75 * S, 0.08, 30); prop(MID + 215, y0 + 2.75 * S, -0.08, 30); }
         if (CFG.pegs) { bumper(MID - 90, y0 + 0.95 * S, 26); bumper(MID + 90, y0 + 0.95 * S, 26); bumper(MID - 260, y0 + 2.95 * S, 26); bumper(MID + 260, y0 + 2.95 * S, 26); }
@@ -252,11 +260,11 @@ function buildTrack() {
             bumper(MID, y0 + 3.0 * S, 46);
         }
         if (CFG.spinners) {
-            const sp = addStatic(Bodies.rectangle(MID, y0 + 2.15 * S, 300, 18), 'spinner');
+            const sp = addStatic(Bodies.rectangle(tx(MID), y0 + 2.15 * S, 300 * XK, 18), 'spinner');
             spinners.push({ body: sp, speed: m % 2 ? -CFG.spinSpeed : CFG.spinSpeed });
         }
         // zone d'accélération dans le couloir principal
-        boostZones.push({ x: MID - CW, y: y0 + 3.45 * S, w: CW * 2, h: 0.45 * S, dx: 0, dy: 1, ang: Math.PI / 2, len: 0.45 * S, cx: MID, cy: y0 + 3.675 * S });
+        boostZones.push({ x: tx(MID - CW), y: y0 + 3.45 * S, w: CW * 2 * XK, h: 0.45 * S, dx: 0, dy: 1, ang: Math.PI / 2, len: 0.45 * S, cx: tx(MID), cy: y0 + 3.675 * S });
     }
     curSeg = -1;
 }
@@ -1160,7 +1168,7 @@ function render3D(now) {
     // caméra : sous les billes, qui regarde le toboggan monter vers le départ
     ov3 += ((topView ? 1 : 0) - ov3) * 0.08;
     const vf = -cam.y * S3, asp = vw / vh, tanV = Math.tan(FOV3 * Math.PI / 360);
-    const dist = Math.max(11, (W * S3 * 0.36) / (tanV * Math.min(asp, 1.6)));
+    const dist = Math.max(11, (W * S3 * 0.4) / (tanV * Math.min(asp, 1.6)));
     const minV = -(FINISH + 500) * S3;
     const fPos = new THREE.Vector3(0, Math.min(0, vf + dist * 0.8), dist * 0.5), fLook = new THREE.Vector3(0, vf - dist * 0.6, 0.2);
     const H = (FINISH + 800) * S3, fit = Math.max(H / 2 / tanV, (W * S3 / 2 + 1) / (tanV * asp)) * 1.08;
