@@ -62,6 +62,7 @@ const liveTtsFile = path.join(__dirname, 'live-tts.html');
 const presenceScriptFile = path.join(__dirname, 'arcade-presence.js');
 const arcadeStarsFile = path.join(__dirname, 'arcade-stars.js');
 const retroFightFile = path.join(__dirname, 'combat-retro.html');
+const ringRunFile = path.join(__dirname, 'course-anneaux.html');
 const arenaGameFile = path.join(__dirname, 'tir-corde-goku.html');
 const arenaAssets = {
     'three.min.js': 'text/javascript; charset=utf-8',
@@ -73,6 +74,7 @@ const arenaAssets = {
     'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png'
 };
 const protectedRoutes = new Set([
+    '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
     '/pousoire.html',
@@ -122,6 +124,7 @@ const protectedRoutes = new Set([
     '/ballon-foot-reel.jpg'
 ]);
 const staticGameIds = [
+    '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
     '/pousoire.html',
@@ -178,7 +181,9 @@ store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
+store.grantGameAccessToExistingCreators('/course-anneaux.html');
 const staticGameTitles = {
+    '/course-anneaux.html': 'Pico Turbo - Course aux Anneaux',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
     '/pousoire.html': 'Table à pièces',
@@ -215,6 +220,7 @@ const staticGameTitles = {
     '/inedexd.html': 'Six Boîtes'
 };
 const gameRouteIds = new Map([
+    ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
     ['/arene-combattants.html', '/arene-combattants.html'],
     ['/pousoire.html', '/pousoire.html'],
@@ -2176,6 +2182,9 @@ const server = http.createServer((req, res) => {
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
+        ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
+        ['/images-vitrine/course-anneaux.png', [path.join(__dirname, 'images-vitrine', 'course-anneaux.png'), 'image/png']],
+        ['/sonic-accueil.png', [path.join(__dirname, 'sonic-accueil.png'), 'image/png']],
         ['/images-vitrine/combat-retro.png', [path.join(__dirname, 'images-vitrine', 'combat-retro.png'), 'image/png']],
         ['/images-vitrine/arene-combattants.png', [path.join(__dirname, 'images-vitrine', 'arene-combattants.png'), 'image/png']],
         ...Object.entries(arenaAssets).map(([name, type]) => ['/' + name, [path.join(__dirname, name), type]]),
