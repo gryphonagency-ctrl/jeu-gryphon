@@ -106,7 +106,7 @@ if (typeof THREE === 'undefined') {
 }
 </script>
 <script>
-const { Engine, Bodies, Body, Composite } = Matter;
+const { Engine, Bodies, Body, Composite, Events } = Matter;
 const $ = id => document.getElementById(id);
 const WS_URL = 'wss://jeu6boite.onrender.com';
 
@@ -134,38 +134,88 @@ let track3dDirty = true;
 
 function addStatic(body, kind, opts = {}) {
     body.isStatic = true;
-    Body.set(body, { restitution: opts.restitution ?? 0.3, friction: 0.05 });
+    Body.set(body, { restitution: opts.restitution ?? 0.3, friction: 0.02, frictionStatic: 0 });
     Composite.add(world, body);
     statics.push({ body, kind });
     return body;
 }
+const boostZones = [];
+function rail(x1, y1, x2, y2, kind = 'rail', thick = 24, ext = 0) {
+    const len = Math.hypot(x2 - x1, y2 - y1) + ext;
+    return addStatic(Bodies.rectangle((x1 + x2) / 2, (y1 + y2) / 2, len, thick, { angle: Math.atan2(y2 - y1, x2 - x1) }), kind, { restitution: 0.1 });
+}
+/* Surface lisse : courbe en U (pente forte au départ qui s'adoucit jusqu'à l'horizontale), faite de petits segments jointifs */
+function swoop(x1, y1, x2, H, n = 14) {
+    let px = x1, py = y1;
+    for (let i = 1; i <= n; i++) {
+        const t = i / n, x = x1 + (x2 - x1) * t, y = y1 + H * (0.25 * t + 0.75 * (1 - (1 - t) * (1 - t)));
+        rail(px, py, x, y, 'ramp', 26, 6);
+        px = x; py = y;
+    }
+}
+function bumper(x, y, r = 40) {
+    const b = addStatic(Bodies.circle(x, y, r), 'bumper', { restitution: 1 });
+    b.label = 'bumper';
+    return b;
+}
+Events.on(engine, 'collisionStart', ev => {
+    for (const p of ev.pairs) {
+        const bump = p.bodyA.label === 'bumper' ? p.bodyA : p.bodyB.label === 'bumper' ? p.bodyB : null;
+        const ball = bump === p.bodyA ? p.bodyB : p.bodyA;
+        if (!bump || ball.label !== 'marble') continue;
+        const dx = ball.position.x - bump.position.x, dy = ball.position.y - bump.position.y, l = Math.hypot(dx, dy) || 1;
+        Body.setVelocity(ball, { x: ball.velocity.x + dx / l * 7, y: ball.velocity.y + dy / l * 7 });
+    }
+});
+/* Toboggan principal tout droit, avec bifurcations latérales qui se rejoignent plus bas.
+   Un module = 4 × spacing : sortie vers un couloir latéral, virages lisses dans le couloir central, bumpers, pale, retour, zone d'accélération. */
 function buildTrack() {
     for (const s of statics) Composite.remove(world, s.body);
-    statics.length = 0; spinners.length = 0; mudZones.length = 0; track3dDirty = true;
-    const lv = Math.max(4, Math.min(40, Math.round(CFG.levels)));
-    FINISH = 700 + (lv - 1) * CFG.spacing + 800;
+    statics.length = 0; spinners.length = 0; mudZones.length = 0; boostZones.length = 0; track3dDirty = true;
+    const mods = Math.max(1, Math.min(10, Math.round(CFG.levels / 4)));
+    const S = Math.max(480, CFG.spacing), TOP = 700, CW = 360, MID = W / 2;
+    FINISH = TOP + mods * 4 * S + 300;
     const wallH = FINISH + 700 - WALL_TOP;
     const wallY = WALL_TOP + wallH / 2;
     addStatic(Bodies.rectangle(-20, wallY, 40, wallH), 'wall');
     addStatic(Bodies.rectangle(W + 20, wallY, 40, wallH), 'wall');
     addStatic(Bodies.rectangle(W / 2, FINISH + 700, W + 80, 60), 'wall');
-    for (let i = 0; i < lv; i++) {
-        const y = 700 + i * CFG.spacing;
-        const left = i % 2 === 0;
-        addStatic(Bodies.rectangle(left ? 840 : 1160, y, 1680, 30, { angle: left ? CFG.rampAngle : -CFG.rampAngle }), 'ramp');
-        if (CFG.mud && i % 3 === 1) {
-            mudZones.push({ x: 0, y: y + 230, w: W, h: 120 });
-        }
-        if (CFG.pegs && i % 3 === 2) {
-            for (let k = 0; k < 12; k++) {
-                const px = 150 + k * 160 + (k % 2 ? 50 : 0);
-                addStatic(Bodies.circle(px, y + 290, 17), 'peg', { restitution: 1 });
+    // entonnoirs de départ vers le toboggan central
+    swoop(0, 330, MID - 330, 360);
+    swoop(W, 330, MID + 330, 360);
+    const LH = 170;
+    for (let m = 0; m < mods; m++) {
+        const y0 = TOP + m * 4 * S;
+        for (const sx of [-1, 1]) {
+            const px = d => MID + sx * d;
+            // parois du couloir central, avec une sortie (0.5–1.2) et un retour (2.7–3.4)
+            for (const [a, b] of [[0, 0.5], [1.2, 2.7], [3.4, 4]]) rail(px(CW + 12), y0 + a * S, px(CW + 12), y0 + b * S);
+            // aiguillage lisse qui pousse une partie des billes vers la sortie
+            rail(px(250), y0 + 0.5 * S, px(CW), y0 + 1.1 * S, 'ramp', 20);
+            // couloir latéral : toboggans A (vers l'extérieur), B (vers l'intérieur), C, puis D qui ramène dans le couloir central
+            swoop(px(CW + 20), y0 + 1.45 * S, px(930), LH);
+            swoop(px(990), y0 + 1.95 * S, px(450), LH);
+            swoop(px(CW + 20), y0 + 2.45 * S, px(930), LH);
+            swoop(px(990), y0 + 2.9 * S, px(250), 200);
+            for (const y1 of [y0 + 1.45 * S, y0 + 2.45 * S]) {
+                boostZones.push({ x: px(655) - 150, y: y1 + LH * 0.75 - 110, w: 300, h: 140, dx: sx * 0.9, dy: 0.35, ang: sx * 0.31, len: 300, cx: px(655), cy: y1 + LH * 0.75 - 14 });
             }
+            if (CFG.mud) mudZones.push({ x: px(720) - 220, y: y0 + 1.95 * S + LH * 0.75 - 110, w: 440, h: 140, tilt: -sx * 0.31 });
+            if (CFG.pegs) { bumper(px(700), y0 + 1.2 * S, 34); bumper(px(640), y0 + 3.2 * S, 34); }
         }
-        if (CFG.spinners && i % 2 === 0) {
-            const sp = addStatic(Bodies.rectangle(left ? 1840 : 160, y + 330, 260, 18), 'spinner');
-            spinners.push({ body: sp, speed: left ? CFG.spinSpeed : -CFG.spinSpeed });
+        // virages lisses dans le couloir central : gauche→droite puis droite→gauche
+        swoop(MID - CW + 12, y0 + 1.25 * S, MID + 130, 150);
+        swoop(MID + CW - 12, y0 + 1.75 * S, MID - 130, 150);
+        if (CFG.pegs) {
+            bumper(MID - 150, y0 + 2.45 * S, 36); bumper(MID + 150, y0 + 2.45 * S, 36);
+            bumper(MID, y0 + 3.0 * S, 46);
         }
+        if (CFG.spinners) {
+            const sp = addStatic(Bodies.rectangle(MID, y0 + 2.15 * S, 300, 18), 'spinner');
+            spinners.push({ body: sp, speed: m % 2 ? -CFG.spinSpeed : CFG.spinSpeed });
+        }
+        // zone d'accélération dans le couloir principal
+        boostZones.push({ x: MID - CW, y: y0 + 3.45 * S, w: CW * 2, h: 0.45 * S, dx: 0, dy: 1, ang: Math.PI / 2, len: 0.45 * S, cx: MID, cy: y0 + 3.675 * S });
     }
 }
 buildTrack();
@@ -211,7 +261,7 @@ function addMarble(id, name, pic) {
     let m = marbles.get(id);
     if (m && !m.ejected) return m;
     const body = Bodies.circle(40 + Math.random() * (W - 80), -50 - Math.random() * 300, R, {
-        restitution: 0.35, friction: 0.02, frictionAir: 0.002, density: 0.0012, label: 'marble'
+        restitution: 0.2, friction: 0.01, frictionStatic: 0, frictionAir: 0.0012, density: 0.0012, label: 'marble'
     });
     m = { id, name, body, h: hue(id), boostUntil: 0, finished: false, ejected: false, ejectedAt: 0, rank: 0, stuck: 0, trail: [], like: 0 };
     marbles.set(id, m);
@@ -328,7 +378,10 @@ function physicsStep(now) {
         } else m.like = 0;
         if (phase === 'race' && b.velocity.y > 0.5 && !boosted) Body.setVelocity(b, { x: b.velocity.x * 1.004, y: b.velocity.y * 1.008 });
         if (phase !== 'lobby' || b.position.y > 0) for (const z of mudZones) {
-            if (b.position.y > z.y && b.position.y < z.y + z.h) Body.setVelocity(b, { x: b.velocity.x * CFG.mudSlow, y: b.velocity.y * CFG.mudSlow });
+            if (b.position.y > z.y && b.position.y < z.y + z.h && b.position.x > z.x && b.position.x < z.x + z.w) Body.setVelocity(b, { x: b.velocity.x * (1 - (1 - CFG.mudSlow) * 0.2), y: b.velocity.y * (1 - (1 - CFG.mudSlow) * 0.2) });
+        }
+        if (phase === 'race') for (const z of boostZones) {
+            if (b.position.y > z.y && b.position.y < z.y + z.h && b.position.x > z.x && b.position.x < z.x + z.w) Body.setVelocity(b, { x: b.velocity.x + z.dx * 0.45, y: b.velocity.y + z.dy * 0.45 });
         }
         const cap = (boosted ? CFG.maxSpeed * 1.4 : CFG.maxSpeed) + Math.min(m.like, 30) * 0.4;
         const sp = Math.hypot(b.velocity.x, b.velocity.y);
@@ -448,7 +501,11 @@ function drawWorld(now) {
     for (const z2 of mudZones) {
         if (z2.y > bottom || z2.y + z2.h < top) continue;
         ctx.fillStyle = 'rgba(120,80,30,.55)'; ctx.fillRect(z2.x, z2.y, z2.w, z2.h);
-        ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '800 30px Arial'; ctx.textAlign = 'center'; ctx.fillText('🟤 BOUE — ralentit', W / 2, z2.y + z2.h / 2 + 10);
+        ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '800 30px Arial'; ctx.textAlign = 'center'; ctx.fillText('BOUE', z2.x + z2.w / 2, z2.y + z2.h / 2 + 10);
+    }
+    for (const z2 of boostZones) {
+        if (z2.y > bottom || z2.y + z2.h < top) continue;
+        ctx.fillStyle = 'rgba(45,212,191,.35)'; ctx.fillRect(z2.x, z2.y, z2.w, z2.h);
     }
 
     // ligne de départ
@@ -464,7 +521,7 @@ function drawWorld(now) {
         const b = s.body;
         if (b.bounds.max.y < top || b.bounds.min.y > bottom) continue;
         if (s.kind === 'ramp') drawRamp(b);
-        else if (s.kind === 'peg') drawPeg(b);
+        else if (s.kind === 'peg' || s.kind === 'bumper') drawPeg(b);
         else if (s.kind === 'spinner') drawSpinner(b);
         else { ctx.fillStyle = '#1e293b'; poly(b); ctx.fill(); }
     }
@@ -800,17 +857,23 @@ function buildTrack3D() {
     const pegMat = new THREE.MeshStandardMaterial({ color: 0xd3dae4, roughness: 0.2, metalness: 1 });
     const headMat = new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.15, metalness: 0.3 });
     const spinMat = new THREE.MeshStandardMaterial({ color: 0xc0c9d6, roughness: 0.3, metalness: 0.9 });
+    const road = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.75, metalness: 0.05 });
+    const roadBody = new THREE.MeshStandardMaterial({ color: 0x4a515c, roughness: 0.6, metalness: 0.4 });
+    const roadMats = [roadBody, roadBody, road, roadBody, road, roadBody];
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xb4bfcd, roughness: 0.3, metalness: 0.95 });
+    const rubberMat = new THREE.MeshStandardMaterial({ color: 0x2b313b, roughness: 0.7, metalness: 0.1 });
     for (const s of statics) {
         const b = s.body, p = b.position;
-        if (s.kind === 'ramp') {
+        if (s.kind === 'ramp' || s.kind === 'rail') {
             const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
-            const g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0); g.rotation.z = -b.angle;
-            const road = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.75, metalness: 0.05 });
-            const body = new THREE.MeshStandardMaterial({ color: 0x4a515c, roughness: 0.6, metalness: 0.4 });
-            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), [body, body, road, body, road, body]);
-            slab.position.z = DEPTH / 2; g.add(slab);
-            const lip = new THREE.Mesh(new THREE.BoxGeometry(w * S3, 0.07, 0.07), railMat);
-            lip.position.set(0, h * S3 / 2, DEPTH + 0.03); g.add(lip);
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), s.kind === 'ramp' ? roadMats : steelMat);
+            slab.position.set(X(p.x), Y(p.y), DEPTH / 2); slab.rotation.z = -b.angle;
+            track3.add(slab);
+        } else if (s.kind === 'bumper') {
+            const r = b.circleRadius * S3, g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0);
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, DEPTH * 0.9, 32), rubberMat); body.rotation.x = Math.PI / 2; body.position.z = DEPTH * 0.45; g.add(body);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 0.85, 0.045, 10, 36), steelMat); ring.position.z = DEPTH * 0.9 + 0.02; g.add(ring);
+            const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.08, 28), headMat); cap.rotation.x = Math.PI / 2; cap.position.z = DEPTH * 0.9 + 0.04; g.add(cap);
             track3.add(g);
         } else if (s.kind === 'peg') {
             const r = b.circleRadius * S3, g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0);
@@ -828,9 +891,21 @@ function buildTrack3D() {
         }
     }
     for (const z of mudZones) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(W * S3, z.h * S3, DEPTH * 0.9), new THREE.MeshStandardMaterial({ color: 0x8a6a45, transparent: true, opacity: 0.38, roughness: 0.95 }));
-        m.position.set(0, Y(z.y + z.h / 2), DEPTH * 0.45); track3.add(m);
-        const t = textPlane('BOUE — ralentit', 5, 0.5, '#fff4e0', 'Arial', 0.08, '#5a4630'); t.position.set(0, Y(z.y + z.h / 2), DEPTH + 0.03); track3.add(t);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(z.w * S3, z.h * S3, DEPTH * 0.9), new THREE.MeshStandardMaterial({ color: 0x8a6a45, transparent: true, opacity: 0.45, roughness: 0.95 }));
+        m.position.set(X(z.x + z.w / 2), Y(z.y + z.h / 2), DEPTH * 0.45); m.rotation.z = z.tilt || 0; track3.add(m);
+    }
+    const chevTex = canvasTex(128, 128, (g, w, h) => {
+        g.clearRect(0, 0, w, h); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
+        for (const y of [20, 62, 104]) { g.beginPath(); g.moveTo(24, y - 14); g.lineTo(64, y + 10); g.lineTo(104, y - 14); g.stroke(); }
+    });
+    chevTex.wrapS = chevTex.wrapT = THREE.RepeatWrapping;
+    for (const z of boostZones) {
+        const len = z.len * S3, wid = (z.dy === 1 && z.dx === 0 ? z.w : 140) * S3;
+        const t = chevTex.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(wid / 1.2)), Math.max(1, Math.round(len / 1.2)));
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(wid, len), new THREE.MeshBasicMaterial({ map: t, color: 0x2dd4bf, transparent: true, opacity: 0.75, depthWrite: false }));
+        m.rotation.z = Math.atan2(z.dx, z.dy);
+        m.position.set(X(z.cx), Y(z.cy), DEPTH + 0.02);
+        track3.add(m);
     }
     // départ : barrière, damier et bannière
     gateMesh3 = new THREE.Mesh(new THREE.BoxGeometry(W * S3, 0.22, DEPTH), new THREE.MeshStandardMaterial({ color: 0x66707f, transparent: true, opacity: 0.85, metalness: 0.8, roughness: 0.3 }));
