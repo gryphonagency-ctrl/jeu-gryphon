@@ -238,6 +238,19 @@
         const palette = ['#ff2e93', '#ffd400', '#2de2e6', '#7cff6b', '#ff7a00', '#b388ff', '#ffffff'];
         const burst = (x, y, count, power) => {
             soundBoom(x, power);
+            if (config.confetti) {
+                const colors = ['#ff2e93', '#ffd400', '#2de2e6', '#7cff6b', '#ff7a00', '#b388ff'];
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2, speed = power * (0.2 + Math.random() * 0.5);
+                    particles.push({
+                        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 3,
+                        life: 0, max: 70 + Math.random() * 40, size: 6 + Math.random() * 6, rect: true,
+                        rot: Math.random() * 6, spin: (Math.random() - 0.5) * 0.4,
+                        color: colors[Math.floor(Math.random() * colors.length)]
+                    });
+                }
+                return;
+            }
             const color = palette[Math.floor(Math.random() * palette.length)];
             const alt = palette[Math.floor(Math.random() * palette.length)];
             for (let i = 0; i < count; i++) {
@@ -250,6 +263,12 @@
                 });
             }
         };
+        if (config.confetti) {
+            burst(cx, cy, 70, 22);
+            setTimeout(() => burst(cx - 200 + Math.random() * 400, cy + Math.random() * 120, 40, 16), 260);
+            if (!raf) raf = requestAnimationFrame(frame);
+            return;
+        }
         burst(cx, cy, 300, 74.4);
         setTimeout(() => burst(cx - 840 + Math.random() * 1680, cy - 360 + Math.random() * 720, 210, 55.2), 260);
         setTimeout(() => burst(cx - 1080 + Math.random() * 2160, cy + Math.random() * 840, 210, 50.4), 520);
@@ -269,6 +288,14 @@
             const alpha = Math.max(0, 1 - p.life / p.max);
             ctx.globalAlpha = alpha;
             ctx.fillStyle = p.color;
+            if (p.rect) {
+                p.rot += p.spin;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+                ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+                ctx.restore();
+                continue;
+            }
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size * (0.4 + alpha * 0.6), 0, Math.PI * 2);
             ctx.fill();
