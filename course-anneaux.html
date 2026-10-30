@@ -42,7 +42,7 @@
 </div>
 
 <div id="bottom">
-<div id="rules"><span>⭐ 1 étoile = SAUT &nbsp;★&nbsp; ⭐ 5 étoiles = TURBO &nbsp;★&nbsp; ⭐ 100 étoiles = SUPER PICO &nbsp;★&nbsp; ✈️ Partagez le live pour l'avion en papier &nbsp;★&nbsp; GRYPHON AGENCY</span></div>
+<div id="rules"><span>⭐ 1 étoile = SAUT &nbsp;★&nbsp; ⭐ 5 étoiles = TURBO &nbsp;★&nbsp; ⭐ 10 étoiles = INVINCIBLE x3 &nbsp;★&nbsp; ⭐ 100 étoiles = SUPER PICO &nbsp;★&nbsp; ✈️ Partagez le live pour l'avion en papier &nbsp;★&nbsp; GRYPHON AGENCY</span></div>
 <div id="live">
   <input id="in-user" placeholder="@pseudo TikTok du live" size="22">
   <input id="in-url" type="hidden" value="wss://jeu6boite.onrender.com">
@@ -51,6 +51,7 @@
   <button id="snd">🔊</button>
   <button id="k-jump" title="Touche Espace ou 1">⭐ Saut</button>
   <button id="k-turbo" title="Touche 5">🔥 Turbo</button>
+  <button id="k-dash" title="Touche 2">⚡ 10 étoiles</button>
   <button id="k-super" title="Touche 0">💎 Super Pico</button>
 </div>
 </div>
@@ -83,7 +84,7 @@ function tone(f, d = 0.1, type = 'square', f2) {
 }
 
 /* ---- État ---- */
-const S = { run: false, speed: 5, dist: 0, rings: 0, lives: 3, t: 0, over: 0, boost: 0, superT: 0, inv: 0, level: 0, clear: 0, banner: 0, won: false };
+const S = { run: false, speed: 5, dist: 0, rings: 0, lives: 3, t: 0, over: 0, boost: 0, dash: 0, wheel: null, nextWheel: 100, superT: 0, inv: 0, level: 0, clear: 0, banner: 0, won: false };
 const P = { x: 220, y: GROUND, vy: 0, air: 0, ang: 0, fall: false };
 let obstacles = [], rings = [], loops = [], bridges = [], pits = [], clouds = [], toasts = [], donors = {}, spawnIn = 60, shake = 0;
 for (let i = 0; i < 6; i++) clouds.push({ x: i * 190, y: 40 + (i * 53) % 110, s: .6 + (i % 3) * .3 });
@@ -103,13 +104,13 @@ const LV = () => LEVELS[S.level];
 
 function startLevel(i) {
   levelDonors = {}; S.vip = null;
-  S.level = i; S.dist = 0; S.lives = 3; S.loop = null; S.clear = 0; S.banner = 190; S.boost = 0;
+  S.level = i; S.dist = 0; S.lives = 3; S.loop = null; S.clear = 0; S.banner = 190; S.boost = 0; S.dash = 0;
   obstacles = []; rings = []; loops = []; bridges = []; pits = []; spawnIn = 60;
   Object.assign(P, { y: GROUND, vy: 0, air: 0, fall: false });
   S.inv = Math.max(S.inv, 60);
 }
 function reset() {
-  Object.assign(S, { speed: 5, rings: 0, over: 0, boost: 0, superT: 0, inv: 0, won: false });
+  Object.assign(S, { speed: 5, rings: 0, over: 0, boost: 0, wheel: null, nextWheel: 100, superT: 0, inv: 0, won: false });
   startLevel(0);
 }
 function toast(t) { toasts.push({ t, life: 140 }); if (toasts.length > 4) toasts.shift(); }
@@ -122,11 +123,12 @@ function loseLife(msg) {
 
 /* ---- Actions déclenchées par les cadeaux ---- */
 function jump() {
-  if (!S.run || S.over || S.loop || P.fall || S.clear) return;
+  if (!S.run || S.over || S.loop || P.fall || S.clear || S.wheel) return;
   if (P.y >= GROUND) { P.vy = -15; P.air = 1; tone(520, .15, 'square', 900); }
   else if (P.air < 2) { P.vy = -13; P.air = 2; tone(700, .15, 'square', 1100); }
 }
 function turbo() { if (!S.run || S.over) return; S.boost = 180; S.inv = Math.max(S.inv, 180); tone(200, .35, 'sawtooth', 800); }
+function dash() { if (!S.run || S.over) return; S.dash = 300; S.inv = Math.max(S.inv, 300); tone(150, .5, 'sawtooth', 1500); }
 function superMode() { if (!S.run || S.over) return; S.superT = 600; S.inv = Math.max(S.inv, 600); tone(300, .6, 'sawtooth', 1200); }
 
 const avatarUrls = {}, avatarImgs = {};
@@ -143,6 +145,7 @@ function onGift(user, coins, avatar) {
   levelDonors[user] = (levelDonors[user] || 0) + coins;
   if (avatar) avatarUrls[user] = avatar;
   if (coins >= BIG_GIFT) { superMode(); toast('💎 @' + user + ' → SUPER PICO !'); }
+  else if (coins >= 10) { dash(); toast('⚡ @' + user + ' → 10 ÉTOILES : INVINCIBLE x3 !'); }
   else if (coins >= 5) { turbo(); toast('🔥 @' + user + ' → TURBO !'); }
   else { jump(); toast('🎁 @' + user + ' → SAUT'); }
 }
@@ -195,6 +198,8 @@ function update() {
     if (S.clear === 0) { if (S.won) reset(); else startLevel(S.level + 1); }
     return;
   }
+  if (S.wheel) { updateWheel(); return; }
+  if (S.rings >= S.nextWheel && !P.fall && !S.loop) startWheel();
   if (P.fall) {
     P.vy += .7; P.y += P.vy; P.ang += .25;
     if (P.y > H + 60) {
@@ -212,11 +217,11 @@ function update() {
     const L = S.loop; L.phi += .09; P.ang += .5; S.dist += 2;
     clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
     while (L.got < 12 && L.phi > .5 + L.got * Math.PI * 2 / 12.5) { L.got++; S.rings += S.superT > 0 ? 2 : 1; ringSound(); }
-    if (S.boost > 0) S.boost--; if (S.superT > 0) S.superT--;
+    if (S.boost > 0) S.boost--; if (S.dash > 0) S.dash--; if (S.superT > 0) S.superT--;
     if (L.phi >= Math.PI * 2) { S.loop = null; P.y = GROUND; P.vy = 0; S.inv = Math.max(S.inv, 30); }
     return;
   }
-  const mult = (S.boost > 0 ? 1.9 : 1) * (S.superT > 0 ? 1.4 : 1);
+  const mult = (S.dash > 0 ? 3 : S.boost > 0 ? 1.9 : 1) * (S.superT > 0 ? 1.4 : 1);
   S.speed = LV().speed + S.dist / 9000;
   const v = S.speed * mult;
   S.dist += v;
@@ -229,7 +234,7 @@ function update() {
     tone(700, .5, 'square', 1400);
     return;
   }
-  if (S.boost > 0) S.boost--; if (S.superT > 0) S.superT--; if (S.inv > 0) S.inv--;
+  if (S.boost > 0) S.boost--; if (S.dash > 0) S.dash--; if (S.superT > 0) S.superT--; if (S.inv > 0) S.inv--;
   const prevY = P.y;
   P.vy += .7; P.y += P.vy;
   for (const b of bridges) {
@@ -273,7 +278,7 @@ function drawPico(x, y, t) {
   const sup = S.superT > 0, body = sup ? '#ffd23f' : '#4a1d96', dark = sup ? '#e0a800' : '#2a0f5c', skin = '#ffe7c2', shoe = '#e01b1b';
   g.save(); g.translate(x, y);
   g.shadowColor = 'rgba(255,255,255,.95)'; g.shadowBlur = 9;
-  if (S.inv > 0 && S.superT <= 0 && S.boost <= 0 && (S.t >> 2) % 2) g.globalAlpha = .4;
+  if (S.inv > 0 && S.superT <= 0 && S.boost <= 0 && S.dash <= 0 && (S.t >> 2) % 2) g.globalAlpha = .4;
   const air = y < GROUND - 2 || P.fall;
   if (air) {
     g.translate(0, -26); g.rotate(P.ang);
@@ -552,7 +557,7 @@ function draw() {
       g.strokeStyle = '#5a6578'; g.lineWidth = 2; g.stroke();
     } else drawMonster(o, S.t);
   });
-  if (S.boost > 0 || S.superT > 0) {
+  if (S.boost > 0 || S.dash > 0 || S.superT > 0) {
     g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 3;
     for (let i = 0; i < 8; i++) { const y = 80 + i * 45 + (S.t * 7 % 20), x = (S.t * 40 + i * 130) % W; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 70, y); g.stroke(); }
   }
@@ -621,14 +626,76 @@ function draw() {
     g.fillStyle = '#fff'; g.font = 'bold 22px Arial'; g.fillText('Niveau ' + (S.level + 1) + ' — ' + S.rings + ' anneaux — nouvelle partie dans ' + Math.ceil(S.over / 60) + ' s', W / 2, 295);
   }
 }
-function loop() { update(); draw(); requestAnimationFrame(loop); }
+/* ---- Roue de la chance (tous les 100 anneaux) ---- */
+const WHEEL_SEGS = [
+  { txt: 'VIE\nGAGNÉE', short: 'VIE GAGNÉE !', c: '#1fae4b' },
+  { txt: 'CONTINUE\nÀ JOUER', short: 'CONTINUE À JOUER !', c: '#2f7fe0' },
+  { txt: 'DOMMAGE,\nTU AS PERDU', short: 'DOMMAGE, TU AS PERDU...', c: '#d6322e' }
+];
+const WHEEL_SPIN = 240, WHEEL_END = 170;
+function startWheel() {
+  while (S.nextWheel <= S.rings) S.nextWheel += 100;
+  const res = Math.floor(Math.random() * 3);
+  const centre = res * 120 + 60 + (Math.random() - .5) * 70;
+  S.wheel = { t: 0, res, target: 360 * 5 - centre, rot: 0, tick: 0 };
+  tone(500, .3, 'square', 1000);
+}
+function updateWheel() {
+  const w = S.wheel; w.t++;
+  if (w.t <= WHEEL_SPIN) {
+    const k = w.t / WHEEL_SPIN, e = 1 - Math.pow(1 - k, 3);
+    w.rot = w.target * e;
+    const seg = Math.floor(w.rot / 60);
+    if (seg !== w.tick) { w.tick = seg; tone(900, .03, 'square'); }
+    if (w.t === WHEEL_SPIN) {
+      if (w.res === 0) { S.lives = Math.min(8, S.lives + 1); tone(700, .6, 'square', 1500); toast('❤️ Vie gagnée !'); }
+      else if (w.res === 2) tone(300, .5, 'sawtooth', 100);
+    }
+  }
+  if (w.t >= WHEEL_SPIN + WHEEL_END) { S.wheel = null; S.inv = Math.max(S.inv, 90); }
+}
+function drawWheel() {
+  const w = S.wheel; if (!w) return;
+  const cx = W / 2, cy = 235, R = 135;
+  g.save();
+  g.fillStyle = 'rgba(0,0,0,.82)'; g.fillRect(0, 0, W, H);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = '#ffd23f'; g.shadowBlur = 16; g.fillStyle = '#ffd23f'; g.font = 'bold 30px Arial Black';
+  g.fillText('🎡 100 ANNEAUX ! TOURNEZ LA ROUE', cx, 60); g.shadowBlur = 0;
+  g.translate(cx, cy); g.rotate(w.rot * Math.PI / 180);
+  for (let i = 0; i < 3; i++) {
+    const a0 = (-90 + i * 120) * Math.PI / 180, a1 = a0 + 2 * Math.PI / 3;
+    g.fillStyle = WHEEL_SEGS[i].c; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R, a0, a1); g.closePath(); g.fill();
+    g.strokeStyle = '#fff'; g.lineWidth = 4; g.stroke();
+    g.save(); g.rotate(a0 + Math.PI / 3); g.fillStyle = '#fff'; g.font = 'bold 15px Arial Black';
+    const lines = WHEEL_SEGS[i].txt.split('\n');
+    lines.forEach((l, n) => g.fillText(l, R * .56, (n - (lines.length - 1) / 2) * 18));
+    g.restore();
+  }
+  g.restore();
+  g.save(); g.translate(cx, cy);
+  g.strokeStyle = '#ffd23f'; g.lineWidth = 8; g.beginPath(); g.arc(0, 0, R + 4, 0, 7); g.stroke();
+  g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(0, 0, 16, 0, 7); g.fill();
+  g.fillStyle = '#fff'; g.strokeStyle = '#8a0f0a'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(-16, -R - 20); g.lineTo(16, -R - 20); g.lineTo(0, -R + 14); g.closePath(); g.fill(); g.stroke();
+  g.restore();
+  if (w.t >= WHEEL_SPIN) {
+    const s = WHEEL_SEGS[w.res];
+    g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = s.c; g.fillRect(0, 405, W, 60);
+    g.shadowColor = '#000'; g.shadowBlur = 8; g.fillStyle = '#fff'; g.font = 'bold 38px Arial Black';
+    g.fillText(s.short, W / 2, 436);
+    g.restore();
+  }
+}
+function loop() { update(); draw(); drawWheel(); requestAnimationFrame(loop); }
 
 /* ---- Démarrage, simulateur, clavier ---- */
 document.getElementById('go').onclick = () => {
   const el = document.getElementById('intro'); el.style.opacity = 0; setTimeout(() => el.style.display = 'none', 500);
   S.run = true; reset(); tone(600, .2, 'square', 1200);
 };
-for (const [id, coins] of [['k-jump', 1], ['k-turbo', 5], ['k-super', BIG_GIFT]]) {
+for (const [id, coins] of [['k-jump', 1], ['k-turbo', 5], ['k-dash', 10], ['k-super', BIG_GIFT]]) {
   document.getElementById(id).onclick = e => {
     e.currentTarget.blur();
     onGift('Clavier', coins);
@@ -639,6 +706,7 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if (e.key === ' ' || e.key === '1') { e.preventDefault(); onGift('Clavier', 1); }
   else if (e.key === '5') onGift('Clavier', 5);
+  else if (e.key === '2') onGift('Clavier', 10);
   else if (e.key === '0') { onGift('Clavier', BIG_GIFT); ArcadeEffects.simulateBigGift('Clavier', BIG_GIFT); }
   else if (e.key === 'p') ArcadeEffects.simulateShare();
 });
