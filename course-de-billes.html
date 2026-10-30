@@ -861,6 +861,16 @@ function buildTrack3D() {
     shellGeo.computeVertexNormals();
     const wall = new THREE.Mesh(shellGeo, new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.55, metalness: 0.1, envMapIntensity: 0.4, side: THREE.DoubleSide }));
     wall.position.set(0, midY, -0.02); track3.add(wall);
+    // piste continue visible en vue du haut : ruban de glissière sans interruption sur toute la descente
+    const flowTex = canvasTex(256, 256, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, w, 0);
+        gr.addColorStop(0, '#0d6efd'); gr.addColorStop(0.5, '#4cc9f0'); gr.addColorStop(1, '#0d6efd');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(w / 2 - 3, 0, 6, h * 0.55);
+    });
+    flowTex.wrapS = flowTex.wrapT = THREE.RepeatWrapping; flowTex.repeat.set(1, H / 6);
+    const flow = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshBasicMaterial({ map: flowTex }));
+    flow.position.set(0, midY, 0.02); flow.visible = false; track3.add(flow); track3.userData.flow = flow;
     gridTex.repeat.set(shellW / 5, H / 5);
 
     // lèvres blanches brillantes en haut des parois concaves
@@ -1026,6 +1036,7 @@ function updateMarbles3D(now) {
         const o = marbleObj(m), p = m.body.position;
         if (!o.hasImg && avatarCache.has(m.id)) { o.hasImg = true; o.mat.map.dispose(); o.mat.map = makeMarbleTex(m); o.mat.needsUpdate = true; }
         o.g.position.set((p.x - W / 2) * S3, -p.y * S3, DEPTH / 2);
+        o.g.scale.setScalar(topView ? 2.4 : 1);
         o.core.rotation.z = -m.body.angle;
         const boosted = now < m.boostUntil && !m.ejected;
         o.halo.material.opacity = boosted ? 0.35 : m.like > 2 && !m.ejected ? Math.min(0.3, m.like / 60) : 0;
@@ -1050,6 +1061,7 @@ function render3D(now) {
     scene3.fog.color.set(vid ? 0x000000 : FOG3); scene3.fog.near = vid ? 1e5 : 40; scene3.fog.far = vid ? 2e5 : 150;
     gateMesh3.visible = gateOn;
     for (const s of spinner3) s.g.rotation.z = -s.body.angle;
+    if (track3.userData.flow) track3.userData.flow.visible = topView;
     for (const [i, o] of track3.userData.segMeshes || []) o.visible = topView || !segs[i] || segs[i].on;
     updateMarbles3D(now);
 
