@@ -129,7 +129,7 @@
 
     <div id="infoBox" class="abs glass">
       <h3>Cagnotte de la partie</h3>
-      <div class="line"><span>Gagnant (<span id="rtpLabel">25</span> %)</span><span class="big" id="potStars">0 ⭐</span></div>
+      <div class="line"><span>Gagnant<span id="rtpLabel" hidden>25</span></span><span class="big" id="potStars">0 ⭐</span></div>
       <div class="line"><span>Cartons en jeu</span><b id="cardsInGame">0</b></div>
       <div class="line"><span>Joueurs</span><b id="playersInGame">0</b></div>
       <div class="line"><span>Prochaine partie</span><b id="cardsNext">0 carton</b></div>
@@ -179,6 +179,14 @@
     <button id="rtpUp" type="button">+</button>
   </div>
   <p style="color:#9aa;margin:4px 0">Le gagnant reçoit ce pourcentage des étoiles générées par la partie (25 % par défaut).</p>
+
+  <h4>Offrir des cartons</h4>
+  <div class="row">
+    <input id="grantUser" type="text" maxlength="33" placeholder="@pseudo du créateur" style="flex:1;min-width:0" aria-label="Pseudo TikTok du créateur">
+    <input id="grantCount" type="number" min="1" max="500" value="1" style="width:60px" aria-label="Nombre de cartons">
+    <button id="grantBtn" type="button" class="primary">＋ Ajouter</button>
+  </div>
+  <p style="color:#9aa;margin:4px 0">Ajoute des cartons gratuits pour la prochaine partie (limite de cartons par joueur respectée).</p>
 
   <h4>Affichage (glisser les cadres à la souris)</h4>
   <div id="layoutList"></div>
@@ -813,6 +821,16 @@ function handleLive(data) {
   buyCards(username, coins, avatar, false);
 }
 
+// « run » dans le chat : le serveur a débité au moins 5 étoiles, elles deviennent des cartons.
+window.addEventListener('arcade:wallet-run', ev => {
+  const d = ev.detail || {}, p = d.player || {};
+  const name = p.username || p.uniqueId || p.nickname;
+  const spent = Math.floor(Number(d.spent) || 0);
+  if (!name || spent < 5) return;
+  const n = buyCards(name, spent, p.avatarUrl || '', false);
+  log(`🔁 RUN de @${name} : ${fmt(spent)} ⭐ → ${n} carton${n > 1 ? 's' : ''}`);
+});
+
 /* ------------------------------ sauvegarde ------------------------------ */
 function save() {
   try {
@@ -851,6 +869,14 @@ function bindUI() {
   $('simCrowd').onclick = () => { for (let i = 0; i < 30; i++) buyCards(names[i % names.length] + (i >= names.length ? i : ''), settings.price * (1 + Math.floor(Math.random() * 3)), '', true); };
   $('simBig').onclick = () => { buyCards('Alex_TikTok', 100, '', true); if (window.ArcadeEffects) ArcadeEffects.simulateBigGift('Alex_TikTok', 100); };
   $('simShare').onclick = () => { if (window.ArcadeEffects) ArcadeEffects.simulateShare(); };
+  $('grantBtn').onclick = () => {
+    const user = $('grantUser').value.trim().replace(/^@/, '');
+    const count = Math.floor(Number($('grantCount').value));
+    if (!/^[A-Za-z0-9._]{1,32}$/.test(user)) { log('Pseudo invalide pour l\'ajout de cartons'); return; }
+    if (!Number.isSafeInteger(count) || count < 1 || count > 500) { log('Nombre de cartons invalide (1 à 500)'); return; }
+    const added = buyCards(user, count * settings.price, '', false);
+    log(added ? `🎁 ${added} carton${added > 1 ? 's' : ''} offert${added > 1 ? 's' : ''} à @${user}` : `Aucun carton ajouté à @${user} (limite atteinte ?)`);
+  };
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
     const k = e.key.toLowerCase();
