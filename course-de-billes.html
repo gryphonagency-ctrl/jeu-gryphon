@@ -786,7 +786,7 @@ const S3 = 0.01, DEPTH = 0.8, TILT = 0.5, FOV3 = 58;
 let view3d = typeof THREE !== 'undefined' && !/[?&]2d\b/.test(location.search);
 let renderer3, scene3, camera3, track3, ground3, gateMesh3, glW = 0, glH = 0, ov3 = 0, bank3 = 0;
 const spinner3 = [], marbleObjs = new Map();
-const BG3 = 'linear-gradient(#e4e9f0,#a9b5c5 60%,#76859a)', FOG3 = 0xb4bfce;
+const BG3 = 'linear-gradient(#6fc3f2,#bfe3f6 40%,#f1d9a8 62%,#d9a45f)', FOG3 = 0xe6d9bd;
 const springGeo = new Map();
 
 function canvasTex(w, h, draw) {
@@ -813,12 +813,12 @@ function init3D() {
     document.body.insertBefore(el, cv); cv.style.display = 'none';
     document.documentElement.style.background = document.body.style.background = BG3;
     scene3 = new THREE.Scene();
-    scene3.fog = new THREE.Fog(FOG3, 40, 150);
-    camera3 = new THREE.PerspectiveCamera(FOV3, 1, 0.5, 400);
+    scene3.fog = new THREE.Fog(FOG3, 90, 300);
+    camera3 = new THREE.PerspectiveCamera(FOV3, 1, 0.5, 700);
     scene3.add(camera3);
     const flash = new THREE.PointLight(0xffffff, 0.25, 80, 1); camera3.add(flash);
-    scene3.add(new THREE.HemisphereLight(0xffffff, 0x6f7c90, 0.45));
-    const sun = new THREE.DirectionalLight(0xfff6e8, 0.55); sun.position.set(6, 14, 20); scene3.add(sun);
+    scene3.add(new THREE.HemisphereLight(0xffffff, 0x8a7a60, 0.35));
+    const sun = new THREE.DirectionalLight(0xfff6e8, 0.45); sun.position.set(6, 14, 20); scene3.add(sun);
     try {
         // environnement type studio pour les reflets (métal, verre, bitume)
         const eq = canvasTex(512, 256, (g, w, h) => {
@@ -866,7 +866,45 @@ function buildTrack3D() {
     }
     shellGeo.computeVertexNormals();
     const wall = new THREE.Mesh(shellGeo, new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.55, metalness: 0.1, envMapIntensity: 0.4, side: THREE.DoubleSide }));
-    wall.position.set(0, midY, -0.02); track3.add(wall);
+    wall.position.set(0, midY, -0.02);
+    // sol arc-en-ciel en planches de bois sur toute la piste
+    const plankTex = canvasTex(512, 512, (g, w, h) => {
+        const cols = ['#e8556d', '#f28b4b', '#f6c944', '#8fd16a', '#3fb98a', '#4cc3d9', '#5b9bea', '#8c78d8', '#d77ac4'];
+        const n = cols.length, pw = w / n;
+        for (let i = 0; i < n; i++) {
+            g.fillStyle = cols[i]; g.fillRect(i * pw, 0, pw, h);
+            for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},.07)`; g.fillRect(i * pw + Math.random() * pw, Math.random() * h, 1 + Math.random() * 2, 20 + Math.random() * 120); }
+            g.fillStyle = 'rgba(40,30,20,.35)'; g.fillRect(i * pw, 0, 2, h);
+            g.fillStyle = 'rgba(255,255,255,.55)'; g.font = '700 26px Arial'; g.textAlign = 'center'; g.fillText('^', i * pw + pw / 2, h * 0.3); g.fillText('^', i * pw + pw / 2, h * 0.8);
+        }
+    });
+    plankTex.wrapS = plankTex.wrapT = THREE.RepeatWrapping; plankTex.repeat.set(1, H / (W * S3));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * S3, H), new THREE.MeshBasicMaterial({ map: plankTex, color: 0xe6e6e6 }));
+    floor.position.set(0, midY, 0); track3.add(floor);
+    // désert tout autour
+    const sand = new THREE.Mesh(new THREE.PlaneGeometry(400, H + 300), new THREE.MeshStandardMaterial({ color: 0xd9a45f, roughness: 1 }));
+    sand.position.set(0, midY, -0.9); track3.add(sand);
+    const cactusMat = new THREE.MeshStandardMaterial({ color: 0x4f9a4a, roughness: 0.8 }), rockMat = new THREE.MeshStandardMaterial({ color: 0xa8683f, roughness: 1 });
+    for (let i = 0; i < 90; i++) {
+        const side = i % 2 ? 1 : -1, gx = side * (W * S3 / 2 + 3 + Math.random() * 40), gyy = midY + (Math.random() - 0.5) * H;
+        const gr = new THREE.Group(); gr.position.set(gx, gyy, -0.9);
+        if (Math.random() < 0.55) {
+            const hgt = 1.5 + Math.random() * 2.5;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, hgt, 10), cactusMat); trunk.rotation.x = Math.PI / 2; trunk.position.z = hgt / 2; gr.add(trunk);
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, hgt * 0.4, 8), cactusMat); arm.rotation.x = Math.PI / 2; arm.position.set(0.5, 0, hgt * 0.6); gr.add(arm);
+        } else {
+            const rk = new THREE.Mesh(new THREE.DodecahedronGeometry(1 + Math.random() * 2.2, 0), rockMat); rk.position.z = 0.5; rk.scale.z = 0.7; gr.add(rk);
+        }
+        track3.add(gr);
+    }
+    // barrières rayées noir et blanc sur les bords de la piste
+    const stripeTex = (a, b) => { const t = canvasTex(128, 32, (g, w, h) => { for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 32, 0, 32, h); } }); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
+    const bwMat = new THREE.MeshStandardMaterial({ map: stripeTex('#ffffff', '#1c1c1c'), roughness: 0.5 });
+    const ybMat = new THREE.MeshStandardMaterial({ map: stripeTex('#ffcc00', '#1c1c1c'), roughness: 0.5 });
+    const edge = new THREE.BoxGeometry(H, 0.22, 0.5);
+    { const u = edge.attributes.uv; for (let i = 0; i < u.count; i++) u.setX(i, u.getX(i) * H / 0.55); }
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(edge, bwMat); e.rotation.z = Math.PI / 2; e.position.set(sx * (W * S3 / 2 + 0.05), midY, 0.25); track3.add(e); }
+    track3.userData.bwMat = bwMat; track3.userData.ybMat = ybMat;
     // piste continue visible en vue du haut : ruban de glissière sans interruption sur toute la descente
     const flowTex = canvasTex(256, 256, (g, w, h) => {
         const gr = g.createLinearGradient(0, 0, w, 0);
@@ -882,7 +920,7 @@ function buildTrack3D() {
     // lèvres blanches brillantes en haut des parois concaves
     for (const sx of [-1, 1]) {
         const strip = new THREE.Mesh(new THREE.BoxGeometry(0.14, H, 0.14), new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.15, clearcoat: 1 }));
-        strip.position.set(sx * shellW / 2, midY, -0.05 + rise); track3.add(strip);
+        strip.position.set(sx * shellW / 2, midY, -0.05 + rise);
     }
 
     // montants en travers pour donner de la profondeur
@@ -926,17 +964,11 @@ function buildTrack3D() {
         const b = s.body, p = b.position;
         if (s.kind === 'ramp' || s.kind === 'rail') {
             const v = b.vertices, w = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y), h = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y);
-            const slab = new THREE.Mesh(new THREE.BoxGeometry(w * S3, h * S3, DEPTH), s.kind === 'ramp' ? roadBody : steelMat);
-            slab.position.set(X(p.x), Y(p.y), DEPTH / 2); slab.rotation.z = -b.angle;
+            const bh = 0.5, geo = new THREE.BoxGeometry(w * S3, h * S3, bh);
+            const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * w * S3 / 0.55);
+            const slab = new THREE.Mesh(geo, s.kind === 'ramp' ? track3.userData.bwMat : track3.userData.ybMat);
+            slab.position.set(X(p.x), Y(p.y), bh / 2); slab.rotation.z = -b.angle;
             track3.add(slab);
-            if (s.kind === 'ramp') {
-                // demi-cylindre creux : glissière continue aux bords relevés
-                const R = DEPTH / 2;
-                const gm = new THREE.Mesh(new THREE.CylinderGeometry(R, R, w * S3 * 1.05, 20, 1, true, -Math.PI, Math.PI), trackMats[Math.floor(p.y / 1100) % trackMats.length]);
-                gm.rotation.z = Math.PI / 2; gm.position.set(0, h * S3 / 2 + R, 0);
-                const holder = new THREE.Group(); holder.position.set(X(p.x), Y(p.y), DEPTH / 2); holder.rotation.z = -b.angle;
-                gm.position.z = 0; holder.add(gm); track3.add(holder);
-            }
         } else if (s.kind === 'bumper') {
             const r = b.circleRadius * S3, g = new THREE.Group(); g.position.set(X(p.x), Y(p.y), 0);
             const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, DEPTH * 0.9, 32), rubberMat); body.rotation.x = Math.PI / 2; body.position.z = DEPTH * 0.45; g.add(body);
@@ -972,7 +1004,7 @@ function buildTrack3D() {
         const t = chevTex.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(wid / 1.2)), Math.max(1, Math.round(len / 1.2)));
         const m = new THREE.Mesh(new THREE.PlaneGeometry(wid, len), new THREE.MeshBasicMaterial({ map: t, color: 0x2dd4bf, transparent: true, opacity: 0.75, depthWrite: false }));
         m.rotation.z = Math.atan2(z.dx, z.dy);
-        m.position.set(X(z.cx), Y(z.cy), DEPTH + 0.02);
+        m.position.set(X(z.cx), Y(z.cy), 0.03);
         track3.add(m);
     }
     // départ : barrière, damier et bannière
@@ -992,25 +1024,25 @@ function buildTrack3D() {
 
     if (ground3) scene3.remove(ground3);
     const gy = new THREE.Vector3(0, Y(bottom), 0); track3.localToWorld(gy);
-    ground3 = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6e7a8c, roughness: 0.7, metalness: 0.1, envMapIntensity: 0.3 }));
+    ground3 = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xd9a45f, roughness: 1, metalness: 0, envMapIntensity: 0.1 }));
     ground3.rotation.x = -Math.PI / 2; ground3.position.set(0, gy.y - 0.5, gy.z); scene3.add(ground3);
 }
 const labelCache = new Map();
 function makeMarbleTex(m) {
-    const img = avatarCache.get(m.id);
     return canvasTex(512, 256, (g, w, h) => {
-        g.fillStyle = `hsl(${m.h} 70% 45%)`; g.fillRect(0, 0, w, h);
-        g.fillStyle = 'rgba(255,255,255,.25)'; for (let i = 0; i < 8; i++) g.fillRect(i * 64, 0, 32, h);
+        g.fillStyle = '#101214'; g.fillRect(0, 0, w, h);
+        const col = `hsl(${m.h} 95% 52%)`;
         for (const cx of [128, 384]) {
-            if (img) { g.save(); g.beginPath(); g.arc(cx, 128, 74, 0, 7); g.clip(); g.drawImage(img, cx - 74, 54, 148, 148); g.restore(); }
-            else { g.fillStyle = '#fff'; g.font = '900 120px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((m.name[0] || '?').toUpperCase(), cx, 136); }
+            g.fillStyle = '#ddd'; g.fillRect(cx - 100, 0, 5, h); g.fillRect(cx + 95, 0, 5, h);
+            g.strokeStyle = col; g.lineWidth = 26; g.lineJoin = 'miter'; g.lineCap = 'butt';
+            for (const y of [60, 128, 196]) { g.beginPath(); g.moveTo(cx - 62, y - 26); g.lineTo(cx, y + 16); g.lineTo(cx + 62, y - 26); g.stroke(); }
         }
     });
 }
 function makeLabel(name, gold) {
     const t = canvasTex(512, 128, (g, w, h) => {
         g.font = '700 60px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        const s = name.slice(0, 14), tw = Math.min(w - 8, g.measureText(s).width + 56);
+        const s = (gold ? '👑 ' : '') + name.slice(0, 14), tw = Math.min(w - 8, g.measureText(s).width + 56);
         g.fillStyle = 'rgba(24,32,46,.72)'; g.beginPath();
         if (g.roundRect) g.roundRect((w - tw) / 2, 22, tw, 84, 42); else g.rect((w - tw) / 2, 22, tw, 84);
         g.fill();
@@ -1041,8 +1073,8 @@ function updateMarbles3D(now) {
     for (const m of marbles.values()) {
         const o = marbleObj(m), p = m.body.position;
         if (!o.hasImg && avatarCache.has(m.id)) { o.hasImg = true; o.mat.map.dispose(); o.mat.map = makeMarbleTex(m); o.mat.needsUpdate = true; }
-        o.g.position.set((p.x - W / 2) * S3, -p.y * S3, DEPTH / 2);
-        o.g.scale.setScalar(topView ? 2.4 : 1);
+        o.g.position.set((p.x - W / 2) * S3, -p.y * S3, R * S3 * 1.25 * (topView ? 2.4 : 1.8));
+        o.g.scale.setScalar(topView ? 2.4 : 1.8);
         o.core.rotation.z = -m.body.angle;
         const boosted = now < m.boostUntil && !m.ejected;
         o.halo.material.opacity = boosted ? 0.35 : m.like > 2 && !m.ejected ? Math.min(0.3, m.like / 60) : 0;
@@ -1064,7 +1096,7 @@ function render3D(now) {
     const vid = bgVideoOn();
     document.documentElement.style.background = document.body.style.background = vid ? 'transparent' : BG3;
     bgVideo.style.opacity = vid ? String(Math.max(0.2, 1 - CFG.videoDim)) : '';
-    scene3.fog.color.set(vid ? 0x000000 : FOG3); scene3.fog.near = vid ? 1e5 : 40; scene3.fog.far = vid ? 2e5 : 150;
+    scene3.fog.color.set(vid ? 0x000000 : FOG3); scene3.fog.near = vid ? 1e5 : 90; scene3.fog.far = vid ? 2e5 : 300;
     gateMesh3.visible = gateOn;
     for (const s of spinner3) s.g.rotation.z = -s.body.angle;
     if (track3.userData.flow) track3.userData.flow.visible = topView;
@@ -1076,7 +1108,7 @@ function render3D(now) {
     const vf = -cam.y * S3, asp = vw / vh, tanV = Math.tan(FOV3 * Math.PI / 360);
     const dist = Math.max(11, (W * S3 * 0.36) / (tanV * Math.min(asp, 1.6)));
     const minV = -(FINISH + 500) * S3;
-    const fPos = new THREE.Vector3(0, Math.min(0, vf + dist * 0.75), dist * 0.8), fLook = new THREE.Vector3(0, vf - dist * 0.35, 0.3);
+    const fPos = new THREE.Vector3(0, Math.min(0, vf + dist * 0.8), dist * 0.5), fLook = new THREE.Vector3(0, vf - dist * 0.6, 0.2);
     const H = (FINISH + 800) * S3, fit = Math.max(H / 2 / tanV, (W * S3 / 2 + 1) / (tanV * asp)) * 1.08;
     const oPos = new THREE.Vector3(0, -(FINISH / 2) * S3, fit), oLook = new THREE.Vector3(0, -(FINISH / 2) * S3, 0);
     const pos = fPos.lerp(oPos, ov3), look = fLook.lerp(oLook, ov3);
