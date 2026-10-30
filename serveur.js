@@ -123,6 +123,16 @@ const protectedRoutes = new Set([
     '/node_modules/matter-js/build/matter.min.js',
     '/ballon-foot-reel.jpg'
 ]);
+// Jeux d'essai ouverts à tous, sans compte ni abonnement.
+const freeTrialRoutes = new Set([
+    '/course-anneaux.html',
+    '/combat-retro.html',
+    '/pendu',
+    '/pendu.html',
+    '/mots-associes.html',
+    '/qui-veut-gagner-des-etoiles.html',
+    '/griffon-gauche.jpg'
+]);
 const staticGameIds = [
     '/course-anneaux.html',
     '/combat-retro.html',
@@ -2359,7 +2369,7 @@ const server = http.createServer((req, res) => {
 
     if (route) {
         const gameId = gameRouteIds.get(pathname);
-        if (protectedRoutes.has(pathname) &&
+        if (protectedRoutes.has(pathname) && !freeTrialRoutes.has(pathname) &&
             (!access.canAccessGames(req) ||
                 (gameId !== undefined && !access.canAccessGames(req, gameId)))) {
             res.writeHead(302, {
