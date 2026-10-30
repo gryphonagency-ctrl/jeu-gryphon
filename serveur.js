@@ -74,6 +74,7 @@ const arenaAssets = {
     'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png'
 };
 const protectedRoutes = new Set([
+    '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -137,6 +138,7 @@ const freeTrialRoutes = new Set([
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [
+    '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -195,7 +197,9 @@ store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
+store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
 const staticGameTitles = {
+    '/bingo-gryphon.html': 'Bingo Gryphon',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
@@ -233,6 +237,7 @@ const staticGameTitles = {
     '/inedexd.html': 'Six Boîtes'
 };
 const gameRouteIds = new Map([
+    ['/bingo-gryphon.html', '/bingo-gryphon.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
     ['/arene-combattants.html', '/arene-combattants.html'],
@@ -2195,6 +2200,9 @@ const server = http.createServer((req, res) => {
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
+        ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
+        ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
+        ['/images-vitrine/bingo-gryphon.png', [path.join(__dirname, 'images-vitrine', 'bingo-gryphon.png'), 'image/png']],
         ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
         ['/images-vitrine/course-anneaux.png', [path.join(__dirname, 'images-vitrine', 'course-anneaux.png'), 'image/png']],
         ['/sonic-accueil.png', [path.join(__dirname, 'sonic-accueil.png'), 'image/png']],
