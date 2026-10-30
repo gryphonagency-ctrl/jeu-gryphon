@@ -79,19 +79,19 @@ function tone(f, d = 0.1, type = 'square', f2) {
 /* ---- État ---- */
 const S = { run: false, speed: 5, dist: 0, rings: 0, lives: 3, t: 0, over: 0, boost: 0, superT: 0, inv: 0 };
 const P = { x: 220, y: GROUND, vy: 0, air: 0, ang: 0 };
-let obstacles = [], rings = [], clouds = [], toasts = [], donors = {}, spawnIn = 60, shake = 0;
+let obstacles = [], rings = [], loops = [], bridges = [], clouds = [], toasts = [], donors = {}, spawnIn = 60, shake = 0;
 for (let i = 0; i < 6; i++) clouds.push({ x: i * 190, y: 40 + (i * 53) % 110, s: .6 + (i % 3) * .3 });
 
 function reset() {
   Object.assign(S, { speed: 5, dist: 0, rings: 0, lives: 3, over: 0, boost: 0, superT: 0, inv: 0 });
   Object.assign(P, { y: GROUND, vy: 0, air: 0 });
-  obstacles = []; rings = []; spawnIn = 60;
+  obstacles = []; rings = []; loops = []; bridges = []; S.loop = null; spawnIn = 60;
 }
 function toast(t) { toasts.push({ t, life: 140 }); if (toasts.length > 4) toasts.shift(); }
 
 /* ---- Actions déclenchées par les cadeaux ---- */
 function jump() {
-  if (!S.run || S.over) return;
+  if (!S.run || S.over || S.loop) return;
   if (P.y >= GROUND) { P.vy = -15; P.air = 1; tone(520, .15, 'square', 900); }
   else if (P.air < 2) { P.vy = -13; P.air = 2; tone(700, .15, 'square', 1100); }
 }
@@ -109,9 +109,16 @@ function onGift(user, coins) {
 /* ---- Génération du niveau ---- */
 function spawn() {
   const r = Math.random(), x = W + 40;
-  if (r < .4) obstacles.push({ kind: 'spike', x, w: 38, h: 34 });
-  else if (r < .7) obstacles.push({ kind: 'bot', x, w: 40, h: 40, ph: Math.random() * 6 });
-  else if (r < .85) { obstacles.push({ kind: 'spike', x, w: 38, h: 34 }); obstacles.push({ kind: 'spike', x: x + 38, w: 38, h: 34 }); }
+  if (r < .15 && !loops.length) { loops.push({ x, w: 244, ri: 95, used: false }); return 330; }
+  if (r < .32) {
+    const b = { x, w: 220, y: GROUND - 120 }; bridges.push(b);
+    obstacles.push({ kind: 'spike', x: x + 60, w: 38, h: 34 }, { kind: 'bot', x: x + 130, w: 40, h: 40, ph: 1 });
+    for (let i = 0; i < 6; i++) rings.push({ x: x + 25 + i * 34, y: b.y - 30, got: false });
+    return 280;
+  }
+  if (r < .5) obstacles.push({ kind: 'spike', x, w: 38, h: 34 });
+  else if (r < .75) obstacles.push({ kind: 'bot', x, w: 40, h: 40, ph: Math.random() * 6 });
+  else if (r < .88) { obstacles.push({ kind: 'spike', x, w: 38, h: 34 }); obstacles.push({ kind: 'spike', x: x + 38, w: 38, h: 34 }); }
   const high = Math.random() < .5, base = high ? GROUND - 140 : GROUND - 30;
   for (let i = 0; i < 5; i++) rings.push({ x: x + 90 + i * 36, y: base - (high ? Math.sin(i / 4 * Math.PI) * 40 : 0), got: false });
 }
@@ -121,18 +128,38 @@ function update() {
   S.t++;
   if (!S.run) return;
   if (S.over) { S.over--; if (S.over === 0) reset(); return; }
+  if (S.loop) {
+    // le looping : le décor se fige, la mascotte roule en boule le long de l'anneau
+    const L = S.loop; L.phi += .09; P.ang += .5; S.dist += 2;
+    clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
+    while (L.got < 12 && L.phi > .5 + L.got * Math.PI * 2 / 12.5) { L.got++; S.rings += S.superT > 0 ? 2 : 1; tone(1000 + L.got * 70, .06, 'sine', 1800); }
+    if (S.boost > 0) S.boost--; if (S.superT > 0) S.superT--;
+    if (L.phi >= Math.PI * 2) { S.loop = null; P.y = GROUND; P.vy = 0; S.inv = Math.max(S.inv, 30); }
+    return;
+  }
   const mult = (S.boost > 0 ? 1.9 : 1) * (S.superT > 0 ? 1.4 : 1);
   S.speed = Math.min(9, 5 + S.dist / 4000);
   const v = S.speed * mult;
   S.dist += v;
   if (S.boost > 0) S.boost--; if (S.superT > 0) S.superT--; if (S.inv > 0) S.inv--;
+  const prevY = P.y;
   P.vy += .7; P.y += P.vy;
+  for (const b of bridges) {
+    if (P.vy >= 0 && prevY <= b.y + 1 && P.y >= b.y && P.x + 8 > b.x && P.x - 8 < b.x + b.w) { P.y = b.y; P.vy = 0; P.air = 0; }
+  }
   if (P.y >= GROUND) { P.y = GROUND; P.vy = 0; P.air = 0; }
   P.ang += P.y < GROUND ? .35 : 0;
   clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
-  spawnIn -= v; if (spawnIn <= 0) { spawn(); spawnIn = 240 + Math.random() * 220; }
-  obstacles.forEach(o => o.x -= v); rings.forEach(r => r.x -= v);
+  spawnIn -= v; if (spawnIn <= 0) { spawnIn = 240 + Math.random() * 220 + (spawn() || 0); }
+  obstacles.forEach(o => o.x -= v); rings.forEach(r => r.x -= v); bridges.forEach(b => b.x -= v); loops.forEach(l => l.x -= v);
   obstacles = obstacles.filter(o => o.x > -80); rings = rings.filter(r => r.x > -30);
+  bridges = bridges.filter(b => b.x + b.w > -30); loops = loops.filter(l => l.x + l.w > -30);
+  for (const l of loops) {
+    if (l.used) continue;
+    const cx = l.x + l.w / 2;
+    if (cx <= P.x && cx > P.x - 40 && P.y >= GROUND - 2) { l.used = true; l.x = P.x - l.w / 2; S.loop = { l, phi: 0, got: 0 }; tone(400, .5, 'sawtooth', 1000); return; }
+    if (cx <= P.x - 40) l.used = true;
+  }
   const px = P.x, pt = P.y - 44;
   for (const r of rings) if (!r.got && Math.hypot(px - r.x, (P.y - 24) - r.y) < 30) { r.got = true; S.rings += S.superT > 0 ? 2 : 1; tone(1200, .08, 'sine', 1800); }
   for (const o of obstacles) {
@@ -185,6 +212,58 @@ function drawPico(x, y, t) {
 function drawRing(x, y, t) {
   g.strokeStyle = '#ffd23f'; g.lineWidth = 4; g.beginPath(); g.ellipse(x, y, 10 * Math.abs(Math.cos(t * .08 + x)) + 2, 12, 0, 0, 7); g.stroke();
 }
+function checkerRect(x, y, w, h, c1, c2, s) {
+  g.fillStyle = c1; g.fillRect(x, y, w, h); g.fillStyle = c2;
+  for (let j = 0; j * s < h; j++) for (let i = 0; i * s < w; i++) if ((i + j) % 2 === 0) g.fillRect(x + i * s, y + j * s, Math.min(s, w - i * s), Math.min(s, h - j * s));
+}
+function scenery() {
+  const wg = g.createLinearGradient(0, GROUND - 95, 0, GROUND); wg.addColorStop(0, '#3a8dff'); wg.addColorStop(1, '#1d5fc2');
+  g.fillStyle = wg; g.fillRect(0, GROUND - 95, W, 95);
+  g.fillStyle = 'rgba(255,255,255,.45)';
+  for (let i = 0; i < 14; i++) g.fillRect((((i * 137 - S.dist * .5) % W) + W) % W, GROUND - 85 + (i * 29) % 75, 28, 2);
+  // falaises en damier avec cascades
+  const per = 720, cs = S.dist * .45, k0 = Math.floor(cs / per), off = cs - k0 * per;
+  for (let k = -1; k < 3; k++) {
+    const kk = k0 + k, x = k * per - off + 60, w = 190 + Math.abs(kk * 53) % 110, h = 95 + Math.abs(kk * 37) % 55;
+    checkerRect(x, GROUND - h, w, h, '#b26a22', '#8c4e17', 20);
+    g.fillStyle = '#43b54a'; g.fillRect(x - 6, GROUND - h - 10, w + 12, 14);
+    g.fillStyle = '#2e8f3a'; g.fillRect(x - 6, GROUND - h + 2, w + 12, 4);
+    if (Math.abs(kk) % 2 === 0) {
+      const wx = x + w; g.fillStyle = '#d6efff'; g.fillRect(wx, GROUND - h + 4, 26, h - 4);
+      g.fillStyle = '#8fc8ff'; for (let j = 0; j < 8; j++) g.fillRect(wx + 3 + (j * 7) % 20, GROUND - h + 4 + ((j * 23 + S.t * 3) % (h - 10)), 3, 16);
+      g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(wx + 13, GROUND - 2, 15, 0, 7); g.fill();
+    }
+  }
+  // palmiers
+  const pp = 560, ps = S.dist * .8, p0 = Math.floor(ps / pp), po = ps - p0 * pp;
+  for (let k = -1; k < 3; k++) {
+    const x = k * pp - po + 330;
+    g.fillStyle = '#8a5a2b';
+    for (let i = 0; i < 10; i++) { g.fillRect(x + Math.sin(i * .35) * 9 - 6, GROUND - (i + 1) * 17, 12, 18); g.fillStyle = i % 2 ? '#8a5a2b' : '#74481f'; }
+    const tx = x + Math.sin(9 * .35) * 9, ty = GROUND - 170;
+    g.strokeStyle = '#2f9e3f'; g.lineWidth = 8; g.lineCap = 'round';
+    for (const a of [-3, -2.4, -1.8, -1.2, -.6, -.1]) { g.beginPath(); g.moveTo(tx, ty); g.quadraticCurveTo(tx + Math.cos(a) * 45, ty + Math.sin(a) * 45 - 26, tx + Math.cos(a) * 82, ty + Math.sin(a) * 82 + 14); g.stroke(); }
+    g.lineCap = 'butt'; g.fillStyle = '#5b3513'; g.beginPath(); g.arc(tx - 6, ty + 8, 6, 0, 7); g.arc(tx + 7, ty + 9, 6, 0, 7); g.fill();
+  }
+}
+function drawLoop(l) {
+  const cx = l.x + l.w / 2, Ri = l.ri, Ro = Ri + 26, Cy = GROUND - Ri;
+  g.save(); g.beginPath(); g.moveTo(cx + Ro, Cy); g.arc(cx, Cy, Ro, 0, 7); g.moveTo(cx + Ri, Cy); g.arc(cx, Cy, Ri, 0, 7, true); g.clip('evenodd');
+  checkerRect(cx - Ro, Cy - Ro, Ro * 2, Ro * 2, '#b26a22', '#8c4e17', 22);
+  g.restore();
+  g.strokeStyle = '#e8b36a'; g.lineWidth = 3; g.beginPath(); g.arc(cx, Cy, Ri, 0, 7); g.stroke();
+  if (!l.used || (S.loop && S.loop.l === l)) {
+    for (let i = (S.loop && S.loop.l === l) ? S.loop.got : 0; i < 12; i++) { const ph = .5 + i * Math.PI * 2 / 12.5; drawRing(cx + (Ri - 34) * Math.sin(ph), Cy + (Ri - 34) * Math.cos(ph), S.t); }
+  }
+}
+function drawBridge(b) {
+  g.fillStyle = '#6b3f12'; g.fillRect(b.x + 8, b.y, 10, GROUND - b.y); g.fillRect(b.x + b.w - 18, b.y, 10, GROUND - b.y);
+  for (let x = b.x; x < b.x + b.w; x += 22) {
+    g.fillStyle = '#9a5b1e'; g.beginPath(); g.arc(x + 11, b.y + 11, 11, 0, 7); g.fill();
+    g.strokeStyle = '#5e3510'; g.lineWidth = 2; g.stroke();
+    g.fillStyle = '#c98a4b'; g.beginPath(); g.arc(x + 11, b.y + 11, 5, 0, 7); g.fill();
+  }
+}
 function draw() {
   g.save();
   if (shake > 0) g.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
@@ -192,12 +271,15 @@ function draw() {
   g.fillStyle = sky; g.fillRect(0, 0, W, H);
   g.fillStyle = 'rgba(255,255,255,.9)';
   clouds.forEach(c => { g.beginPath(); g.arc(c.x, c.y, 24 * c.s, 0, 7); g.arc(c.x + 26 * c.s, c.y + 4, 20 * c.s, 0, 7); g.arc(c.x - 26 * c.s, c.y + 6, 18 * c.s, 0, 7); g.fill(); });
-  hill(0, '#3f9d5a', 90, 520, .15); hill(200, '#2e8b4a', 55, 360, .35);
+  hill(0, '#6fa7ee', 100, 620, .06);
+  scenery();
+  loops.forEach(drawLoop);
   const off = (S.dist) % 80;
   g.fillStyle = '#7a4a1e'; g.fillRect(0, GROUND, W, H - GROUND);
   g.fillStyle = '#4cc36b'; g.fillRect(0, GROUND, W, 14);
   g.fillStyle = '#5b3513';
   for (let x = -off; x < W; x += 80) { g.fillRect(x, GROUND + 14, 40, 26); g.fillRect(x + 40, GROUND + 54, 40, 26); }
+  bridges.forEach(drawBridge);
   rings.forEach(r => { if (!r.got) drawRing(r.x, r.y, S.t); });
   obstacles.forEach(o => {
     if (o.kind === 'spike') {
@@ -215,7 +297,10 @@ function draw() {
     g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 3;
     for (let i = 0; i < 8; i++) { const y = 80 + i * 45 + (S.t * 7 % 20), x = (S.t * 40 + i * 130) % W; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 70, y); g.stroke(); }
   }
-  drawPico(P.x, P.y, S.t);
+  if (S.loop) {
+    const L = S.loop, cx = L.l.x + L.l.w / 2, Ri = L.l.ri;
+    g.save(); g.translate(cx + Ri * Math.sin(L.phi), GROUND - Ri + Ri * Math.cos(L.phi)); g.rotate(-L.phi); drawPico(0, 0, S.t); g.restore();
+  } else drawPico(P.x, P.y, S.t);
   g.restore();
 
   // HUD
