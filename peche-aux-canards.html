@@ -143,6 +143,7 @@ function pad() { return 34 * duckScale + 24; }
 // Canards ajoutés par le streamer (mémorisés) : { stars, count }
 let extras = [];
 try { extras = (JSON.parse(localStorage.getItem('peche-canards-extras') || '[]') || []).filter(e => e && e.stars >= 0 && e.count > 0).slice(0, 200); } catch (e) { extras = []; }
+extras.forEach((e, i) => { if (!e.id) e.id = `x${Date.now().toString(36)}${i}`; });
 function saveExtras() { try { localStorage.setItem('peche-canards-extras', JSON.stringify(extras)); } catch (e) { } }
 function renderExtras() {
     const box = $('extra-list');
@@ -151,21 +152,28 @@ function renderExtras() {
         const row = document.createElement('div'); row.className = 'xrow';
         const label = document.createElement('span'); label.textContent = `${e.count} × ${e.stars} ⭐`;
         const del = document.createElement('button'); del.type = 'button'; del.className = 'alt'; del.textContent = '✕';
-        del.title = 'Retirer des prochaines parties';
-        del.onclick = () => { extras.splice(i, 1); saveExtras(); renderExtras(); };
+        del.title = 'Supprimer ces canards (mare et prochaines parties)';
+        del.onclick = () => { removeExtra(e.id); extras.splice(i, 1); saveExtras(); renderExtras(); };
         row.append(label, del); box.appendChild(row);
     });
     if (!extras.length) box.innerHTML = '<small>Aucun canard bonus.</small>';
 }
-function addExtraDucks(stars, count) {
-    for (let k = 0; k < count; k++) reserve.splice(Math.floor(Math.random() * (reserve.length + 1)), 0, stars);
+function removeExtra(id) {
+    ducks = ducks.filter(d => d.bonus !== id);
+    reserve = reserve.filter(r => !(r && r.id === id));
+    while (ducks.length < VISIBLE && reserve.length) spawnDuck();
+    updateHud();
+    if (!ducks.length && !reserve.length && !pending.length && !gameOver) finish();
+}
+function addExtraDucks(stars, count, id) {
+    for (let k = 0; k < count; k++) reserve.splice(Math.floor(Math.random() * (reserve.length + 1)), 0, { stars, id });
     for (let k = 0; k < Math.min(count, 200); k++) spawnDuck();
     gameOver = false; $('end').style.display = 'none'; updateHud();
 }
 function buildPrizes() {
     const p = new Array(TOTAL).fill(0);
     for (let i = 0; i < PRIZES; i++) p[i] = 1 + Math.floor(Math.random() * 2);
-    for (const e of extras) for (let k = 0; k < e.count; k++) p.push(e.stars);
+    for (const e of extras) for (let k = 0; k < e.count; k++) p.push({ stars: e.stars, id: e.id });
     for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
     return p;
 }
@@ -175,8 +183,10 @@ function spawnDuck() {
         x: pad() + Math.random() * Math.max(10, vw - pad() * 2),
         y: pad() + 40 + Math.random() * Math.max(10, vh - pad() * 2 - 40),
         a: Math.random() * Math.PI * 2, s: 0.12 + Math.random() * 0.35, t: Math.random() * 6.28,
-        col: Math.floor(Math.random() * COLORS.length), face: 1, prize: reserve.pop()
+        col: Math.floor(Math.random() * COLORS.length), face: 1, prize: 0
     });
+    const r = reserve.pop(), d = ducks[ducks.length - 1];
+    if (r && typeof r === 'object') { d.prize = r.stars; d.bonus = r.id; } else d.prize = r;
 }
 function newGame() {
     const prizes = buildPrizes();
@@ -501,7 +511,8 @@ $('b-extra').onclick = () => { const b = $('extra-box'); b.style.display = b.sty
 $('x-add').onclick = () => {
     const stars = Math.max(0, Math.min(100000, Math.floor(Number($('x-stars').value) || 0)));
     const count = Math.max(1, Math.min(500, Math.floor(Number($('x-count').value) || 1)));
-    extras.push({ stars, count }); saveExtras(); renderExtras(); addExtraDucks(stars, count);
+    const id = `x${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
+    extras.push({ stars, count, id }); saveExtras(); renderExtras(); addExtraDucks(stars, count, id);
 };
 renderExtras();
 const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
