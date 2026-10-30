@@ -51,7 +51,7 @@
   #tkStatus.online { color: #6fe3c1; }
   @keyframes drop { from { transform: translateY(-14%) } to { transform: translateY(14%) } }
   #hud { min-height: 5vh; padding: 1vh 0; text-align: center; font-size: clamp(14px, 2.4vw, 26px); text-shadow: 0 2px 6px #000; }
-  #queueBox { position: fixed; z-index: 3; left: 10px; top: 60vh; background: rgba(0,0,0,.72); border: 2px solid #9cf; border-radius: 12px; padding: 8px 12px; display: block; width: 230px; max-height: 70vh; overflow: hidden; touch-action: none; }
+  #queueBox { position: fixed; z-index: 3; left: 10px; top: 60vh; background: rgba(0,0,0,.72); border: 2px solid #9cf; border-radius: 12px; padding: 8px 12px; display: block; width: 230px; max-height: 70vh; overflow-y: auto; overflow-x: hidden; touch-action: none; }
   #queueBox.unpinned { cursor: grab; border-style: dashed; border-color: #ffe600; }
   #queueBox.dragging { cursor: grabbing; }
   #queueBox h4 { display: flex; align-items: center; justify-content: space-between; }
@@ -59,6 +59,9 @@
   #queueBox h4 { margin: 0 0 4px; font: 900 15px Impact,'Arial Black',sans-serif; letter-spacing: 2px; color: #ffe600; }
   #queueBox em { margin-left: auto; color: #ffd700; font-style: normal; font-weight: 800; }
   #queueBox div { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  #queueBox .qname { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+  #queueBox .qx { background: #c33; color: #fff; border: 0; border-radius: 50%; width: 22px; height: 22px; line-height: 20px; padding: 0; cursor: pointer; font-size: 12px; flex: none; }
+  #queueBox .qx:hover { background: #f44; }
   #queueBox img { width: 28px; height: 28px; border-radius: 50%; }
   #panel { position: fixed; z-index: 5; right: 0; top: 0; bottom: 0; width: 340px; max-width: 92vw; overflow-y: auto; background: rgba(15,15,28,.96); padding: 12px; font-size: 13px; display: none; border-left: 1px solid #335; }
   #panel.open { display: block; }
@@ -151,6 +154,8 @@
 
   <h3>Affichage</h3>
   <div class="row"><button id="soundBtn" onclick="toggleSound()">🔊 Son : ON (M)</button><button onclick="toggleQueue()">File d'attente</button></div>
+  <div class="row">Volume (+ / -) : <button onclick="setVolume(masterVol-.1)">➖</button><input id="volRange" type="range" min="0" max="100" step="5" value="100" oninput="setVolume(this.value/100)"><span id="volOut">100%</span><button onclick="setVolume(masterVol+.1)">➕</button></div>
+  <div class="row">Largeur de la file : <button onclick="queueWidth(-30)">◀ Réduire</button><span id="queueWidthOut">230 px</span><button onclick="queueWidth(30)">Élargir ▶</button></div>
 
   <h3>Solde d'étoiles</h3>
   <div class="row"><input id="balUser" placeholder="pseudo"><input id="balAmt" type="number" placeholder="étoiles"><button onclick="setBalance()">OK</button></div>
@@ -317,7 +322,7 @@ function bell() {
       [[1, .5], [2.01, .3], [2.76, .25], [4.07, .15], [5.4, .08]].forEach(([m, a]) => {
         const o = c.createOscillator(), g = c.createGain();
         o.type = 'sine'; o.frequency.value = 880 * m;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(a * .18, t0 + .005); g.gain.exponentialRampToValueAtTime(.0001, t0 + .9);
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(a * .18 * masterVol, t0 + .005); g.gain.exponentialRampToValueAtTime(.0001, t0 + .9);
         o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0 + 1);
       });
     }
@@ -458,6 +463,8 @@ document.addEventListener('keydown', e => {
   if (k === 'g') testGift(false);
   if (k === 'w') testGift(true);
   if (k === 'm') toggleSound();
+  if (k === '+' || k === '=') setVolume(masterVol + .1);
+  if (k === '-') setVolume(masterVol - .1);
 });
 
 async function runDemo() {
@@ -551,7 +558,7 @@ function beep(freq, dur) {
   try {
     const c = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
     const o = c.createOscillator(), g = c.createGain();
-    o.frequency.value = freq; g.gain.value = .05; o.connect(g); g.connect(c.destination);
+    o.frequency.value = freq; g.gain.value = .05 * masterVol; o.connect(g); g.connect(c.destination);
     o.start(); o.stop(c.currentTime + dur);
   } catch (e) {}
 }
@@ -631,6 +638,31 @@ let queuePinned = true;
   box.addEventListener('pointerup', () => { if (drag) { drag = false; box.classList.remove('dragging'); save(); } });
 })();
 
+// Volume général des effets sonores, mémorisé
+let masterVol = 1;
+try { const v = localStorage.getItem('mc_volume'); if (v !== null) masterVol = Math.min(1, Math.max(0, Number(v))); } catch (e) {}
+function setVolume(v) {
+  masterVol = Math.min(1, Math.max(0, Math.round(v * 20) / 20));
+  try { localStorage.setItem('mc_volume', masterVol); } catch (e) {}
+  const r = $('volRange'); if (r) r.value = Math.round(masterVol * 100);
+  const o = $('volOut'); if (o) o.textContent = Math.round(masterVol * 100) + '%';
+  beep(660, .08);
+}
+// Largeur de la file d'attente, mémorisée
+let queueW = 230;
+try { queueW = Math.min(700, Math.max(150, Number(localStorage.getItem('mc_queue_w')) || 230)); } catch (e) {}
+function queueWidth(d) {
+  queueW = Math.min(700, Math.max(150, queueW + d));
+  $('queueBox').style.width = queueW + 'px';
+  try { localStorage.setItem('mc_queue_w', queueW); } catch (e) {}
+  const o = $('queueWidthOut'); if (o) o.textContent = queueW + ' px';
+}
+// Retire immédiatement un spectateur de la file et ses tours en attente
+function removeFromQueue(id) {
+  jobs = jobs.filter(j => viewerId(j.who) !== id);
+  adminControls.queue = adminControls.queue.filter(q => q.viewerId !== id);
+  refreshPanel();
+}
 function toggleQueue() { $('queueBox').style.display = adminControls.toggleQueueDisplay() ? 'block' : 'none'; refreshPanel(); }
 
 // Taille de la file d'attente (zoom 1 à 3), mémorisée
@@ -642,6 +674,8 @@ function queueZoom(delta) {
   try { localStorage.setItem('mc_queue_scale', queueScale); } catch (e) {}
   const o = $('queueScaleOut'); if (o) o.textContent = Math.round(queueScale * 100) + '%';
 }
+$('queueBox').style.width = queueW + 'px'; $('queueWidthOut').textContent = queueW + ' px';
+$('volRange').value = Math.round(masterVol * 100); $('volOut').textContent = Math.round(masterVol * 100) + '%';
 $('queueBox').style.zoom = queueScale; $('queueScaleOut').textContent = Math.round(queueScale * 100) + '%';
 
 // Rotation rapide : accélère les tours pour faire passer tout le monde plus vite
@@ -704,10 +738,10 @@ function refreshPanel() {
     `<div><img src="${g.img}" alt=""><span>${g.value}</span><button onclick="removeGift(${g.id})">✕</button></div>`).join('');
   $('board').innerHTML = adminControls.getLeaderboard().slice(0, 10).map(v => `<div><span>${v.pseudo}</span><b>${v.stars}</b></div>`).join('');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <span style="margin-left:auto"><button onclick="queueZoom(-.2)" title="Réduire">➖</button><button onclick="queueZoom(.2)" title="Agrandir">➕</button><button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></span></h4>` + (adminControls.queue.map((q, i) => {
+  $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <span style="margin-left:auto"><button onclick="queueWidth(-30)" title="Rétrécir la largeur">◀</button><button onclick="queueWidth(30)" title="Élargir la largeur">▶</button><button onclick="queueZoom(-.2)" title="Réduire">➖</button><button onclick="queueZoom(.2)" title="Agrandir">➕</button><button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></span></h4>` + (adminControls.queue.map((q, i) => {
     const n = jobs.filter(j => viewerId(j.who) === q.viewerId).length;
     const v = adminControls.viewers.get(q.viewerId);
-    return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span>${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}</div>`;
+    return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span class="qname">${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}<button class="qx" data-id="${esc(q.viewerId)}" onclick="removeFromQueue(this.dataset.id)" title="Retirer de la file">✕</button></div>`;
   }).join('') || '<div>— personne —</div>');
   const sel = $('bigGift'), keep = sel.value;
   sel.innerHTML = adminControls.gifts.filter(g => g.value > 100 && !adminControls.initialGiftIds.has(g.id))
