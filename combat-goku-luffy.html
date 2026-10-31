@@ -426,6 +426,10 @@ function drawGroundBanner(time) {
 
 function startAnim(f, job) {
   f.anim = Object.assign({ t: 0, done: false }, job);
+  // Luffy frappe toujours avec son bras élastique (poing) et sa jambe élastique (pied)
+  if (f.key === 'luffy' && job.kind === 'punch') { f.anim.kind = 'pistol'; f.anim.light = true; }
+  else if (f.key === 'luffy' && job.kind === 'knee') f.anim.kind = 'whip';
+  job = f.anim;
   // le dessin dicte la physique : durée et frame d'impact viennent de la séquence
   if (['punch', 'knee', 'headbutt'].includes(job.kind) && seqLen(f.key, job.kind)) {
     f.anim.dur = seqLen(f.key, job.kind) * SEQ_DT;
@@ -435,7 +439,8 @@ function startAnim(f, job) {
     f.anim.fireDur = 95;
     say('KA…', f.x, 230, '#9be3ff', 46);
   }
-  if (job.kind === 'pistol') say('GUM-GUM…', f.x, 230, '#ff6a6a', 46);
+  if (job.kind === 'pistol') say(job.light ? 'GUM-GUM !' : 'GUM-GUM…', f.x, 230, '#ff6a6a', 46);
+  if (job.kind === 'whip') say('GUM-GUM… FOUET !', f.x, 230, '#ff6a6a', 44);
   if (job.kind === 'transform') say(f.key === 'goku' ? 'AAAAAH !!!' : 'GEAR 5 !', f.x, 230, f.key === 'goku' ? '#ffe14d' : '#ff6a6a', 50);
 }
 
@@ -510,17 +515,30 @@ function stepAnim(f, foe, dt) {
     }
   } else if (a.kind === 'pistol') {
     const t = a.t, sd = f.dir;
-    if (t > 8 && !a.said) { a.said = 1; say('PISTOL !', f.x, 200, '#ff6a6a', 60); }
+    if (t > 8 && !a.said) { a.said = 1; say(a.light ? 'PAN !' : 'PISTOL !', f.x, 200, '#ff6a6a', a.light ? 46 : 60); }
     if (!a.done) a.tgt = foe.x - sd * (RIG[ok].hb + 4);
     if (t >= 24 && !a.done) {
       a.done = true;
-      hit(ok, Math.round(a.dmg * mult(fk)), a.user, true);
-      foe.pushV += sd * 22;
-      a.star = 14;
-      spark(foe.x - sd * 40, foeBodyY, 30, ['#ffffff', '#ffe14d', '#ff5a3c'], 14);
-      ring(foe.x - sd * 40, foeBodyY, '255,255,255', 18, 1);
+      hit(ok, Math.round(a.dmg * mult(fk)), a.user, !a.light);
+      foe.pushV += sd * (a.light ? 9 : 22);
+      a.star = a.light ? 7 : 14;
+      spark(foe.x - sd * 40, foeBodyY, a.light ? 14 : 30, ['#ffffff', '#ffe14d', '#ff5a3c'], 14);
+      ring(foe.x - sd * 40, foeBodyY, '255,255,255', a.light ? 12 : 18, 1);
     }
     if (t >= 54) f.anim = null;
+  } else if (a.kind === 'whip') {
+    const t = a.t, sd = f.dir, ty = foe.jy > 0 ? GROUND - foe.jy - RIG[ok].h * .4 : GROUND - RIG[ok].h * .42;
+    if (!a.done) { a.tgt = foe.x - sd * (RIG[ok].hb + 6); a.tgtY = ty; }
+    if (t >= 14 && !a.done) {
+      a.done = true;
+      hit(ok, Math.round(a.dmg * mult(fk)), a.user);
+      foe.pushV += sd * 11; foe.jv = Math.max(foe.jv, 6);
+      a.star = 8; whiteFrames = 1;
+      say('BAM !', foe.x - sd * 30, ty - 40, '#ffd34d', 54, 28);
+      spark(foe.x - sd * 30, ty, 18, ['#ffffff', '#ffe14d', '#ff5a3c'], 12);
+      ring(foe.x - sd * 30, ty, '255,230,160', 12, .9);
+    }
+    if (t >= 40) f.anim = null;
   } else if (a.kind === 'transform') {
     const t = a.t;
     shake = Math.max(shake, 6);
@@ -579,6 +597,9 @@ function computePose(f, foe, time) {
   } else if (a && (a.kind === 'knee' || a.kind === 'headbutt')) {
     const k = atkK(a), d = Math.max(0, Math.min(450, Math.abs(foe.x - f.home) - (a.kind === 'knee' ? 120 : 112)));
     P.dash = d * Math.max(0, k) + (k < 0 ? 12 * k : 0);
+  } else if (a && a.kind === 'whip') {
+    const w = ease(a.t / 8) * (1 - ease((a.t - 24) / 12));
+    P.lean -= .1 * w; P.crouch += 4 * w; P.torso -= .12 * w;
   } else if (a && a.kind === 'kame') {
     const t = a.t;
     if (t < 75) {
@@ -722,7 +743,10 @@ function drawFace(f, S, dw, dh, st, time) {
   if (S.srcSsj) { S.imgSsj = new Image(); S.imgSsj.src = S.srcSsj; }
 });
 // Découpe du bras de Luffy dans luffy_hd.png (px source) : épaule fixe x>=cut, manche étirable [cut-strip, cut], poing x<cut-strip
-const ARM = { cut: 150, cy: 158, y0: 100, h: 100, strip: 50, fist0: 17 };
+// cy : axe de la manche à la coupe (épaule) ; slope : la manche monte vers l'épaule, chaque tranche est donc recentrée sur son propre axe
+const ARM = { cut: 150, cy: 146, slope: .22, y0: 100, h: 100, strip: 50, fist0: 17 };
+// jambe élastique de Luffy (luffy_rest_hd.png, px source) : top = bas du short, cut = limite droite retirée du corps, shin = tibia étiré, foot = pied
+const WHIP = { top: 498, cx: 150, cut: 215, shin0: 506, shin1: 650, foot1: 707, fx0: 40, fx1: 200, c0: 149, slope: .25 };
 const CYCLE = { goku: ['idle'], luffy: ['idle'] };
 const RUN = { goku: ['run'], luffy: ['run'] };
 // rot : inclinaison (rad, + = vers l'avant) ; dx : décalage avant (px) ; sy : écrasement vertical
@@ -740,7 +764,7 @@ function stateOf(f) {
   const a = f.anim;
   if (over) return over === f.key ? 'WIN' : 'KO';
   if (f.hurt > .15) return 'HURT';
-  if (a) return a.kind === 'knee' ? 'KNEE' : a.kind === 'headbutt' ? 'HEADBUTT' : a.kind === 'punch' ? 'PUNCH' : 'SPECIAL';
+  if (a) return a.kind === 'knee' || a.kind === 'whip' ? 'KNEE' : a.kind === 'headbutt' ? 'HEADBUTT' : a.kind === 'punch' ? 'PUNCH' : 'SPECIAL';
   if (f.jy > 3) return 'JUMP';
   return Math.abs(f.vx) > .5 ? 'WALK' : 'IDLE';
 }
@@ -759,6 +783,7 @@ function pickFrame(f, time) {
     if (a.kind === 'transform') return 'guard';
     if (a.kind === 'punch') return a.t < 6 ? 'windup' : a.t < a.dur - 4 ? (a.hand === 'F' ? 'punchA' : 'punchB') : 'guard';
     if (a.kind === 'knee') return 'knee';
+    if (a.kind === 'whip') return a.t < 5 ? 'windup' : 'guard';
     if (a.kind === 'headbutt') return 'headbutt';
   }
   if (f.jy > 3) return 'jump';
@@ -834,6 +859,12 @@ function drawFighter(f, time) {
     ctx.beginPath(); ctx.rect(ax - 40, -dh * 1.3, dw + 80, dh * 1.6);
     ctx.rect(ax - 40, -dh + ARM.y0 * sc, 40 + ARM.cut * sc, ARM.h * sc); ctx.clip('evenodd');
   }
+  const whipOut = f.key === 'luffy' && f.anim && f.anim.kind === 'whip' && f.anim.t >= 4;
+  if (whipOut) {
+    const sc = dh / img.naturalHeight, ax = -dw / 2;
+    ctx.beginPath(); ctx.rect(ax - 40, -dh * 1.3, dw + 80, dh * 1.6);
+    ctx.rect(ax - 40, -dh + WHIP.top * sc, 40 + WHIP.cut * sc, dh); ctx.clip('evenodd');
+  }
   const st = f.state || 'IDLE', info = legInfo(img, S);
   const aK = f.anim && (f.anim.kind === 'knee' || f.anim.kind === 'headbutt') ? atkK(f.anim) : 0;
   const bend = f.anim && f.anim.kind === 'headbutt' ? .2 * aK : f.anim && f.anim.kind === 'knee' ? -.05 * aK : 0;
@@ -906,7 +937,10 @@ function drawFighter(f, time) {
     return inv.transformPoint(q);
   };
   const fist = at(S.fist[0], S.fist[1]), chest = at(S.chest[0], S.chest[1]);
-  if (f.key === 'luffy') { f.armA = at(ARM.cut / img.naturalWidth, ARM.cy / img.naturalHeight); f.armK = dh / img.naturalHeight; }
+  if (f.key === 'luffy') {
+    f.armA = at(ARM.cut / img.naturalWidth, ARM.cy / img.naturalHeight); f.armK = dh / img.naturalHeight;
+    f.legA = at(WHIP.cx / img.naturalWidth, WHIP.top / img.naturalHeight);
+  }
   ctx.restore();
   const hand = f.anim && f.anim.kind === 'kame' ? chest : fist;
   f.fistF = hand; f.fistB = hand; f.shF = hand;
@@ -999,10 +1033,10 @@ function drawPistol(f, foe) {
     const sa = ARM.cut - ARM.strip * u0, sb = ARM.cut - ARM.strip * u1;
     const m = Math.sin(Math.PI * (x0 + x1) / 2 / Ls), q = x0 / Ls, wk = (1 + (wk0 - 1) * Math.sqrt(m)) * (1 + .3 * imp * q * q * (1 + .25 * Math.sin(t * 1.6 - q * 9)));
     const oy = (wave + (2 + 4 * ext) * Math.sin(x0 * .045 - t * .9) + 1.5 * Math.sin(x0 * .11 + t * .55)) * m;
-    ctx.drawImage(img, Math.min(sa, sb), ARM.y0, Math.max(.8, Math.abs(sb - sa)), ARM.h, x0, oy - (ARM.cy - ARM.y0) * k * wk, x1 - x0 + .8, ARM.h * k * wk);
+    ctx.drawImage(img, Math.min(sa, sb), ARM.y0, Math.max(.8, Math.abs(sb - sa)), ARM.h, x0, oy - (ARM.cy + ((sa + sb) / 2 > ARM.cut ? 0 : (ARM.cut - (sa + sb) / 2) * ARM.slope) - ARM.y0) * k * wk, x1 - x0 + .8, ARM.h * k * wk);
   }
   ctx.save(); ctx.translate(Ls + (ARM.cut - ARM.strip) * k, 0); ctx.scale(-1, 1);
-  ctx.drawImage(img, 0, ARM.y0, ARM.cut - ARM.strip, ARM.h, 0, -(ARM.cy - ARM.y0) * k, (ARM.cut - ARM.strip) * k, ARM.h * k);
+  ctx.drawImage(img, 0, ARM.y0, ARM.cut - ARM.strip, ARM.h, 0, -(ARM.cy + ARM.strip * ARM.slope - ARM.y0) * k, (ARM.cut - ARM.strip) * k, ARM.h * k);
   ctx.restore();
   ctx.restore();
   if (L > 20) {
@@ -1023,6 +1057,53 @@ function drawPistol(f, foe) {
     a.star -= .6;
     ctx.save(); ctx.translate(ex + sd * 22, ey); ctx.globalCompositeOperation = 'lighter';
     const R2 = 90 + a.star * 5; ctx.fillStyle = 'rgba(255,240,150,.9)'; ctx.beginPath();
+    for (let i = 0; i < 16; i++) { const an = i * Math.PI / 8, rr = i % 2 ? R2 * .45 : R2; ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawWhip(f, foe) {
+  const a = f.anim, S = SPR.luffy, img = S.img;
+  if (!a || a.kind !== 'whip' || a.t < 4 || !f.legA || !ready(img)) return;
+  const sd = f.dir, t = a.t, A = f.legA, k = f.armK;
+  const out = ease((t - 4) / 8), r = clamp01((t - 22) / 14), ext = out * (1 - r * r * r);
+  const tx = a.tgt ?? A.x + sd * 260, ty = a.tgtY ?? A.y;
+  const ex = A.x + (tx - A.x) * ext, ey = A.y + (ty - A.y) * ext;
+  const dx = ex - A.x, dy = ey - A.y, D = Math.hypot(dx, dy);
+  const footLen = (WHIP.foot1 - WHIP.shin1) * k, baseLen = (WHIP.shin1 - WHIP.shin0) * k, Ls = Math.max(baseLen * .4, D - footLen);
+  const n = Math.max(1, Math.ceil(Ls / (baseLen * 2.2))) | 1, tl = Ls / n, s = Ls / baseLen;
+  const wk0 = Math.min(1.25, Math.max(.8, Math.pow(s, -.3))), wave = (3 + 7 * r) * Math.sin(t * .8);
+  const imp = a.done && t < 30 ? clamp01(1 - (t - 14) / 16) : 0;
+  const xc = y => WHIP.c0 - (y - 520) * WHIP.slope;
+  ctx.save(); ctx.lineCap = 'round';
+  if (D > 20) {
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 5; i++) { const yy = A.y + rnd(-30, 30), l = rnd(30, 80); ctx.beginPath(); ctx.moveTo(A.x + sd * rnd(0, D), yy); ctx.lineTo(A.x + sd * rnd(0, D) - sd * l, yy); ctx.stroke(); }
+  }
+  ctx.translate(A.x, A.y); ctx.scale(sd, 1); ctx.rotate(Math.atan2(dy, Math.abs(dx)));
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const step = 3, sx0 = WHIP.fx0 + 40, sw = WHIP.cut - sx0;
+  for (let x0 = 0; x0 < Ls; x0 += step) {
+    const x1 = Math.min(Ls, x0 + step), ti = Math.min(n - 1, Math.floor(x0 / tl));
+    let u0 = (x0 - ti * tl) / tl, u1 = (x1 - ti * tl) / tl;
+    if (ti % 2) { u0 = 1 - u0; u1 = 1 - u1; }
+    const ra = WHIP.shin0 + (WHIP.shin1 - WHIP.shin0) * u0, rb = WHIP.shin0 + (WHIP.shin1 - WHIP.shin0) * u1;
+    const sa = Math.min(ra, rb), hr = Math.max(.8, Math.abs(rb - ra)), c = (x1 - x0 + .8) / hr;
+    const m = Math.sin(Math.PI * (x0 + x1) / 2 / Ls), q = x0 / Ls;
+    const wk = (1 + (wk0 - 1) * Math.sqrt(m)) * (1 + .3 * imp * q * q), b = k * wk;
+    const oy = (wave + (1.5 + 3 * ext) * Math.sin(x0 * .05 - t * .9)) * m;
+    ctx.save(); ctx.transform(0, b, c, 0, x0 - c * sa, oy - b * xc(sa + hr / 2));
+    ctx.drawImage(img, sx0, sa, sw, hr, sx0, sa, sw, hr); ctx.restore();
+  }
+  ctx.save(); ctx.translate(Ls, 0); ctx.transform(0, k, k, 0, -k * WHIP.shin1, -k * xc(WHIP.shin1));
+  ctx.drawImage(img, WHIP.fx0, WHIP.shin1, WHIP.fx1 - WHIP.fx0, WHIP.foot1 - WHIP.shin1, WHIP.fx0, WHIP.shin1, WHIP.fx1 - WHIP.fx0, WHIP.foot1 - WHIP.shin1);
+  ctx.restore();
+  ctx.restore();
+  if (a.star > 0) {
+    a.star -= .6;
+    ctx.save(); ctx.translate(ex + sd * 14, ey); ctx.globalCompositeOperation = 'lighter';
+    const R2 = 60 + a.star * 5; ctx.fillStyle = 'rgba(255,240,150,.9)'; ctx.beginPath();
     for (let i = 0; i < 16; i++) { const an = i * Math.PI / 8, rr = i % 2 ? R2 * .45 : R2; ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); }
     ctx.closePath(); ctx.fill(); ctx.restore();
   }
@@ -1307,7 +1388,7 @@ function frame(rawTime) {
   order.forEach(k => drawIce(fighters[k], time));
   ctx.save(); ctx.translate(camX, 0); drawSpeedLines(time); ctx.restore();
   drawSmoke();
-  order.forEach(k => { drawKame(fighters[k], fighters[other(k)], time); drawPistol(fighters[k], fighters[other(k)]); });
+  order.forEach(k => { drawKame(fighters[k], fighters[other(k)], time); drawPistol(fighters[k], fighters[other(k)]); drawWhip(fighters[k], fighters[other(k)]); });
   drawMeteors(); drawRealism(time);
   drawFX();
   texts.forEach(t => {
