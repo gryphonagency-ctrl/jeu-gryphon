@@ -293,18 +293,69 @@ function loadLevel(n){
   Object.assign(mario,{x:100,y:0,prevY:0,velX:0,velY:0,direction:1,isInvincible:false,starTimer:0,onPipe:null,warp:null,ride:null,grounded:true,inv:60});
   cameraX=0;banner=150;state='play';
 }
-function restart(){lives=3;score=0;loadLevel(0);}
+function restart(){lives=3;score=0;winT=0;wheel=null;wheelQ=[];loadLevel(0);}
 function die(){if(state!=='play'||mario.warp)return;state='dead';deadT=0;sfx('die');mario.velY=11;mario.velX=0;mario.isInvincible=false;lives--;}
 function respawn(){if(lives<=0){state='over';sfx('over');return;}loadLevel(cur);mario.inv=120;}
 
-let started=false;
+let started=false,winT=0,wheelQ=[],wheel=null;
+const WSEG=[{t:'❤ +1 VIE',c:'#e52521',k:'life'},{t:'⏩ NIVEAU +1',c:'#2a7de1',k:'skip'},{t:'😅 RIEN',c:'#f2b01e',k:'none'}];
+function wheelStep(){
+  if(!wheel){
+    if(wheelQ.length&&state==='play'&&!mario.warp){
+      const k=Math.floor(Math.random()*3),jit=(Math.random()-.5)*1.2;
+      const end=-(k*2*Math.PI/3+Math.PI/3)+jit;
+      wheel={user:wheelQ.shift(),k,rot:0,start:0,end:end-Math.PI*2*(5+Math.floor(Math.random()*3)),t:0,dur:330,done:0,last:0,flick:0};
+      sfx('star');
+    }
+    return false;
+  }
+  const w=wheel;
+  if(w.t<w.dur){
+    w.t++;const p=w.t/w.dur,e=1-Math.pow(1-p,3.2);w.rot=w.start+(w.end-w.start)*e;
+    const seg=Math.floor(-w.rot/(2*Math.PI/3));
+    if(seg!==w.last){w.last=seg;w.flick=1;tone(900+(seg%3)*120,.04,'square',.18);}
+    w.flick*=.85;
+    if(w.t===w.dur){sfx(w.k===2?'over':'clear');}
+  }else if(++w.done>150){
+    const k=WSEG[w.k].k;
+    if(k==='life')lives=Math.min(9,lives+1);
+    else if(k==='skip'){wheel=null;if(cur<4)loadLevel(cur+1);else{state='win';winT=0;}return true;}
+    wheel=null;
+  }
+  return true;
+}
+function drawWheel(){
+  if(!wheel)return;
+  const w=wheel,cx=400,cy=212,R=108,tw=2*Math.PI/3,fin=w.t>=w.dur;
+  ctx.save();ctx.fillStyle='rgba(8,6,30,.82)';ctx.fillRect(0,0,800,400);
+  txt('⭐ ROUE DE MARIO',400,32,26,'#ffd21a');
+  txt(w.user+' fait tourner la roue !',400,54,16,'#fff');
+  ctx.translate(cx,cy);
+  ctx.shadowColor=fin?WSEG[w.k].c:'#ffd21a';ctx.shadowBlur=fin?26+Math.sin(fr/4)*10:14;
+  ctx.fillStyle='#ffd21a';ctx.beginPath();ctx.arc(0,0,R+12,0,7);ctx.fill();ctx.shadowBlur=0;
+  WSEG.forEach((s,i)=>{
+    const a0=w.rot+i*tw-Math.PI/2,a1=a0+tw;
+    ctx.fillStyle=fin&&i!==w.k?'#555':s.c;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,R,a0,a1);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();
+    ctx.save();ctx.rotate(a0+tw/2);ctx.textAlign='right';ctx.fillStyle='#fff';ctx.font='bold 17px Arial';ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(s.t,R-12,6);ctx.restore();
+  });
+  for(let i=0;i<12;i++){const a=w.rot+i*Math.PI/6,x=Math.cos(a)*(R+6),y=Math.sin(a)*(R+6);ctx.fillStyle=i%2?'#fff':'#e52521';ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill();}
+  ctx.fillStyle='#e52521';ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,34,0,7);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-1,19,0,7);ctx.fill();
+  ctx.fillStyle='#e52521';ctx.font='bold 30px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('M',0,1);ctx.textBaseline='alphabetic';
+  ctx.restore();
+  ctx.save();ctx.translate(cx,cy-R-14);ctx.rotate(-w.flick*.5);
+  ctx.fillStyle='#fff';ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-14,-16);ctx.lineTo(14,-16);ctx.lineTo(0,22);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+  if(fin)txt(['❤ Une vie en plus !','⏩ Niveau sauté !','😅 Rien cette fois…'][w.k],400,376,26,'#fff');
+}
 function startGame(){if(started)return;started=true;$('welcome').classList.add('off');sfx('star');}
 $('launch').addEventListener('click',()=>{audio();startGame();});
 function triggerGift(g,user){
   if(!logged)return;
   if(!started){startGame();return;}
-  if(state==='over'||state==='win'){restart();return;}
+  if(state==='over'){restart();return;}
   recv(g,user);
+  if(g==='Star')wheelQ.push(String(user||pseudo||'Un spectateur').slice(0,16));
   if(state!=='play'||mario.warp)return;
   if(g==='Rose'){mario.velX=8;mario.direction=1;}
   if(g==='Ice Cream'){mario.velX=-8;mario.direction=-1;}
@@ -329,7 +380,9 @@ function step(){
   fr++;
   plats.forEach(p=>{const nx=p.mv?p.x0+Math.sin(fr*.02*p.sp)*p.mv:p.x0;p.dx=nx-p.x;p.x=nx;});
   if(state==='dead'){mario.velY-=.65;mario.y+=mario.velY;if(++deadT>110)respawn();return;}
-  if(state==='clear'){if(--clearT<=0){if(cur<4)loadLevel(cur+1);else state='win';}return;}
+  if(state==='clear'){if(--clearT<=0){if(cur<4)loadLevel(cur+1);else{state='win';winT=0;}}return;}
+  if(state==='win'){if(++winT>420)restart();return;}
+  if(wheelStep())return;
   if(state!=='play')return;
   const w=mario.warp;
   mario.onPipe=null;
@@ -504,11 +557,12 @@ function render(){
   if(banner>0&&state==='play'){banner--;ctx.globalAlpha=Math.min(1,banner/40);txt('NIVEAU '+(cur+1)+' – '+L.name,400,150,30,'#fff');ctx.globalAlpha=1;}
   if(state==='dead'&&deadT>20)txt(lives>0?'Aïe ! Il vous reste '+lives+' vie'+(lives>1?'s':''):'Dernière vie perdue…',400,150,28,'#ff6b6b');
   if(state==='clear'){txt('NIVEAU TERMINÉ !  +1000',400,95,30,'#ffd700');if(rwMsg)txt(rwMsg,400,128,20,'#25f4ee');vipBanner();}
+  drawWheel();
   if(state==='over'||state==='win'){
     ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,800,400);
     txt(state==='win'?'🏆 VICTOIRE ! 5 niveaux terminés':'GAME OVER',400,170,38,state==='win'?'#ffd700':'#ff4d4d');
     txt('Score final : '+score,400,215,26,'#fff');
-    txt('Une ⭐ relance la partie',400,265,24,'#ffd21a');
+    txt(state==='win'?'Retour au niveau 1…':'Une ⭐ relance la partie au niveau 1',400,265,24,'#ffd21a');
   }
 }
 function vipBanner(){
