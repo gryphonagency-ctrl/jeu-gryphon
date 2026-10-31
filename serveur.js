@@ -203,7 +203,7 @@ store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 const staticGameTitles = {
-    '/combat-goku-luffy.html': 'Duel Goku vs Luffy',
+    '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
