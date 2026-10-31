@@ -71,9 +71,12 @@ const arenaAssets = {
     'freezer-cut.png': 'image/png', 'freezer-walk.png': 'image/png',
     'beerus-cut.png': 'image/png', 'beerus-walk.png': 'image/png',
     'naruto-cut.png': 'image/png', 'naruto-walk.png': 'image/png',
-    'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png'
+    'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png',
+    'duel-luffy.png': 'image/png', 'duel-goku.png': 'image/png',
+    'duel-goku-ssj.png': 'image/png', 'duel-goku-ssj-atk.png': 'image/png'
 };
 const protectedRoutes = new Set([
+    '/combat-goku-luffy.html',
     '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
@@ -138,6 +141,7 @@ const freeTrialRoutes = new Set([
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [
+    '/combat-goku-luffy.html',
     '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
@@ -198,7 +202,9 @@ store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
+store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 const staticGameTitles = {
+    '/combat-goku-luffy.html': 'Duel Goku vs Luffy',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
@@ -237,6 +243,7 @@ const staticGameTitles = {
     '/inedexd.html': 'Six Boîtes'
 };
 const gameRouteIds = new Map([
+    ['/combat-goku-luffy.html', '/combat-goku-luffy.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
@@ -2199,6 +2206,8 @@ const server = http.createServer((req, res) => {
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
+        ['/combat-goku-luffy.html', [path.join(__dirname, 'combat-goku-luffy.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/combat-goku-luffy.png', [path.join(__dirname, 'images-vitrine', 'combat-goku-luffy.png'), 'image/png']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
         ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
