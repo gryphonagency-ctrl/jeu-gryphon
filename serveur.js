@@ -138,6 +138,7 @@ const freeTrialRoutes = new Set([
     '/lion-temple-maya.html',
     '/petits-chevaux-tiktok.html',
     '/jeu-foot-tiktok.html',
+    '/super-mario-live.html',
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [
@@ -207,7 +208,7 @@ store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
-    '/super-mario-live.html': 'Super Mario – TikTok Live',
+    '/super-mario-live.html': 'Mario',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',

@@ -1,20 +1,26 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Super Mario – TikTok Live</title>
+<title>Mario</title>
 <style>
 :root{--bg:#111;--fg:#fff;--accent:#fe2c55;--cyan:#25f4ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:'Segoe UI',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow-x:hidden}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;height:100vh}
 #panel{background:rgba(0,0,0,.85);padding:10px;border-radius:12px;margin:10px;border:2px solid var(--accent);box-shadow:0 0 15px rgba(254,44,85,.4);display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:100%}
 .gift{background:var(--accent);color:#fff;border:none;padding:10px 14px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:.85rem;text-transform:uppercase;transition:transform .1s}
 .gift:hover{transform:scale(1.06)}
-#wrap{width:100%;display:flex;justify-content:center;overflow:hidden}
-#game{position:relative;width:800px;height:400px;flex:none;transform-origin:top center;border:4px solid #333;border-radius:8px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+#wrap{position:fixed;inset:0;overflow:hidden;background:#000}
+#game{position:absolute;left:50%;top:50%;width:800px;height:400px;transform-origin:center;overflow:hidden}
 canvas{position:absolute;top:0;left:0;image-rendering:pixelated}
+#welcome{position:absolute;inset:0;z-index:5;background:linear-gradient(rgba(10,10,40,.8),rgba(60,10,70,.85));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;color:#fff;text-shadow:0 3px 0 #000}
+#welcome h1{margin:0;font-size:48px;color:#ffd21a;letter-spacing:1px}
+#welcome p{margin:0;font-size:28px;font-weight:700;animation:wpulse 1.2s ease-in-out infinite}
+#welcome small{opacity:.8;font-size:16px}
+#welcome.off{display:none}
+@keyframes wpulse{50%{transform:scale(1.07)}}
 #hint{font-size:.8rem;opacity:.7;margin:8px;text-align:center}
 #login{position:absolute;inset:0;z-index:5;background:rgba(10,10,20,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;text-align:center}
 #login h1{margin:0;font-size:1.6rem}
@@ -23,7 +29,7 @@ canvas{position:absolute;top:0;left:0;image-rendering:pixelated}
 #login small{opacity:.65;max-width:420px}
 #loginErr{color:#ff6b6b;min-height:1.2em;font-size:.9rem}
 #gear{position:absolute;right:8px;top:44px;z-index:7;background:#ff7a00;border:0;color:#fff;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;padding:6px 12px}
-#settings{position:absolute;right:8px;top:80px;bottom:62px;width:290px;z-index:6;background:rgba(10,10,20,.95);color:#fff;border:2px solid #25f4ee;border-radius:10px;padding:10px 12px;overflow:auto;font-size:13px;display:flex;flex-direction:column;gap:7px}
+#settings{position:absolute;right:8px;top:80px;bottom:8px;width:290px;z-index:6;background:rgba(10,10,20,.95);color:#fff;border:2px solid #25f4ee;border-radius:10px;padding:10px 12px;overflow:auto;font-size:13px;display:flex;flex-direction:column;gap:7px}
 #settings[hidden]{display:none}
 #settings label{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #settings input[type=number],#settings input[type=text]{width:90px;background:#000;color:#fff;border:1px solid #25f4ee;border-radius:6px;padding:3px 6px}
@@ -36,6 +42,7 @@ canvas{position:absolute;top:0;left:0;image-rendering:pixelated}
 <body>
 <script src="/arcade-effects.js"></script>
 <div id="wrap"><div id="game"><canvas id="gameCanvas" width="800" height="400"></canvas>
+  <div id="welcome"><h1>Bienvenue chez Mario</h1><p>Une ⭐ vous permettra de lancer la partie</p><small>Envoyez n’importe quel cadeau (1 étoile) sur le live</small></div></div>
   <button id="gear" title="Panneau (F2)">⚙ Panneau</button>
   <div id="settings">
     <div class="sh"><b>⚙ Panneau de contrôle</b><button id="setClose">✕</button></div>
@@ -154,7 +161,7 @@ function onServerMsg(raw){
   if(d.type==='gift'){
     const g=d.gift||d,user=String(g.nickname||g.uniqueId||g.username||'').slice(0,20),coins=Number(g.coinCount)||0;
     const k=coins>=100?'Star':GIFT_MAP[String(g.giftName||'').trim().toLowerCase()];
-    if(k&&coins>=1)triggerGift(k,user);
+    if(coins>=1){if(k)triggerGift(k,user);else startGame();}
   }else if(d.type==='comment'){
     const c=d.commentData||{};
     if(PIPE_WORDS.test(String(c.comment||'')))triggerGift('Pipe',String(c.nickname||c.uniqueId||'').slice(0,20));
@@ -190,7 +197,7 @@ $('simShare').addEventListener('click',()=>ArcadeEffects.simulateShare());
 $('reset').addEventListener('click',()=>restart());
 function saveGame(){try{localStorage.setItem('super-mario-live-save',JSON.stringify({cur,score,lives}));}catch(e){}}
 setInterval(saveGame,3000);
-function fit(){const s=Math.min(1,(window.innerWidth-16)/808);game.style.transform='scale('+s+')';wrap.style.height=(408*s)+'px';}
+function fit(){const s=Math.min(window.innerWidth/800,window.innerHeight/400);game.style.transform='translate(-50%,-50%) scale('+s+')';}
 window.addEventListener('resize',fit);fit();
 
 /* ---------- Sprites pixel-art ---------- */
@@ -264,8 +271,11 @@ function restart(){lives=3;score=0;loadLevel(0);}
 function die(){if(state!=='play'||mario.warp)return;state='dead';deadT=0;sfx('die');mario.velY=11;mario.velX=0;mario.isInvincible=false;lives--;}
 function respawn(){if(lives<=0){state='over';sfx('over');return;}loadLevel(cur);mario.inv=120;}
 
+let started=false;
+function startGame(){if(started)return;started=true;$('welcome').classList.add('off');sfx('star');}
 function triggerGift(g,user){
   if(!logged)return;
+  if(!started){startGame();return;}
   if(state==='over'||state==='win'){restart();return;}
   recv(g,user);
   if(state!=='play'||mario.warp)return;
@@ -474,7 +484,7 @@ function render(){
     txt('Envoyez un cadeau ou appuyez sur une touche pour rejouer',400,265,18,'#25f4ee');
   }
 }
-function loop(){if(logged)step();render();requestAnimationFrame(loop);}
+function loop(){if(logged&&started)step();render();requestAnimationFrame(loop);}
 loadLevel(0);
 try{const sv=JSON.parse(localStorage.getItem('super-mario-live-save')||'null');if(sv&&LEVELS[sv.cur]){score=+sv.score||0;lives=Math.max(1,+sv.lives||3);loadLevel(sv.cur);}}catch(e){}
 loop();
