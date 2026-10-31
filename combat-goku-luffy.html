@@ -105,7 +105,7 @@ const fighters = {
 const other = k => k === 'luffy' ? 'goku' : 'luffy';
 
 let particles = [], rings = [], scorches = [], texts = [], bolts = [], callouts = [];
-let ghostMode = false, blueFlash = 0, shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
+let ghostMode = false, whiteFrames = 0, combo = { who: null, n: 0, t: 0, s: 1 }, blueFlash = 0, shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
 let over = null, overT = 0, teams = {}, dmg = {}, lastWinMsg = '', baseInv = new DOMMatrix();
 let state = JSON.parse(localStorage.getItem(SAVE) || '{"wins":{"luffy":0,"goku":0},"dmg":{}}');
 dmg = state.dmg || {};
@@ -143,6 +143,9 @@ function hit(who, amount, user, big) {
   if (over) return;
   f.hp = Math.max(0, f.hp - amount);
   f.hurt = 1; f.flash = 1;
+  if (big) whiteFrames = 1;
+  if (combo.who === who && combo.t > 0) combo.n++; else combo.n = 1;
+  combo.who = who; combo.t = 120; combo.s = 1.5;
   if (f.jy <= 0) f.jv = big ? 11 : 6;
   const air = fighters[other(who)].jy > 20 ? 1.6 : 1;
   shake = Math.min(32, Math.max(shake, (2 + amount * 1.1) * air));
@@ -231,7 +234,7 @@ function stepAnim(f, foe, dt) {
         a.done = true;
         const ix = (Math.max(f.atk.x0, fb.x0) + Math.min(f.atk.x1, fb.x1)) / 2, iy = (f.atk.y0 + f.atk.y1) / 2;
         hit(ok, Math.round(a.dmg * mult(fk)), a.user);
-        if (knee) { foe.pushV += sd * 6; foe.jv = Math.max(foe.jv, 8); say('BAM !', ix, iy - 40, '#ffd34d', 54, 28); }
+        if (knee) { whiteFrames = 1; foe.pushV += sd * 6; foe.jv = Math.max(foe.jv, 8); say('BAM !', ix, iy - 40, '#ffd34d', 54, 28); }
         else { foe.pushV += sd * 15; say('BONK !', ix, iy - 40, '#ff9b4d', 56, 28); }
         ring(ix, iy, '255,230,160', 9, .8); smoke(ix, iy, 3, '200,170,120');
         for (let i = 0; i < 8; i++) particles.push({ x: ix, y: iy, vx: rnd(-5, 5) + sd * 2, vy: rnd(-5, 3), alpha: 1, color: '#fff2a0', size: rnd(1.5, 3), decay: .06, add: true, g: .1, streak: true });
@@ -792,6 +795,15 @@ function updateAll(dt, time) {
       }
       target.dash += f.wander || 0;
     } else f.wander = 0;
+    if (!over && !ghostMode) {
+      const a = f.anim, charging = a && (a.kind === 'kame' && a.t < 75 || a.kind === 'transform');
+      const rush = Math.abs(f.vx) > 3 || a && (a.kind === 'knee' || a.kind === 'headbutt') && a.t >= 6 && a.t < a.dur - 4;
+      if ((charging || rush) && f.ssj <= 0 && f.rage <= 0) {
+        const pal = k === 'goku' ? (charging ? ['#7fd0ff', '#bfeaff', '#3aa0ff'] : ['#ffd21a', '#ff9a1a', '#ff6a00']) : ['#ff5030', '#ff9a30', '#ffd060'];
+        const hb = RIG[k].hb, hh = RIG[k].h;
+        for (let i = 0; i < 2; i++) particles.push({ x: f.x + rnd(-hb * 1.3, hb * 1.3), y: GROUND - f.jy - rnd(10, hh * .9), vx: rnd(-.6, .6) - Math.sign(f.vx) * 1.5, vy: -rnd(2, 5), alpha: .8, color: pal[Math.floor(Math.random() * 3)], size: rnd(4, 9), decay: .035, add: true, g: -.04, w: rnd(0, 6) });
+      }
+    }
     f.state = stateOf(f);
     for (const p in target) f.pose[p] += (target[p] - f.pose[p]) * kk;
     if (f.pushTarget !== null) f.push += (f.pushTarget - f.push) * .12 * dt;
@@ -813,7 +825,7 @@ function updateAll(dt, time) {
       if (Math.random() < .08) bolt(f.x + rnd(-60, 60), GROUND - rnd(60, 380), f.x + rnd(-90, 90), GROUND - rnd(60, 380), '#fff2a0', 2, 6); }
     if (f.rage > 0) { f.rage -= dt; if (Math.random() < .6) particles.push({ x: f.x + rnd(-90, 90), y: GROUND - rnd(0, 120), vx: rnd(-.5, .5), vy: rnd(-3, -1), alpha: .9, color: '#ff5030', size: rnd(1.5, 3.5), decay: .02, add: true, g: -.02, streak: true }); }
   }
-  for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= Math.pow(.985, dt); p.size += (p.grow || 0) * dt; p.alpha -= p.decay * dt; }
+  for (const p of particles) { p.x += p.vx * dt + (p.w !== undefined ? Math.sin(p.alpha * 11 + p.w) * 1.1 * dt : 0); p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= Math.pow(.985, dt); p.size += (p.grow || 0) * dt; p.alpha -= p.decay * dt; }
   particles = particles.filter(p => p.alpha > 0).slice(-700);
   for (const r of rings) { r.r += r.vr * dt; r.a -= .03 * dt; }
   rings = rings.filter(r => r.a > 0 && r.r > 0);
@@ -828,6 +840,7 @@ function updateAll(dt, time) {
   callouts.forEach(c => { c.a -= dt * .006; });
   while (callouts.length && callouts[0].a <= 0) callouts.shift();
   shake *= Math.pow(.9, dt); flash *= Math.pow(.9, dt);
+  if (combo.t > 0) { combo.t -= dt; combo.s = Math.max(1, combo.s - .05 * dt); } else combo.n = 0;
   const kame = ['luffy', 'goku'].some(k => fighters[k].anim && fighters[k].anim.kind === 'kame' && fighters[k].anim.t > 75);
   camZoom += ((kame ? 1.08 : 1) - camZoom) * .05 * dt;
   if (over) { overT += dt; if (overT > 420) newMatch(); }
@@ -867,6 +880,15 @@ function drawBars() {
     ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'left';
     ctx.fillText(f.name + '  ·  ' + state.wins[k] + ' victoire' + (state.wins[k] > 1 ? 's' : ''), x + 4, 78);
   });
+}
+function drawCombo(time) {
+  if (combo.n < 2 || combo.t <= 0 || over) return;
+  const x = combo.who === 'goku' ? W * .72 : W * .28, vib = combo.s > 1 ? (combo.s - 1) * 14 : 1.5;
+  ctx.save(); ctx.translate(x + (Math.random() - .5) * vib, 190 + (Math.random() - .5) * vib);
+  ctx.rotate(-.14); ctx.scale(combo.s, combo.s); ctx.globalAlpha = Math.min(1, combo.t / 30);
+  ctx.font = '78px ' + MANGA; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = 11; ctx.strokeStyle = '#000';
+  const t = combo.n + ' HITS !'; ctx.strokeText(t, 0, 0); ctx.fillStyle = combo.n >= 4 ? '#ff5a2a' : '#ffb400'; ctx.fillText(t, 0, 0);
+  ctx.restore();
 }
 function drawCallouts() {
   ['luffy', 'goku'].forEach(side => {
@@ -952,7 +974,8 @@ function frame(rawTime) {
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   if (blueFlash > .03) { const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * .75); g.addColorStop(0, 'rgba(255,255,255,' + blueFlash * .5 + ')'); g.addColorStop(1, 'rgba(60,150,255,' + blueFlash * .45 + ')'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); blueFlash *= .9; }
   if (flash > .05) { ctx.fillStyle = 'rgba(255,255,255,' + flash * .4 + ')'; ctx.fillRect(0, 0, W, H); }
-  drawBars(); drawCallouts();
+  drawBars(); drawCallouts(); drawCombo(time);
+  if (whiteFrames > 0) { whiteFrames--; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
   if (over) {
     ctx.fillStyle = '#000a'; ctx.fillRect(0, 260, W, 150);
     ctx.fillStyle = '#ffd21a'; ctx.font = 'bold 64px Arial'; ctx.textAlign = 'center'; ctx.fillText(lastWinMsg, W / 2, 350);
