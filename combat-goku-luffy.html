@@ -92,8 +92,9 @@ function hit(who, amount, user) {
 
 function lunge(who, power) { const f = fighters[who]; f.atk = 1; f.atkT = 0; f.atkPower = power; }
 
-function act(who, coins, user) {
+function act(who, coins, user, avatar) {
   if (over) return;
+  callout(who, user, avatar);
   const foe = other(who), f = fighters[who];
   if (coins >= 50) {
     if (who === 'goku') { f.ssj = 1800; burst(f.x, GROUND - 200, 60, ['#ffe14d', '#ffb300'], 14); say('SUPER SAIYAN !', f.x, 250, '#ffe14d'); }
@@ -136,7 +137,16 @@ function teamOf(user) {
   if (!teams[user]) teams[user] = Math.random() < .5 ? 'luffy' : 'goku';
   return teams[user];
 }
-function onGift(user, coins) { act(teamOf(user), coins, user); }
+function onGift(user, coins, avatar) { act(teamOf(user), coins, user, avatar); }
+const avatars = {};
+function callout(who, user, avatar) {
+  if (!user || user === 'sim_test') return;
+  let img = null;
+  if (avatar) { img = avatars[avatar] || (avatars[avatar] = Object.assign(new Image(), { src: avatar })); }
+  callouts.push({ who, user: String(user).slice(0, 18), img, a: 1 });
+  if (callouts.length > 4) callouts.shift();
+}
+const callouts = [];
 
 function renderBoard() {
   const rows = Object.entries(dmg).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -171,6 +181,8 @@ function update(dt) {
   particles.forEach(p => { p.x += p.vx * dt * .6; p.y += p.vy * dt * .6; p.alpha -= p.decay * dt; });
   particles = particles.filter(p => p.alpha > 0);
   texts.forEach(t => { t.y -= dt * .8; t.a -= dt * .012; });
+  callouts.forEach(c => { c.a -= dt * .006; });
+  while (callouts.length && callouts[0].a <= 0) callouts.shift();
   texts = texts.filter(t => t.a > 0);
   shake *= Math.pow(.9, dt); flash *= Math.pow(.9, dt);
   if (over) { overT += dt; if (overT > 420) newMatch(); }
@@ -244,6 +256,21 @@ function frame(time) {
   if (flash > .05) { ctx.fillStyle = 'rgba(255,255,255,' + flash * .35 + ')'; ctx.fillRect(-30, -30, W + 60, H + 60); }
   ctx.restore();
   drawBars();
+  ['luffy', 'goku'].forEach(side => {
+    callouts.filter(c => c.who === side).forEach((c, i) => {
+      const x = side === 'luffy' ? 20 : W - 240, y = 110 + i * 54;
+      ctx.globalAlpha = Math.max(0, Math.min(1, c.a));
+      ctx.fillStyle = '#000b'; ctx.fillRect(x, y, 220, 46);
+      ctx.strokeStyle = fighters[side].color; ctx.lineWidth = 2; ctx.strokeRect(x, y, 220, 46);
+      if (c.img && c.img.complete && c.img.naturalWidth) {
+        ctx.save(); ctx.beginPath(); ctx.arc(x + 23, y + 23, 18, 0, 6.283); ctx.clip();
+        ctx.drawImage(c.img, x + 5, y + 5, 36, 36); ctx.restore();
+      } else { ctx.fillStyle = fighters[side].color; ctx.beginPath(); ctx.arc(x + 23, y + 23, 18, 0, 6.283); ctx.fill(); }
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left';
+      ctx.fillText(c.user, x + 48, y + 29);
+    });
+  });
+  ctx.globalAlpha = 1;
   if (over) {
     ctx.fillStyle = '#000a'; ctx.fillRect(0, 260, W, 150);
     ctx.fillStyle = '#ffd21a'; ctx.font = 'bold 64px Arial'; ctx.textAlign = 'center'; ctx.fillText(lastWinMsg, W / 2, 350);
@@ -258,7 +285,7 @@ function handleMessage(d) {
     if (u && t === '1') teams[u] = 'luffy'; else if (u && t === '2') teams[u] = 'goku';
   } else if (d.type === 'gift' || d.type === 'tiktok-gift') {
     const x = d.gift || d;
-    onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)));
+    onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)), x.avatarDataUri || x.profilePictureUrl || '');
   }
 }
 let ws;
