@@ -907,13 +907,33 @@ const handleMedia = createMediaAdmin({
     mediaDirectory: process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media'),
     getUser: req => access.usernameForRequest(req),
     canManage: canManageMedia,
+    canManageUser: username => canUseCreatorTts(username),
     readJsonBody: (...args) => readJsonBody(...args)
 });
+
+function getOverlayTiktokUsername(owner) {
+    const username = store.getAccountLiveTts(owner)?.username || store.getCreatorSettings(owner).tiktokUsername || '';
+    return /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : '';
+}
 
 const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const pathname = requestUrl.pathname;
     if (handleMedia(req, res, pathname, requestUrl.searchParams)) return;
+    if (pathname.startsWith('/overlay/') && req.method === 'GET') {
+        const owner = handleMedia.findOverlayOwner(pathname.slice('/overlay/'.length));
+        if (!owner) { res.writeHead(404, { 'Cache-Control': 'no-store' }); res.end('Lien overlay invalide ou révoqué.'); return; }
+        fs.readFile(path.join(__dirname, 'media-overlay.html'), (error, content) => {
+            if (error) { res.writeHead(500); res.end('Page introuvable.'); return; }
+            res.writeHead(200, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'text/html; charset=utf-8',
+                'Referrer-Policy': 'no-referrer'
+            });
+            res.end(content);
+        });
+        return;
+    }
     if (pathname === '/medias.html' && req.method === 'GET') {
         if (!access.isAuthenticated(req)) {
             res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
@@ -2515,6 +2535,7 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
 const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
+const overlaySockets = new Map();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
 function closeLiveTtsSockets(username) {
@@ -2543,6 +2564,10 @@ server.on('upgrade', (req, socket, head) => {
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
     const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
     const isTtsControlRequest = requestUrl.pathname === '/live-tts-control';
+    const overlayOwner = requestUrl.pathname === '/media-overlay-relay'
+        ? handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'))
+        : null;
+    const overlayUsername = overlayOwner ? getOverlayTiktokUsername(overlayOwner) : '';
     const authenticated = access.isAuthenticated(req);
     const accountUsername = authenticated ? access.usernameForRequest(req) : '';
     const canControlTts = isTtsControlRequest &&
@@ -2550,7 +2575,7 @@ server.on('upgrade', (req, socket, head) => {
         canUseCreatorTts(accountUsername) &&
         Boolean(store.getAccountLiveTts(accountUsername));
     if ((isTtsControlRequest && !canControlTts) ||
-        ((!authenticated || !access.canAccessGames(req)) && !canControlTts && !ttsSource)) {
+        ((!authenticated || !access.canAccessGames(req)) && !canControlTts && !ttsSource && !overlayOwner)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -2559,12 +2584,21 @@ server.on('upgrade', (req, socket, head) => {
         if (ttsSource) {
             liveTtsClientUsernames.set(webSocket, ttsSource.username);
             liveTtsSockets.add(webSocket);
+        } else if (overlayOwner) {
+            overlaySockets.set(webSocket, overlayOwner);
+            if (overlayUsername) {
+                liveTtsClientUsernames.set(webSocket, overlayUsername);
+                liveTtsSockets.add(webSocket);
+            }
         }
         wss.emit('connection', webSocket, req);
     });
 });
 
 setInterval(() => {
+    for (const [socket, owner] of overlaySockets) {
+        if (!canUseCreatorTts(owner)) socket.terminate();
+    }
     for (const [username, account] of store.listAccounts()) {
         if (!account.subscriptionId || access.hasActiveSubscription(account)) continue;
         closeAuthenticatedSockets(username);
@@ -2814,6 +2848,11 @@ wss.on('connection', (socket, req) => {
     if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
     if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
+    } else if (overlaySockets.has(socket)) {
+        socket.send(JSON.stringify({
+            type: 'STATUS',
+            message: 'Aucun pseudo TikTok enregistré : renseigne-le dans ton espace Griffon Arcade.'
+        }));
     } else if (ttsControlAccount) {
         const source = store.getAccountLiveTts(ttsControlAccount);
         if (!source || !canUseCreatorTts(ttsControlAccount)) {
@@ -3011,6 +3050,7 @@ wss.on('connection', (socket, req) => {
     });
     socket.on('close', () => {
         liveTtsSockets.delete(socket);
+        overlaySockets.delete(socket);
         authenticatedClientUsernames.delete(socket);
         authenticatedTtsClientUsernames.delete(socket);
         detachClient(socket);

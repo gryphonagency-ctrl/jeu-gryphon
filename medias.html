@@ -61,7 +61,16 @@ button.danger{background:#ff6b7a}
 
 <nav id="tabs" class="tabs" aria-label="Types d’alertes"></nav>
 <div id="alert-sections"></div>
-<p>Ton overlay peut lire ta configuration sur <code id="overlay-url">/api/media-alerts</code>.</p>
+<section class="card" id="overlay-card">
+<h2>Mon overlay de live</h2>
+<p>Lien <strong>privé et unique</strong> à ajouter comme source navigateur (OBS, TikTok LIVE Studio, Streamlabs) : il joue tes alertes pendant ton live. Ne le partage pas.</p>
+<div class="row">
+<input id="overlay-url" readonly aria-label="Lien overlay" placeholder="Aucun lien généré" style="flex:1;min-width:260px">
+<button id="overlay-copy" type="button" hidden>Copier</button>
+<button id="overlay-new" type="button">Générer mon lien</button>
+<button id="overlay-revoke" type="button" class="danger" hidden>Révoquer</button>
+</div>
+</section>
 
 <section class="card"><h2>Bibliothèque</h2><div id="library" class="grid"></div></section>
 </main>
@@ -176,7 +185,27 @@ function render() {
   }));
 }
 
-async function refresh() { state = await api(); $('overlay-url').textContent = `${location.origin}/api/media-alerts?user=${encodeURIComponent(state.user)}`; render(); }
+function showOverlay(path) {
+  $('overlay-url').value = path ? location.origin + path : '';
+  $('overlay-copy').hidden = $('overlay-revoke').hidden = !path;
+  $('overlay-new').textContent = path ? 'Régénérer' : 'Générer mon lien';
+}
+$('overlay-new').onclick = async () => {
+  if (state.overlayPath && !confirm('L’ancien lien cessera de fonctionner. Continuer ?')) return;
+  try {
+    const result = await api({ action: state.overlayPath ? 'overlay-regenerate' : 'overlay-create' });
+    state.overlayPath = result.overlayPath; showOverlay(result.overlayPath); say('Lien overlay prêt.');
+  } catch (e) { say(e.message, true); }
+};
+$('overlay-revoke').onclick = async () => {
+  if (!confirm('Révoquer le lien overlay ?')) return;
+  try { await api({ action: 'overlay-revoke' }); state.overlayPath = null; showOverlay(null); say('Lien révoqué.'); } catch (e) { say(e.message, true); }
+};
+$('overlay-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('overlay-url').value); say('Lien copié.'); } catch { $('overlay-url').select(); say('Copie le lien sélectionné (Ctrl+C).'); }
+};
+
+async function refresh() { state = await api(); showOverlay(state.overlayPath); render(); }
 async function run(action, message) {
   try { await action(); await refresh(); say(message || 'Enregistré.'); } catch (e) { say(e.message, true); }
 }

@@ -87,8 +87,56 @@ function safeDownload(rawUrl, maxBytes, redirects = 3) {
 }
 
 // Chaque compte autorisé gère ses propres médias dans <mediaDirectory>/users/<compte>/.
-function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) {
+function createMediaAdmin({ mediaDirectory, getUser, canManage, canManageUser, readJsonBody }) {
     const usersDir = path.join(mediaDirectory, 'users');
+    const tokensPath = path.join(mediaDirectory, 'overlay-tokens.json');
+
+    function readTokens() {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function writeTokens(tokens) {
+        fs.mkdirSync(mediaDirectory, { recursive: true });
+        const temp = `${tokensPath}.tmp`;
+        fs.writeFileSync(temp, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+        fs.renameSync(temp, tokensPath);
+    }
+
+    // Un lien d'overlay secret (64 hex) par compte ; le régénérer invalide l'ancien.
+    function overlayToken(owner, mode) {
+        const tokens = readTokens();
+        const current = tokens[owner]?.token;
+        if (mode === 'get' || (mode === 'create' && /^[a-f0-9]{64}$/.test(current || ''))) return current || null;
+        const token = crypto.randomBytes(32).toString('hex');
+        tokens[owner] = { token, createdAt: new Date().toISOString() };
+        writeTokens(tokens);
+        return token;
+    }
+
+    function findOverlayOwner(token) {
+        if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
+        const provided = crypto.createHash('sha256').update(token).digest();
+        let found = null;
+        for (const [owner, entry] of Object.entries(readTokens())) {
+            const stored = crypto.createHash('sha256').update(String(entry?.token || '')).digest();
+            if (crypto.timingSafeEqual(stored, provided) && OWNER_PATTERN.test(owner)) found = owner;
+        }
+        return found && canManageUser(found) ? found : null;
+    }
+
+    function revokeOverlay(owner) {
+        const tokens = readTokens();
+        if (!tokens[owner]) return;
+        delete tokens[owner];
+        writeTokens(tokens);
+    }
+
+    const overlayPath = token => token ? `/overlay/${token}` : null;
     const ownerDir = owner => path.join(usersDir, owner);
     const indexPath = owner => path.join(ownerDir(owner), 'index.json');
 
@@ -165,6 +213,9 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
             return storeMedia(owner, body.name, Buffer.from(base64, 'base64'));
         }
         if (body.action === 'import-url') return importFromUrl(owner, body.url);
+        if (body.action === 'overlay-create') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'create')) };
+        if (body.action === 'overlay-regenerate') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'regenerate')) };
+        if (body.action === 'overlay-revoke') { revokeOverlay(owner); return { success: true, overlayPath: null }; }
         if (body.action === 'delete') {
             if (typeof body.id !== 'string' || !FILE_PATTERN.test(body.id)) throw fail('Fichier invalide.');
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
@@ -199,6 +250,17 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
         throw fail('Action inconnue.');
     }
 
+    function publicAlerts(owner) {
+        const alerts = {};
+        for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
+            alerts[event] = {
+                audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
+                videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null
+            };
+        }
+        return alerts;
+    }
+
     function serveFile(req, res, owner, id) {
         const type = OWNER_PATTERN.test(owner) && FILE_PATTERN.test(id) && MEDIA_TYPES[path.extname(id).slice(1)];
         if (!type) { res.writeHead(404); res.end('Média introuvable.'); return; }
@@ -231,7 +293,13 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
     }
 
     // Retourne true si la requête a été prise en charge.
-    return function handle(req, res, pathname, searchParams) {
+    function handle(req, res, pathname, searchParams) {
+        if (pathname === '/api/overlay-alerts' && req.method === 'GET') {
+            const owner = findOverlayOwner(searchParams?.get('token'));
+            if (!owner) { send(res, 403, { message: 'Lien overlay invalide ou révoqué.' }); return true; }
+            send(res, 200, { alerts: publicAlerts(owner) });
+            return true;
+        }
         if (pathname === '/api/media-alerts' && req.method === 'GET') {
             const owner = String(searchParams?.get('user') || '').trim().toLowerCase();
             if (!OWNER_PATTERN.test(owner)) { send(res, 400, { message: 'Compte invalide.' }); return true; }
@@ -263,6 +331,7 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
                 user,
                 files: index.files.map(file => publicFile(user, file)),
                 alerts: index.alerts,
+                overlayPath: overlayPath(overlayToken(user, 'get')),
                 limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
             });
             return true;
@@ -278,7 +347,10 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
             return true;
         }
         return false;
-    };
+    }
+
+    handle.findOverlayOwner = findOverlayOwner;
+    return handle;
 }
 
 module.exports = { createMediaAdmin };

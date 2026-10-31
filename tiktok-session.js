@@ -215,6 +215,22 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         });
     });
 
+    connection.on('follow', message => {
+        const identity = getTikTokIdentity(message.user);
+        send({
+            type: 'follow',
+            followData: { username: identity.uniqueId || identity.username, nickname: identity.nickname }
+        });
+    });
+
+    connection.on('subNotify', message => {
+        const identity = getTikTokIdentity(message.user);
+        send({
+            type: 'subscribe',
+            subscribeData: { username: identity.uniqueId || identity.username, nickname: identity.nickname }
+        });
+    });
+
     connection.on('like', message => {
         const likeCount = Math.floor(Number(message.likeCount) || 0);
         if (likeCount < 1) return;

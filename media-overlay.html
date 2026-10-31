@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Overlay Griffon Arcade</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<style>
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+#stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+#stage video, #stage img { max-width: 100%; max-height: 100%; display: none; }
+#status { position: fixed; left: 8px; bottom: 8px; font: 12px sans-serif; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; }
+#status.hide { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><video id="video" playsinline></video></div>
+<div id="status">Connexion…</div>
+<script>
+const token = location.pathname.split('/').pop();
+const statusEl = document.getElementById('status');
+const video = document.getElementById('video');
+const params = new URLSearchParams(location.search);
+const showStatus = params.get('statut') !== '0';
+let alerts = {};
+let queue = [];
+let playing = false;
+let reconnectDelay = 3000;
+let hideTimer = null;
+
+function setStatus(text) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('hide', !showStatus);
+  clearTimeout(hideTimer);
+  if (/connecté/i.test(text) && !/erreur/i.test(text)) hideTimer = setTimeout(() => statusEl.classList.add('hide'), 5000);
+}
+
+async function loadAlerts() {
+  try {
+    const res = await fetch(`/api/overlay-alerts?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+    if (res.ok) alerts = (await res.json()).alerts || {};
+    else setStatus('Lien overlay invalide ou révoqué.');
+  } catch (error) { console.warn('Alertes indisponibles :', error); }
+}
+
+const slug = text => String(text || '').trim().toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_');
+
+function pickAlert(event) {
+  const keys = [];
+  if (event.type === 'follow') keys.push('follow');
+  else if (event.type === 'subscribe') keys.push('sub');
+  else if (event.type === 'share') keys.push('share');
+  else if (event.type === 'gift') keys.push(`gift_${slug(event.gift?.giftName)}`, 'gift_tous');
+  for (const key of keys) {
+    const alert = alerts[key];
+    if (alert && (alert.audioUrl || alert.videoUrl)) return alert;
+  }
+  return null;
+}
+
+function playAlert(alert) {
+  return new Promise(resolve => {
+    let pending = 0;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      if (--pending > 0) return;
+      finished = true;
+      video.style.display = 'none';
+      video.removeAttribute('src');
+      resolve();
+    };
+    const guard = setTimeout(() => { pending = 1; done(); }, 60000);
+    const end = () => { clearTimeout(guard); done(); };
+    if (alert.audioUrl) {
+      pending++;
+      const audio = new Audio(alert.audioUrl);
+      audio.onended = audio.onerror = end;
+      audio.play().catch(end);
+    }
+    if (alert.videoUrl) {
+      pending++;
+      video.src = alert.videoUrl;
+      video.style.display = 'block';
+      video.onended = video.onerror = end;
+      video.play().catch(end);
+    }
+    if (!pending) { clearTimeout(guard); resolve(); }
+  });
+}
+
+async function drain() {
+  if (playing) return;
+  playing = true;
+  while (queue.length) await playAlert(queue.shift());
+  playing = false;
+}
+
+function connect() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${protocol}//${location.host}/media-overlay-relay?token=${encodeURIComponent(token)}`);
+  socket.addEventListener('open', () => { reconnectDelay = 3000; loadAlerts(); });
+  socket.addEventListener('message', async event => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === 'TTS_CONFIG') {
+      socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: data.username }));
+    } else if (data.type === 'STATUS') {
+      setStatus(data.message || '');
+    } else {
+      if (data.type === 'follow' || data.type === 'subscribe' || data.type === 'share' || data.type === 'gift') {
+        await loadAlerts();
+        const alert = pickAlert(data);
+        if (alert && queue.length < 20) { queue.push(alert); drain(); }
+      }
+    }
+  });
+  socket.addEventListener('close', () => {
+    setStatus('Overlay déconnecté. Nouvelle tentative…');
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  });
+}
+
+loadAlerts().then(connect);
+</script>
+</body>
+</html>
