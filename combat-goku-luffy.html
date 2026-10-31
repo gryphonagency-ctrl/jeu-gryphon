@@ -42,6 +42,11 @@
   <div data-save-key="combat-goku-luffy-save"></div>
   <h3>Vitesse du jeu</h3>
   <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1" style="width:100%">
+  <h3>Zoom de la caméra</h3>
+  <input id="zoom" type="range" min="1" max="1.6" step="0.05" value="1" style="width:100%">
+  <h3>Effets sonores</h3>
+  <button id="soundBtn" type="button">🔊 Sons activés</button>
+  <input id="vol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:100%">
   <h3>Connexion TikTok</h3>
   <input id="user" type="text" placeholder="@pseudo TikTok">
   <input id="url" type="text" value="wss://jeu6boite.onrender.com">
@@ -277,8 +282,9 @@ function tierFx(coins) {
 }
 
 /* ---------- Interactions : chaque cadeau agit sur le décor ou sur les combattants ---------- */
-let audio = null;
+let audio = null, soundOn = true, soundVol = .5, userZoom = 1;
 function sfx(kind) {
+  if (!soundOn) return;
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
     const t = audio.currentTime, dur = kind === 'thunder' ? 1.1 : kind === 'ice' ? .5 : .35;
@@ -286,7 +292,7 @@ function sfx(kind) {
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, kind === 'thunder' ? 1.6 : 3);
     const src = audio.createBufferSource(), flt = audio.createBiquadFilter(), g = audio.createGain();
     src.buffer = buf; flt.type = kind === 'ice' ? 'highpass' : 'lowpass'; flt.frequency.value = kind === 'ice' ? 3500 : kind === 'wind' ? 900 : 380;
-    g.gain.value = kind === 'thunder' ? .7 : .45;
+    g.gain.value = (kind === 'thunder' ? .7 : .45) * soundVol * 2;
     src.connect(flt); flt.connect(g); g.connect(audio.destination); src.start(t);
   } catch (e) { }
 }
@@ -1370,7 +1376,7 @@ function frame(rawTime) {
   const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
   const camTarget = Math.max(EDGE_L, Math.min(EDGE_R - W, (fighters.luffy.x + fighters.goku.x) / 2 - W / 2));
   camX += (camTarget - camX) * (1 - Math.pow(.9, dt));
-  ctx.translate(W / 2 + sx, GROUND - 120 + sy); ctx.scale(camZoom, camZoom); ctx.translate(-W / 2 - camX, -(GROUND - 120));
+  ctx.translate(W / 2 + sx, GROUND - 120 + sy); ctx.scale(camZoom * userZoom, camZoom * userZoom); ctx.translate(-W / 2 - camX, -(GROUND - 120));
   baseInv = ctx.getTransform().inverse();
   drawBG(dt);
   drawGroundBanner(time);
@@ -1473,6 +1479,16 @@ document.getElementById('panelBtn').onclick = () => document.getElementById('pan
 document.getElementById('toggleBoard').onclick = () => document.getElementById('board').classList.toggle('hidden');
 document.getElementById('speed').oninput = e => { speed = +e.target.value; };
 document.getElementById('reset').onclick = newMatch;
+document.getElementById('zoom').oninput = e => { userZoom = +e.target.value; };
+const soundBtn = document.getElementById('soundBtn'), volEl = document.getElementById('vol');
+function applySound() {
+  soundBtn.textContent = soundOn ? '🔊 Sons activés' : '🔇 Sons coupés';
+  if (window.ArcadeEffects && ArcadeEffects.setSound) ArcadeEffects.setSound(soundOn, soundVol);
+}
+soundBtn.onclick = () => { soundOn = !soundOn; applySound(); };
+volEl.oninput = e => { soundVol = +e.target.value; applySound(); };
+applySound();
+document.getElementById('panel').classList.remove('hidden');
 document.querySelectorAll('[data-sim]').forEach(b => b.onclick = () => { const [c, w] = b.dataset.sim.split(':'); teams.sim_test = w; act(w, +c, 'sim_test'); });
 document.getElementById('simBig').onclick = () => ArcadeEffects.simulateBigGift('Alex_TikTok', 100);
 document.getElementById('simShare').onclick = () => ArcadeEffects.simulateShare();
