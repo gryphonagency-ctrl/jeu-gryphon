@@ -28,7 +28,7 @@
   #title .card b { display: block; margin-top: 6px; font-size: 22px; }
   #title .card kbd { display: inline-block; min-width: 30px; padding: 2px 8px; margin-right: 6px; border-radius: 6px; background: #ffd21a; color: #000; font-weight: 900; }
   #title.hidden { display: none; }
-  #board { position: fixed; left: 8px; bottom: 130px; z-index: 20; background: rgba(15,8,40,.8); border: 1px solid #ff7a00; border-radius: 10px; padding: 8px 10px; min-width: 190px; font-size: 13px; }
+  #board { position: fixed; left: 8px; bottom: 170px; z-index: 20; background: rgba(15,8,40,.8); border: 1px solid #ff7a00; border-radius: 10px; padding: 8px 10px; min-width: 190px; font-size: 13px; }
   #board h4 { margin: 0 0 4px; color: #ffb25e; }
   #board div { display: flex; justify-content: space-between; gap: 10px; }
 </style>
@@ -77,7 +77,7 @@
     <div class="card" data-pick="luffy"><img src="/luffy_hd.png" alt=""><b><kbd>1</kbd>LUFFY</b></div>
     <div class="card" data-pick="goku"><img src="/goku_hd.png" alt=""><b><kbd>2</kbd>GOKU</b></div>
   </div>
-  <p>⭐ 1 = poing · ⭐⭐ 2 = coup de pied · ⭐ 10 = Kamehameha / bras caoutchouc · tous les cadeaux déclenchent un effet</p>
+  <p>Le détail des cadeaux (1, 2, 5, 10, 15, 20, 25, 30, 50, 100 étoiles) est peint sur le sol de l'arène</p>
   <p style="font-size:14px;color:#9a8fd0">Clavier : J = poing · K = coup de pied · L = attaque spéciale · 1 / 2 = changer de champion</p>
 </div>
 <div id="board"><h4>🏆 Meilleurs dégâts</h4><span id="boardRows"></span></div>
@@ -244,15 +244,36 @@ function act(who, coins, user, avatar, giftName) {
   const f = fighters[who];
   if (f.todo.length > 6) return;
   const special = who === 'goku' ? 'kame' : 'pistol';
+  const ti = TIERS.reduce((b, t, i) => coins >= t.c ? i : b, 0);
+  tierFlash = { i: ti, t: 90 };
   if (fh) f.todo.push({ kind: 'kame', user, dmg: 22 });
   else if (coins >= 50) { f.todo.push({ kind: 'transform', user }); f.todo.push({ kind: special, user, dmg: 22 }); }
+  else if (coins >= 15) { /* effet de palier seul */ }
   else if (coins >= STAR_COST.special) f.todo.push({ kind: special, user, dmg: 22 });
-  else {
-    let kicks = Math.floor(coins / STAR_COST.kick), punches = coins % STAR_COST.kick;
-    kicks = Math.min(kicks, 4);
+  else if (coins >= 5) {
+    f.todo.push({ kind: 'punch', hand: 'F', dmg: 6, dur: 23, user });
+    f.todo.push({ kind: 'knee', dmg: 7, dur: 38, hitT: 16, user });
+  } else {
+    const kicks = Math.floor(coins / STAR_COST.kick), punches = coins % STAR_COST.kick;
     for (let i = 0; i < kicks; i++) f.todo.push({ kind: 'knee', dmg: 7, dur: 38, hitT: 16, user });
     if (punches || !kicks) f.todo.push({ kind: 'punch', hand: 'F', dmg: 6, dur: 23, user });
   }
+}
+
+const TIERS = [
+  { c: 1, ico: '👊', l: ['Poing'] }, { c: 2, ico: '🦵', l: ['Coup', 'de pied'] }, { c: 5, ico: '🥊', l: ['Combo', 'poing + pied'] },
+  { c: 10, ico: '🔵', l: ['Kamehameha', 'Bras Gum-Gum'] }, { c: 15, ico: '🧊', l: ['Glace', 'gèle l\'ennemi'] }, { c: 20, ico: '⚡', l: ['Foudre', 'éclair'] },
+  { c: 25, ico: '☄️', l: ['Météores', 'pluie de feu'] }, { c: 30, ico: '💚', l: ['Soin', '+ PV'] }, { c: 50, ico: '🔥', l: ['Transfo', 'SSJ / Gear 5'] }, { c: 100, ico: '🎆', l: ['Météores', '+ feu d\'artifice'] }
+];
+let tierFlash = { i: -1, t: 0 };
+function tierFx(coins) {
+  if (coins >= 100) return 'meteor';
+  if (coins >= 50) return null;
+  if (coins >= 30) return 'heal';
+  if (coins >= 25) return 'meteor';
+  if (coins >= 20) return 'lightning';
+  if (coins >= 15) return 'ice';
+  return null;
 }
 
 /* ---------- Interactions : chaque cadeau agit sur le décor ou sur les combattants ---------- */
@@ -269,19 +290,12 @@ function sfx(kind) {
     src.connect(flt); flt.connect(g); g.connect(audio.destination); src.start(t);
   } catch (e) { }
 }
-const FX_RULES = [
-  ['ice', /ice|glace|froz|neige|snow|cold|frozen|givre/i], ['lightning', /thunder|foudre|lightning|bolt|[ée]clair|zap/i],
-  ['meteor', /meteor|rocket|fus[ée]e|galaxy|planet|univers|lion|dragon|comet|fire|feu/i], ['heal', /heart|c[oœ]ur|love|hug|kiss|bisou|amour/i],
-  ['wind', /wind|fan|vent|tornado|storm|tempête|swan|cygne/i], ['petals', /rose|flower|fleur|tulip|bouquet|lotus/i]
-];
-const FX_FALLBACK = ['lightning', 'wind', 'petals', 'heal', 'ice'];
 function worldFx(who, coins, name, user, forced) {
   let kind = forced;
   if (!kind) {
-    const r = FX_RULES.find(([, re]) => re.test(name || ''));
-    if (r) kind = r[0];
-    else if (coins >= 100) kind = 'meteor';
-    else { let h = 0; for (const ch of String(name || coins)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; kind = FX_FALLBACK[h % FX_FALLBACK.length]; }
+    if (coins < 15) kind = /wind|fan|vent|tornado|storm|swan|cygne/i.test(name || '') ? 'wind' : 'petals';
+    else kind = tierFx(coins);
+    if (!kind) return;
   }
   const heavy = ['ice', 'lightning', 'meteor'].includes(kind);
   if (heavy && fxCool > 0 && !forced) kind = 'petals';
@@ -389,14 +403,24 @@ function drawGrade() {
   ctx.fillStyle = grainPat; ctx.fillRect(-192, -192, W + 192, H + 192);
   ctx.restore();
 }
-function drawGiftBanner() {
-  const y = H - 46;
-  ctx.save(); ctx.fillStyle = 'rgba(8,4,26,.88)'; ctx.fillRect(0, y, W, 46);
-  ctx.fillStyle = '#ffb347'; ctx.fillRect(0, y, W, 2);
-  ctx.textAlign = 'center'; ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#fff';
-  ctx.fillText('⭐ 1 = Poing   ·   ⭐⭐ 2 = Coup de pied   ·   ⭐ 10 = Kamehameha (Goku)   ·   ⭐ 10 = Bras caoutchouc (Luffy)', W / 2, y + 19);
-  ctx.font = '13px Arial'; ctx.fillStyle = '#ffd21a';
-  ctx.fillText('🎁 ' + giftStats.gifts + ' cadeau' + (giftStats.gifts > 1 ? 'x' : '') + '  ·  ⭐ ' + giftStats.stars + ' reçues   |   Champion : ' + fighters[champion].name + '   |   Tape 1 / 2 dans le chat pour choisir ton camp', W / 2, y + 38);
+function drawGroundBanner(time) {
+  const y0 = 652, n = TIERS.length, cw = W / n;
+  ctx.save(); ctx.translate(camX, 0);
+  ctx.fillStyle = 'rgba(12,6,34,.88)'; ctx.fillRect(0, y0, W, H - y0 + 20);
+  ctx.fillStyle = '#ffb347'; ctx.fillRect(0, y0, W, 3);
+  ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+  ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd21a';
+  ctx.fillText('🎁 ' + giftStats.gifts + ' cadeau' + (giftStats.gifts > 1 ? 'x' : '') + '   ·   ⭐ ' + giftStats.stars + ' reçues   ·   Champion : ' + fighters[champion].name + '   ·   Tape 1 / 2 pour choisir ton camp',   W / 2, y0 + 15);
+  TIERS.forEach((t, i) => {
+    const x = i * cw, hot = tierFlash.i === i && tierFlash.t > 0, p = hot ? .5 + .5 * Math.sin(time / 70) : 0;
+      if (hot) { ctx.fillStyle = 'rgba(255,200,60,' + (.25 + .3 * p) + ')'; ctx.fillRect(x + 2, y0 + 20, cw - 4, H - y0 - 20); }
+      if (i) { ctx.fillStyle = 'rgba(255,179,71,.45)'; ctx.fillRect(x, y0 + 20, 1, H - y0 - 20); }
+    ctx.font = 'bold 17px Arial'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.fillStyle = '#ffd21a';
+    const head = t.ico + ' ' + t.c + '⭐';
+      ctx.strokeText(head, x + cw / 2, y0 + 36); ctx.fillText(head, x + cw / 2, y0 + 36);
+    ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#fff';
+      t.l.forEach((s, j) => ctx.fillText(s, x + cw / 2, y0 + 49 + j * 12));
+  });
   ctx.restore();
 }
 
@@ -1160,7 +1184,7 @@ function updateAll(dt, time) {
   callouts.forEach(c => { c.a -= dt * .006; });
   while (callouts.length && callouts[0].a <= 0) callouts.shift();
   shake *= Math.pow(.9, dt); flash *= Math.pow(.9, dt); fxCool = Math.max(0, fxCool - dt);
-  stepMeteors(dt); stepMotes(dt);
+  stepMeteors(dt); stepMotes(dt); tierFlash.t = Math.max(0, tierFlash.t - dt);
   if (combo.t > 0) { combo.t -= dt; combo.s = Math.max(1, combo.s - .05 * dt); } else combo.n = 0;
   const kame = ['luffy', 'goku'].some(k => fighters[k].anim && fighters[k].anim.kind === 'kame' && fighters[k].anim.t > 75);
   camZoom += ((kame ? 1.08 : 1) - camZoom) * .05 * dt;
@@ -1268,6 +1292,7 @@ function frame(rawTime) {
   ctx.translate(W / 2 + sx, GROUND - 120 + sy); ctx.scale(camZoom, camZoom); ctx.translate(-W / 2 - camX, -(GROUND - 120));
   baseInv = ctx.getTransform().inverse();
   drawBG(dt);
+  drawGroundBanner(time);
   const order = ['luffy', 'goku'];
   order.forEach(k => {
     const f = fighters[k];
@@ -1300,7 +1325,7 @@ function frame(rawTime) {
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   if (blueFlash > .03) { const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * .75); g.addColorStop(0, 'rgba(255,255,255,' + blueFlash * .5 + ')'); g.addColorStop(1, 'rgba(60,150,255,' + blueFlash * .45 + ')'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); blueFlash *= .9; }
   if (flash > .05) { ctx.fillStyle = 'rgba(255,255,255,' + flash * .4 + ')'; ctx.fillRect(0, 0, W, H); }
-  drawBars(); drawCallouts(); drawCombo(time); drawGiftBanner();
+  drawBars(); drawCallouts(); drawCombo(time);
   if (whiteFrames > 0) { whiteFrames--; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
   if (over) {
     ctx.fillStyle = '#000a'; ctx.fillRect(0, 260, W, 150);
