@@ -57,8 +57,6 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const W = cv.width, H = cv.height, GROUND = 650;
 const SAVE = 'combat-goku-luffy-save';
 const IMG = {};
-[['luffy', 'duel-luffy'], ['luffyT', 'duel-luffy-torso'], ['goku', 'duel-goku'], ['gokuHead', 'duel-goku-ssj-head']]
-  .forEach(([k, f]) => { const i = new Image(); i.src = '/' + f + '.png'; IMG[k] = i; });
 const ready = i => i.complete && i.naturalWidth;
 
 /* ---------- Squelettes : chaque personnage est découpé en jambes, torse, tête et bras ---------- */
@@ -67,7 +65,7 @@ const GOKU_ARM_L_FORE = [[26, 380], [98, 380], [95, 420], [78, 448], [76, 548], 
 const mirror = poly => poly.map(([x, y]) => [356 - x, y]);
 const RIG = {
   goku: {
-    img: 'goku', torsoImg: 'goku', ih: 945, h: 430, ax: 172, hip: [176, 430], neck: [172, 205], front: 'L',
+    img: 'goku', torsoImg: 'goku', ih: 945, foot: 931, hb: 62, h: 270, ax: 172, hip: [176, 430], neck: [172, 205], front: 'L',
     legs: [[96, 425], [258, 425], [258, 548], [345, 548], [345, 945], [0, 945], [0, 548], [96, 548]],
     torso: [[98, 185], [256, 185], [262, 232], [258, 458], [96, 458], [92, 232]],
     head: [[0, 0], [345, 0], [345, 208], [0, 208]],
@@ -79,7 +77,7 @@ const RIG = {
     strike: { Fs: 1.55, Fe: 0, Bs: -1.5, Be: 0 }, wind: { Fs: .25, Fe: 2.1, Bs: .9, Be: 1.9 }
   },
   luffy: {
-    img: 'luffy', torsoImg: 'luffyT', ih: 725, h: 400, ax: 200, hip: [200, 405], neck: [200, 190], front: 'R',
+    img: 'luffy', torsoImg: 'luffyT', ih: 725, foot: 724, hb: 52, h: 258, ax: 200, hip: [200, 405], neck: [200, 190], front: 'R',
     legs: [[0, 398], [400, 398], [400, 725], [0, 725]],
     torso: [[100, 165], [300, 165], [300, 425], [100, 425]],
     head: [[60, 0], [340, 0], [340, 150], [275, 196], [125, 196], [60, 150]],
@@ -93,7 +91,7 @@ const RIG = {
 };
 
 const mkFighter = (key, name, x, dir, color) => ({
-  key, name, home: x, x, dir, color, hp: 100, hpShown: 100,
+  key, name, home: x, x, sx: x, vx: 0, jy: 0, jv: 0, dir, color, hp: 100, hpShown: 100,
   pose: { lean: 0, torso: 0, head: 0, leg: 0, crouch: 0, dash: 0, Fs: 0, Fe: 0, Bs: 0, Be: 0 },
   anim: null, todo: [], push: 0, pushV: 0, pushTarget: null, hurt: 0, flash: 0, ssj: 0, rage: 0,
   fistF: { x, y: 400 }, fistB: { x, y: 400 }, shF: { x, y: 400 }
@@ -141,9 +139,10 @@ function hit(who, amount, user, big) {
   if (over) return;
   f.hp = Math.max(0, f.hp - amount);
   f.hurt = 1; f.flash = 1;
+  if (f.jy <= 0) f.jv = big ? 11 : 6;
   shake = Math.min(26, shake + amount * (big ? .9 : 1.1));
   hitstop = big ? 6 : 3;
-  const bx = f.x, by = GROUND - RIG[who].h * .62;
+  const bx = f.x, by = GROUND - RIG[who].h * .62 - f.jy;
   spark(bx, by, 26, ['#fff6b0', '#ffb300', '#ff6a00'], 11, { g: .18 });
   ring(bx, by, '255,220,120', 12, .8);
   say('-' + amount, bx + rnd(-30, 30), by - 70, '#ffdd55', 40);
@@ -166,7 +165,7 @@ function endMatch(winner) {
   save();
 }
 function newMatch() {
-  for (const k in fighters) { const f = fighters[k]; f.hp = f.hpShown = 100; f.ssj = f.rage = 0; f.anim = null; f.todo = []; f.push = f.pushV = 0; f.pushTarget = null; f.hurt = 0; }
+  for (const k in fighters) { const f = fighters[k]; f.hp = f.hpShown = 100; f.ssj = f.rage = 0; f.anim = null; f.todo = []; f.push = f.pushV = 0; f.pushTarget = null; f.hurt = 0; f.sx = f.x = f.home; f.vx = f.jy = f.jv = 0; }
   over = null; dmg = {}; scorches = []; save(); renderBoard();
 }
 
@@ -199,7 +198,7 @@ function stepAnim(f, foe, dt) {
     if (!a.done && a.t >= 10) {
       a.done = true;
       hit(ok, Math.round(a.dmg * mult(fk)), a.user);
-      foe.pushV += f.dir * 3.2;
+      foe.pushV += f.dir * 9;
     }
     if (a.t >= a.dur) f.anim = null;
   } else if (a.kind === 'kame') {
@@ -220,7 +219,7 @@ function stepAnim(f, foe, dt) {
     } else {
       const tt = t - 75, x0 = f.fistF.x, y0 = f.fistF.y;
       if (!a.shouted) { a.shouted = 1; say('HAAAAA !!!', f.x, 190, '#ffffff', 70); flash = Math.max(flash, .8); shake = 18; }
-      const dist = Math.abs(foe.x - x0) - 40, head = Math.min(dist, tt * 55);
+      const dist = Math.abs(foe.x - x0) - RIG[ok].hb, head = Math.min(dist, tt * 55);
       a.head = head;
       const impact = head >= dist - 1;
       for (let i = 0; i < 3; i++) {
@@ -243,11 +242,11 @@ function stepAnim(f, foe, dt) {
   } else if (a.kind === 'pistol') {
     const t = a.t, sd = f.dir;
     if (t > 8 && !a.said) { a.said = 1; say('PISTOL !', f.x, 200, '#ff6a6a', 60); }
-    a.dist = Math.max(60, Math.abs(foe.x - f.shF.x) - 80);
+    a.dist = Math.max(60, Math.abs(foe.x - f.shF.x) - RIG[ok].hb - 30);
     if (t >= 24 && !a.done) {
       a.done = true;
       hit(ok, Math.round(a.dmg * mult(fk)), a.user, true);
-      foe.pushV += sd * 8;
+      foe.pushV += sd * 22;
       a.star = 14;
       spark(foe.x - sd * 40, foeBodyY, 30, ['#ffffff', '#ffe14d', '#ff5a3c'], 14);
       ring(foe.x - sd * 40, foeBodyY, '255,255,255', 18, 1);
@@ -281,6 +280,10 @@ function computePose(f, foe, time) {
     Fs: R.rest.Fs + .06 * br, Fe: R.rest.Fe + (goku ? .08 * sw : 0), Bs: R.rest.Bs + .05 * sw, Be: R.rest.Be + (goku ? .06 * br : 0)
   };
   const a = f.anim, gap = Math.abs(foe.home - f.home);
+  const run = Math.min(1, Math.abs(f.vx) / 7), air = Math.min(1, f.jy / 50);
+  P.leg += .13 * run * Math.sin(T * 26) + .12 * air;
+  P.lean += .1 * Math.max(-1, Math.min(1, f.vx * f.dir / 8));
+  P.crouch += 3 * run * Math.abs(Math.sin(T * 13));
   if (over) {
     if (over === f.key) { P.Fs = 2.9; P.Fe = 0; P.Bs = .3; P.torso = .05 * Math.sin(T * 6); P.crouch = -4 - 4 * Math.abs(Math.sin(T * 5)); P.head = .1 * Math.sin(T * 4); }
     else { const k = ease(overT / 30); P.lean = -1.4 * k; P.crouch = 0; P.Fs = -.4 * k; P.Bs = -.3 * k; P.head = -.4 * k; P.Fe = .3; P.Be = .3; }
@@ -367,34 +370,57 @@ function drawAura(f, time) {
   ctx.restore();
 }
 
+const SPR = { goku: { scale: 5.2, hand: { charge: [40, 33] } }, luffy: { scale: 6, hand: {} } };
+['goku', 'luffy'].forEach(k => {
+  SPR[k].img = new Image(); SPR[k].img.src = '/duel-sprites-' + k + '.png';
+  fetch('/duel-sprites-' + k + '.json').then(r => r.json()).then(m => { SPR[k].meta = m; }).catch(() => {});
+});
+const CYCLE = { goku: ['idle0', 'idle1', 'idle2', 'idle1'], luffy: ['idle0', 'idle1', 'idle0', 'guard'] };
+const RUN = { goku: ['idle0', 'idle1', 'idle2', 'idle1'], luffy: ['run0', 'run1'] };
+
+function pickFrame(f, time) {
+  const k = f.key, a = f.anim, goku = k === 'goku';
+  if (over) {
+    if (over === k) return goku ? 'idle0' : 'win';
+    return overT < 14 ? (goku ? 'fall' : 'hurt2') : 'ko';
+  }
+  if (f.hurt > .5) return 'hurt';
+  if (f.hurt > .15) return 'hurt2';
+  if (a) {
+    if (a.kind === 'kame') return a.t < 75 ? 'charge' : 'fire';
+    if (a.kind === 'pistol') return a.t < 12 ? 'guard' : a.t < 36 ? 'punchA' : 'guard';
+    if (a.kind === 'transform') return 'guard';
+    if (a.kind === 'punch') return a.t < 6 ? 'guard' : a.t < a.dur - 4 ? (a.hand === 'F' ? 'punchA' : 'punchB') : 'guard';
+  }
+  if (f.jy > 3) return 'jump';
+  const seq = Math.abs(f.vx) > 1.5 ? RUN[k] : CYCLE[k], per = Math.abs(f.vx) > 1.5 ? 95 : 260;
+  return seq[Math.floor(time / per) % seq.length];
+}
+
 function drawFighter(f, time) {
-  const R = RIG[f.key], img = IMG[R.img], tImg = IMG[R.torsoImg];
-  if (!ready(img) || !ready(tImg)) return;
-  const P = f.pose, s = R.h / R.ih;
-  ctx.save(); ctx.globalAlpha = .35; ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 4, 80 - P.crouch * .4, 12, 0, 0, 6.283); ctx.fill(); ctx.restore();
-  drawAura(f, time);
+  const S = SPR[f.key], R = RIG[f.key];
+  if (!S.meta || !ready(S.img)) return;
+  let name = pickFrame(f, time);
+  if (f.key === 'goku' && f.ssj > 0 && S.meta[name + '_ssj']) name += '_ssj';
+  const m = S.meta[name];
+  if (!m) return;
+  const s = S.scale, P = f.pose, run = Math.min(1, Math.abs(f.vx) / 7);
+  ctx.save(); ctx.globalAlpha = .35 * Math.max(.3, 1 - f.jy / 300); ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, (R.h * .27) * Math.max(.5, 1 - f.jy / 400), 12, 0, 0, 6.283); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(0, -f.jy); drawAura(f, time); ctx.restore();
   ctx.save();
   if (f.flash > .02) ctx.filter = 'brightness(' + (1 + f.flash * 1.5).toFixed(2) + ') saturate(.85)';
-  ctx.translate(f.x, GROUND + P.crouch);
-  ctx.rotate(P.lean * f.dir);
-  ctx.scale(s, s);
-  ctx.translate(-R.ax, -R.ih);
-  ctx.save(); rotAbout(R.hip, P.leg); piece(img, R.legs); ctx.restore();
-  ctx.save();
-  rotAbout(R.hip, P.torso * f.dir);
-  piece(tImg, R.torso);
-  ctx.save();
-  rotAbout(R.neck, P.head * f.dir);
-  if (f.key === 'goku' && f.ssj > 0 && ready(IMG.gokuHead)) {
-    const k = 1.35; ctx.drawImage(IMG.gokuHead, 172 - 78 * k, 212 - 195 * k, 162 * k, 198 * k);
-  } else piece(img, R.head);
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(f.x, GROUND - f.jy);
+  ctx.rotate(.07 * run * f.dir * Math.sign(f.vx * f.dir || 1));
+  ctx.scale(f.dir, 1);
+  const bob = (name.startsWith('idle') || name === 'guard') ? 1 + .012 * Math.sin(time / 330 + (f.key === 'goku' ? 1.7 : 0)) : 1;
+  ctx.scale(1, bob);
+  ctx.drawImage(S.img, m.x, m.y, m.w, m.h, -m.ax * s, -m.h * s, m.w * s, m.h * s);
   ctx.restore();
-  const fr = R.front, bk = fr === 'L' ? 'R' : 'L';
-  drawArm(f, R, bk, false, P.Bs, P.Be, img);
-  drawArm(f, R, fr, true, P.Fs, P.Fe, img);
-  ctx.restore();
-  ctx.restore();
+  const hnd = S.hand[name], tx = hnd ? hnd[0] : m.tx, ty = hnd ? hnd[1] : m.ty;
+  const tip = { x: f.x + f.dir * (tx - m.ax) * s, y: GROUND - f.jy - (m.h - ty) * s };
+  f.fistF = tip; f.fistB = tip; f.shF = tip;
 }
 
 /* ---------- Effets : Kamehameha, bras élastique ---------- */
@@ -437,7 +463,7 @@ function drawKame(f, foe, time) {
     glowBall(x0, y0, base * 1.4 + 6 * Math.sin(tt));
     if (L > 5) glowBall(x0 + sd * L, y0, base * 1.2);
     if (a.done) {
-      const ix = foe.x - sd * 20, r = 60 + Math.sin(tt * 1.3) * 12 + 20 * fade;
+      const ix = foe.x - sd * RIG[other(f.key)].hb * .5, r = 60 + Math.sin(tt * 1.3) * 12 + 20 * fade;
       glowBall(ix, y0, r * fade, '255,255,255', '255,170,60', '255,80,0');
     }
   }
@@ -528,10 +554,19 @@ function updateAll(dt, time) {
     const target = computePose(f, foe, time), kk = 1 - Math.pow(.5, dt);
     for (const p in target) f.pose[p] += (target[p] - f.pose[p]) * kk;
     if (f.pushTarget !== null) f.push += (f.pushTarget - f.push) * .12 * dt;
-    else f.push += (-f.push * .03 + f.pushV) * dt;
-    f.pushV *= Math.pow(.9, dt);
+    else f.push += (-f.push * .012 + f.pushV) * dt;
+    f.pushV *= Math.pow(f.jy > 0 ? .96 : .85, dt);
     if (over && over !== k) f.push += (-f.dir * 90 - f.push) * .05 * dt;
-    f.x = f.home + f.dir * f.pose.dash + f.push * (f.pushTarget !== null ? 1 : 1);
+    f.sx += f.vx * dt; f.vx += ((f.home + f.dir * f.pose.dash - f.sx) * .12 - f.vx * .45) * dt;
+    const wasAir = f.jy > 0;
+    if (over === k && f.jy <= 0 && overT > 20) f.jv = 12;
+    f.jv -= (Math.abs(f.jv) < 3 ? .22 : f.jv > 0 ? .85 : 1.3) * dt; f.jy += f.jv * dt;
+    if (f.jy <= 0) {
+      if (wasAir && f.jv < -4) { smoke(f.x, GROUND - 4, 4, '120,90,60'); shake = Math.max(shake, Math.min(8, -f.jv * .5)); }
+      f.jy = 0; f.jv = 0;
+    }
+    if (Math.abs(f.vx) > 3 && f.jy <= 0 && Math.random() < .35 * dt) smoke(f.x - Math.sign(f.vx) * 30, GROUND - 4, 1, '120,90,60');
+    f.x = f.sx + f.push;
     f.x = Math.max(80, Math.min(W - 80, f.x));
     if (f.ssj > 0) { f.ssj -= dt; if (Math.random() < .6) particles.push({ x: f.x + rnd(-90, 90), y: GROUND - rnd(0, 120), vx: rnd(-.5, .5), vy: rnd(-3, -1), alpha: .9, color: '#ffd21a', size: rnd(1.5, 3.5), decay: .02, add: true, g: -.02, streak: true });
       if (Math.random() < .08) bolt(f.x + rnd(-60, 60), GROUND - rnd(60, 380), f.x + rnd(-90, 90), GROUND - rnd(60, 380), '#fff2a0', 2, 6); }
@@ -606,6 +641,21 @@ function drawCallouts() {
   ctx.globalAlpha = 1;
 }
 
+function drawSpeedLines(time) {
+  for (const k in fighters) {
+    const f = fighters[k], a = f.anim;
+    if (!a) continue;
+    const on = (a.kind === 'kame' && a.t >= 75) || (a.kind === 'pistol' && a.t > 10 && a.t < 36) || (a.kind === 'punch' && a.t > 5 && a.t < 14);
+    if (!on) continue;
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) {
+      const y = GROUND - rnd(60, 420), l = rnd(120, 360), x = f.x - f.dir * rnd(40, 300);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - f.dir * l, y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 let last = 0;
 function frame(time) {
   let dt = Math.min(3, (time - (last || time)) / 16.67) * speed; last = time;
@@ -621,6 +671,7 @@ function frame(time) {
   drawBG(dt);
   const order = ['luffy', 'goku'];
   order.forEach(k => drawFighter(fighters[k], time));
+  drawSpeedLines(time);
   drawSmoke();
   order.forEach(k => { drawKame(fighters[k], fighters[other(k)], time); drawPistol(fighters[k], fighters[other(k)]); });
   drawFX();
