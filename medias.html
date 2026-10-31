@@ -40,6 +40,7 @@ button.danger{background:#ff6b7a}
 <div><a href="/">← Accueil</a><h1>Mes médias</h1>
 <p>Envoie tes sons et vidéos : ils sont enregistrés sur le serveur (disque persistant) et visibles par toi seul. Associe-les ensuite aux alertes de ton live (follow, sub, nom de cadeau…).</p></div>
 <p id="status" role="status"></p>
+<p id="storage-warning" class="err" hidden style="color:#ff9aa5">⚠ Le disque persistant n’est pas disponible : les médias seraient perdus au prochain déploiement. Contacte l’administrateur.</p>
 
 <section class="card">
 <h2>Ajouter un média</h2>
@@ -105,9 +106,13 @@ const SECTIONS = [
     fixed: [{ key: 'follow', label: 'Nouveau follow' }] },
   { id: 'subs', title: '⭐ Abonnés (sub)', hint: 'Déclenchée pour les abonnements payants à ton live.',
     fixed: [{ key: 'sub', label: 'Abonnement (sub)' }] },
-  { id: 'gifts', title: '🎁 Cadeaux', hint: 'Un son/une vidéo par cadeau. « Tous les cadeaux » sert de réglage par défaut.',
+  { id: 'gifts', title: '🎁 Cadeaux et objets', hint: 'Un son/une vidéo par cadeau. Pour un objet avec multiplicateur, écris par exemple « gant_x5 ». « Tous les cadeaux » sert de réglage par défaut.',
     prefix: 'gift_', fixed: [{ key: 'gift_tous', label: 'Tous les cadeaux' }],
-    addLabel: 'Nom du cadeau (ex. rose, lion)' },
+    addLabel: 'Nom du cadeau ou objet (ex. rose, gant_x5)' },
+  { id: 'multis', title: '✖️ Multiplicateurs (x2, x3…)', hint: 'Déclenchée quand un cadeau arrive en combo ×2, ×3, ×5… (un objet précis comme gant_x5 reste prioritaire).',
+    prefix: 'multi_', multi: true,
+    fixed: [2, 3, 5, 10].map(n => ({ key: `multi_x${n}`, label: `Multiplicateur ×${n}` })),
+    addLabel: 'Multiplicateur (ex. x4)' },
   { id: 'shares', title: '📣 Partages du live', hint: 'Déclenchée quand un spectateur partage ton live.',
     fixed: [{ key: 'share', label: 'Partage' }] },
   { id: 'others', title: '✨ Autres évènements', hint: 'Évènements personnalisés (nom libre).',
@@ -118,7 +123,7 @@ function sectionKeys(section) {
   const fixedKeys = new Set(SECTIONS.flatMap(s => (s.fixed || []).map(f => f.key)));
   const keys = Object.keys(state.alerts);
   if (section.prefix) return keys.filter(k => k.startsWith(section.prefix) && !fixedKeys.has(k));
-  if (section.other) return keys.filter(k => !fixedKeys.has(k) && !k.startsWith('gift_'));
+  if (section.other) return keys.filter(k => !fixedKeys.has(k) && !k.startsWith('gift_') && !k.startsWith('multi_'));
   return [];
 }
 
@@ -160,6 +165,7 @@ function renderSections() {
         event.preventDefault();
         const name = slug(input.value);
         if (!name) return say('Nom invalide.', true);
+        if (section.multi && !/^x\d{1,3}$/.test(name)) return say('Écris un multiplicateur comme x4.', true);
         const key = (section.prefix || '') + name;
         if (state.alerts[key] || (section.fixed || []).some(f => f.key === key)) return say('Cette alerte existe déjà.', true);
         state.alerts[key] = { audio: null, video: null };
@@ -205,7 +211,11 @@ $('overlay-copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('overlay-url').value); say('Lien copié.'); } catch { $('overlay-url').select(); say('Copie le lien sélectionné (Ctrl+C).'); }
 };
 
-async function refresh() { state = await api(); showOverlay(state.overlayPath); render(); }
+async function refresh() {
+  state = await api(); showOverlay(state.overlayPath);
+  $('storage-warning').hidden = state.persistent !== false;
+  render();
+}
 async function run(action, message) {
   try { await action(); await refresh(); say(message || 'Enregistré.'); } catch (e) { say(e.message, true); }
 }

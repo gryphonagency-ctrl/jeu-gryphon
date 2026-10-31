@@ -87,7 +87,7 @@ function safeDownload(rawUrl, maxBytes, redirects = 3) {
 }
 
 // Chaque compte autorisé gère ses propres médias dans <mediaDirectory>/users/<compte>/.
-function createMediaAdmin({ mediaDirectory, getUser, canManage, canManageUser, readJsonBody }) {
+function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManage, canManageUser, readJsonBody }) {
     const usersDir = path.join(mediaDirectory, 'users');
     const tokensPath = path.join(mediaDirectory, 'overlay-tokens.json');
 
@@ -219,11 +219,10 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, canManageUser, r
         if (body.action === 'delete') {
             if (typeof body.id !== 'string' || !FILE_PATTERN.test(body.id)) throw fail('Fichier invalide.');
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
+            // Un média relié à une alerte n'est jamais supprimé en silence : il faut d'abord retirer l'alerte.
+            const usedBy = Object.entries(index.alerts).find(([, alert]) => alert.audio === body.id || alert.video === body.id);
+            if (usedBy) throw fail(`Ce média est utilisé par l’alerte « ${usedBy[0]} » : change ou réinitialise l’alerte avant de le supprimer.`, 409);
             index.files = index.files.filter(file => file.id !== body.id);
-            for (const alert of Object.values(index.alerts)) {
-                if (alert.audio === body.id) alert.audio = null;
-                if (alert.video === body.id) alert.video = null;
-            }
             writeIndex(owner, index);
             try { fs.unlinkSync(path.join(ownerDir(owner), body.id)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
             return { success: true };
@@ -331,6 +330,7 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, canManageUser, r
                 user,
                 files: index.files.map(file => publicFile(user, file)),
                 alerts: index.alerts,
+                persistent,
                 overlayPath: overlayPath(overlayToken(user, 'get')),
                 limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
             });

@@ -903,8 +903,16 @@ function canManageMedia(req) {
     return Boolean(username) && access.canUseCreatorService(username, 'tts');
 }
 
+const mediaDirectory = process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media');
+const mediaStoragePersistent = process.env.RENDER !== 'true' ||
+    path.resolve(mediaDirectory).replace(/\\/g, '/').startsWith('/var/data/');
+if (!mediaStoragePersistent) {
+    console.warn(`Médias stockés hors du disque persistant (${mediaDirectory}) : ils seront perdus au prochain déploiement.`);
+}
+
 const handleMedia = createMediaAdmin({
-    mediaDirectory: process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media'),
+    mediaDirectory,
+    persistent: mediaStoragePersistent,
     getUser: req => access.usernameForRequest(req),
     canManage: canManageMedia,
     canManageUser: username => canUseCreatorTts(username),
