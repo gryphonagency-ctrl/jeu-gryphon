@@ -422,8 +422,10 @@ function drawAura(f, time) {
 
 /* Sprites HD lissés : une illustration par personnage, animée par transformations (pieds fixes sur GROUND) */
 const SPR = {
-  goku: { src: '/goku_hd.png', srcSsj: '/goku_ssj_hd.png', h: 380, native: 1, hip: .5, knee: .7, fist: [.86, .57], chest: [.62, .3], face: { e: [[.40, .196], [.49, .196]], m: [.444, .229], skin: '#efbf98', brow: '#12100e' } },
-  luffy: { src: '/luffy_hd.png', srcRest: '/luffy_rest_hd.png', h: 370, native: -1, hip: .47, knee: .64, fist: [.04, .19], chest: [.5, .3], face: { e: [[.515, .109], [.588, .109]], m: [.554, .139], skin: '#f0b890', brow: '#1a1008' } }
+  goku: { src: '/goku_hd.png', srcSsj: '/goku_ssj_hd.png', h: 380, native: 1, hip: .5, knee: .7, statics: [[[174, 330], [234, 330], [234, 425], [174, 425]], [[0, 330], [48, 330], [48, 425], [0, 425]]], fist: [.86, .57], chest: [.62, .3], face: { e: [[.40, .196], [.49, .196]], m: [.444, .229], skin: '#efbf98', brow: '#12100e' } },
+  luffy: { src: '/luffy_hd.png', srcRest: '/luffy_rest_hd.png', h: 370, native: -1, hip: .47, knee: .64,
+    statics: [[[268, 262], [290, 262], [310, 320], [340, 390], [385, 435], [385, 478], [340, 502], [318, 502], [318, 440], [312, 410], [298, 380], [282, 330]],
+      [[326, 296], [379, 296], [379, 380], [340, 380], [326, 330]], [[18, 290], [88, 290], [88, 380], [18, 380]]], fist: [.04, .19], chest: [.5, .3], face: { e: [[.515, .109], [.588, .109]], m: [.554, .139], skin: '#f0b890', brow: '#1a1008' } }
 };
 // séparation jambe avant / arrière et pivots de hanche, mesurés une fois sur l'alpha de l'image
 function legInfo(img, S) {
@@ -442,6 +444,9 @@ function legInfo(img, S) {
     const hy = Math.floor(H * (S.hip + .03)); let a = 0, na = 0, b = 0, nb = 0;
     for (let x = 0; x < W; x++) if (op(x, hy)) { if (x < best) { a += x; na++; } else { b += x; nb++; } }
     li = { split: best, pivL: na ? a / na : best * .5, pivR: nb ? b / nb : (best + W) / 2 };
+    let cr = Math.floor(H * .75);
+    for (let y = hy; y < H; y++) if (!op(best, y) && !op(best - 2, y) && !op(best + 2, y)) { cr = y; break; }
+    li.crotch = cr;
   } catch (e) { li = null; }
   img._li = li; return li;
 }
@@ -587,21 +592,37 @@ function drawFighter(f, time) {
     // jambes séparées (moitié avant / moitié arrière) pivotant autour des hanches : marche, saut, coup de genou
     const hipY = S.hip * H, r0 = hipY - .05 * H, fr = a => -S.native * a, fi = S.native > 0 ? 1 : 0;
     const hv = [[0, info.split, info.pivL], [info.split, W, info.pivR]], fh = hv[fi], bh = hv[1 - fi];
-    const leg = (h, rot, air) => {
+    const imgSpace = fn => { ctx.save(); ctx.translate(-dw / 2, -dh); ctx.scale(sc, sc); fn(); ctx.restore(); };
+    const statics = S.statics || [];
+    const polyPath = () => statics.forEach(poly => { ctx.moveTo(poly[0][0], poly[0][1]); poly.forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); });
+    const noSash = fn => {
+      if (!statics.length) return fn();
+      ctx.save(); ctx.translate(-dw / 2, -dh); ctx.scale(sc, sc);
+      ctx.beginPath(); ctx.rect(-50, -50, W + 100, H + 100); polyPath(); ctx.clip('evenodd');
+      ctx.scale(1 / sc, 1 / sc); ctx.translate(dw / 2, dh); fn(); ctx.restore();
+    };
+    const leg = (h, rot, air) => noSash(() => {
       ctx.save(); ctx.translate(-dw / 2 + h[2] * sc, -dh + hipY * sc + (air ? 0 : (H - hipY) * sc * (1 - Math.cos(rot)))); ctx.rotate(rot);
       ctx.drawImage(img, h[0], r0, h[1] - h[0], H - r0, (h[0] - h[2]) * sc, (r0 - hipY) * sc, (h[1] - h[0]) * sc, (H - r0) * sc); ctx.restore();
-    };
+    });
+    // comble l'entrejambe : le pantalon statique entre les deux hanches reste visible quand les jambes s'écartent
+    imgSpace(() => {
+      ctx.beginPath(); ctx.moveTo(info.pivL, r0); ctx.lineTo(info.pivR, r0); ctx.lineTo(info.split, info.crotch); ctx.closePath(); ctx.clip();
+      ctx.drawImage(img, 0, 0);
+    });
     if (legK) {
       leg(bh, 0, false);
       const th = aK >= 0 ? 1.15 * aK : .5 * aK;
       if (aK <= .05) leg(fh, fr(th), false);
       else {
         const ky = S.knee * H;
+        noSash(() => {
         ctx.save(); ctx.translate(-dw / 2 + fh[2] * sc, -dh + hipY * sc); ctx.rotate(fr(th));
         ctx.drawImage(img, fh[0], r0, fh[1] - fh[0], ky - r0, (fh[0] - fh[2]) * sc, (r0 - hipY) * sc, (fh[1] - fh[0]) * sc, (ky - r0) * sc);
         ctx.translate(0, (ky - hipY) * sc); ctx.rotate(fr(.4 * aK) - fr(th));
         ctx.drawImage(img, fh[0], ky, fh[1] - fh[0], H - ky, (fh[0] - fh[2]) * sc, 0, (fh[1] - fh[0]) * sc, (H - ky) * sc);
         ctx.restore();
+        });
       }
     } else if (legJ) { leg(bh, fr(-.4), true); leg(fh, fr(.55), true); }
     else {
@@ -609,6 +630,7 @@ function drawFighter(f, time) {
       leg(bh, fr(-s), false); leg(fh, fr(s), false);
     }
     strips(Math.floor(180 * S.hip));
+    if (statics.length) imgSpace(() => { ctx.translate(offX(.62) / sc, 0); ctx.beginPath(); polyPath(); ctx.clip(); ctx.drawImage(img, 0, 0); });
   } else strips(180);
   ctx.save(); ctx.translate(offX(S.face.e[0][1]), 0); drawFace(f, S, dw, dh, st, time); ctx.restore();
   ctx.restore();
