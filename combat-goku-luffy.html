@@ -105,7 +105,7 @@ const fighters = {
 const other = k => k === 'luffy' ? 'goku' : 'luffy';
 
 let particles = [], rings = [], scorches = [], texts = [], bolts = [], callouts = [];
-let shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
+let blueFlash = 0, shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
 let over = null, overT = 0, teams = {}, dmg = {}, lastWinMsg = '', baseInv = new DOMMatrix();
 let state = JSON.parse(localStorage.getItem(SAVE) || '{"wins":{"luffy":0,"goku":0},"dmg":{}}');
 dmg = state.dmg || {};
@@ -173,12 +173,15 @@ function newMatch() {
   over = null; dmg = {}; scorches = []; save(); renderBoard();
 }
 
-function act(who, coins, user, avatar) {
+function act(who, coins, user, avatar, giftName) {
   if (over) return;
+  const fh = /finger\s*heart|doigt.*c[oœ]ur/i.test(giftName || '');
+  if (fh) who = 'goku';
   callout(who, user, avatar);
   const f = fighters[who];
   if (f.todo.length > 6) return;
-  if (coins >= 50) f.todo.push({ kind: 'transform', user });
+  if (fh) f.todo.push({ kind: 'kame', user, dmg: 22 });
+  else if (coins >= 50) f.todo.push({ kind: 'transform', user });
   else if (coins >= 10) f.todo.push({ kind: who === 'goku' ? 'kame' : 'pistol', user, dmg: 22 });
   else if (coins >= 5) for (let i = 0; i < 3; i++) f.todo.push({ kind: 'punch', hand: i % 2 ? 'B' : 'F', dmg: 4, dur: 17, user });
   else f.todo.push({ kind: 'punch', hand: 'F', dmg: 6, dur: 23, user });
@@ -222,7 +225,7 @@ function stepAnim(f, foe, dt) {
       shake = Math.max(shake, 2 + k * 4);
     } else {
       const tt = t - 75, x0 = f.fistF.x, y0 = f.fistF.y;
-      if (!a.shouted) { a.shouted = 1; say('HAAAAA !!!', f.x, 190, '#ffffff', 70); flash = Math.max(flash, .8); shake = 18; }
+      if (!a.shouted) { a.shouted = 1; say('HAAAAA !!!', f.x, 190, '#ffffff', 70); flash = 1; blueFlash = 1; shake = 22; foe.pushV += sd * 6; }
       const dist = Math.abs(foe.x - x0) - RIG[ok].hb, head = Math.min(dist, tt * 55);
       a.head = head;
       const impact = head >= dist - 1;
@@ -357,7 +360,8 @@ function drawArm(f, R, side, front, sh, el, img) {
 }
 
 function drawAura(f, time) {
-  const col = f.ssj > 0 ? [255, 210, 40] : f.rage > 0 ? [255, 70, 40] : null;
+  const kc = f.anim && f.anim.kind === 'kame' && f.anim.t < 110;
+  const col = kc ? [90, 190, 255] : f.ssj > 0 ? [255, 210, 40] : f.rage > 0 ? [255, 70, 40] : null;
   if (!col) return;
   const h = RIG[f.key].h, fl = time / 90;
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -391,7 +395,7 @@ const RUN = { goku: ['run'], luffy: ['run'] };
 // rot : inclinaison (rad, + = vers l'avant) ; dx : décalage avant (px) ; sy : écrasement vertical
 const POSES = {
   idle: {}, run: { rot: .1, dx: 6 }, jump: { rot: .04, sy: 1.03 }, guard: { rot: -.03, sy: .97 },
-  charge: { rot: -.1, dx: -10, sy: .9 }, fire: { rot: .02, dx: -16, sy: .92 },
+  charge: { rot: -.06, dx: -8, sy: .78, sx: 1.1 }, fire: { rot: .02, dx: -14, sy: .8, sx: 1.1 },
   windup: { rot: -.2, dx: -16 }, punchA: { rot: .22, dx: 28 }, punchB: { rot: .14, dx: 14 },
   hurt: { rot: -.3, dx: -18 }, hurt2: { rot: -.15, dx: -9 }, fall: { rot: -.8, dx: -26 },
   ko: { rot: -1.5, dx: -50 }, win: { rot: 0, sy: 1.02 }
@@ -436,12 +440,21 @@ function drawFighter(f, time) {
   ctx.scale(f.dir, 1);
   ctx.translate(p.dx || 0, 0);
   ctx.rotate((p.rot || 0) + (running ? .06 * Math.sin(time / 95) : 0));
-  ctx.scale(1, (p.sy || 1) * breath);
+  ctx.scale(p.sx || 1, (p.sy || 1) * breath);
   ctx.save(); ctx.scale(S.native, 1);
   const split = f.key === 'luffy' && f.anim && f.anim.kind === 'pistol' && f.anim.t >= 10;
   // pendant le Pistol, le bras tendu est retiré du corps : il est redessiné par drawPistol (maillage étiré)
   if (split) { ctx.beginPath(); ctx.rect(-dw / 2 + ARM.cut * dw / img.naturalWidth, -dh * 1.2, dw, dh * 1.5); ctx.clip(); }
-  ctx.drawImage(img, -dw / 2, -dh, dw, dh);
+  if (split) ctx.drawImage(img, -dw / 2, -dh, dw, dh);
+  else {
+    // tranches horizontales : cheveux/vêtements ondulent, pieds immobiles
+    const n = 90, sh = img.naturalHeight / n, t = time / 420, ph = f.key === 'goku' ? 1.3 : 0, amp = f.hurt > .15 ? 0 : 1;
+    for (let i = 0; i < n; i++) {
+      const yn = (i + .5) / n, w = Math.pow(1 - yn, 1.6);
+      const ox = amp * (Math.sin(t + ph + yn * 5) * 2.2 * w + (yn < .16 ? Math.sin(t * 2.3 + ph + yn * 40) * 1.6 : 0) + (yn > .45 && yn < .8 ? Math.sin(t * 1.7 + yn * 12 + ph) * 1.3 * w : 0));
+      ctx.drawImage(img, 0, i * sh, img.naturalWidth, sh + 1, -dw / 2 + ox, -dh + i * dh / n, dw, dh / n + .8);
+    }
+  }
   ctx.restore();
   // points d'ancrage des effets, suivis à travers la pose (poing, torse)
   const at = (nx, ny) => {
@@ -742,6 +755,7 @@ function frame(time) {
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .95);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  if (blueFlash > .03) { const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * .75); g.addColorStop(0, 'rgba(255,255,255,' + blueFlash * .5 + ')'); g.addColorStop(1, 'rgba(60,150,255,' + blueFlash * .45 + ')'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); blueFlash *= .9; }
   if (flash > .05) { ctx.fillStyle = 'rgba(255,255,255,' + flash * .4 + ')'; ctx.fillRect(0, 0, W, H); }
   drawBars(); drawCallouts();
   if (over) {
@@ -765,7 +779,7 @@ function teamOf(user) {
   if (!teams[user]) teams[user] = Math.random() < .5 ? 'luffy' : 'goku';
   return teams[user];
 }
-function onGift(user, coins, avatar) { act(teamOf(user), coins, user, avatar); }
+function onGift(user, coins, avatar, giftName) { act(teamOf(user), coins, user, avatar, giftName); }
 function renderBoard() {
   const rows = Object.entries(dmg).sort((a, b) => b[1] - a[1]).slice(0, 5);
   document.getElementById('boardRows').innerHTML = rows.map(([u, d]) => '<div><span>' + u.replace(/[<>&]/g, '') + '</span><b>' + d + '</b></div>').join('') || '<i>—</i>';
@@ -776,7 +790,7 @@ function handleMessage(d) {
     if (u && t === '1') teams[u] = 'luffy'; else if (u && t === '2') teams[u] = 'goku';
   } else if (d.type === 'gift' || d.type === 'tiktok-gift') {
     const x = d.gift || d;
-    onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)), x.avatarDataUri || x.profilePictureUrl || '');
+    onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)), x.avatarDataUri || x.profilePictureUrl || '', x.giftName || x.name || x.gift_name || '');
   }
 }
 let ws;
