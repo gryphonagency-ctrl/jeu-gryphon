@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Duel Goku vs Luffy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" rel="stylesheet">
 <script src="/arcade-effects.js"></script>
 <style>
   html, body { margin: 0; height: 100%; background: #0b0720; color: #fff; font-family: Arial, sans-serif; overflow: hidden; }
@@ -65,7 +67,7 @@ const GOKU_ARM_L_FORE = [[26, 380], [98, 380], [95, 420], [78, 448], [76, 548], 
 const mirror = poly => poly.map(([x, y]) => [356 - x, y]);
 const RIG = {
   goku: {
-    img: 'goku', torsoImg: 'goku', ih: 945, foot: 931, hb: 62, h: 270, ax: 172, hip: [176, 430], neck: [172, 205], front: 'L',
+    img: 'goku', torsoImg: 'goku', ih: 945, foot: 931, hb: 42, h: 370, ax: 172, hip: [176, 430], neck: [172, 205], front: 'L',
     legs: [[96, 425], [258, 425], [258, 548], [345, 548], [345, 945], [0, 945], [0, 548], [96, 548]],
     torso: [[98, 185], [256, 185], [262, 232], [258, 458], [96, 458], [92, 232]],
     head: [[0, 0], [345, 0], [345, 208], [0, 208]],
@@ -77,7 +79,7 @@ const RIG = {
     strike: { Fs: 1.55, Fe: 0, Bs: -1.5, Be: 0 }, wind: { Fs: .25, Fe: 2.1, Bs: .9, Be: 1.9 }
   },
   luffy: {
-    img: 'luffy', torsoImg: 'luffyT', ih: 725, foot: 724, hb: 52, h: 258, ax: 200, hip: [200, 405], neck: [200, 190], front: 'R',
+    img: 'luffy', torsoImg: 'luffyT', ih: 725, foot: 724, hb: 46, h: 360, ax: 200, hip: [200, 405], neck: [200, 190], front: 'R',
     legs: [[0, 398], [400, 398], [400, 725], [0, 725]],
     torso: [[100, 165], [300, 165], [300, 425], [100, 425]],
     head: [[60, 0], [340, 0], [340, 150], [275, 196], [125, 196], [60, 150]],
@@ -125,7 +127,9 @@ function smoke(x, y, n, col = '60,40,30') {
   for (let i = 0; i < n; i++) particles.push({ x: x + rnd(-20, 20), y: y + rnd(-10, 10), vx: rnd(-1.4, 1.4), vy: rnd(-2.2, -.2), alpha: .5, color: col, size: rnd(14, 30), decay: .01, add: false, g: -.01, grow: .6, smoke: true });
 }
 function ring(x, y, col, vr = 14, a = .9) { rings.push({ x, y, r: 10, vr, a, col }); }
-function say(t, x, y, color, size = 44) { texts.push({ t, x, y, a: 1, color: color || '#fff', size }); }
+const MANGA = "'Bangers', Impact, 'Arial Black', sans-serif";
+if (document.fonts) document.fonts.load('40px Bangers').catch(() => {});
+function say(t, x, y, color, size = 44, life = 0) { texts.push({ t, x, y, a: 1, color: color || '#fff', size, life, age: 0 }); }
 function bolt(x1, y1, x2, y2, col, w = 2, seg = 9) {
   const pts = [[x1, y1]];
   for (let i = 1; i < seg; i++) { const k = i / seg; pts.push([mixv(x1, x2, k) + rnd(-14, 14), mixv(y1, y2, k) + rnd(-14, 14)]); }
@@ -145,7 +149,7 @@ function hit(who, amount, user, big) {
   const bx = f.x, by = GROUND - RIG[who].h * .62 - f.jy;
   spark(bx, by, 26, ['#fff6b0', '#ffb300', '#ff6a00'], 11, { g: .18 });
   ring(bx, by, '255,220,120', 12, .8);
-  say('-' + amount, bx + rnd(-30, 30), by - 70, '#ffdd55', 40);
+  say('-' + amount, bx + rnd(-30, 30), by - 90, '#ffe14d', 64, 30);
   if (user) { dmg[user] = (dmg[user] || 0) + amount; save(); renderBoard(); }
   if (f.hp <= 0) endMatch(other(who));
 }
@@ -370,27 +374,40 @@ function drawAura(f, time) {
   ctx.restore();
 }
 
-const SPR = { goku: { scale: 5.2, hand: { charge: [40, 33] } }, luffy: { scale: 6, hand: {} } };
+/* Sprites HD lissés : une illustration par personnage, animée par transformations (pieds fixes sur GROUND) */
+const SPR = {
+  goku: { src: '/goku_hd.png', srcSsj: '/goku_ssj_hd.png', h: 380, native: 1, fist: [.86, .57], chest: [.62, .3] },
+  luffy: { src: '/luffy_hd.png', h: 370, native: -1, fist: [.04, .19], chest: [.5, .3] }
+};
 ['goku', 'luffy'].forEach(k => {
-  SPR[k].img = new Image(); SPR[k].img.src = '/duel-sprites-' + k + '.png';
-  fetch('/duel-sprites-' + k + '.json').then(r => r.json()).then(m => { SPR[k].meta = m; }).catch(() => {});
+  const S = SPR[k];
+  S.img = new Image(); S.img.src = S.src;
+  if (S.srcSsj) { S.imgSsj = new Image(); S.imgSsj.src = S.srcSsj; }
 });
-const CYCLE = { goku: ['idle0', 'idle1', 'idle2', 'idle1'], luffy: ['idle0', 'idle1', 'idle0', 'guard'] };
-const RUN = { goku: ['idle0', 'idle1', 'idle2', 'idle1'], luffy: ['run0', 'run1'] };
+const CYCLE = { goku: ['idle'], luffy: ['idle'] };
+const RUN = { goku: ['run'], luffy: ['run'] };
+// rot : inclinaison (rad, + = vers l'avant) ; dx : décalage avant (px) ; sy : écrasement vertical
+const POSES = {
+  idle: {}, run: { rot: .1, dx: 6 }, jump: { rot: .04, sy: 1.03 }, guard: { rot: -.03, sy: .97 },
+  charge: { rot: -.1, dx: -10, sy: .9 }, fire: { rot: .02, dx: -16, sy: .92 },
+  windup: { rot: -.2, dx: -16 }, punchA: { rot: .22, dx: 28 }, punchB: { rot: .14, dx: 14 },
+  hurt: { rot: -.3, dx: -18 }, hurt2: { rot: -.15, dx: -9 }, fall: { rot: -.8, dx: -26 },
+  ko: { rot: -1.5, dx: -50 }, win: { rot: 0, sy: 1.02 }
+};
 
 function pickFrame(f, time) {
   const k = f.key, a = f.anim, goku = k === 'goku';
   if (over) {
-    if (over === k) return goku ? 'idle0' : 'win';
+    if (over === k) return 'win';
     return overT < 14 ? (goku ? 'fall' : 'hurt2') : 'ko';
   }
   if (f.hurt > .5) return 'hurt';
   if (f.hurt > .15) return 'hurt2';
   if (a) {
     if (a.kind === 'kame') return a.t < 75 ? 'charge' : 'fire';
-    if (a.kind === 'pistol') return a.t < 12 ? 'guard' : a.t < 36 ? 'punchA' : 'guard';
+    if (a.kind === 'pistol') return a.t < 12 ? 'windup' : a.t < 36 ? 'punchA' : 'guard';
     if (a.kind === 'transform') return 'guard';
-    if (a.kind === 'punch') return a.t < 6 ? 'guard' : a.t < a.dur - 4 ? (a.hand === 'F' ? 'punchA' : 'punchB') : 'guard';
+    if (a.kind === 'punch') return a.t < 6 ? 'windup' : a.t < a.dur - 4 ? (a.hand === 'F' ? 'punchA' : 'punchB') : 'guard';
   }
   if (f.jy > 3) return 'jump';
   const seq = Math.abs(f.vx) > 1.5 ? RUN[k] : CYCLE[k], per = Math.abs(f.vx) > 1.5 ? 95 : 260;
@@ -399,28 +416,37 @@ function pickFrame(f, time) {
 
 function drawFighter(f, time) {
   const S = SPR[f.key], R = RIG[f.key];
-  if (!S.meta || !ready(S.img)) return;
-  let name = pickFrame(f, time);
-  if (f.key === 'goku' && f.ssj > 0 && S.meta[name + '_ssj']) name += '_ssj';
-  const m = S.meta[name];
-  if (!m) return;
-  const s = S.scale, P = f.pose, run = Math.min(1, Math.abs(f.vx) / 7);
+  const img = f.key === 'goku' && f.ssj > 0 && ready(S.imgSsj) ? S.imgSsj : S.img;
+  if (!ready(img)) return;
+  const name = pickFrame(f, time), p = POSES[name] || {};
+  const dh = S.h, dw = dh * img.naturalWidth / img.naturalHeight;
+  const running = Math.abs(f.vx) > 1.5 && f.jy <= 3 && name === 'run';
+  const hop = running ? Math.abs(Math.sin(time / 95)) * 9 : 0;
+  const breath = name === 'idle' || name === 'guard' ? 1 + .012 * Math.sin(time / 330 + (f.key === 'goku' ? 1.7 : 0)) : 1;
+  const base = ctx.getTransform(), inv = base.inverse();
   ctx.save(); ctx.globalAlpha = .35 * Math.max(.3, 1 - f.jy / 300); ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, (R.h * .27) * Math.max(.5, 1 - f.jy / 400), 12, 0, 0, 6.283); ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, (dw * .42) * Math.max(.5, 1 - f.jy / 400), 12, 0, 0, 6.283); ctx.fill(); ctx.restore();
   ctx.save(); ctx.translate(0, -f.jy); drawAura(f, time); ctx.restore();
   ctx.save();
   if (f.flash > .02) ctx.filter = 'brightness(' + (1 + f.flash * 1.5).toFixed(2) + ') saturate(.85)';
-  ctx.imageSmoothingEnabled = false;
-  ctx.translate(f.x, GROUND - f.jy);
-  ctx.rotate(.07 * run * f.dir * Math.sign(f.vx * f.dir || 1));
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.translate(f.x, GROUND - f.jy - hop);
   ctx.scale(f.dir, 1);
-  const bob = (name.startsWith('idle') || name === 'guard') ? 1 + .012 * Math.sin(time / 330 + (f.key === 'goku' ? 1.7 : 0)) : 1;
-  ctx.scale(1, bob);
-  ctx.drawImage(S.img, m.x, m.y, m.w, m.h, -m.ax * s, -m.h * s, m.w * s, m.h * s);
+  ctx.translate(p.dx || 0, 0);
+  ctx.rotate((p.rot || 0) + (running ? .06 * Math.sin(time / 95) : 0));
+  ctx.scale(1, (p.sy || 1) * breath);
+  ctx.save(); ctx.scale(S.native, 1);
+  ctx.drawImage(img, -dw / 2, -dh, dw, dh);
   ctx.restore();
-  const hnd = S.hand[name], tx = hnd ? hnd[0] : m.tx, ty = hnd ? hnd[1] : m.ty;
-  const tip = { x: f.x + f.dir * (tx - m.ax) * s, y: GROUND - f.jy - (m.h - ty) * s };
-  f.fistF = tip; f.fistB = tip; f.shF = tip;
+  // points d'ancrage des effets, suivis à travers la pose (poing, torse)
+  const at = (nx, ny) => {
+    const q = ctx.getTransform().transformPoint({ x: S.native * (nx - .5) * dw, y: -dh + ny * dh });
+    return inv.transformPoint(q);
+  };
+  const fist = at(S.fist[0], S.fist[1]), chest = at(S.chest[0], S.chest[1]);
+  ctx.restore();
+  const hand = f.anim && f.anim.kind === 'kame' ? chest : fist;
+  f.fistF = hand; f.fistB = hand; f.shF = hand;
 }
 
 /* ---------- Effets : Kamehameha, bras élastique ---------- */
@@ -578,7 +604,11 @@ function updateAll(dt, time) {
   rings = rings.filter(r => r.a > 0 && r.r > 0);
   for (const b of bolts) b.a -= .25 * dt;
   bolts = bolts.filter(b => b.a > 0);
-  texts.forEach(t => { t.y -= dt * .6; t.a -= dt * .01; });
+  texts.forEach(t => {
+    t.age += dt;
+    if (t.life) { t.y -= dt * 1.1; t.a = t.age < t.life * .3 ? 1 : 1 - (t.age - t.life * .3) / (t.life * .7); if (t.age >= t.life) t.a = 0; }
+    else { t.y -= dt * .6; t.a -= dt * .01; }
+  });
   texts = texts.filter(t => t.a > 0);
   callouts.forEach(c => { c.a -= dt * .006; });
   while (callouts.length && callouts[0].a <= 0) callouts.shift();
@@ -675,7 +705,13 @@ function frame(time) {
   drawSmoke();
   order.forEach(k => { drawKame(fighters[k], fighters[other(k)], time); drawPistol(fighters[k], fighters[other(k)]); });
   drawFX();
-  texts.forEach(t => { ctx.globalAlpha = Math.max(0, t.a); ctx.font = 'bold ' + t.size + 'px Arial'; ctx.textAlign = 'center'; ctx.lineWidth = 7; ctx.strokeStyle = '#000'; ctx.strokeText(t.t, t.x, t.y); ctx.fillStyle = t.color; ctx.fillText(t.t, t.x, t.y); });
+  texts.forEach(t => {
+    const pop = t.life ? 1 + Math.max(0, 1 - t.age / 6) * .9 : 1;
+    ctx.save(); ctx.globalAlpha = Math.max(0, t.a); ctx.translate(t.x, t.y); ctx.scale(pop, pop);
+    if (t.life) ctx.rotate(-.08);
+    ctx.font = t.size + 'px ' + MANGA; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = 8; ctx.strokeStyle = '#000';
+    ctx.strokeText(t.t, 0, 0); ctx.fillStyle = t.color; ctx.fillText(t.t, 0, 0); ctx.restore();
+  });
   ctx.globalAlpha = 1;
   ctx.restore();
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .95);

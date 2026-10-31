@@ -72,8 +72,7 @@ const arenaAssets = {
     'beerus-cut.png': 'image/png', 'beerus-walk.png': 'image/png',
     'naruto-cut.png': 'image/png', 'naruto-walk.png': 'image/png',
     'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png',
-    'duel-sprites-goku.png': 'image/png', 'duel-sprites-luffy.png': 'image/png',
-    'duel-sprites-goku.json': 'application/json; charset=utf-8', 'duel-sprites-luffy.json': 'application/json; charset=utf-8'
+    'goku_hd.png': 'image/png', 'goku_ssj_hd.png': 'image/png', 'luffy_hd.png': 'image/png'
 };
 const protectedRoutes = new Set([
     '/combat-goku-luffy.html',
