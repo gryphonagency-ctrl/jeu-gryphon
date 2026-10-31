@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const dns = require('dns').promises;
+const net = require('net');
+const https = require('https');
 
 const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 const USER_QUOTA_BYTES = 300 * 1024 * 1024;
@@ -14,6 +17,74 @@ const MEDIA_TYPES = {
 const FILE_PATTERN = /^[a-f0-9-]{36}\.(?:mp3|wav|ogg|m4a|mp4|webm|png|jpe?g|webp|gif)$/;
 const OWNER_PATTERN = /^[a-z0-9._-]{1,64}$/;
 const EVENT_PATTERN = /^[a-z0-9_-]{1,60}$/;
+const IMPORT_TIMEOUT_MS = 20000;
+
+function isPublicAddress(address) {
+    if (net.isIPv4(address)) {
+        const [a, b] = address.split('.').map(Number);
+        return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+            (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224);
+    }
+    if (net.isIPv6(address)) {
+        const lower = address.toLowerCase();
+        if (lower.startsWith('::ffff:')) return isPublicAddress(lower.slice(7));
+        return !(lower === '::' || lower === '::1' || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower));
+    }
+    return false;
+}
+
+// Télécharge en https uniquement, vers des IP publiques (adresse validée puis utilisée telle quelle), avec limite de taille.
+function safeDownload(rawUrl, maxBytes, redirects = 3) {
+    return new Promise((resolve, reject) => {
+        let url;
+        try { url = new URL(rawUrl); } catch { return reject(Object.assign(new Error('Lien invalide.'), { statusCode: 400 })); }
+        if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
+            return reject(Object.assign(new Error('Seuls les liens https:// sont acceptés.'), { statusCode: 400 }));
+        }
+        dns.lookup(url.hostname, { all: true }).then(addresses => {
+            if (!addresses.length || !addresses.every(item => isPublicAddress(item.address))) {
+                throw Object.assign(new Error('Adresse non autorisée.'), { statusCode: 400 });
+            }
+            const pinned = addresses[0];
+            const request = https.request({
+                host: url.hostname,
+                servername: url.hostname,
+                path: url.pathname + url.search,
+                method: 'GET',
+                headers: { 'User-Agent': 'Mozilla/5.0 GriffonArcade', Accept: '*/*' },
+                lookup: (_host, options, callback) => options?.all
+                    ? callback(null, [{ address: pinned.address, family: pinned.family }])
+                    : callback(null, pinned.address, pinned.family),
+                timeout: IMPORT_TIMEOUT_MS
+            }, response => {
+                if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+                    response.resume();
+                    if (redirects <= 0) return reject(Object.assign(new Error('Trop de redirections.'), { statusCode: 400 }));
+                    return resolve(safeDownload(new URL(response.headers.location, url).href, maxBytes, redirects - 1));
+                }
+                if (response.statusCode !== 200) {
+                    response.resume();
+                    return reject(Object.assign(new Error('Le lien est inaccessible.'), { statusCode: 400 }));
+                }
+                const chunks = [];
+                let size = 0;
+                response.on('data', chunk => {
+                    size += chunk.length;
+                    if (size > maxBytes) {
+                        request.destroy(Object.assign(new Error('Le fichier dépasse 25 Mo.'), { statusCode: 400 }));
+                        return;
+                    }
+                    chunks.push(chunk);
+                });
+                response.on('end', () => resolve({ buffer: Buffer.concat(chunks), url, contentType: response.headers['content-type'] || '' }));
+                response.on('error', reject);
+            });
+            request.on('timeout', () => request.destroy(Object.assign(new Error('Le lien a mis trop de temps à répondre.'), { statusCode: 400 })));
+            request.on('error', error => reject(error.statusCode ? error : Object.assign(new Error('Impossible de télécharger ce lien.'), { statusCode: 400 })));
+            request.end();
+        }).catch(error => reject(error.statusCode ? error : Object.assign(new Error('Lien introuvable.'), { statusCode: 400 })));
+    });
+}
 
 // Chaque compte autorisé gère ses propres médias dans <mediaDirectory>/users/<compte>/.
 function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) {
@@ -51,28 +122,49 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
         return Object.assign(new Error(message), { statusCode });
     }
 
+    function storeMedia(owner, originalName, buffer) {
+        const index = readIndex(owner);
+        const original = String(originalName || '').trim().slice(0, 120);
+        const extension = path.extname(original).toLowerCase();
+        const type = MEDIA_TYPES[extension.slice(1)];
+        if (!type) throw fail('Format non pris en charge (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif).');
+        if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 25 Mo maximum.');
+        const used = index.files.reduce((sum, file) => sum + (file.size || 0), 0);
+        if (index.files.length >= USER_MAX_FILES || used + buffer.length > USER_QUOTA_BYTES) {
+            throw fail('Espace média plein : supprime des fichiers avant d’en ajouter (300 Mo / 100 fichiers max).', 413);
+        }
+        const id = `${crypto.randomUUID()}${extension}`;
+        fs.mkdirSync(ownerDir(owner), { recursive: true });
+        fs.writeFileSync(path.join(ownerDir(owner), id), buffer, { flag: 'wx', mode: 0o600 });
+        const file = { id, name: original, kind: type[0], size: buffer.length, createdAt: new Date().toISOString() };
+        index.files.push(file);
+        writeIndex(owner, index);
+        return { success: true, file: publicFile(owner, file) };
+    }
+
+    async function importFromUrl(owner, rawUrl) {
+        if (typeof rawUrl !== 'string' || rawUrl.length > 500) throw fail('Lien invalide.');
+        let download = await safeDownload(rawUrl.trim(), MEDIA_MAX_BYTES);
+        // Page d'un son MyInstants : on récupère le mp3 qu'elle référence.
+        if (/(^|\.)myinstants\.com$/.test(download.url.hostname) && /text\/html/i.test(download.contentType)) {
+            if (!/\/instant\//.test(download.url.pathname)) throw fail('Colle le lien d’un son précis (page « /instant/… »), pas d’une catégorie.');
+            const match = /\/media\/sounds\/[A-Za-z0-9_%.\-]+\.mp3/.exec(download.buffer.toString('utf8'));
+            if (!match) throw fail('Aucun son trouvé sur cette page. Utilise la page d’un son précis.');
+            download = await safeDownload(new URL(match[0], download.url).href, MEDIA_MAX_BYTES);
+        }
+        let name = decodeURIComponent(path.basename(download.url.pathname)) || 'son.mp3';
+        if (!MEDIA_TYPES[path.extname(name).slice(1).toLowerCase()]) throw fail('Le lien doit pointer vers un fichier audio, vidéo ou image (mp3, mp4, png…).');
+        name = name.replace(/[^\w .()-]/g, '_');
+        return storeMedia(owner, name, download.buffer);
+    }
+
     function handleAction(owner, body) {
         const index = readIndex(owner);
         if (body.action === 'upload') {
-            const original = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
-            const extension = path.extname(original).toLowerCase();
-            const type = MEDIA_TYPES[extension.slice(1)];
-            if (!type) throw fail('Format non pris en charge (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif).');
             const base64 = typeof body.data === 'string' ? body.data.replace(/^data:[^,]*,/, '') : '';
-            const buffer = Buffer.from(base64, 'base64');
-            if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 25 Mo maximum.');
-            const used = index.files.reduce((sum, file) => sum + (file.size || 0), 0);
-            if (index.files.length >= USER_MAX_FILES || used + buffer.length > USER_QUOTA_BYTES) {
-                throw fail('Espace média plein : supprime des fichiers avant d’en ajouter (300 Mo / 100 fichiers max).', 413);
-            }
-            const id = `${crypto.randomUUID()}${extension}`;
-            fs.mkdirSync(ownerDir(owner), { recursive: true });
-            fs.writeFileSync(path.join(ownerDir(owner), id), buffer, { flag: 'wx', mode: 0o600 });
-            const file = { id, name: original, kind: type[0], size: buffer.length, createdAt: new Date().toISOString() };
-            index.files.push(file);
-            writeIndex(owner, index);
-            return { success: true, file: publicFile(owner, file) };
+            return storeMedia(owner, body.name, Buffer.from(base64, 'base64'));
         }
+        if (body.action === 'import-url') return importFromUrl(owner, body.url);
         if (body.action === 'delete') {
             if (typeof body.id !== 'string' || !FILE_PATTERN.test(body.id)) throw fail('Fichier invalide.');
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
@@ -177,13 +269,11 @@ function createMediaAdmin({ mediaDirectory, getUser, canManage, readJsonBody }) 
         }
         if (req.method === 'POST') {
             readJsonBody(req, res, body => {
-                try {
-                    send(res, 200, handleAction(user, body));
-                } catch (error) {
+                Promise.resolve().then(() => handleAction(user, body)).then(result => send(res, 200, result)).catch(error => {
                     const status = error.statusCode || 500;
                     if (status === 500) console.error('Échec de la gestion des médias :', error.message);
                     send(res, status, { message: status === 500 ? 'Impossible d’enregistrer le média.' : error.message });
-                }
+                });
             }, Math.ceil(MEDIA_MAX_BYTES * 1.4) + 8192);
             return true;
         }
