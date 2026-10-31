@@ -75,7 +75,7 @@ canvas{position:absolute;top:0;left:0;image-rendering:pixelated}
     </div>
     <hr>
     <b>Récompenses de fin de niveau</b>
-    <label>RTP (% reversé) <input id="rtp" type="number" min="0" max="100" value="50"></label>
+    <label>Part reversée aux gagnants (%) <input id="rtp" type="number" min="0" max="100" value="10"></label>
     <label>Lot offert <input id="rwName" type="text" maxlength="20" value="Rose"></label>
     <label>Valeur d’un lot <input id="rwVal" type="number" min="1" value="1"></label>
     <b>Étoiles reçues par action</b>
@@ -91,8 +91,8 @@ const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d'),g
 const solY=350,MW=36,MH=48;
 let logged=false,pseudo='',ws=null,wsOk=false;
 const $=id=>document.getElementById(id);
-let S={vol:60,mute:false,rtp:50,rwName:'Rose',rwVal:1,gv:{Rose:1,TikTok:1,'Ice Cream':1,Star:100,Pipe:0}};
-try{const q=JSON.parse(localStorage.getItem('mtl_s')||'null');if(q)S={...S,...q,gv:{...S.gv,...(q.gv||{}),Star:100,Pipe:0}};}catch(e){}
+let S={vol:60,mute:false,rtp:10,rwName:'Rose',rwVal:1,gv:{Rose:1,TikTok:1,'Ice Cream':1,Star:100,Pipe:0}};
+try{const q=JSON.parse(localStorage.getItem('mtl_s')||'null');if(q)S={...S,...q,gv:{...S.gv,...(q.gv||{}),Star:100,Pipe:0},rtp:q.rtpV2?q.rtp:10,rtpV2:1};}catch(e){}
 const saveS=()=>{try{localStorage.setItem('mtl_s',JSON.stringify(S));}catch(e){}};
 /* ---------- Sons 8 bits synthétisés (WebAudio) ---------- */
 let AC=null,master=null;
@@ -122,19 +122,22 @@ const SFX={
 };
 const sfx=n=>{try{SFX[n]&&SFX[n]();}catch(e){}};
 /* ---------- Récompenses (RTP) ---------- */
-let recvPool=0,contrib={},rwLog=[],rwMsg='';
+let recvPool=0,contrib={},rwLog=[],rwMsg='',vip=[];
+const avatars={};
+function setAvatar(keys,src){if(!src)return;const im=new Image();im.src=src;keys.filter(Boolean).forEach(k=>{avatars[String(k).slice(0,20)]=im;});}
 function updStats(){$('rwStats').textContent='Valeur reçue à reverser : '+Math.round(recvPool*10)/10+' pièces';$('rwLog').textContent=rwLog.slice(0,30).join('\n');}
 function recv(g,user){const v=+S.gv[g]||0;if(!v)return;recvPool+=v;const u=user||pseudo||'Joueur';contrib[u]=(contrib[u]||0)+v;updStats();}
 function levelReward(){
   const unit=Math.max(1,+S.rwVal||1),rate=Math.max(0,Math.min(100,+S.rtp||0))/100;
   const budget=recvPool*rate,n=Math.floor(budget/unit),total=Object.values(contrib).reduce((a,b)=>a+b,0);
   if(n>0&&total>0){
-    const wins={};
+    const wins={};vip=[];
     for(let i=0;i<n;i++){let r=Math.random()*total,pick='';for(const [u,w] of Object.entries(contrib)){r-=w;if(r<=0){pick=u;break;}}pick=pick||Object.keys(contrib)[0];wins[pick]=(wins[pick]||0)+1;}
     rwMsg='🎁 '+n+' × '+S.rwName+' à offrir !';
     Object.entries(wins).forEach(([u,c])=>{rwLog.unshift('Niv. '+(cur+1)+' : '+c+' × '+S.rwName+' → '+u);if(ws&&wsOk){try{ws.send(JSON.stringify({type:'reward',gift:S.rwName,count:c,to:u}));}catch(e){}}});
+    vip=Object.entries(wins).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([u,c])=>({u,c}));
     recvPool=rate>0?(budget-n*unit)/rate:0;
-  }else rwMsg='Aucun cadeau à offrir ce niveau';
+  }else{rwMsg='';vip=[];}
   contrib={};updStats();
 }
 /* ---------- Panneau de réglages ---------- */
@@ -159,8 +162,10 @@ function onServerMsg(raw){
   let d=raw;try{d=JSON.parse(raw);}catch(e){return;}
   if(!d||typeof d!=='object')return;
   if(d.type==='STATUS'){liveMsg=d.message||'';return;}
+  if(d.type==='viewer'&&d.viewer){const v=d.viewer;setAvatar([v.nickname,v.uniqueId,v.username],v.avatarDataUri);return;}
   if(d.type==='gift'){
     const g=d.gift||d,user=String(g.nickname||g.uniqueId||g.username||'').slice(0,20),coins=Number(g.coinCount)||0;
+    setAvatar([g.nickname,g.uniqueId,g.username],g.avatarDataUri||(g.avatarUrls&&g.avatarUrls[0]));
     const k=coins>=100?'Star':GIFT_MAP[String(g.giftName||'').trim().toLowerCase()];
     if(coins>=1){if(k)triggerGift(k,user);else startGame();}
   }else if(d.type==='comment'){
@@ -252,6 +257,26 @@ const LEVELS=[
   enemies:[E(650,'GOOMBA',-2.2),E(900,'KOOPA',-2.5),E(1200,'GOOMBA',-2.2),E(1800,'KOOPA',-2.6),E(2100,'GOOMBA',-2.4)]}
 ];
 
+/* Niveaux plus longs et difficulté croissante : étirement, ennemis plus nombreux et plus rapides */
+LEVELS.forEach((lv,i)=>{
+  const f=1.5+0.12*i,spd=1+0.12*i,sx=x=>Math.round(x*f),oldPits=lv.pits.map(p=>[...p]);
+  lv.len=sx(lv.len);lv.flag=sx(lv.flag);
+  lv.pits=lv.pits.map(([a,w])=>[sx(a),Math.round(w*(1+0.04*i))]);
+  lv.plats.forEach(p=>{const pit=oldPits.find(([a,w])=>p.x>=a-10&&p.x<=a+w);p.x=pit?sx(pit[0])+(p.x-pit[0]):sx(p.x);});
+  lv.spikes.forEach(s=>{s.x=sx(s.x);});
+  lv.pipes.forEach(p=>{p.x=sx(p.x);});
+  lv.enemies.forEach(e=>{e.x=sx(e.x);e.vx*=spd;});
+  const base=lv.enemies.slice(),clear=x=>
+    !lv.pits.some(([a,w])=>x>a-90&&x<a+w+90)&&!lv.spikes.some(s=>x>s.x-90&&x<s.x+s.w+90)&&!lv.pipes.some(p=>x>p.x-90&&x<p.x+155);
+  for(let k=0;k<base.length-1;k++){
+    const x=Math.round((base[k].x+base[k+1].x)/2);
+    if(clear(x))lv.enemies.push(E(x,k%2?'GOOMBA':'KOOPA',-(k%2?1.5:2)*spd));
+  }
+  const last=lv.flag-300;
+  if(clear(last))lv.enemies.push(E(last,i%2?'KOOPA':'GOOMBA',-(i%2?2:1.5)*spd));
+  lv.enemies.sort((a,b)=>a.x-b.x);
+});
+
 /* ---------- État ---------- */
 const mario={x:100,y:0,prevY:0,velX:0,velY:0,direction:1,isInvincible:false,starTimer:0,onPipe:null,warp:null,ride:null,grounded:true,inv:0,walkT:0};
 let L,cur=0,pipes=[],plats=[],enemies=[],sky,cameraX=0,score=0,lives=3,state='play',deadT=0,clearT=0,banner=0,fr=0;
@@ -337,7 +362,7 @@ function step(){
     });
     L.spikes.forEach(s=>{if(mario.y<18&&mario.x+MW-8>s.x&&mario.x+8<s.x+s.w&&!mario.isInvincible&&!mario.inv)die();});
     if(mario.y<-90)die();
-    if(mario.x+MW>L.flag&&state==='play'){state='clear';clearT=150;score+=1000;mario.velX=0;sfx('clear');levelReward();}
+    if(mario.x+MW>L.flag&&state==='play'){state='clear';clearT=260;score+=1000;mario.velX=0;sfx('clear');levelReward();}
   }
   cameraX+=(mario.x-800/3-cameraX)*0.08;
   cameraX=Math.max(0,Math.min(L.len+400-800,cameraX));
@@ -478,13 +503,34 @@ function render(){
   if(mario.isInvincible)txt('⚡ L’ÉTOILE EST ACTIVE !',400,34,20,'#ffd700');
   if(banner>0&&state==='play'){banner--;ctx.globalAlpha=Math.min(1,banner/40);txt('NIVEAU '+(cur+1)+' – '+L.name,400,150,30,'#fff');ctx.globalAlpha=1;}
   if(state==='dead'&&deadT>20)txt(lives>0?'Aïe ! Il vous reste '+lives+' vie'+(lives>1?'s':''):'Dernière vie perdue…',400,150,28,'#ff6b6b');
-  if(state==='clear'){txt('NIVEAU TERMINÉ !  +1000',400,150,32,'#ffd700');txt(rwMsg,400,192,22,'#25f4ee');}
+  if(state==='clear'){txt('NIVEAU TERMINÉ !  +1000',400,95,30,'#ffd700');if(rwMsg)txt(rwMsg,400,128,20,'#25f4ee');vipBanner();}
   if(state==='over'||state==='win'){
     ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,800,400);
     txt(state==='win'?'🏆 VICTOIRE ! 5 niveaux terminés':'GAME OVER',400,170,38,state==='win'?'#ffd700':'#ff4d4d');
     txt('Score final : '+score,400,215,26,'#fff');
-    txt('Envoyez un cadeau ou appuyez sur une touche pour rejouer',400,265,18,'#25f4ee');
+    txt('Une ⭐ relance la partie',400,265,24,'#ffd21a');
   }
+}
+function vipBanner(){
+  if(!vip.length)return;
+  const h=52,w=360,x=220,y=140;
+  ctx.save();
+  vip.forEach((v,i)=>{
+    const yy=y+i*(h+8),g=ctx.createLinearGradient(x,yy,x+w,yy);
+    g.addColorStop(0,'#5b3a00');g.addColorStop(.5,'#c99a1b');g.addColorStop(1,'#5b3a00');
+    ctx.fillStyle=g;ctx.strokeStyle='#ffe27a';ctx.lineWidth=3;
+    ctx.beginPath();ctx.roundRect(x,yy,w,h,14);ctx.fill();ctx.stroke();
+    const cx=x+36,cy=yy+h/2,im=avatars[v.u];
+    ctx.save();ctx.beginPath();ctx.arc(cx,cy,24,0,7);ctx.clip();
+    if(im&&im.complete&&im.naturalWidth)ctx.drawImage(im,cx-24,cy-24,48,48);
+    else{ctx.fillStyle='#222';ctx.fillRect(cx-24,cy-24,48,48);ctx.fillStyle='#ffd21a';ctx.font='bold 26px Arial';ctx.textAlign='center';ctx.fillText((v.u[0]||'?').toUpperCase(),cx,cy+9);}
+    ctx.restore();
+    ctx.strokeStyle='#ffe27a';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,24,0,7);ctx.stroke();
+    ctx.textAlign='left';ctx.fillStyle='#fff';ctx.font='bold 11px Arial';ctx.fillText('👑 VIP · GAGNANT',x+72,yy+20);
+    ctx.font='bold 20px Arial';ctx.fillText(v.u.slice(0,16),x+72,yy+40);
+    ctx.textAlign='right';ctx.fillStyle='#fff6c8';ctx.font='bold 18px Arial';ctx.fillText(v.c+' × '+S.rwName,x+w-14,yy+32);
+  });
+  ctx.restore();
 }
 function loop(){if(logged&&started)step();render();requestAnimationFrame(loop);}
 loadLevel(0);
