@@ -76,6 +76,7 @@ const arenaAssets = {
 };
 const protectedRoutes = new Set([
     '/combat-goku-luffy.html',
+    '/super-mario-live.html',
     '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
@@ -141,6 +142,7 @@ const freeTrialRoutes = new Set([
 ]);
 const staticGameIds = [
     '/combat-goku-luffy.html',
+    '/super-mario-live.html',
     '/bingo-gryphon.html',
     '/course-anneaux.html',
     '/combat-retro.html',
@@ -202,8 +204,10 @@ store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
+store.grantGameAccessToExistingCreators('/super-mario-live.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
+    '/super-mario-live.html': 'Super Mario – TikTok Live',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
@@ -243,6 +247,7 @@ const staticGameTitles = {
 };
 const gameRouteIds = new Map([
     ['/combat-goku-luffy.html', '/combat-goku-luffy.html'],
+    ['/super-mario-live.html', '/super-mario-live.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
@@ -2207,6 +2212,8 @@ const server = http.createServer((req, res) => {
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
         ['/combat-goku-luffy.html', [path.join(__dirname, 'combat-goku-luffy.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/combat-goku-luffy.png', [path.join(__dirname, 'images-vitrine', 'combat-goku-luffy.png'), 'image/png']],
+        ['/super-mario-live.html', [path.join(__dirname, 'super-mario-live.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/super-mario-live.png', [path.join(__dirname, 'images-vitrine', 'super-mario-live.png'), 'image/png']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
         ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
