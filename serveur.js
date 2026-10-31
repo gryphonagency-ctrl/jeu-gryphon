@@ -2280,6 +2280,7 @@ const server = http.createServer((req, res) => {
         ['/', [homepageFile, 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
+        ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
         ['/combat-goku-luffy.html', [path.join(__dirname, 'combat-goku-luffy.html'), 'text/html; charset=utf-8']],
