@@ -22,8 +22,16 @@ button.danger{background:#ff6b7a}
 .media{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;font-size:.85rem;word-break:break-all}
 .media img,.media video{width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#000}
 .media audio{width:100%}
-table{width:100%;border-collapse:collapse;font-size:.9rem}
-td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
+.tabs a:hover{border-color:var(--accent)}
+#alert-sections{display:grid;gap:18px}
+.slot{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.slot h3{grid-column:1/-1;margin:0;font-size:1rem}
+.slot .state{grid-column:1/-1;font-size:.8rem;color:#9dffb0}
+.slot .state.off{color:#bac9e8}
+.hint{margin:0;color:#bac9e8;font-size:.9rem}
+@media(max-width:600px){.slot{grid-template-columns:1fr}}
 #status{min-height:1.3em;color:#9dffb0}#status.err{color:#ff9aa5}
 </style>
 </head>
@@ -51,17 +59,9 @@ td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
 </form>
 </section>
 
-<section class="card">
-<h2>Alertes</h2>
-<form id="alert-form" class="row">
-<label>Évènement (ex. follow, sub, rose)<input id="event" required maxlength="60" pattern="[A-Za-z0-9_ -]+"></label>
-<label>Son<select id="audio"></select></label>
-<label>Vidéo<select id="video"></select></label>
-<button type="submit">Enregistrer l’alerte</button>
-</form>
-<table><thead><tr><th>Évènement</th><th>Son</th><th>Vidéo</th><th></th></tr></thead><tbody id="alerts"></tbody></table>
+<nav id="tabs" class="tabs" aria-label="Types d’alertes"></nav>
+<div id="alert-sections"></div>
 <p>Ton overlay peut lire ta configuration sur <code id="overlay-url">/api/media-alerts</code>.</p>
-</section>
 
 <section class="card"><h2>Bibliothèque</h2><div id="library" class="grid"></div></section>
 </main>
@@ -88,15 +88,85 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-function render() {
-  for (const [id, kind] of [['audio', 'audio'], ['video', 'video']]) {
-    const select = $(id);
-    select.replaceChildren(el('option', { value: '', textContent: 'Aucun' }),
-      ...state.files.filter(f => f.kind === kind).map(f => el('option', { value: f.id, textContent: f.name })));
+const slug = text => text.trim().toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53);
+const drafts = new Set();
+
+const SECTIONS = [
+  { id: 'follows', title: '👤 Nouveaux abonnés (follow)', hint: 'Déclenchée quand quelqu’un s’abonne à ton compte TikTok.',
+    fixed: [{ key: 'follow', label: 'Nouveau follow' }] },
+  { id: 'subs', title: '⭐ Abonnés (sub)', hint: 'Déclenchée pour les abonnements payants à ton live.',
+    fixed: [{ key: 'sub', label: 'Abonnement (sub)' }] },
+  { id: 'gifts', title: '🎁 Cadeaux', hint: 'Un son/une vidéo par cadeau. « Tous les cadeaux » sert de réglage par défaut.',
+    prefix: 'gift_', fixed: [{ key: 'gift_tous', label: 'Tous les cadeaux' }],
+    addLabel: 'Nom du cadeau (ex. rose, lion)' },
+  { id: 'shares', title: '📣 Partages du live', hint: 'Déclenchée quand un spectateur partage ton live.',
+    fixed: [{ key: 'share', label: 'Partage' }] },
+  { id: 'others', title: '✨ Autres évènements', hint: 'Évènements personnalisés (nom libre).',
+    other: true, addLabel: 'Nom de l’évènement' }
+];
+
+function sectionKeys(section) {
+  const fixedKeys = new Set(SECTIONS.flatMap(s => (s.fixed || []).map(f => f.key)));
+  const keys = Object.keys(state.alerts);
+  if (section.prefix) return keys.filter(k => k.startsWith(section.prefix) && !fixedKeys.has(k));
+  if (section.other) return keys.filter(k => !fixedKeys.has(k) && !k.startsWith('gift_'));
+  return [];
+}
+
+function select(kind, value) {
+  const node = el('select', {}, el('option', { value: '', textContent: 'Aucun' }),
+    ...state.files.filter(f => f.kind === kind).map(f => el('option', { value: f.id, textContent: f.name })));
+  node.value = state.files.some(f => f.id === value) ? value : '';
+  return node;
+}
+
+function slot(key, label, removable) {
+  const alert = state.alerts[key] || {};
+  const audio = select('audio', alert.audio);
+  const video = select('video', alert.video);
+  const active = Boolean(alert.audio || alert.video);
+  const save = el('button', { type: 'button', textContent: 'Enregistrer',
+    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value }), 'Alerte enregistrée.') });
+  const actions = el('div', { className: 'row' }, save);
+  if (state.alerts[key]) {
+    actions.append(el('button', { type: 'button', className: 'danger', textContent: removable ? 'Supprimer' : 'Réinitialiser',
+      onclick: () => drafts.has(key)
+        ? (drafts.delete(key), delete state.alerts[key], renderSections())
+        : run(() => api({ action: 'delete-alert', event: key }), 'Alerte supprimée.') }));
   }
-  $('alerts').replaceChildren(...Object.entries(state.alerts).map(([event, a]) => el('tr', {},
-    el('td', { textContent: event }), el('td', { textContent: nameOf(a.audio) }), el('td', { textContent: nameOf(a.video) }),
-    el('td', {}, el('button', { className: 'danger', textContent: 'Supprimer', onclick: () => run(() => api({ action: 'delete-alert', event })) })))));
+  return el('div', { className: 'slot' }, el('h3', { textContent: label }),
+    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), actions,
+    el('span', { className: `state${active ? '' : ' off'}`, textContent: active ? '● Active' : '○ Non configurée' }));
+}
+
+function renderSections() {
+  $('tabs').replaceChildren(...SECTIONS.map(s => el('a', { href: `#${s.id}`, textContent: s.title })));
+  $('alert-sections').replaceChildren(...SECTIONS.map(section => {
+    const card = el('section', { className: 'card', id: section.id }, el('h2', { textContent: section.title }), el('p', { className: 'hint', textContent: section.hint }));
+    for (const f of section.fixed || []) card.append(slot(f.key, f.label, false));
+    for (const key of sectionKeys(section)) card.append(slot(key, section.prefix ? key.slice(section.prefix.length) : key, true));
+    if (section.addLabel) {
+      const input = el('input', { maxlength: 50, placeholder: section.addLabel });
+      const add = el('form', { className: 'row', onsubmit: event => {
+        event.preventDefault();
+        const name = slug(input.value);
+        if (!name) return say('Nom invalide.', true);
+        const key = (section.prefix || '') + name;
+        if (state.alerts[key] || (section.fixed || []).some(f => f.key === key)) return say('Cette alerte existe déjà.', true);
+        state.alerts[key] = { audio: null, video: null };
+        drafts.add(key);
+        renderSections();
+        say('Choisis maintenant un son ou une vidéo puis enregistre.');
+      } }, el('label', {}, 'Ajouter', input), el('button', { type: 'submit', textContent: '+ Ajouter' }));
+      card.append(add);
+    }
+    return card;
+  }));
+}
+
+function render() {
+  drafts.clear();
+  renderSections();
   $('library').replaceChildren(...state.files.map(f => {
     const preview = f.kind === 'image' ? el('img', { src: f.url, alt: f.name, loading: 'lazy' })
       : el(f.kind, { src: f.url, controls: true, preload: 'none' });
@@ -141,11 +211,6 @@ $('import-form').onsubmit = async event => {
   say('Import en cours…');
   await run(() => api({ action: 'import-url', url: $('import-url').value }), 'Média importé.');
   if ($('status').className !== 'err') $('import-url').value = '';
-};
-
-$('alert-form').onsubmit = event => {
-  event.preventDefault();
-  run(() => api({ action: 'set-alert', event: $('event').value, audio: $('audio').value, video: $('video').value }), 'Alerte enregistrée.');
 };
 
 refresh().catch(e => say(e.message, true));
