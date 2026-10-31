@@ -419,7 +419,7 @@ function drawAura(f, time) {
 /* Sprites HD lissés : une illustration par personnage, animée par transformations (pieds fixes sur GROUND) */
 const SPR = {
   goku: { src: '/goku_hd.png', srcSsj: '/goku_ssj_hd.png', h: 380, native: 1, hip: .5, knee: .7, fist: [.86, .57], chest: [.62, .3], face: { e: [[.40, .196], [.49, .196]], m: [.444, .229], skin: '#efbf98', brow: '#12100e' } },
-  luffy: { src: '/luffy_hd.png', h: 370, native: -1, hip: .47, knee: .64, fist: [.04, .19], chest: [.5, .3], face: { e: [[.515, .109], [.588, .109]], m: [.554, .139], skin: '#f0b890', brow: '#1a1008' } }
+  luffy: { src: '/luffy_hd.png', srcRest: '/luffy_rest_hd.png', h: 370, native: -1, hip: .47, knee: .64, fist: [.04, .19], chest: [.5, .3], face: { e: [[.515, .109], [.588, .109]], m: [.554, .139], skin: '#f0b890', brow: '#1a1008' } }
 };
 // séparation jambe avant / arrière et pivots de hanche, mesurés une fois sur l'alpha de l'image
 function legInfo(img, S) {
@@ -479,7 +479,8 @@ function drawFace(f, S, dw, dh, st, time) {
 }
 ['goku', 'luffy'].forEach(k => {
   const S = SPR[k];
-  S.img = new Image(); S.img.src = S.src;
+  S.img = new Image(); S.img.src = S.srcRest || S.src;
+  if (S.srcRest) { S.armImg = new Image(); S.armImg.src = S.src; }
   if (S.srcSsj) { S.imgSsj = new Image(); S.imgSsj.src = S.srcSsj; }
 });
 // Découpe du bras de Luffy dans luffy_hd.png (px source) : épaule fixe x>=cut, manche étirable [cut-strip, cut], poing x<cut-strip
@@ -530,7 +531,8 @@ function pickFrame(f, time) {
 
 function drawFighter(f, time) {
   const S = SPR[f.key], R = RIG[f.key];
-  const img = f.key === 'goku' && f.ssj > 0 && ready(S.imgSsj) ? S.imgSsj : S.img;
+  const pistolOut = f.key === 'luffy' && f.anim && f.anim.kind === 'pistol' && f.anim.t >= 10 && ready(S.armImg);
+  const img = f.key === 'goku' && f.ssj > 0 && ready(S.imgSsj) ? S.imgSsj : pistolOut ? S.armImg : S.img;
   if (!ready(img)) return;
   const name = pickFrame(f, time), p = POSES[name] || {};
   const dh = S.h, dw = dh * img.naturalWidth / img.naturalHeight;
@@ -671,7 +673,7 @@ function fistShape(x, y, r, dirx) {
 function drawPistol(f, foe) {
   const a = f.anim;
   if (!a || a.kind !== 'pistol' || a.t < 10) return;
-  const sd = f.dir, t = a.t, sx = f.fistF.x, sy = f.fistF.y, A = f.armA, S = SPR.luffy, img = S.img;
+  const sd = f.dir, t = a.t, sx = f.fistF.x, sy = f.fistF.y, A = f.armA, S = SPR.luffy, img = S.armImg || S.img;
   if (!A || !ready(img)) return;
   // sortie rapide, tenue à l'impact, puis rétractation élastique qui accélère vers le corps
   const out = ease((t - 12) / 12), r = clamp01((t - 34) / 14), ext = out * (1 - r * r * r);
