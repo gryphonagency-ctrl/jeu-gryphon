@@ -105,7 +105,7 @@ const fighters = {
 const other = k => k === 'luffy' ? 'goku' : 'luffy';
 
 let particles = [], rings = [], scorches = [], texts = [], bolts = [], callouts = [];
-let blueFlash = 0, shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
+let ghostMode = false, blueFlash = 0, shake = 0, flash = 0, speed = 1, hitstop = 0, camZoom = 1, camX = W / 2;
 let over = null, overT = 0, teams = {}, dmg = {}, lastWinMsg = '', baseInv = new DOMMatrix();
 let state = JSON.parse(localStorage.getItem(SAVE) || '{"wins":{"luffy":0,"goku":0},"dmg":{}}');
 dmg = state.dmg || {};
@@ -144,8 +144,9 @@ function hit(who, amount, user, big) {
   f.hp = Math.max(0, f.hp - amount);
   f.hurt = 1; f.flash = 1;
   if (f.jy <= 0) f.jv = big ? 11 : 6;
-  shake = Math.min(26, shake + amount * (big ? .9 : 1.1));
-  hitstop = big ? 6 : 3;
+  const air = fighters[other(who)].jy > 20 ? 1.6 : 1;
+  shake = Math.min(32, Math.max(shake, (2 + amount * 1.1) * air));
+  hitstop = Math.max(hitstop, big ? 5 : Math.min(5, 3 + Math.floor(amount / 9)));
   const bx = f.x, by = GROUND - RIG[who].h * .62 - f.jy;
   spark(bx, by, 26, ['#fff6b0', '#ffb300', '#ff6a00'], 11, { g: .18 });
   ring(bx, by, '255,220,120', 12, .8);
@@ -232,7 +233,7 @@ function stepAnim(f, foe, dt) {
         hit(ok, Math.round(a.dmg * mult(fk)), a.user);
         if (knee) { foe.pushV += sd * 6; foe.jv = Math.max(foe.jv, 8); say('BAM !', ix, iy - 40, '#ffd34d', 54, 28); }
         else { foe.pushV += sd * 15; say('BONK !', ix, iy - 40, '#ff9b4d', 56, 28); }
-        ring(ix, iy, '255,230,160', 9, .8); smoke(ix, iy, 3, '200,170,120'); shake = Math.max(shake, knee ? 9 : 13);
+        ring(ix, iy, '255,230,160', 9, .8); smoke(ix, iy, 3, '200,170,120');
         for (let i = 0; i < 8; i++) particles.push({ x: ix, y: iy, vx: rnd(-5, 5) + sd * 2, vy: rnd(-5, 3), alpha: 1, color: '#fff2a0', size: rnd(1.5, 3), decay: .06, add: true, g: .1, streak: true });
       }
     } else if (!a.done && a.t >= a.dur - 4 && !a.miss) { a.miss = 1; say('RATÉ', f.x, 200, '#cccccc', 34, 20); }
@@ -540,9 +541,12 @@ function drawFighter(f, time) {
   const hop = running ? Math.abs(Math.sin(time / 95)) * 9 : name === 'walk' && f.jy <= 3 ? Math.abs(Math.sin(time / 175)) * 3 : 0;
   const breath = name === 'idle' || name === 'guard' ? 1 + .012 * Math.sin(time / 330 + (f.key === 'goku' ? 1.7 : 0)) : 1;
   const base = ctx.getTransform(), inv = base.inverse();
-  ctx.save(); ctx.globalAlpha = .35 * Math.max(.3, 1 - f.jy / 300); ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, (dw * .42) * Math.max(.5, 1 - f.jy / 400), 12, 0, 0, 6.283); ctx.fill(); ctx.restore();
-  ctx.save(); ctx.translate(0, -f.jy); drawAura(f, time); ctx.restore();
+  const shR = Math.max(0, 1 - f.jy / 280);
+  if (!ghostMode && shR > .01) {
+    ctx.save(); ctx.fillStyle = 'rgba(0,0,0,' + (100 / 255 * shR).toFixed(3) + ')';
+    ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, dw * .42 * (.25 + .75 * shR), 12 * (.25 + .75 * shR), 0, 0, 6.283); ctx.fill(); ctx.restore();
+  }
+  if (!ghostMode) { ctx.save(); ctx.translate(0, -f.jy); drawAura(f, time); ctx.restore(); }
   ctx.save();
   if (f.flash > .02) ctx.filter = 'brightness(' + (1 + f.flash * 1.5).toFixed(2) + ') saturate(.85)';
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
@@ -897,11 +901,20 @@ function drawSpeedLines(time) {
   }
 }
 
-let last = 0;
-function frame(time) {
-  let dt = Math.min(3, (time - (last || time)) / 16.67) * speed; last = time;
-  if (hitstop > 0) { hitstop -= 1; dt *= .12; }
+let last = 0, frozenT = 0;
+function frame(rawTime) {
+  let dt = Math.min(3, (rawTime - (last || rawTime)) / 16.67) * speed; last = rawTime;
+  const frozen = hitstop > 0 && speed > 0;
+  if (frozen) { hitstop -= 1; dt = 0; frozenT += Math.min(50, rawTime - (frame.prev || rawTime)); }
+  frame.prev = rawTime;
+  const time = rawTime - frozenT;
   updateAll(dt, time);
+  if (dt > 0) for (const k in fighters) {
+    const f = fighters[k];
+    if (f.px !== undefined && Math.abs(f.x - f.px) / dt > 6) (f.ghosts = f.ghosts || []).push({ x: f.px, jy: f.pjy, a: .32 });
+    f.px = f.x; f.pjy = f.jy;
+    if (f.ghosts) { f.ghosts.forEach(g => g.a -= .09 * dt); f.ghosts = f.ghosts.filter(g => g.a > 0).slice(-3); }
+  }
   for (const k in fighters) fighters[k].hpShown += (fighters[k].hp - fighters[k].hpShown) * Math.min(1, .1 * dt);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
@@ -911,6 +924,15 @@ function frame(time) {
   baseInv = ctx.getTransform().inverse();
   drawBG(dt);
   const order = ['luffy', 'goku'];
+  order.forEach(k => {
+    const f = fighters[k];
+    if (f.ghosts && f.ghosts.length) {
+      const x0 = f.x, y0 = f.jy;
+      ghostMode = true;
+      f.ghosts.forEach(g => { f.x = g.x; f.jy = g.jy; ctx.globalAlpha = g.a; drawFighter(f, time); });
+      ghostMode = false; ctx.globalAlpha = 1; f.x = x0; f.jy = y0;
+    }
+  });
   order.forEach(k => drawFighter(fighters[k], time));
   drawSpeedLines(time);
   drawSmoke();
