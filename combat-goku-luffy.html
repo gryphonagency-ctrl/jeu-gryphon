@@ -436,7 +436,7 @@ function drawFighter(f, time) {
   ctx.save();
   if (f.flash > .02) ctx.filter = 'brightness(' + (1 + f.flash * 1.5).toFixed(2) + ') saturate(.85)';
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.translate(f.x, GROUND - f.jy - hop);
+  ctx.translate(f.x, GROUND - f.jy - hop - (name === 'idle' ? Math.sin(time * .005 + (f.key === 'goku' ? 1.7 : 0)) * 1.5 + 1.5 : 0));
   ctx.scale(f.dir, 1);
   ctx.translate(p.dx || 0, 0);
   ctx.rotate((p.rot || 0) + (running ? .06 * Math.sin(time / 95) : 0));
@@ -444,7 +444,11 @@ function drawFighter(f, time) {
   ctx.save(); ctx.scale(S.native, 1);
   const split = f.key === 'luffy' && f.anim && f.anim.kind === 'pistol' && f.anim.t >= 10;
   // pendant le Pistol, le bras tendu est retiré du corps : il est redessiné par drawPistol (maillage étiré)
-  if (split) { ctx.beginPath(); ctx.rect(-dw / 2 + ARM.cut * dw / img.naturalWidth, -dh * 1.2, dw, dh * 1.5); ctx.clip(); }
+  if (split) {
+    const sc = dh / img.naturalHeight, ax = -dw / 2;
+    ctx.beginPath(); ctx.rect(ax - 40, -dh * 1.3, dw + 80, dh * 1.6);
+    ctx.rect(ax - 40, -dh + ARM.y0 * sc, 40 + ARM.cut * sc, ARM.h * sc); ctx.clip('evenodd');
+  }
   if (split) ctx.drawImage(img, -dw / 2, -dh, dw, dh);
   else {
     // tranches horizontales : cheveux/vêtements ondulent, pieds immobiles
@@ -557,6 +561,20 @@ function drawPistol(f, foe) {
   ctx.drawImage(img, 0, ARM.y0, ARM.cut - ARM.strip, ARM.h, 0, -(ARM.cy - ARM.y0) * k, (ARM.cut - ARM.strip) * k, ARM.h * k);
   ctx.restore();
   ctx.restore();
+  if (L > 20) {
+    // éclairs brisés enveloppant le bras (épaule -> poing), redessinés à chaque frame
+    const lx = ex - A.x, ly = ey - A.y, ld = Math.hypot(lx, ly) || 1, px = -ly / ld, py = lx / ld, seg = Math.max(4, Math.floor(ld / 25));
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
+    for (let b = 0; b < 3; b++) {
+      const pts = [[A.x, A.y]];
+      for (let i = 1; i < seg; i++) { const q = i / seg, o = rnd(-16, 16); pts.push([A.x + lx * q + px * o, A.y + ly * q + py * o]); }
+      pts.push([ex, ey]);
+      for (const [lw, c] of [[5, 'rgba(90,180,255,.55)'], [1.5, '#ffffff']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
   if (a.star > 0) {
     a.star -= .6;
     ctx.save(); ctx.translate(ex + sd * 22, ey); ctx.globalCompositeOperation = 'lighter';
