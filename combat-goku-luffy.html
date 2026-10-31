@@ -49,7 +49,6 @@
   <input id="vol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:100%">
   <h3>Connexion TikTok</h3>
   <input id="user" type="text" placeholder="@pseudo TikTok">
-  <input id="url" type="text" value="wss://jeu6boite.onrender.com">
   <button id="connect" type="button">Connecter</button>
   <div id="live">Hors ligne</div>
   <h3>Simulateur</h3>
@@ -415,8 +414,6 @@ function drawGroundBanner(time) {
   ctx.fillStyle = 'rgba(12,6,34,.88)'; ctx.fillRect(0, y0, W, H - y0 + 20);
   ctx.fillStyle = '#ffb347'; ctx.fillRect(0, y0, W, 3);
   ctx.textAlign = 'center'; ctx.lineJoin = 'round';
-  ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd21a';
-  ctx.fillText('🎁 ' + giftStats.gifts + ' cadeau' + (giftStats.gifts > 1 ? 'x' : '') + '   ·   ⭐ ' + giftStats.stars + ' reçues   ·   Champion : ' + fighters[champion].name + '   ·   Tape 1 / 2 pour choisir ton camp',   W / 2, y0 + 15);
   TIERS.forEach((t, i) => {
     const x = i * cw, hot = tierFlash.i === i && tierFlash.t > 0, p = hot ? .5 + .5 * Math.sin(time / 70) : 0;
       if (hot) { ctx.fillStyle = 'rgba(255,200,60,' + (.25 + .3 * p) + ')'; ctx.fillRect(x + 2, y0 + 20, cw - 4, H - y0 - 20); }
@@ -1465,15 +1462,33 @@ function handleMessage(d) {
     onGift(x.uniqueId || x.username || x.nickname || 'inconnu', x.coinCount ?? ((x.coinValue ?? x.diamondCount ?? x.diamonds ?? 1) * (x.repeatCount || 1)), x.avatarDataUri || x.profilePictureUrl || '', x.giftName || x.name || x.gift_name || '');
   }
 }
-let ws;
+let ws, retry = 0, wantLive = '';
+// le jeu est servi par le serveur Griffon Arcade : le WebSocket est sur la même adresse
+const wsUrl = () => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+function liveConnect() {
+  const live = document.getElementById('live');
+  if (ws) { ws.onclose = null; ws.close(); }
+  try { ws = new WebSocket(wsUrl()); } catch (e) { live.textContent = 'Connexion impossible'; return; }
+  const mine = ws;
+  ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: wantLive })); live.textContent = 'Connexion à @' + wantLive + '…'; };
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'STATUS' && d.message) live.textContent = d.message;
+      handleMessage(d);
+    } catch (err) { }
+  };
+  ws.onclose = () => {
+    if (mine !== ws || !wantLive) return;
+    live.textContent = 'Déconnecté, nouvelle tentative…';
+    setTimeout(() => { if (mine === ws && wantLive) liveConnect(); }, Math.min(15000, 1500 * ++retry));
+  };
+}
 document.getElementById('connect').onclick = () => {
-  const u = document.getElementById('user').value.replace('@', '').trim(), live = document.getElementById('live');
-  if (!u) return;
+  const u = document.getElementById('user').value.replace('@', '').trim();
+  if (!u) { document.getElementById('live').textContent = 'Saisis ton pseudo TikTok'; return; }
   if (!started) pickChampion(champion);
-  try { ws = new WebSocket(document.getElementById('url').value); } catch (e) { live.textContent = 'URL invalide'; return; }
-  ws.onopen = () => { ws.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: u })); live.textContent = 'Connexion à @' + u + '…'; };
-  ws.onmessage = e => { try { handleMessage(JSON.parse(e.data)); } catch (err) { } };
-  ws.onclose = () => { live.textContent = 'Déconnecté'; };
+  wantLive = u; retry = 0; liveConnect();
 };
 document.getElementById('panelBtn').onclick = () => document.getElementById('panel').classList.toggle('hidden');
 document.getElementById('toggleBoard').onclick = () => document.getElementById('board').classList.toggle('hidden');
