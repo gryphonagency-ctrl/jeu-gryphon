@@ -139,6 +139,10 @@ const freeTrialRoutes = new Set([
     '/petits-chevaux-tiktok.html',
     '/jeu-foot-tiktok.html',
     '/super-mario-live.html',
+    '/course-de-billes.html',
+    '/course-de-billes-controle.html',
+    '/flipper-neon.html',
+    '/bouteilles-colorees.html',
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [
