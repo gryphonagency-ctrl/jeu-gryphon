@@ -246,7 +246,7 @@ function stepAnim(f, foe, dt) {
   } else if (a.kind === 'pistol') {
     const t = a.t, sd = f.dir;
     if (t > 8 && !a.said) { a.said = 1; say('PISTOL !', f.x, 200, '#ff6a6a', 60); }
-    a.dist = Math.max(60, Math.abs(foe.x - f.shF.x) - RIG[ok].hb - 30);
+    if (!a.done) a.tgt = foe.x - sd * (RIG[ok].hb + 4);
     if (t >= 24 && !a.done) {
       a.done = true;
       hit(ok, Math.round(a.dmg * mult(fk)), a.user, true);
@@ -384,6 +384,8 @@ const SPR = {
   S.img = new Image(); S.img.src = S.src;
   if (S.srcSsj) { S.imgSsj = new Image(); S.imgSsj.src = S.srcSsj; }
 });
+// Découpe du bras de Luffy dans luffy_hd.png (px source) : épaule fixe x>=cut, manche étirable [cut-strip, cut], poing x<cut-strip
+const ARM = { cut: 150, cy: 158, y0: 100, h: 100, strip: 50, fist0: 17 };
 const CYCLE = { goku: ['idle'], luffy: ['idle'] };
 const RUN = { goku: ['run'], luffy: ['run'] };
 // rot : inclinaison (rad, + = vers l'avant) ; dx : décalage avant (px) ; sy : écrasement vertical
@@ -436,6 +438,9 @@ function drawFighter(f, time) {
   ctx.rotate((p.rot || 0) + (running ? .06 * Math.sin(time / 95) : 0));
   ctx.scale(1, (p.sy || 1) * breath);
   ctx.save(); ctx.scale(S.native, 1);
+  const split = f.key === 'luffy' && f.anim && f.anim.kind === 'pistol' && f.anim.t >= 10;
+  // pendant le Pistol, le bras tendu est retiré du corps : il est redessiné par drawPistol (maillage étiré)
+  if (split) { ctx.beginPath(); ctx.rect(-dw / 2 + ARM.cut * dw / img.naturalWidth, -dh * 1.2, dw, dh * 1.5); ctx.clip(); }
   ctx.drawImage(img, -dw / 2, -dh, dw, dh);
   ctx.restore();
   // points d'ancrage des effets, suivis à travers la pose (poing, torse)
@@ -444,6 +449,7 @@ function drawFighter(f, time) {
     return inv.transformPoint(q);
   };
   const fist = at(S.fist[0], S.fist[1]), chest = at(S.chest[0], S.chest[1]);
+  if (f.key === 'luffy') { f.armA = at(ARM.cut / img.naturalWidth, ARM.cy / img.naturalHeight); f.armK = dh / img.naturalHeight; }
   ctx.restore();
   const hand = f.anim && f.anim.kind === 'kame' ? chest : fist;
   f.fistF = hand; f.fistB = hand; f.shF = hand;
@@ -505,20 +511,39 @@ function fistShape(x, y, r, dirx) {
 function drawPistol(f, foe) {
   const a = f.anim;
   if (!a || a.kind !== 'pistol' || a.t < 10) return;
-  const sd = f.dir, t = a.t, sx = f.fistF.x, sy = f.fistF.y;
-  const ext = ease((t - 12) / 12) * (1 - ease((t - 34) / 18));
-  const L = Math.max(0, a.dist || 300) * ext;
-  if (L < 6) return;
-  const ex = sx + sd * L, ey = sy + (foe.pose && foe.hurt > 0 ? 0 : 0);
+  const sd = f.dir, t = a.t, sx = f.fistF.x, sy = f.fistF.y, A = f.armA, S = SPR.luffy, img = S.img;
+  if (!A || !ready(img)) return;
+  // sortie rapide, tenue à l'impact, puis rétractation élastique qui accélère vers le corps
+  const out = ease((t - 12) / 12), r = clamp01((t - 34) / 14), ext = out * (1 - r * r * r);
+  const L = Math.max(60, ((a.tgt ?? sx + sd * 300) - sx) * sd) * ext;
+  const ex = sx + sd * L, ey = sy;
   ctx.save(); ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
-  for (let i = 0; i < 6; i++) { const yy = sy + rnd(-34, 34), l = rnd(30, 90); ctx.beginPath(); ctx.moveTo(sx + sd * rnd(0, L), yy); ctx.lineTo(sx + sd * rnd(0, L) - sd * l, yy); ctx.stroke(); }
-  const sag = Math.sin(clamp01(L / 400) * Math.PI) * 6;
-  for (const [w, col] of [[34, '#5a2410'], [27, '#e8a070'], [10, '#f6c9a0']]) {
-    ctx.strokeStyle = col; ctx.lineWidth = w;
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo((sx + ex) / 2, sy - sag, ex, ey); ctx.stroke();
+  if (L > 6) {
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) { const yy = sy + rnd(-34, 34), l = rnd(30, 90); ctx.beginPath(); ctx.moveTo(sx + sd * rnd(0, L), yy); ctx.lineTo(sx + sd * rnd(0, L) - sd * l, yy); ctx.stroke(); }
   }
-  fistShape(ex, ey, 30, sd);
+  // maillage : épaule (corps) | manche étirée, tranche par tranche | poing, avec la vraie texture
+  const k = f.armK, dx = ex - A.x, dy = ey - A.y, D = Math.hypot(dx, dy);
+  const fistLen = (ARM.cut - ARM.strip - ARM.fist0) * k, Ls = Math.max(ARM.strip * k * .6, D - fistLen);
+  const tw = ARM.strip * k * 2.2, n = Math.max(1, Math.ceil(Ls / tw)) | 1, tl = Ls / n;
+  const s = Ls / (ARM.strip * k), wk0 = Math.min(1.35, Math.max(.5, Math.pow(s, -.5)));
+  const wave = (6 + 14 * r) * Math.sin(t * .8);
+  ctx.translate(A.x, A.y); ctx.scale(sd, 1); ctx.rotate(Math.atan2(dy, Math.abs(dx)));
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const step = 3;
+  for (let x0 = 0; x0 < Ls; x0 += step) {
+    const x1 = Math.min(Ls, x0 + step), ti = Math.min(n - 1, Math.floor(x0 / tl));
+    let u0 = (x0 - ti * tl) / tl, u1 = (x1 - ti * tl) / tl;
+    if (ti % 2) { u0 = 1 - u0; u1 = 1 - u1; }
+    const sa = ARM.cut - ARM.strip * u0, sb = ARM.cut - ARM.strip * u1;
+    const m = Math.sin(Math.PI * (x0 + x1) / 2 / Ls), wk = 1 + (wk0 - 1) * Math.sqrt(m);
+    const oy = wave * m;
+    ctx.drawImage(img, Math.min(sa, sb), ARM.y0, Math.max(.8, Math.abs(sb - sa)), ARM.h, x0, oy - (ARM.cy - ARM.y0) * k * wk, x1 - x0 + .8, ARM.h * k * wk);
+  }
+  ctx.save(); ctx.translate(Ls + (ARM.cut - ARM.strip) * k, 0); ctx.scale(-1, 1);
+  ctx.drawImage(img, 0, ARM.y0, ARM.cut - ARM.strip, ARM.h, 0, -(ARM.cy - ARM.y0) * k, (ARM.cut - ARM.strip) * k, ARM.h * k);
+  ctx.restore();
+  ctx.restore();
   if (a.star > 0) {
     a.star -= .6;
     ctx.save(); ctx.translate(ex + sd * 22, ey); ctx.globalCompositeOperation = 'lighter';
