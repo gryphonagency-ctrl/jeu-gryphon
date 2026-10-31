@@ -18,7 +18,17 @@
   #panel button { margin: 2px 2px 2px 0; padding: 6px 9px; border: 0; border-radius: 6px; background: #3b2a80; color: #fff; cursor: pointer; }
   #panel input[type=text] { width: 100%; box-sizing: border-box; padding: 5px; margin-bottom: 4px; }
   #live { color: #9fe; margin-top: 4px; }
-  #board { position: fixed; left: 8px; bottom: 8px; z-index: 20; background: rgba(15,8,40,.8); border: 1px solid #ff7a00; border-radius: 10px; padding: 8px 10px; min-width: 190px; font-size: 13px; }
+  #title { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: radial-gradient(circle at 50% 40%, rgba(60,20,110,.92), rgba(8,4,24,.97)); text-align: center; }
+  #title h1 { margin: 0; font-size: 44px; letter-spacing: 2px; color: #ffd21a; text-shadow: 0 0 18px #ff7a00; }
+  #title p { margin: 0; color: #cfc4ff; font-size: 18px; }
+  #title .cards { display: flex; gap: 28px; }
+  #title .card { width: 230px; padding: 14px; border: 3px solid #ff7a00; border-radius: 16px; background: rgba(20,10,50,.85); cursor: pointer; transition: transform .15s, box-shadow .15s; }
+  #title .card:hover { transform: scale(1.06); box-shadow: 0 0 28px #ff7a00; }
+  #title .card img { height: 220px; object-fit: contain; }
+  #title .card b { display: block; margin-top: 6px; font-size: 22px; }
+  #title .card kbd { display: inline-block; min-width: 30px; padding: 2px 8px; margin-right: 6px; border-radius: 6px; background: #ffd21a; color: #000; font-weight: 900; }
+  #title.hidden { display: none; }
+  #board { position: fixed; left: 8px; bottom: 130px; z-index: 20; background: rgba(15,8,40,.8); border: 1px solid #ff7a00; border-radius: 10px; padding: 8px 10px; min-width: 190px; font-size: 13px; }
   #board h4 { margin: 0 0 4px; color: #ffb25e; }
   #board div { display: flex; justify-content: space-between; gap: 10px; }
 </style>
@@ -46,11 +56,29 @@
   <button data-sim="10:goku" type="button">🔵 Kamehameha</button>
   <button data-sim="50:goku" type="button">⚡ Super Saiyan</button>
   <button data-sim="50:luffy" type="button">🔥 Gear 5</button>
+  <button data-sim="2:luffy" type="button">🦵 Pied Luffy</button>
+  <button data-sim="2:goku" type="button">🦵 Pied Goku</button>
+  <button data-fx="ice" type="button">🧊 Glace</button>
+  <button data-fx="lightning" type="button">⚡ Foudre</button>
+  <button data-fx="meteor" type="button">☄️ Météores</button>
+  <button data-fx="heal" type="button">💚 Soin</button>
+  <button data-fx="wind" type="button">🌪 Rafale</button>
+  <button data-fx="petals" type="button">🌹 Pétales</button>
   <button id="simBig" type="button">💎 Gros cadeau</button>
   <button id="simShare" type="button">✈️ Partage</button>
   <h3>Classement</h3>
   <button id="toggleBoard" type="button">Afficher / masquer</button>
   <p style="margin:6px 0 0;color:#bbb">Chat : « 1 » = équipe Luffy, « 2 » = équipe Goku. Les étoiles ne sont jamais créditées en simulation.</p>
+</div>
+<div id="title">
+  <h1>DUEL : LUFFY vs GOKU</h1>
+  <p>Choisis ton combattant avec la touche <b>1</b> ou <b>2</b> (ou clique)</p>
+  <div class="cards">
+    <div class="card" data-pick="luffy"><img src="/luffy_hd.png" alt=""><b><kbd>1</kbd>LUFFY</b></div>
+    <div class="card" data-pick="goku"><img src="/goku_hd.png" alt=""><b><kbd>2</kbd>GOKU</b></div>
+  </div>
+  <p>⭐ 1 = poing · ⭐⭐ 2 = coup de pied · ⭐ 10 = Kamehameha / bras caoutchouc · tous les cadeaux déclenchent un effet</p>
+  <p style="font-size:14px;color:#9a8fd0">Clavier : J = poing · K = coup de pied · L = attaque spéciale · 1 / 2 = changer de champion</p>
 </div>
 <div id="board"><h4>🏆 Meilleurs dégâts</h4><span id="boardRows"></span></div>
 
@@ -163,9 +191,13 @@ function bolt(x1, y1, x2, y2, col, w = 2, seg = 9) {
 function hit(who, amount, user, big) {
   const f = fighters[who];
   if (over) return;
+  if (f.frozen > 0) {
+    f.frozen = 0; amount = Math.round(amount * 1.5);
+    spark(f.x, GROUND - RIG[who].h * .5, 40, ['#fff', '#bfeaff', '#7ac4ff'], 13, { g: .3 }); ring(f.x, GROUND - 100, '190,230,255', 14, .8); sfx('ice');
+  }
   f.hp = Math.max(0, f.hp - amount);
   f.hurt = 1; f.flash = 1;
-  if (big) whiteFrames = 1;
+  if (big) { whiteFrames = 1; const cr = [[f.x, GROUND + 8]]; for (let i = 1; i < 7; i++) cr.push([f.x + rnd(-110, 110) * i / 3, GROUND + 8 + rnd(-6, 12)]); scorches.push({ x: f.x, w: 0, a: .6, cr }); if (scorches.length > 14) scorches.shift(); }
   if (combo.who === who && combo.t > 0) combo.n++; else combo.n = 1;
   combo.who = who; combo.t = 120; combo.s = 1.5;
   if (f.jy <= 0) f.jv = big ? 11 : 6;
@@ -195,31 +227,177 @@ function endMatch(winner) {
   save();
 }
 function newMatch() {
-  for (const k in fighters) { const f = fighters[k]; f.hp = f.hpShown = 100; f.ssj = f.rage = 0; f.anim = null; f.todo = []; f.push = f.pushV = 0; f.pushTarget = null; f.hurt = 0; f.sx = f.x = f.home; f.vx = f.jy = f.jv = 0; }
-  over = null; dmg = {}; scorches = []; save(); renderBoard();
+  for (const k in fighters) { const f = fighters[k]; f.hp = f.hpShown = 100; f.ssj = f.rage = 0; f.anim = null; f.todo = []; f.push = f.pushV = 0; f.frozen = 0; f.pushTarget = null; f.hurt = 0; f.sx = f.x = f.home; f.vx = f.jy = f.jv = 0; }
+  over = null; dmg = {}; scorches = []; meteors = []; save(); renderBoard();
 }
+
+const STAR_COST = { punch: 1, kick: 2, special: 10 };
+let started = false, champion = 'luffy', fxCool = 0, giftStats = { gifts: 0, stars: 0 }, meteors = [], motes = [];
 
 function act(who, coins, user, avatar, giftName) {
   if (over) return;
   const fh = /finger\s*heart|doigt.*c[oœ]ur/i.test(giftName || '');
   if (fh) who = 'goku';
+  giftStats.gifts++; giftStats.stars += Math.max(1, coins | 0);
   callout(who, user, avatar);
+  worldFx(who, coins, giftName, user);
   const f = fighters[who];
   if (f.todo.length > 6) return;
+  const special = who === 'goku' ? 'kame' : 'pistol';
   if (fh) f.todo.push({ kind: 'kame', user, dmg: 22 });
-  else if (coins >= 50) f.todo.push({ kind: 'transform', user });
-  else if (coins >= 10) f.todo.push({ kind: who === 'goku' ? 'kame' : 'pistol', user, dmg: 22 });
-  else if (coins >= 5) {
-    f.todo.push({ kind: 'punch', hand: 'F', dmg: 4, dur: 17, user });
-    f.todo.push({ kind: 'knee', dmg: 5, dur: 38, hitT: 16, user });
-    f.todo.push({ kind: 'headbutt', dmg: 7, dur: 40, hitT: 18, user });
-  } else {
-    // petits cadeaux : poing, genou, tête en rotation
-    const m = (f.combo = (f.combo || 0) + 1) % 3;
-    if (m === 1) f.todo.push({ kind: 'punch', hand: 'F', dmg: 6, dur: 23, user });
-    else if (m === 2) f.todo.push({ kind: 'knee', dmg: 7, dur: 38, hitT: 16, user });
-    else f.todo.push({ kind: 'headbutt', dmg: 9, dur: 40, hitT: 18, user });
+  else if (coins >= 50) { f.todo.push({ kind: 'transform', user }); f.todo.push({ kind: special, user, dmg: 22 }); }
+  else if (coins >= STAR_COST.special) f.todo.push({ kind: special, user, dmg: 22 });
+  else {
+    let kicks = Math.floor(coins / STAR_COST.kick), punches = coins % STAR_COST.kick;
+    kicks = Math.min(kicks, 4);
+    for (let i = 0; i < kicks; i++) f.todo.push({ kind: 'knee', dmg: 7, dur: 38, hitT: 16, user });
+    if (punches || !kicks) f.todo.push({ kind: 'punch', hand: 'F', dmg: 6, dur: 23, user });
   }
+}
+
+/* ---------- Interactions : chaque cadeau agit sur le décor ou sur les combattants ---------- */
+let audio = null;
+function sfx(kind) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime, dur = kind === 'thunder' ? 1.1 : kind === 'ice' ? .5 : .35;
+    const buf = audio.createBuffer(1, Math.floor(audio.sampleRate * dur), audio.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, kind === 'thunder' ? 1.6 : 3);
+    const src = audio.createBufferSource(), flt = audio.createBiquadFilter(), g = audio.createGain();
+    src.buffer = buf; flt.type = kind === 'ice' ? 'highpass' : 'lowpass'; flt.frequency.value = kind === 'ice' ? 3500 : kind === 'wind' ? 900 : 380;
+    g.gain.value = kind === 'thunder' ? .7 : .45;
+    src.connect(flt); flt.connect(g); g.connect(audio.destination); src.start(t);
+  } catch (e) { }
+}
+const FX_RULES = [
+  ['ice', /ice|glace|froz|neige|snow|cold|frozen|givre/i], ['lightning', /thunder|foudre|lightning|bolt|[ée]clair|zap/i],
+  ['meteor', /meteor|rocket|fus[ée]e|galaxy|planet|univers|lion|dragon|comet|fire|feu/i], ['heal', /heart|c[oœ]ur|love|hug|kiss|bisou|amour/i],
+  ['wind', /wind|fan|vent|tornado|storm|tempête|swan|cygne/i], ['petals', /rose|flower|fleur|tulip|bouquet|lotus/i]
+];
+const FX_FALLBACK = ['lightning', 'wind', 'petals', 'heal', 'ice'];
+function worldFx(who, coins, name, user, forced) {
+  let kind = forced;
+  if (!kind) {
+    const r = FX_RULES.find(([, re]) => re.test(name || ''));
+    if (r) kind = r[0];
+    else if (coins >= 100) kind = 'meteor';
+    else { let h = 0; for (const ch of String(name || coins)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; kind = FX_FALLBACK[h % FX_FALLBACK.length]; }
+  }
+  const heavy = ['ice', 'lightning', 'meteor'].includes(kind);
+  if (heavy && fxCool > 0 && !forced) kind = 'petals';
+  const f = fighters[who], foe = fighters[other(who)], hh = RIG[foe.key].h;
+  if (kind === 'ice') {
+    foe.frozen = 190; foe.anim = null; foe.todo = [];
+    say('GELÉ !', foe.x, 220, '#9be3ff', 52, 40); sfx('ice'); fxCool = 90;
+    for (let i = 0; i < 18; i++) smoke(foe.x + rnd(-60, 60), GROUND - rnd(0, 40), 1, '190,230,255');
+  } else if (kind === 'lightning') {
+    const dmg = Math.round(Math.min(14, 4 + coins * .35)), tx = foe.x + rnd(-20, 20), ty = GROUND - foe.jy - hh * .5;
+    for (let i = 0; i < 3; i++) bolt(tx + rnd(-40, 40) * i, 0, tx + rnd(-10, 10), ty, i ? '#9fd0ff' : '#fff', i ? 2 : 5, 14);
+    flash = .9; shake = Math.max(shake, 14); sfx('thunder'); fxCool = 90;
+    spark(tx, ty, 30, ['#fff', '#aee0ff', '#7ab8ff'], 12); ring(tx, GROUND, '170,220,255', 16, .8); smoke(tx, GROUND - 6, 6, '70,70,80');
+    scorches.push({ x: tx, w: 55, a: .55 });
+    hit(other(who), dmg, user, false);
+  } else if (kind === 'meteor') {
+    const n = Math.min(9, 3 + Math.floor(coins / 40));
+    for (let i = 0; i < n; i++) meteors.push({ x: foe.x + rnd(-260, 260), y: -80 - i * 70, vx: -5, vy: rnd(17, 24), tx: 0, who: other(who), user, r: rnd(14, 26), dmg: 3 + Math.round(coins / 60) });
+    say('MÉTÉORES !', W / 2 + camX, 240, '#ffb347', 56, 45); fxCool = 120;
+  } else if (kind === 'heal') {
+    const n = Math.round(Math.min(15, 4 + coins * .15)), hb = RIG[who].hb;
+    f.hp = Math.min(100, f.hp + n);
+    for (let i = 0; i < 26; i++) particles.push({ x: f.x + rnd(-hb, hb), y: GROUND - f.jy - rnd(0, 200), vx: rnd(-.4, .4), vy: -rnd(1, 3), alpha: 1, color: i % 2 ? '#7dff9b' : '#fff59d', size: rnd(2, 4), decay: .02, add: true, g: -.01, w: rnd(0, 6) });
+    say('+' + n + ' PV', f.x, GROUND - 330, '#7dff9b', 44, 36);
+  } else if (kind === 'wind') {
+    const dir = Math.random() < .5 ? 1 : -1;
+    for (let i = 0; i < 46; i++) particles.push({ x: camX + (dir > 0 ? -40 : W + 40), y: GROUND - rnd(0, 120), vx: dir * rnd(9, 18), vy: rnd(-1.5, .3), alpha: .6, color: '190,160,120', size: rnd(10, 26), decay: .012, add: false, g: 0, grow: .3, smoke: true });
+    foe.pushV += dir * 5; f.pushV += dir * 5; sfx('wind'); say('RAFALE', W / 2 + camX, 240, '#e8d7b0', 44, 34);
+  } else if (kind === 'petals') {
+    for (let i = 0; i < 40; i++) particles.push({ x: camX + rnd(0, W), y: rnd(-60, 120), vx: rnd(-1, 2), vy: rnd(1, 2.6), alpha: 1, color: i % 3 ? '#ff8fb3' : '#ffd1e0', size: rnd(2.5, 5), decay: .004, add: true, g: .005, w: rnd(0, 6) });
+  }
+}
+
+function stepMeteors(dt) {
+  for (const m of meteors) {
+    m.x += m.vx * dt; m.y += m.vy * dt;
+    particles.push({ x: m.x + rnd(-4, 4), y: m.y - rnd(0, 14), vx: -m.vx * .08, vy: -m.vy * .08, alpha: .8, color: Math.random() < .5 ? '#ffb347' : '#ff5a1f', size: m.r * .5, decay: .08, add: true, g: 0 });
+    if (m.y >= GROUND - 6) {
+      m.dead = true;
+      spark(m.x, GROUND - 10, 24, ['#fff6b0', '#ff9a1a', '#ff5a1f'], 13, { angle: -1.57, spread: 2.4, g: .25 });
+      ring(m.x, GROUND, '255,170,70', 15, .8); smoke(m.x, GROUND - 8, 5, '60,40,30'); shake = Math.max(shake, 10); sfx('thunder');
+      scorches.push({ x: m.x, w: 45, a: .5 }); if (scorches.length > 14) scorches.shift();
+      const foe = fighters[m.who];
+      if (Math.abs(foe.x - m.x) < 80 && foe.jy < 70) { hit(m.who, m.dmg, m.user, false); foe.pushV += Math.sign(foe.x - m.x || 1) * 8; }
+    }
+  }
+  meteors = meteors.filter(m => !m.dead);
+}
+function drawMeteors() {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const m of meteors) {
+    const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 2.4);
+    g.addColorStop(0, 'rgba(255,255,230,1)'); g.addColorStop(.35, 'rgba(255,170,60,.85)'); g.addColorStop(1, 'rgba(255,80,20,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(m.x, m.y, m.r * 2.4, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,140,50,.5)'; ctx.lineWidth = m.r * .9; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * 7, m.y - m.vy * 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawIce(f, time) {
+  if (!(f.frozen > 0)) return;
+  const hb = RIG[f.key].hb * 1.75, h = RIG[f.key].h, top = GROUND - f.jy - h * 1.03, bot = GROUND - f.jy + 6, a = Math.min(1, f.frozen / 30);
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.beginPath(); ctx.moveTo(f.x - hb, bot); ctx.lineTo(f.x - hb * 1.05, top + 50); ctx.lineTo(f.x - hb * .6, top); ctx.lineTo(f.x + hb * .6, top + 8); ctx.lineTo(f.x + hb * 1.05, top + 60); ctx.lineTo(f.x + hb, bot); ctx.closePath();
+  const g = ctx.createLinearGradient(f.x - hb, top, f.x + hb, bot);
+  g.addColorStop(0, 'rgba(200,240,255,.55)'); g.addColorStop(.5, 'rgba(120,190,255,.32)'); g.addColorStop(1, 'rgba(90,150,240,.5)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(235,250,255,.9)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.55)';
+  ctx.beginPath(); ctx.moveTo(f.x - hb * .7, top + 40); ctx.lineTo(f.x - hb * .45, top + h * .5); ctx.moveTo(f.x + hb * .3, top + 30); ctx.lineTo(f.x + hb * .7, top + h * .35); ctx.stroke();
+  ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,255,255,' + (.5 + .4 * Math.sin(time / 120)) + ')';
+  ctx.beginPath(); ctx.arc(f.x - hb * .5, top + 70, 5, 0, 6.283); ctx.arc(f.x + hb * .55, top + h * .6, 4, 0, 6.283); ctx.fill();
+  ctx.restore();
+}
+function drawRealism(time) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const k in fighters) {
+    const f = fighters[k], a = f.anim;
+    if (!a || a.kind !== 'kame') continue;
+    const firing = a.t >= 75, cx = f.x + f.dir * (firing ? 260 : 40), cy = GROUND - 190, r = firing ? 520 : 200, p = .22 + .06 * Math.sin(time / 40);
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+    g.addColorStop(0, 'rgba(150,210,255,' + p + ')'); g.addColorStop(1, 'rgba(40,110,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
+  ctx.fillStyle = 'rgba(255,230,200,.5)';
+  for (const m of motes) { ctx.globalAlpha = .25 + .2 * Math.sin(time / 700 + m.p); ctx.beginPath(); ctx.arc(m.x + camX * m.z, m.y, m.s, 0, 6.283); ctx.fill(); }
+  ctx.restore();
+}
+function stepMotes(dt) {
+  if (!motes.length) for (let i = 0; i < 55; i++) motes.push({ x: rnd(-300, W + 300), y: rnd(80, GROUND), s: rnd(.8, 2.2), z: rnd(-.1, .25), p: rnd(0, 6), vx: rnd(.1, .5), vy: rnd(-.25, .05) });
+  for (const m of motes) { m.x += m.vx * dt; m.y += m.vy * dt; if (m.x > W + 300) m.x = -300; if (m.y < 60) m.y = GROUND; }
+}
+let grainPat = null;
+function drawGrade() {
+  if (!grainPat) {
+    const n = document.createElement('canvas'); n.width = n.height = 192; const c = n.getContext('2d'), im = c.createImageData(192, 192);
+    for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    c.putImageData(im, 0, 0); grainPat = ctx.createPattern(n, 'repeat');
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = .35;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#ffb37a'); g.addColorStop(.6, '#7a6aa8'); g.addColorStop(1, '#2a3a6a');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = .07; ctx.globalCompositeOperation = 'overlay'; ctx.translate(Math.floor(rnd(0, 192)), Math.floor(rnd(0, 192)));
+  ctx.fillStyle = grainPat; ctx.fillRect(-192, -192, W + 192, H + 192);
+  ctx.restore();
+}
+function drawGiftBanner() {
+  const y = H - 46;
+  ctx.save(); ctx.fillStyle = 'rgba(8,4,26,.88)'; ctx.fillRect(0, y, W, 46);
+  ctx.fillStyle = '#ffb347'; ctx.fillRect(0, y, W, 2);
+  ctx.textAlign = 'center'; ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#fff';
+  ctx.fillText('⭐ 1 = Poing   ·   ⭐⭐ 2 = Coup de pied   ·   ⭐ 10 = Kamehameha (Goku)   ·   ⭐ 10 = Bras caoutchouc (Luffy)', W / 2, y + 19);
+  ctx.font = '13px Arial'; ctx.fillStyle = '#ffd21a';
+  ctx.fillText('🎁 ' + giftStats.gifts + ' cadeau' + (giftStats.gifts > 1 ? 'x' : '') + '  ·  ⭐ ' + giftStats.stars + ' reçues   |   Champion : ' + fighters[champion].name + '   |   Tape 1 / 2 dans le chat pour choisir ton camp', W / 2, y + 38);
+  ctx.restore();
 }
 
 function startAnim(f, job) {
@@ -903,7 +1081,11 @@ function drawBG(dt) {
   ctx.restore();
   ctx.drawImage(bg_distant, camX * (1 - PAR_FAR) - 120, 0);
   ctx.drawImage(stage_floor, EDGE_L - 120, 0);
-  for (const s of scorches) { ctx.fillStyle = 'rgba(0,0,0,' + s.a + ')'; ctx.beginPath(); ctx.ellipse(s.x, GROUND + 10, s.w, 10, 0, 0, 6.283); ctx.fill(); s.a = Math.max(0, s.a - .0004 * dt); }
+  for (const s of scorches) {
+    if (s.cr) { ctx.strokeStyle = 'rgba(15,8,5,' + Math.min(.8, s.a * 1.4) + ')'; ctx.lineWidth = 2.5; ctx.beginPath(); s.cr.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+    else { ctx.fillStyle = 'rgba(0,0,0,' + s.a + ')'; ctx.beginPath(); ctx.ellipse(s.x, GROUND + 10, s.w, 10, 0, 0, 6.283); ctx.fill(); }
+    s.a = Math.max(0, s.a - .0004 * dt);
+  }
   scorches = scorches.filter(s => s.a > 0);
 }
 
@@ -913,12 +1095,15 @@ function updateAll(dt, time) {
     const f = fighters[k], foe = fighters[other(k)];
     f.hurt = Math.max(0, f.hurt - .035 * dt); f.flash = Math.max(0, f.flash - .09 * dt);
     if (!over) {
-      if (!f.anim && f.todo.length) startAnim(f, f.todo.shift());
-      if (f.anim) stepAnim(f, foe, dt);
+      if (f.frozen > 0) { f.frozen -= dt; f.wander = 0; f.vx *= .8; if (Math.random() < .3 * dt) smoke(f.x + rnd(-50, 50), GROUND - rnd(0, 30), 1, '190,230,255'); }
+      else {
+        if (!f.anim && f.todo.length) startAnim(f, f.todo.shift());
+        if (f.anim) stepAnim(f, foe, dt);
+      }
     } else f.anim = null;
     const target = computePose(f, foe, time), kk = 1 - Math.pow(.5, dt);
     // vie au repos : petits pas de patrouille et sauts occasionnels (machine d'états WALK / JUMP)
-    if (!over && !f.anim && !f.todo.length) {
+    if (!over && !f.anim && !f.todo.length && !(f.frozen > 0)) {
       f.wanderT = (f.wanderT ?? rnd(40, 120)) - dt;
       if (f.wanderT <= 0) {
         f.wanderT = rnd(70, 170); f.wander = Math.random() < .3 ? 0 : rnd(-70, 70);
@@ -974,7 +1159,8 @@ function updateAll(dt, time) {
   texts = texts.filter(t => t.a > 0);
   callouts.forEach(c => { c.a -= dt * .006; });
   while (callouts.length && callouts[0].a <= 0) callouts.shift();
-  shake *= Math.pow(.9, dt); flash *= Math.pow(.9, dt);
+  shake *= Math.pow(.9, dt); flash *= Math.pow(.9, dt); fxCool = Math.max(0, fxCool - dt);
+  stepMeteors(dt); stepMotes(dt);
   if (combo.t > 0) { combo.t -= dt; combo.s = Math.max(1, combo.s - .05 * dt); } else combo.n = 0;
   const kame = ['luffy', 'goku'].some(k => fighters[k].anim && fighters[k].anim.kind === 'kame' && fighters[k].anim.t > 75);
   camZoom += ((kame ? 1.08 : 1) - camZoom) * .05 * dt;
@@ -1060,12 +1246,12 @@ function drawSpeedLines(time) {
 
 let last = 0, frozenT = 0;
 function frame(rawTime) {
-  let dt = Math.min(3, (rawTime - (last || rawTime)) / 16.67) * speed; last = rawTime;
+  let dt = Math.min(3, (rawTime - (last || rawTime)) / 16.67) * (started ? speed : 0); last = rawTime;
   const frozen = hitstop > 0 && speed > 0;
   if (frozen) { hitstop -= 1; dt = 0; frozenT += Math.min(50, rawTime - (frame.prev || rawTime)); }
   frame.prev = rawTime;
   const time = rawTime - frozenT;
-  updateAll(dt, time);
+  if (started) updateAll(dt, time);
   if (dt > 0) for (const k in fighters) {
     const f = fighters[k];
     if (f.px !== undefined && Math.abs(f.x - f.px) / dt > 6) (f.ghosts = f.ghosts || []).push({ x: f.px, jy: f.pjy, a: .32 });
@@ -1093,9 +1279,11 @@ function frame(rawTime) {
     }
   });
   order.forEach(k => drawFighter(fighters[k], time));
+  order.forEach(k => drawIce(fighters[k], time));
   ctx.save(); ctx.translate(camX, 0); drawSpeedLines(time); ctx.restore();
   drawSmoke();
   order.forEach(k => { drawKame(fighters[k], fighters[other(k)], time); drawPistol(fighters[k], fighters[other(k)]); });
+  drawMeteors(); drawRealism(time);
   drawFX();
   texts.forEach(t => {
     const pop = t.life ? 1 + Math.max(0, 1 - t.age / 6) * .9 : 1;
@@ -1106,12 +1294,13 @@ function frame(rawTime) {
   });
   ctx.globalAlpha = 1;
   ctx.restore();
+  drawGrade();
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .95);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   if (blueFlash > .03) { const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * .75); g.addColorStop(0, 'rgba(255,255,255,' + blueFlash * .5 + ')'); g.addColorStop(1, 'rgba(60,150,255,' + blueFlash * .45 + ')'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); blueFlash *= .9; }
   if (flash > .05) { ctx.fillStyle = 'rgba(255,255,255,' + flash * .4 + ')'; ctx.fillRect(0, 0, W, H); }
-  drawBars(); drawCallouts(); drawCombo(time);
+  drawBars(); drawCallouts(); drawCombo(time); drawGiftBanner();
   if (whiteFrames > 0) { whiteFrames--; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
   if (over) {
     ctx.fillStyle = '#000a'; ctx.fillRect(0, 260, W, 150);
@@ -1131,9 +1320,25 @@ function callout(who, user, avatar) {
   if (callouts.length > 4) callouts.shift();
 }
 function teamOf(user) {
-  if (!teams[user]) teams[user] = Math.random() < .5 ? 'luffy' : 'goku';
+  if (!teams[user]) teams[user] = Math.random() < .65 ? champion : other(champion);
   return teams[user];
 }
+function pickChampion(k) {
+  champion = k; started = true; last = 0;
+  document.getElementById('title').classList.add('hidden');
+  say('TON CHAMPION : ' + fighters[k].name, fighters[k].x, 200, '#ffd21a', 40, 70);
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) { }
+}
+document.querySelectorAll('[data-pick]').forEach(c => c.onclick = () => pickChampion(c.dataset.pick));
+addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  const k = e.key.toLowerCase();
+  if (k === '1' || k === '2') { pickChampion(k === '1' ? 'luffy' : 'goku'); return; }
+  if (!started) return;
+  const coins = { j: STAR_COST.punch, k: STAR_COST.kick, l: STAR_COST.special }[k];
+  if (coins) { teams.sim_test = champion; act(champion, coins, 'sim_test'); }
+});
+document.querySelectorAll('[data-fx]').forEach(b => b.onclick = () => { if (!started) pickChampion(champion); worldFx(champion, 20, '', 'sim_test', b.dataset.fx); });
 function onGift(user, coins, avatar, giftName) { act(teamOf(user), coins, user, avatar, giftName); }
 function renderBoard() {
   const rows = Object.entries(dmg).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -1152,6 +1357,7 @@ let ws;
 document.getElementById('connect').onclick = () => {
   const u = document.getElementById('user').value.replace('@', '').trim(), live = document.getElementById('live');
   if (!u) return;
+  if (!started) pickChampion(champion);
   try { ws = new WebSocket(document.getElementById('url').value); } catch (e) { live.textContent = 'URL invalide'; return; }
   ws.onopen = () => { ws.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: u })); live.textContent = 'Connexion à @' + u + '…'; };
   ws.onmessage = e => { try { handleMessage(JSON.parse(e.data)); } catch (err) { } };
@@ -1164,7 +1370,7 @@ document.getElementById('reset').onclick = newMatch;
 document.querySelectorAll('[data-sim]').forEach(b => b.onclick = () => { const [c, w] = b.dataset.sim.split(':'); teams.sim_test = w; act(w, +c, 'sim_test'); });
 document.getElementById('simBig').onclick = () => ArcadeEffects.simulateBigGift('Alex_TikTok', 100);
 document.getElementById('simShare').onclick = () => ArcadeEffects.simulateShare();
-window.DuelAPI = { act, onGift, newMatch, fighters };
+window.DuelAPI = { act, onGift, newMatch, fighters, worldFx, pickChampion, giftStats };
 renderBoard();
 requestAnimationFrame(frame);
 </script>
