@@ -656,16 +656,18 @@ function drawFighter(f, time) {
     const imgSpace = fn => { ctx.save(); ctx.translate(-dw / 2, -dh); ctx.scale(sc, sc); fn(); ctx.restore(); };
     const statics = S.statics || [];
     const polyPath = () => statics.forEach(poly => { ctx.moveTo(poly[0][0], poly[0][1]); poly.forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); });
-    const noSash = fn => {
-      if (!statics.length) return fn();
-      ctx.save(); ctx.translate(-dw / 2, -dh); ctx.scale(sc, sc);
-      ctx.beginPath(); ctx.rect(-50, -50, W + 100, H + 100); polyPath(); ctx.clip('evenodd');
-      ctx.scale(1 / sc, 1 / sc); ctx.translate(dw / 2, dh); fn(); ctx.restore();
+    // exclut écharpe/poings de la jambe dans l'espace de l'image source : le masque pivote avec la jambe au lieu de la rogner
+    const clipSrc = (ox, oy) => {
+      if (!statics.length) return;
+      ctx.beginPath(); ctx.rect(-4000, -4000, 8000, 8000);
+      statics.forEach(poly => { poly.forEach((p, i) => ctx[i ? 'lineTo' : 'moveTo']((p[0] - ox) * sc, (p[1] - oy) * sc)); ctx.closePath(); });
+      ctx.clip('evenodd');
     };
-    const leg = (h, rot, air) => noSash(() => {
+    const leg = (h, rot, air) => {
       ctx.save(); ctx.translate(-dw / 2 + h[2] * sc, -dh + hipY * sc + (air ? 0 : (H - hipY) * sc * (1 - Math.cos(rot)))); ctx.rotate(rot);
+      clipSrc(h[2], hipY);
       ctx.drawImage(img, h[0], r0, h[1] - h[0], H - r0, (h[0] - h[2]) * sc, (r0 - hipY) * sc, (h[1] - h[0]) * sc, (H - r0) * sc); ctx.restore();
-    });
+    };
     // comble l'entrejambe : le pantalon statique entre les deux hanches reste visible quand les jambes s'écartent
     imgSpace(() => {
       ctx.beginPath(); ctx.moveTo(info.pivL, r0); ctx.lineTo(info.pivR, r0); ctx.lineTo(info.split, info.crotch); ctx.closePath(); ctx.clip();
@@ -677,13 +679,14 @@ function drawFighter(f, time) {
       if (aK <= .05) leg(fh, fr(th), false);
       else {
         const ky = S.knee * H;
-        noSash(() => {
         ctx.save(); ctx.translate(-dw / 2 + fh[2] * sc, -dh + hipY * sc); ctx.rotate(fr(th));
+        ctx.save(); clipSrc(fh[2], hipY);
         ctx.drawImage(img, fh[0], r0, fh[1] - fh[0], ky - r0, (fh[0] - fh[2]) * sc, (r0 - hipY) * sc, (fh[1] - fh[0]) * sc, (ky - r0) * sc);
+        ctx.restore();
         ctx.translate(0, (ky - hipY) * sc); ctx.rotate(fr(.4 * aK) - fr(th));
+        clipSrc(fh[2], ky);
         ctx.drawImage(img, fh[0], ky, fh[1] - fh[0], H - ky, (fh[0] - fh[2]) * sc, 0, (fh[1] - fh[0]) * sc, (H - ky) * sc);
         ctx.restore();
-        });
       }
     } else if (legJ) { leg(bh, fr(-.4), true); leg(fh, fr(.55), true); }
     else {
