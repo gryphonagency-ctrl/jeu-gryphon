@@ -2296,6 +2296,9 @@ const server = http.createServer((req, res) => {
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
     ]);
     let route = routes.get(pathname);
+    if (!route && /^\/sequences\/[\w-]+\.(png|json)$/.test(pathname)) {
+        route = [path.join(__dirname, pathname), pathname.endsWith('.json') ? 'application/json; charset=utf-8' : 'image/png'];
+    }
     const giftImageMatch = /^\/images-vitrine\/petit-trot-cadeaux\/([a-z0-9-]+\.png)$/.exec(pathname);
     if (!route && giftImageMatch) {
         route = [path.join(__dirname, 'images-vitrine', 'petit-trot-cadeaux', giftImageMatch[1]), 'image/png'];

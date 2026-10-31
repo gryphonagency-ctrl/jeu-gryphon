@@ -61,6 +61,28 @@ const SAVE = 'combat-goku-luffy-save';
 const IMG = {};
 const ready = i => i.complete && i.naturalWidth;
 
+/* ---------- Séquences image par image (flipbook 24 i/s) ----------
+   Dépose des PNG transparents dans /sequences/ : <perso>_<action>_<NN>.png (01, 02, …), cellules tournées vers la droite.
+   Actions : idle, walk, jump, punch, knee, headbutt, kame, pistol, transform, hurt, ko, win.
+   /sequences/manifest.json (optionnel) : { "luffy_punch": { "hit": 12 } } = frame (à partir de 1) où le coup touche. */
+const SEQ_MS = 1000 / 24, SEQ_DT = SEQ_MS / 16.67;
+const SEQ = { goku: {}, luffy: {} }, SEQ_META = {};
+(function () {
+  const ACTIONS = ['idle', 'walk', 'jump', 'punch', 'knee', 'headbutt', 'kame', 'pistol', 'transform', 'hurt', 'ko', 'win'];
+  fetch('/sequences/manifest.json').then(r => r.ok ? r.json() : {}).catch(() => ({})).then(m => { Object.assign(SEQ_META, m); });
+  ['goku', 'luffy'].forEach(k => ACTIONS.forEach(a => {
+    const list = SEQ[k][a] = [];
+    const next = n => {
+      const im = new Image(), nn = String(n).padStart(2, '0');
+      im.onload = () => { list.push(im); next(n + 1); };
+      im.src = '/sequences/' + k + '_' + a + '_' + nn + '.png';
+    };
+    next(1);
+  }));
+})();
+const seqLen = (k, a) => (SEQ[k] && SEQ[k][a] ? SEQ[k][a].length : 0);
+const seqHit = (k, a) => { const n = seqLen(k, a), m = SEQ_META[k + '_' + a]; return Math.min(n, Math.max(1, (m && m.hit) || Math.round(n / 2))); };
+
 /* ---------- Squelettes : chaque personnage est découpé en jambes, torse, tête et bras ---------- */
 const GOKU_ARM_L_UP = [[108, 228], [58, 234], [34, 270], [26, 330], [30, 395], [98, 395], [100, 330], [112, 270]];
 const GOKU_ARM_L_FORE = [[26, 380], [98, 380], [95, 420], [78, 448], [76, 548], [22, 548], [20, 440]];
@@ -202,6 +224,11 @@ function act(who, coins, user, avatar, giftName) {
 
 function startAnim(f, job) {
   f.anim = Object.assign({ t: 0, done: false }, job);
+  // le dessin dicte la physique : durée et frame d'impact viennent de la séquence
+  if (['punch', 'knee', 'headbutt'].includes(job.kind) && seqLen(f.key, job.kind)) {
+    f.anim.dur = seqLen(f.key, job.kind) * SEQ_DT;
+    f.anim.hitT = (seqHit(f.key, job.kind) - 1) * SEQ_DT;
+  }
   if (job.kind === 'kame') {
     f.anim.fireDur = 95;
     say('KA…', f.x, 230, '#9be3ff', 46);
@@ -215,7 +242,7 @@ function stepAnim(f, foe, dt) {
   a.t += dt;
   const fk = f.key, ok = other(fk), foeBodyY = GROUND - RIG[ok].h * .62;
   if (a.kind === 'punch') {
-    if (!a.done && a.t >= 10) {
+    if (!a.done && a.t >= (a.hitT || 10)) {
       a.done = true;
       hit(ok, Math.round(a.dmg * mult(fk)), a.user);
       foe.pushV += f.dir * 9;
@@ -538,7 +565,41 @@ function pickFrame(f, time) {
   return seq[Math.floor(time / per) % seq.length];
 }
 
+function seqAction(f) {
+  const a = f.anim;
+  if (over) return over === f.key ? 'win' : 'ko';
+  if (f.hurt > .15) return 'hurt';
+  if (a) return a.kind === 'transform' ? 'transform' : a.kind;
+  if (f.jy > 3) return 'jump';
+  return Math.abs(f.vx) > .5 ? 'walk' : 'idle';
+}
+
+function drawSeq(f, time) {
+  let act = seqAction(f), list = seqLen(f.key, act) ? SEQ[f.key][act] : null;
+  if (!list) return false;
+  const loop = !f.anim && !over, n = list.length;
+  const t = f.anim ? f.anim.t : over ? overT : time / 16.67;
+  let i = Math.floor(t / SEQ_DT);
+  i = loop || act === 'hurt' ? i % n : Math.min(n - 1, i);
+  const im = list[i];
+  if (!ready(im)) return false;
+  const ref = SEQ[f.key].idle[0] || list[0], sc = SPR[f.key].h / ref.naturalHeight;
+  const dw = im.naturalWidth * sc, dh = im.naturalHeight * sc, shR = Math.max(0, 1 - f.jy / 280);
+  if (!ghostMode && shR > .01) {
+    ctx.save(); ctx.fillStyle = 'rgba(0,0,0,' + (100 / 255 * shR).toFixed(3) + ')';
+    ctx.beginPath(); ctx.ellipse(f.x, GROUND + 2, dw * .3 * (.25 + .75 * shR), 12 * (.25 + .75 * shR), 0, 0, 6.283); ctx.fill(); ctx.restore();
+  }
+  ctx.save();
+  if (f.flash > .02) ctx.filter = 'brightness(' + (1 + f.flash * 1.5).toFixed(2) + ') saturate(.85)';
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.translate(f.x, GROUND - f.jy); ctx.scale(f.dir, 1);
+  ctx.drawImage(im, -dw / 2, -dh, dw, dh);
+  ctx.restore();
+  return true;
+}
+
 function drawFighter(f, time) {
+  if (drawSeq(f, time)) return;
   const S = SPR[f.key], R = RIG[f.key];
   const pistolOut = f.key === 'luffy' && f.anim && f.anim.kind === 'pistol' && f.anim.t >= 10 && ready(S.armImg);
   const img = f.key === 'goku' && f.ssj > 0 && ready(S.imgSsj) ? S.imgSsj : pistolOut ? S.armImg : S.img;
@@ -700,6 +761,7 @@ function fistShape(x, y, r, dirx) {
   for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(x + dirx * r * .15, y + i * r * .42); ctx.lineTo(x + dirx * r * .75, y + i * r * .42); ctx.stroke(); }
 }
 function drawPistol(f, foe) {
+  if (seqLen(f.key, 'pistol')) return;
   const a = f.anim;
   if (!a || a.kind !== 'pistol' || a.t < 10) return;
   const sd = f.dir, t = a.t, sx = f.fistF.x, sy = f.fistF.y, A = f.armA, S = SPR.luffy, img = S.armImg || S.img;
