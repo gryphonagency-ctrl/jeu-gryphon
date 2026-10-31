@@ -897,22 +897,35 @@ async function saveAdminGame(body) {
     return { success: true, game: { id, title, description, href: `/uploaded-games/${id}`, image: `/game-assets/${imageFile}` } };
 }
 
+function canManageMedia(req) {
+    if (!access.isAuthenticated(req)) return false;
+    const username = access.usernameForRequest(req);
+    return Boolean(username) && access.canUseCreatorService(username, 'tts');
+}
+
 const handleMedia = createMediaAdmin({
     mediaDirectory: process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media'),
-    isAdmin: req => access.isAuthenticated(req) && access.isAdmin(req),
+    getUser: req => access.usernameForRequest(req),
+    canManage: canManageMedia,
     readJsonBody: (...args) => readJsonBody(...args)
 });
 
 const server = http.createServer((req, res) => {
-    const pathname = new URL(req.url, 'http://localhost').pathname;
-    if (handleMedia(req, res, pathname)) return;
-    if (pathname === '/admin-medias.html' && req.method === 'GET') {
-        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+    const requestUrl = new URL(req.url, 'http://localhost');
+    const pathname = requestUrl.pathname;
+    if (handleMedia(req, res, pathname, requestUrl.searchParams)) return;
+    if (pathname === '/medias.html' && req.method === 'GET') {
+        if (!access.isAuthenticated(req)) {
             res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
             res.end();
             return;
         }
-        fs.readFile(path.join(__dirname, 'admin-medias.html'), (error, content) => {
+        if (!canManageMedia(req)) {
+            res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?acces=medias' });
+            res.end();
+            return;
+        }
+        fs.readFile(path.join(__dirname, 'medias.html'), (error, content) => {
             if (error) { res.writeHead(500); res.end('Page introuvable.'); return; }
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8' });
             res.end(content);
