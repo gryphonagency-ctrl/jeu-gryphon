@@ -8,6 +8,7 @@ const access = require('./access-control');
 const paypal = require('./paypal');
 const store = require('./account-store');
 const dbSync = require('./db-sync');
+const { createMediaAdmin } = require('./media-admin');
 
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
@@ -896,8 +897,28 @@ async function saveAdminGame(body) {
     return { success: true, game: { id, title, description, href: `/uploaded-games/${id}`, image: `/game-assets/${imageFile}` } };
 }
 
+const handleMedia = createMediaAdmin({
+    mediaDirectory: process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media'),
+    isAdmin: req => access.isAuthenticated(req) && access.isAdmin(req),
+    readJsonBody: (...args) => readJsonBody(...args)
+});
+
 const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (handleMedia(req, res, pathname)) return;
+    if (pathname === '/admin-medias.html' && req.method === 'GET') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
+            res.end();
+            return;
+        }
+        fs.readFile(path.join(__dirname, 'admin-medias.html'), (error, content) => {
+            if (error) { res.writeHead(500); res.end('Page introuvable.'); return; }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(content);
+        });
+        return;
+    }
     const avatarMatch = pathname.match(/^\/api\/tiktok-avatars\/([a-f0-9]{64})$/);
     if (avatarMatch && req.method === 'GET') {
         if (!access.canAccessGames(req)) {

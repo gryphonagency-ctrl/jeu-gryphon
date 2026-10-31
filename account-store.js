@@ -949,6 +949,10 @@ function getGameFilesDirectory() {
     return gameFilesDirectory;
 }
 
+function getDataDirectory() {
+    return path.dirname(storeFile);
+}
+
 function getCheckout(checkoutId) {
     const store = readStore();
     return store.checkouts[checkoutId] || null;
@@ -1049,6 +1053,7 @@ module.exports = {
     getCreatorServiceAccess,
     getDailyUsageCount,
     getGameFilesDirectory,
+    getDataDirectory,
     getTikTokAvatarPath,
     getGameImage,
     getHiddenGames,
