@@ -73,7 +73,7 @@ const arenaAssets = {
     'naruto-cut.png': 'image/png', 'naruto-walk.png': 'image/png',
     'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png',
     'duel-luffy.png': 'image/png', 'duel-goku.png': 'image/png',
-    'duel-goku-ssj.png': 'image/png', 'duel-goku-ssj-atk.png': 'image/png'
+    'duel-goku-ssj-head.png': 'image/png', 'duel-luffy-torso.png': 'image/png'
 };
 const protectedRoutes = new Set([
     '/combat-goku-luffy.html',
