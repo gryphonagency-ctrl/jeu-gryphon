@@ -112,6 +112,7 @@ const protectedRoutes = new Set([
     '/mots-associes.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
+    '/telepusher.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -146,6 +147,7 @@ const freeTrialRoutes = new Set([
     '/course-de-billes-controle.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
+    '/telepusher.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -179,6 +181,7 @@ const staticGameIds = [
     '/mots-associes.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
+    '/telepusher.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -204,6 +207,7 @@ store.grantGameAccessToExistingCreators('/lion-temple-maya.html');
 store.grantGameAccessToExistingCreators('/mots-associes.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/gryphon-blackjack.html');
+store.grantGameAccessToExistingCreators('/telepusher.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
 store.grantGameAccessToExistingCreators('/ile-au-tresor.html');
 store.grantGameAccessToExistingCreators('/course-karts.html');
@@ -249,6 +253,7 @@ const staticGameTitles = {
     '/mots-associes.html': 'Mots Associés',
     '/flipper-neon.html': 'Flipper Néon',
     '/gryphon-blackjack.html': 'Gryphon Blackjack',
+    '/telepusher.html': 'A, ma télépusher',
     '/peche-en-mer.html': 'Pêche en mer',
     '/ile-au-tresor.html': 'L\'Île au Trésor',
     '/course-karts.html': 'Course de karts Live',
@@ -291,6 +296,7 @@ const gameRouteIds = new Map([
     ['/mots-associes.html', '/mots-associes.html'],
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/gryphon-blackjack.html', '/gryphon-blackjack.html'],
+    ['/telepusher.html', '/telepusher.html'],
     ['/peche-en-mer.html', '/peche-en-mer.html'],
     ['/ile-au-tresor.html', '/ile-au-tresor.html'],
     ['/course-karts.html', '/course-karts.html'],
@@ -2340,6 +2346,7 @@ const server = http.createServer((req, res) => {
         ['/mots-associes.html', [path.join(__dirname, 'mots-associes.html'), 'text/html; charset=utf-8']],
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/gryphon-blackjack.html', [path.join(__dirname, 'gryphon-blackjack.html'), 'text/html; charset=utf-8']],
+        ['/telepusher.html', [path.join(__dirname, 'telepusher.html'), 'text/html; charset=utf-8']],
         ['/peche-en-mer.html', [path.join(__dirname, 'peche-en-mer.html'), 'text/html; charset=utf-8']],
         ['/ile-au-tresor.html', [path.join(__dirname, 'ile-au-tresor.html'), 'text/html; charset=utf-8']],
         ['/course-karts.html', [path.join(__dirname, 'course-karts.html'), 'text/html; charset=utf-8']],
@@ -2379,6 +2386,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/mots-associes.png', [path.join(__dirname, 'images-vitrine', 'mots-associes.png'), 'image/png']],
         ['/images-vitrine/flipper-neon.png', [path.join(__dirname, 'images-vitrine', 'flipper-neon.png'), 'image/png']],
         ['/images-vitrine/gryphon-blackjack.png', [path.join(__dirname, 'images-vitrine', 'gryphon-blackjack.png'), 'image/png']],
+        ['/images-vitrine/telepusher.png', [path.join(__dirname, 'images-vitrine', 'telepusher.png'), 'image/png']],
         ['/images-vitrine/peche-en-mer.png', [path.join(__dirname, 'images-vitrine', 'peche-en-mer.png'), 'image/png']],
         ['/images-vitrine/ile-au-tresor.png', [path.join(__dirname, 'images-vitrine', 'ile-au-tresor.png'), 'image/png']],
         ['/images-vitrine/course-karts.png', [path.join(__dirname, 'images-vitrine', 'course-karts.png'), 'image/png']],
