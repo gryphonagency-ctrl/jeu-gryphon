@@ -9,7 +9,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY_BYTES = 2_048;
 const GAME_TTL_MS = 60 * 60 * 1_000;
 const RATE_WINDOW_MS = 10 * 60 * 1_000;
-const MAX_REQUESTS_PER_IP = 3;
+const MAX_REQUESTS_PER_IP = 10;
 const IMAGE_PROMPT = [
   'Make a very simple, charming child-made computer drawing of: ',
   '. It should look like a young child slowly drew it with a mouse in a basic paint program: ',

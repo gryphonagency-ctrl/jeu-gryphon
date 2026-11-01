@@ -105,3 +105,24 @@ test('applies a daily image-generation limit', async t => {
   assert.equal(second.status, 429);
   assert.match((await second.json()).error, /limite quotidienne/);
 });
+
+test('allows consecutive automatic rounds within the daily limit', async t => {
+  let topic = 0;
+  const app = await startServer({
+    apiKey: 'test-key',
+    maxDailyDraws: 5,
+    fetchImpl: async url => url.endsWith('/chat/completions')
+      ? new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ word: `Sujet${++topic}` }) } }]
+      }), { status: 200 })
+      : new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from('mock-png-image-data'.repeat(10)).toString('base64') }]
+      }), { status: 200 })
+  });
+  t.after(() => app.close());
+
+  for (let round = 0; round < 4; round += 1) {
+    const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+    assert.equal(response.status, 201);
+  }
+});

@@ -24,7 +24,7 @@
   <header class="hero">
     <div class="badge"><i class="dot"></i> DESSIN GÉNÉRÉ EN DIRECT</div>
     <h1>🎨 Dessiner, c'est <span>gagné !</span></h1>
-    <p>L’IA choisit un sujet et dessine un brouillon enfantin.<br>Le chat TikTok devine : le premier à trouver gagne !</p>
+    <p>L’IA choisit un sujet et dessine un brouillon enfantin.<br>Le chat TikTok devine : le premier à trouver gagne, puis la manche suivante démarre automatiquement !</p>
   </header>
   <div class="layout">
     <section class="card" aria-label="Jeu de dessin">
@@ -58,9 +58,11 @@
 (() => {
   const $ = id => document.getElementById(id);
   const guessers = new Map();
+  const NEXT_ROUND_DELAY_MS = 4_000;
   let socket = null;
   let gameId = null;
   let gameFinished = false;
+  let nextRoundTimer = null;
   let connectorUrl = 'wss://jeu6boite.onrender.com';
 
   function normalize(value) {
@@ -118,10 +120,14 @@
       renderPlayers();
       $('round').textContent = 'Manche terminée';
       $('drawing-status').textContent = 'Quelqu’un a trouvé !';
-      showFeedback(`🎉 @${name} a trouvé : c’était ${result.answer} !`, 'win');
+      showFeedback(`🎉 @${name} a trouvé : c’était ${result.answer} ! Nouvelle manche dans ${NEXT_ROUND_DELAY_MS / 1000} secondes…`, 'win');
       $('confetti').classList.remove('on');
       void $('confetti').offsetWidth;
       $('confetti').classList.add('on');
+      nextRoundTimer = window.setTimeout(() => {
+        nextRoundTimer = null;
+        void newGame();
+      }, NEXT_ROUND_DELAY_MS);
     } catch (error) {
       console.error('Réponse non vérifiée :', error);
       showFeedback('Connexion au serveur perdue pendant la vérification.', 'error');
@@ -130,6 +136,11 @@
 
   async function newGame() {
     const button = $('new-game');
+    if (button.disabled) return;
+    if (nextRoundTimer !== null) {
+      window.clearTimeout(nextRoundTimer);
+      nextRoundTimer = null;
+    }
     button.disabled = true;
     $('image').classList.remove('visible');
     $('placeholder').hidden = false;
@@ -260,7 +271,9 @@
   fetch('/api/health').then(response => response.json()).then(health => {
     if (!health.imageGenerationReady) {
       showFeedback('La clé OpenAI doit être ajoutée aux variables secrètes du service Render.', 'error');
+      return;
     }
+    void newGame();
   }).catch(error => {
     console.error('État du service indisponible :', error);
     showFeedback('Impossible de joindre le serveur du jeu.', 'error');
