@@ -67,6 +67,7 @@ body:not(.transparent) #stage::after{content:"";position:absolute;inset:10px;bor
 .vipTag{font:900 14px "Trebuchet MS",sans-serif;letter-spacing:.3em;color:#ffd54a}
 #vipName{font:900 26px Georgia,serif;margin:2px 0}
 #vipPrize{font:800 17px "Trebuchet MS",sans-serif;color:#fff1b8}
+.vipTag,#vipSheet{display:none}
 #vipSheet{font:600 12px "Trebuchet MS",sans-serif;color:#d8c58a;margin-top:4px}
 #banner.blink{font-size:15px;border-radius:30px;border-color:#ffd54a;background:rgba(60,40,0,.7);animation:blink 1s ease-in-out infinite}
 @keyframes blink{50%{box-shadow:0 0 34px 6px rgba(255,213,74,.85);background:rgba(120,80,0,.75)}}
@@ -429,7 +430,7 @@ function showVip(name,prize){
   const f=SHEET[name]=SHEET[name]||{wins:0,total:0}; f.wins++; f.total=Math.round((f.total+prize)*10)/10;
   const av=$('vipAv'); av.style.backgroundImage=G.avatar?`url("${G.avatar}")`:''; av.textContent=G.avatar?'':name.charAt(0).toUpperCase();
   $('vipName').textContent='@'+name;
-  $('vipPrize').textContent=`+${prize} 🪙 (${Math.round(POT_SHARE*100)} % de la cagnotte de ${G.pot})`;
+  $('vipPrize').textContent=`⭐ +${prize} étoile${prize>1?'s':''} gagnée${prize>1?'s':''}`;
   $('vipSheet').textContent=`Fiche · ${f.wins} victoire${f.wins>1?'s':''} · ${f.total} 🪙 gagnés`;
   $('vip').classList.add('show');
 }
@@ -455,9 +456,9 @@ function startTimer(){ clearTimeout(G.timer); G.deadline=Date.now()+TURN; G.time
 function stopTimer(){ clearTimeout(G.timer); G.deadline=null; }
 const confirmMsg=()=>{ G.message=`@${G.player} a envoyé un cadeau ! TikTok, une rose. Il peut réclamer une carte supplémentaire en écrivant « continuer », ou en écrivant « stop » arrêter la partie et voir qui a gagné entre lui, le croupier et les autres joueurs.`+(G.credits>1?` (${G.credits} crédits)`:''); speak(`${G.player} peut demander une carte, ou garder pour voir qui gagne.`); };
 
-async function bet(who,coins,pic){
+async function bet(who,coins,pic,real){
   if(G.phase!=='idle') return; G.phase='dealing'; G.player=who||NAMES[Math.floor(Math.random()*NAMES.length)];
-  G.pot=coins||1; G.avatar=pic||null; hideVip();
+  G.pot=coins||1; G.avatar=pic||null; G.real=!!real; hideVip();
   speak(`Nouvelle manche ! ${G.player} ouvre la partie, les cartes sont distribuées !`,true);
   G.P=[];G.D=[];G.hole=true;G.result=null;G.credits=0;
   G.message=`@${G.player} envoie une étoile ⭐ — distribution…`; pub(); await sleep(DELAY.deal);
@@ -506,8 +507,9 @@ async function finish(){
     player_bust:`${G.player} a sauté avec ${p} ! La banque gagne !`,dealer_bust:`Le croupier saute avec ${d} ! ${G.player} gagne, bravo !`,push:`Égalité à ${p} ! Personne ne gagne.`};
   speak(V[r],true);
   if(['player_blackjack','player_win','dealer_bust'].includes(r)){
-    const prize=Math.round(G.pot*POT_SHARE*10)/10; showVip(G.player,prize);
-    speak(`${G.player} reçoit la bannière V I P !`);
+    const prize=Math.round(G.pot*POT_SHARE);
+    if(prize>=1){ showVip(G.player,prize); speak(`${G.player} a gagné ${prize} étoile${prize>1?'s':''} !`);
+      if(G.real&&window.ArcadeStars) ArcadeStars.award({username:G.player,amount:prize}).catch(e=>console.error('Étoiles non enregistrées :',e)); }
   }
   G.result=r; G.phase='result'; G.message=M[r]; G.stats.rounds++;
   G.stats[['player_blackjack','player_win','dealer_bust'].includes(r)?'player':['dealer_blackjack','dealer_win','player_bust'].includes(r)?'dealer':'push']++;
@@ -550,36 +552,36 @@ async function showStarCard(name,pic){
   const c=$('starCard'); c.classList.remove('show'); void c.offsetWidth; c.classList.add('show');
   
 }
-async function runStars(name,pic,spentOverride){
+async function runStars(name,pic,spentOverride,real){
   const w=WALLET[name]=WALLET[name]||{stars:0,avatar:null}; if(pic) w.avatar=pic;
   const stake=spentOverride!==undefined?spentOverride:await starBalance(name);
   if(stake<1){ return; }
   if(G.phase!=='idle'){ return; }
   if(spentOverride===undefined) w.stars=0;
-  bet(name,stake,w.avatar);
+  bet(name,stake,w.avatar,real);
 }
 window.addEventListener('arcade:wallet-run',e=>{ const d=e.detail||{}, p=d.player||{}, name=p.username||p.uniqueId||p.nickname, spent=Math.floor(Number(d.spent)||0);
-  if(name&&spent>0) runStars(name,p.avatar||p.profilePictureUrl,spent); });
-function liveMessage(d){
+  if(name&&spent>0) runStars(name,p.avatar||p.profilePictureUrl,spent,true); });
+function liveMessage(d,sim){
   if(d.type==='STATUS'){ cpSet(d.message||'Statut reçu.'); return; }
   if(d.type==='gift'||d.type==='tiktok-gift'){
     const g=d.gift??d, name=g.username||g.nickname; if(!name) return;
     const coins=Math.max(1,Math.floor(Number(g.diamondCount||g.coinCount||g.coins||1))*Math.max(1,Math.floor(Number(g.repeatCount)||1)));
     const pic=g.profilePictureUrl||g.avatarDataUri||null;
     if(pic){ (WALLET[name]=WALLET[name]||{stars:0,avatar:null}).avatar=pic; }
-    if(G.phase==='idle') bet(name,coins,pic);
+    if(G.phase==='idle') bet(name,coins,pic,!sim);
     else if(name===G.player&&playing()) gift(coins);
     else { G.pot+=coins; }
   } else if(d.type==='comment'||d.type==='tiktok-comment'||d.type==='chat'){
     const c=d.commentData??d, name=c.username||c.nickname, raw=String(c.comment??c.text??''), txt=raw.trim().toLowerCase(), pic=c.profilePictureUrl||c.avatarDataUri||null;
     if(!name) return;
-    if(STAR_RE.test(raw)){ showStarCard(name,pic); return; }
+    if(STAR_RE.test(raw)){ if(!window.ArcadeStars) showStarCard(name,pic); return; }
     if(RUN_RE.test(raw)){ if(!(window.ArcadeStars)) runStars(name,pic); return; }
     if(name!==G.player) return;
     if(/^!?(continuer|continue)$/.test(txt)) cont(); else if(/^!?(garder|stop)$/.test(txt)) stand(false);
   }
 }
-$('simGift').onclick=()=>{ const n=$('simName').value.trim().replace(/^@/,''), k=Math.max(1,Math.floor(Number($('simCoins').value)||1)); if(n) liveMessage({type:'gift',gift:{username:n,coinCount:k}}); };
+$('simGift').onclick=()=>{ const n=$('simName').value.trim().replace(/^@/,''), k=Math.max(1,Math.floor(Number($('simCoins').value)||1)); if(n) liveMessage({type:'gift',gift:{username:n,coinCount:k}},true); };
 function liveConnect(){
   const name=$('cpUser').value.trim().replace(/^@/,''), url=RELAY_URL;
   if(!name){ cpSet('Entre ton pseudo TikTok.'); return; }
