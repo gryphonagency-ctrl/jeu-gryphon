@@ -12,6 +12,7 @@ Le serveur injecte `/arcade-effects.js` dans toutes les pages de jeu ; ne pas le
 - Seuil modifiable via `ArcadeEffects.config.bigGiftCoins`.
 
 ## Règles communes
+- Affichage parfait sur toutes les tailles d'écran (mobile, tablette et ordinateur) : privilégier le SVG pour les cadeaux, logos et icônes (vectoriel, net partout automatiquement). Le serveur injecte la balise viewport mobile si elle manque.
 - Réponses et interface en français.
 - Panneau de contrôle masquable : vitesse réglable, file d'attente détachable, connexion TikTok, simulateur, classement masquable.
 - Étoiles : `ArcadeStars.award` uniquement pour de vrais gains, jamais en simulation. Évènement `arcade:wallet-run` pour le RUN (voir `ARCADE-STARS.md`).
