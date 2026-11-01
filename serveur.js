@@ -129,6 +129,7 @@ const protectedRoutes = new Set([
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
+    '/clowns-tomates.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -164,6 +165,7 @@ const freeTrialRoutes = new Set([
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
+    '/clowns-tomates.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -198,6 +200,7 @@ const staticGameIds = [
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
+    '/clowns-tomates.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
     '/vrai-ou-faux.html',
@@ -224,6 +227,7 @@ store.grantGameAccessToExistingCreators('/mots-associes.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/gryphon-blackjack.html');
 store.grantGameAccessToExistingCreators('/telepusher.html');
+store.grantGameAccessToExistingCreators('/clowns-tomates.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
 store.grantGameAccessToExistingCreators('/ile-au-tresor.html');
 store.grantGameAccessToExistingCreators('/course-karts.html');
@@ -270,6 +274,7 @@ const staticGameTitles = {
     '/flipper-neon.html': 'Flipper Néon',
     '/gryphon-blackjack.html': 'Gryphon Blackjack',
     '/telepusher.html': 'A, ma télépusher',
+    '/clowns-tomates.html': 'Les Clowns et les Tomates',
     '/peche-en-mer.html': 'Pêche en mer',
     '/ile-au-tresor.html': 'L\'Île au Trésor',
     '/course-karts.html': 'Course de karts Live',
@@ -313,6 +318,7 @@ const gameRouteIds = new Map([
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/gryphon-blackjack.html', '/gryphon-blackjack.html'],
     ['/telepusher.html', '/telepusher.html'],
+    ['/clowns-tomates.html', '/clowns-tomates.html'],
     ['/peche-en-mer.html', '/peche-en-mer.html'],
     ['/ile-au-tresor.html', '/ile-au-tresor.html'],
     ['/course-karts.html', '/course-karts.html'],
@@ -2363,6 +2369,12 @@ const server = http.createServer((req, res) => {
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/gryphon-blackjack.html', [path.join(__dirname, 'gryphon-blackjack.html'), 'text/html; charset=utf-8']],
         ['/telepusher.html', [path.join(__dirname, 'telepusher.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/clown-gauche-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-cut.png'), 'image/png']],
+        ['/images-vitrine/clown-gauche-basecut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-basecut.png'), 'image/png']],
+        ['/images-vitrine/clown-droite-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-droite-cut.png'), 'image/png']],
+        ['/images-vitrine/clown-droite-basecut.png', [path.join(__dirname, 'images-vitrine', 'clown-droite-basecut.png'), 'image/png']],
+        ['/images-vitrine/decheterie.jpg', [path.join(__dirname, 'images-vitrine', 'decheterie.jpg'), 'image/jpeg']],
+        ['/clowns-tomates.html', [path.join(__dirname, 'clowns-tomates.html'), 'text/html; charset=utf-8']],
         ['/peche-en-mer.html', [path.join(__dirname, 'peche-en-mer.html'), 'text/html; charset=utf-8']],
         ['/ile-au-tresor.html', [path.join(__dirname, 'ile-au-tresor.html'), 'text/html; charset=utf-8']],
         ['/course-karts.html', [path.join(__dirname, 'course-karts.html'), 'text/html; charset=utf-8']],
@@ -2403,6 +2415,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/flipper-neon.png', [path.join(__dirname, 'images-vitrine', 'flipper-neon.png'), 'image/png']],
         ['/images-vitrine/gryphon-blackjack.png', [path.join(__dirname, 'images-vitrine', 'gryphon-blackjack.png'), 'image/png']],
         ['/images-vitrine/telepusher.png', [path.join(__dirname, 'images-vitrine', 'telepusher.png'), 'image/png']],
+        ['/images-vitrine/clowns-tomates.png', [path.join(__dirname, 'images-vitrine', 'clowns-tomates.png'), 'image/png']],
         ['/images-vitrine/peche-en-mer.png', [path.join(__dirname, 'images-vitrine', 'peche-en-mer.png'), 'image/png']],
         ['/images-vitrine/ile-au-tresor.png', [path.join(__dirname, 'images-vitrine', 'ile-au-tresor.png'), 'image/png']],
         ['/images-vitrine/course-karts.png', [path.join(__dirname, 'images-vitrine', 'course-karts.png'), 'image/png']],
