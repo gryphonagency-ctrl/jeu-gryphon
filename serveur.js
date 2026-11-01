@@ -2778,7 +2778,7 @@ function broadcastSessionMessage(session, messageData) {
     }
 }
 
-const MIN_RUN_STARS = 5;
+const MIN_RUN_STARS = 1;
 
 function processTikTokWalletCommand(session, messageData, player) {
     if (messageData.type !== 'comment' || !player) return;
