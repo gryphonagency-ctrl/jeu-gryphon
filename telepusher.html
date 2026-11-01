@@ -116,14 +116,13 @@ body:not(.hasbg) #bgd{display:none}
   <div><button id="cpConnect" class="go" type="button">Connecter</button><button id="cpDisconnect" type="button">Déconnecter</button></div>
   <div id="cpStatus">Non connecté.</div>
   <h3>Gestion des chutes</h3>
-  <label><input id="cpAuto" type="checkbox" checked> Pluie automatique de démo</label>
   <div>Cadence : <span id="cpRateOut">1 / 0,09 s</span></div>
   <input id="cpRate" type="range" min="40" max="600" value="90">
   <div><button id="cpCoin" type="button">🪙 +1 jeton</button><button id="cpCoins" type="button">🪙 +10</button><button id="cpCard" type="button">🎫 +1 carte VIP</button></div>
   <div id="cpQuota" style="margin-top:8px;font-size:11px;color:#8fa0d8"></div>
   <h3>RTP</h3>
-  <div>Chance d'une carte VIP par cadeau : <span id="cpRtpOut">10 %</span></div>
-  <input id="cpRtp" type="range" min="0" max="100" value="10">
+  <div>Cartes VIP : <span id="cpRtpOut">100 %</span> du taux de base (60 cartes pour 1000 pièces ; les cartes restantes tombent dans la dernière tranche)</div>
+  <input id="cpRtp" type="range" min="0" max="300" value="100">
   <h3>Fond : vidéo, son ou photo</h3>
   <input id="cpVidFile" type="file" style="width:100%;font-size:11px">
   <div id="cpVidMsg" style="font-size:11px;color:#b9c6ff;margin-top:4px">Espace étoilé par défaut. Choisis n'importe quelle vidéo, un son ou une photo (ou glisse-la sur la page).</div>
@@ -393,7 +392,18 @@ function useQuota(card){
   if(left.coins<=0&&left.cards<=0){ cycles++; left.coins=QUOTA.coins; left.cards=QUOTA.cards; }
   updQuota(); return true;
 }
-function spawnCoin(avatar,name,now){ if(!useQuota(false)) return; const q={card:false,avatar,seed:hash(name||Math.random())}; now?queue.unshift(q):queue.push(q); if(now) setTimeout(dropTick,0); }
+let cardDebt=0;
+const TRANCHE=1000, CARDS_PER_TRANCHE=60;
+function spawnCoin(avatar,name,now){
+  const who=typeof name==='string'?name:'VIP', coinsDone=QUOTA.coins-left.coins, lastTranche=coinsDone>=QUOTA.coins-TRANCHE;
+  if(left.coins<=0) return;
+  // dernière tranche : on écoule toutes les cartes restantes ; sinon 60 cartes (× RTP) pour 1000 pièces
+  const rate=lastTranche?left.cards/(QUOTA.coins-coinsDone):CARDS_PER_TRANCHE*rtp/TRANCHE;
+  cardDebt+=rate;
+  const flush=left.coins===1;
+  while(left.cards>0&&(flush||cardDebt>=1-1e-9)){ cardDebt=Math.max(0,cardDebt-1); spawnVIPCard(who,avatar,null,false,true); }
+  if(flush) cardDebt=0;
+  if(!useQuota(false)) return; const q={card:false,avatar,seed:hash(name||Math.random())}; now?queue.unshift(q):queue.push(q); if(now) setTimeout(dropTick,0); }
 function spawnVIPCard(username,avatar,value,now,real){ if(!useQuota(true)) return; const v=Math.min(10,Math.max(1,Math.round(+value)||1+Math.floor(Math.random()*10)));
   const q={card:true,avatar,username:username||'VIP',value:v,real:!!real,seed:hash(username||'VIP')}; now?queue.unshift(q):queue.push(q); if(now) setTimeout(dropTick,0); }
 let dropEvery=90;
@@ -506,7 +516,7 @@ connect();
 
 /* ============ TABLEAU DE COMMANDE ============ */
 const $=id=>document.getElementById(id);
-let rtp=.10, liveWs=null, liveTimer=null;
+let rtp=1, liveWs=null, liveTimer=null;
 /* ============ ROUE : cadeau de 1000 pièces ============ */
 const WHEEL_MIN=1000;
 const SEGS=[{t:'50',s:'JETONS',kind:'coins',n:50,c:'#1fb6d9'},{t:'RETENTE',s:'TA CHANCE',kind:'retry',c:'#6b4bd6'},{t:'VIP',s:'5 ÉTOILES',kind:'card',n:5,c:'#e8a92f'},
@@ -541,9 +551,9 @@ drawWheel(0);
 $('cpWheel').onclick=()=>startWheel('Sarah',null);
 function onLive(d){
   if(d.type==='gift'||d.type==='tiktok-gift'){ const g=d.gift||d, name=g.username||g.nickname, avatar=g.profilePictureUrl||g.avatar||null;
-    const worth=parseInt(g.coinCount??g.count)||1, n=Math.min(worth,20); for(let i=0;i<n;i++) spawnCoin(avatar,name);
+    const worth=parseInt(g.coinCount??g.count)||1, n=Math.min(worth,2000); for(let i=0;i<n;i++) spawnCoin(avatar,name);
     if(worth>=WHEEL_MIN) startWheel(name,avatar);
-    if(Math.random()<rtp) spawnVIPCard(name,avatar,null,false,true); }
+  }
   else if(d.type==='WALLET_RUN'&&!window.ArcadeStars) runStars(d); // sans la plateforme : le relais envoie lui-même l'évènement
   else if(d.type==='vip-trigger') spawnVIPCard(d.username,d.avatar,d.value,false,true);
 }
@@ -570,7 +580,7 @@ $('cpRate').oninput=e=>{ const v=+e.target.value; setDropEvery(v); $('cpRateOut'
 $('cpCoin').onclick=()=>spawnCoin(null,Math.random(),true);
 $('cpCoins').onclick=()=>{ for(let i=0;i<10;i++) setTimeout(()=>spawnCoin(null,Math.random(),true),i*90); };
 $('cpCard').onclick=()=>spawnVIPCard('AmiTest',null,null,true);
-$('cpRtp').oninput=e=>{ rtp=e.target.value/100; $('cpRtpOut').textContent=e.target.value+' %'; try{ localStorage.setItem('coin-pusher-rtp',e.target.value); }catch(err){} };
+$('cpRtp').oninput=e=>{ rtp=e.target.value/100; $('cpRtpOut').textContent=e.target.value+' %'; try{ localStorage.setItem('coin-pusher-rtp2',e.target.value); }catch(err){} };
 const cpToggle=h=>{ $('cp').classList.toggle('hide',h); $('cpBtn').classList.toggle('hide',false); };
 const isMobile=()=>innerWidth<700;
 $('cpHide').onclick=()=>$('cp').classList.add('hide');
@@ -671,7 +681,7 @@ const idbGet=k=>new Promise(res=>{ try{ idb(db=>{ const g=db.transaction('f').ob
 const toDataURL=f=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
 const setupMsg=t=>$('cpSetupMsg').textContent=t;
 async function buildSetup(){
-  const o={game:'telepusher',version:1,media:{},wins,rtp:Math.round(rtp*100)};
+  const o={game:'telepusher',version:2,media:{},wins,rtp:Math.round(rtp*100)};
   for(const k of KINDS){ const f=await idbGet(k); if(f) o.media[k]={name:f.name||k,type:f.type||'',data:await toDataURL(f)}; else { const u=localStorage.getItem('coin-pusher-'+k); if(u) o.media[k]={url:u}; } }
   return o; }
 async function applySetup(o){
@@ -681,7 +691,7 @@ async function applySetup(o){
     if(m.data){ const b=await (await fetch(m.data)).blob(), f=new File([b],m.name||k,{type:m.type||b.type}); setMedia(k,URL.createObjectURL(f),false); idbSave(k,f); }
     else if(m.url) setMedia(k,k==='embed'?(embedOf(m.url)||m.url):m.url,true); }
   if(o.wins&&typeof o.wins==='object'){ wins=o.wins; saveWins(); renderWins(); }
-  if(typeof o.rtp==='number'){ $('cpRtp').value=o.rtp; $('cpRtp').oninput({target:$('cpRtp')}); } }
+  if(typeof o.rtp==='number'&&o.version>=2){ $('cpRtp').value=o.rtp; $('cpRtp').oninput({target:$('cpRtp')}); } }
 $('cpExp').onclick=async()=>{ try{ setupMsg('Préparation…'); const o=await buildSetup(); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(o)],{type:'application/json'})); a.download='telepusher-setup.json'; a.click(); setupMsg('Setup exporté.'); }catch(e){ setupMsg('Export impossible : '+e.message); } };
 $('cpImp').onclick=()=>$('cpImpFile').click();
 $('cpImpFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; try{ await applySetup(JSON.parse(await f.text())); setupMsg('Setup importé.'); }catch(err){ setupMsg('Import impossible : '+err.message); } };
@@ -689,16 +699,11 @@ $('cpSave').onclick=async()=>{ try{ const o=await buildSetup(); idb(db=>{ const 
 $('cpLoad').onclick=async()=>{ const s=await idbGet('setup'); if(!s) return setupMsg('Aucune sauvegarde trouvée.'); try{ await applySetup(JSON.parse(s)); setupMsg('Setup restauré.'); }catch(e){ setupMsg('Restauration impossible : '+e.message); } };
 $('cpBig').onclick=()=>window.ArcadeEffects&&ArcadeEffects.simulateBigGift('Sarah',100);
 $('cpShare').onclick=()=>window.ArcadeEffects&&ArcadeEffects.simulateShare();
-try{ $('cpUser').value=localStorage.getItem('coin-pusher-user')||''; const r=localStorage.getItem('coin-pusher-rtp'); if(r!==null){ $('cpRtp').value=r; $('cpRtp').oninput({target:$('cpRtp')}); } }catch(e){}
+try{ $('cpUser').value=localStorage.getItem('coin-pusher-user')||''; const r=localStorage.getItem('coin-pusher-rtp2'); if(r!==null){ $('cpRtp').value=r; $('cpRtp').oninput({target:$('cpRtp')}); } }catch(e){}
 
 updQuota();
 /* ============ PLUIE DE DÉMO (si aucun flux TikTok) + TESTS CLAVIER C / V ============ */
-if(DEMO){
-  const names=['u_shiningfly77','ususPy77','cannhamstrings','lilou_13','marseille_vibes','kevin.d'];
-  setInterval(()=>{ if(!wsOpen&&$('cpAuto').checked&&queue.length<10) spawnCoin(null,Math.random()); },260);
-  setInterval(()=>{ if(!wsOpen&&$('cpAuto').checked) spawnVIPCard('u_'+names[Math.floor(Math.random()*names.length)],null); },3400);
-}
-addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='c') spawnCoin(null,Math.random(),true); if(k==='v') spawnVIPCard('AmiTest',null,null,true); });
+// Plus de pluie automatique : seuls les cadeaux reçus sur le live font tomber jetons et cartes.
 </script>
 </body>
 </html>
