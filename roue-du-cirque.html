@@ -165,13 +165,20 @@ if (!Array.isArray(CFG.sectors) || CFG.sectors.length !== N) CFG.sectors = DEFAU
 const save = () => localStorage.setItem('cw-cfg', JSON.stringify(CFG));
 
 const cv = $('cv'), ctx = cv.getContext('2d');
-let sc = 1, ox = 0, oy = 0;
+let sc = 1, ox = 0, oy = 0, dpr = 1;
 function resize() {
-  cv.width = innerWidth; cv.height = innerHeight;
-  sc = Math.min(cv.width / W, cv.height / H);
-  ox = (cv.width - W * sc) / 2; oy = (cv.height - H * sc) / 2;
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  if (innerHeight > innerWidth) {
+    // Portrait (mobile) : la roue remplit la largeur de l'écran
+    sc = cv.width / (RO * 2 + 60);
+    ox = cv.width / 2 - WX * sc; oy = cv.height / 2 - WY * sc;
+  } else {
+    sc = Math.min(cv.width / W, cv.height / H);
+    ox = (cv.width - W * sc) / 2; oy = (cv.height - H * sc) / 2;
+  }
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', () => resize());
 
 /* ---------- Secteurs ---------- */
 const isNew = s => /^new/i.test(String(s).trim());
@@ -181,6 +188,7 @@ const kind = s => isNew(s) ? 'new' : isHalf(s) ? 'half' : mult(s) > 0 ? 'win' : 
 
 /* ---------- Roue : état ---------- */
 const WX = 930, WY = 400, RO = 345, RS = 285;
+resize();
 let angle = 0, spin = null, kick = 0, lastIdx = 0, excite = 0, time = 0;
 const sectorAt = a => Math.floor((((-a) % 360) + 360) % 360 / SEG) % N;
 
@@ -570,15 +578,15 @@ function update(dt) {
 }
 function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.setTransform(sc, 0, 0, sc, ox, oy);
+  ctx.setTransform(sc, 0, 0, sc, ox, oy); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   if (!CFG.video) drawBackdrop();
   drawFloor(); drawSign(); drawWheel(); drawClown(time);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const sp = $('spinner'); sp.style.left = (ox + 985 * sc) + 'px'; sp.style.top = (oy + 8 * sc) + 'px';
+  const sp = $('spinner'); sp.style.left = ((ox + 985 * sc) / dpr) + 'px'; sp.style.top = ((oy + 8 * sc) / dpr) + 'px';
   sp.classList.toggle('on', state === 'spin' || state === 'show');
   // file d'attente à gauche du clown, bannière étoiles au niveau du clown
   const qb = $('queueBox');
-  qb.style.left = qPos ? qPos.x + 'px' : (ox + 12 * sc) + 'px'; qb.style.top = qPos ? qPos.y + 'px' : (oy + 70 * sc) + 'px';
+  qb.style.left = qPos ? qPos.x + 'px' : ((ox + 12 * sc) / dpr) + 'px'; qb.style.top = qPos ? qPos.y + 'px' : ((oy + 70 * sc) / dpr) + 'px';
   qb.style.display = queue.length && !qHidden ? 'block' : 'none';
   const sc2 = $('starcard'); sc2.style.left = '50%'; sc2.style.top = '50%'; sc2.style.translate = '-50% -50%'; sc2.style.zIndex = '50';
   renderQueue();
