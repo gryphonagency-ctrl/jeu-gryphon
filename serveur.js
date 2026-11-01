@@ -429,6 +429,10 @@ function injectArcadeScripts(html) {
     if (!/<script\b[^>]*src=["']\/arcade-presence\.js["']/i.test(content)) {
         content = insertBeforeDocumentEnd(content, presenceScript);
     }
+    const mobileControlsScript = '<script src="/arcade-mobile-controls.js" defer></script>';
+    if (!/<script\b[^>]*src=["']\/arcade-mobile-controls\.js["']/i.test(content)) {
+        content = insertBeforeDocumentEnd(content, mobileControlsScript);
+    }
     return content;
 }
 
@@ -2284,6 +2288,7 @@ const server = http.createServer((req, res) => {
         ['/', [homepageFile, 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
+    ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
