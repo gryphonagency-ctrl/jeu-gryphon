@@ -411,7 +411,7 @@ function injectArcadeScripts(html) {
     let content = html;
     if (!/<meta\b[^>]*name=["']viewport["']/i.test(content) && /<head\b[^>]*>/i.test(content)) {
         content = content.replace(/<head\b[^>]*>/i,
-            match => `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`);
+            match => `${match}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`);
     }
     const walletScript = '<script src="/arcade-stars.js"></script>';
     const presenceScript = '<script src="/arcade-presence.js" defer></script>';
