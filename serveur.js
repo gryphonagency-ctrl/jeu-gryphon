@@ -10,6 +10,20 @@ const store = require('./account-store');
 const dbSync = require('./db-sync');
 const { createMediaAdmin } = require('./media-admin');
 
+// Filet de sécurité : evite le plantage au demarrage si account-store.js / db-sync.js sont en retard sur ce fichier.
+// Ces valeurs ne servent que lorsque la vraie fonction est absente.
+for (const name of ['deleteFile', 'pushFile', 'startBackups']) {
+    if (typeof dbSync[name] !== 'function') { console.warn(`[compat] db-sync.${name} absent : ignore`); dbSync[name] = () => {}; }
+}
+if (typeof store.lockCreatorGamesOnce !== 'function') {
+    console.warn('[compat] account-store.lockCreatorGamesOnce absent : ignore');
+    store.lockCreatorGamesOnce = () => false;
+}
+if (typeof store.getWalletBalance !== 'function') {
+    console.warn('[compat] account-store.getWalletBalance absent : solde 0');
+    store.getWalletBalance = () => 0;
+}
+
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
@@ -73,6 +87,8 @@ const arenaAssets = {
     'beerus-cut.png': 'image/png', 'beerus-walk.png': 'image/png',
     'naruto-cut.png': 'image/png', 'naruto-walk.png': 'image/png',
     'sasuke-cut.png': 'image/png', 'sasuke-walk.png': 'image/png',
+    'duel-luffy.png': 'image/png', 'duel-goku.png': 'image/png',
+    'duel-goku-ssj.png': 'image/png', 'duel-goku-ssj-atk.png': 'image/png',
     'goku_hd.png': 'image/png', 'goku_ssj_hd.png': 'image/png', 'luffy_hd.png': 'image/png', 'luffy_rest_hd.png': 'image/png'
 };
 const protectedRoutes = new Set([
@@ -2762,7 +2778,7 @@ function processTikTokWalletCommand(session, messageData, player) {
         broadcastSessionMessage(session, {
             type: 'WALLET_RUN_REJECTED',
             player: getPublicTikTokPlayer(player, walletOwner),
-            message: `@${player.username}, ton solde est à zéro : aucune étoile n’a été débitée.`
+            message: `@${player.username}, il faut au moins ${MIN_RUN_STARS} étoiles pour un RUN : aucune étoile n’a été débitée.`
         });
         return;
     }

@@ -1,0 +1,114 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Overlay alertes médias</title>
+<style>
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: Arial, sans-serif; }
+#video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+#status { position: fixed; left: 8px; bottom: 8px; padding: 6px 10px; border-radius: 8px; background: #000a; color: #fff; font-size: 13px; transition: opacity .6s; }
+#status.ok { opacity: 0; }
+#unlock { position: fixed; inset: 0; margin: auto; width: 280px; height: 56px; font-size: 18px; font-weight: 700; border: 0; border-radius: 12px; background: #ffd35a; cursor: pointer; display: none; }
+</style>
+</head>
+<body>
+<video id="video" playsinline></video>
+<button id="unlock" type="button">🔊 Activer le son</button>
+<div id="status">Connexion…</div>
+<script>
+const token = location.pathname.split('/').pop();
+const params = new URLSearchParams(location.search);
+const test = params.get('test');
+const statusBox = document.getElementById('status');
+const video = document.getElementById('video');
+const unlock = document.getElementById('unlock');
+let alerts = {};
+let username = '';
+let socket = null;
+let delay = 3000;
+const queue = [];
+let playing = false;
+const seen = new Set();
+
+function setStatus(text, ok) { statusBox.textContent = text; statusBox.className = ok ? 'ok' : ''; }
+const slug = text => String(text || '').trim().toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53);
+
+async function loadAlerts() {
+  const res = await fetch(`/api/media-overlay?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Overlay invalide.');
+  alerts = data.alerts || {};
+  username = data.username || '';
+}
+
+function keysFor(data) {
+  if (data.type === 'follow') return ['follow'];
+  if (data.type === 'subscribe') return ['sub'];
+  if (data.type === 'share') return ['share'];
+  if (data.type === 'gift' && data.gift) return [`gift_${slug(data.gift.giftName)}`, 'gift_tous'];
+  return [];
+}
+
+function enqueue(keys) {
+  for (const key of keys) {
+    const alert = alerts[key];
+    if (alert && (alert.audioUrl || alert.videoUrl)) { queue.push(alert); next(); return; }
+  }
+}
+
+function finish() { video.style.display = 'none'; video.removeAttribute('src'); playing = false; next(); }
+
+function play(url, element) {
+  return new Promise(resolve => {
+    element.onended = element.onerror = () => resolve();
+    element.src = url;
+    element.play().catch(error => {
+      if (error.name === 'NotAllowedError') unlock.style.display = 'block';
+      resolve();
+    });
+  });
+}
+
+async function next() {
+  if (playing || !queue.length) return;
+  playing = true;
+  const alert = queue.shift();
+  const jobs = [];
+  if (alert.videoUrl) { video.style.display = 'block'; video.muted = false; jobs.push(play(alert.videoUrl, video)); }
+  if (alert.audioUrl) jobs.push(play(alert.audioUrl, new Audio()));
+  await Promise.all(jobs);
+  finish();
+}
+
+unlock.onclick = () => { unlock.style.display = 'none'; new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=').play().catch(() => {}); };
+
+function connect() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(`${protocol}//${location.host}/media-overlay-relay?token=${encodeURIComponent(token)}`);
+  socket.onopen = () => { delay = 3000; setStatus('Connecté au relais. En attente du live…'); };
+  socket.onmessage = event => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === 'TTS_CONFIG') {
+      loadAlerts().catch(() => {}).finally(() => socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: data.username })));
+    } else if (data.type === 'STATUS') {
+      setStatus(data.message || '', /connecté ·/i.test(data.message || '') && !/erreur|interrompue/i.test(data.message || ''));
+    } else {
+      const id = data.gift?.messageId || data.eventData?.messageId || data.shareData?.messageId || '';
+      if (id) { if (seen.has(id)) return; seen.add(id); if (seen.size > 2000) seen.delete(seen.values().next().value); }
+      enqueue(keysFor(data));
+    }
+  };
+  socket.onclose = () => { setStatus('Relais déconnecté. Nouvelle tentative…'); setTimeout(connect, delay); delay = Math.min(delay * 2, 30000); };
+}
+
+loadAlerts().then(() => {
+  setInterval(() => loadAlerts().catch(() => {}), 60000);
+  if (test) { setStatus(`Test : ${test}`); enqueue(test === 'gift' ? ['gift_tous'] : [test]); }
+  connect();
+}).catch(error => setStatus(error.message));
+</script>
+</body>
+</html>

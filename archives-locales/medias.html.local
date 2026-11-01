@@ -1,0 +1,255 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mes médias – Griffon Arcade</title>
+<style>
+:root{color-scheme:dark;--line:rgba(190,220,255,.2);--accent:#72dcff;font-family:Inter,system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:linear-gradient(135deg,#050b1b,#0a1c49 55%,#050b1b);color:#fff;padding:20px}
+main{max-width:1000px;margin:auto;display:grid;gap:18px}
+h1{margin:0}a{color:var(--accent)}
+.card{background:#0b1630;border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:12px}
+h2{margin:0;font-size:1.1rem}
+label{display:grid;gap:4px;font-size:.9rem;color:#bac9e8}
+input,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:#07122d;color:#fff}
+button{cursor:pointer;background:var(--accent);color:#04101f;font-weight:700;border:0}
+button.danger{background:#ff6b7a}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.row>*{flex:1 1 180px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.media{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;font-size:.85rem;word-break:break-all}
+.media img,.media video{width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#000}
+.media audio{width:100%}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
+.tabs a:hover{border-color:var(--accent)}
+#alert-sections{display:grid;gap:18px}
+.slot{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.slot h3{grid-column:1/-1;margin:0;font-size:1rem}
+.slot .state{grid-column:1/-1;font-size:.8rem;color:#9dffb0}
+.slot .state.off{color:#bac9e8}
+.hint{margin:0;color:#bac9e8;font-size:.9rem}
+@media(max-width:600px){.slot{grid-template-columns:1fr}}
+#status{min-height:1.3em;color:#9dffb0}#status.err{color:#ff9aa5}
+</style>
+</head>
+<body>
+<main>
+<div><a href="/">← Accueil</a><h1>Mes médias</h1>
+<p>Envoie tes sons et vidéos : ils sont enregistrés sur le serveur (disque persistant) et visibles par toi seul. Associe-les ensuite aux alertes de ton live (follow, sub, nom de cadeau…).</p></div>
+<p id="status" role="status"></p>
+
+<section class="card">
+<h2>Ajouter un média</h2>
+<div class="row">
+<label>Fichier (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif – 25 Mo max)
+<input id="file" type="file" accept=".mp3,.wav,.ogg,.m4a,.mp4,.webm,.png,.jpg,.jpeg,.webp,.gif" multiple></label>
+<button id="upload" type="button">Envoyer</button>
+</div>
+</section>
+
+<section class="card">
+<h2>Importer depuis un lien</h2>
+<p>Colle un lien https vers un fichier (mp3, mp4, png…) ou la page d’un son MyInstants.</p>
+<form id="import-form" class="row">
+<label>Lien<input id="import-url" type="url" required maxlength="500" placeholder="https://www.myinstants.com/en/instant/vine-boom-sound-70972/"></label>
+<button type="submit">Importer</button>
+</form>
+</section>
+
+<section class="card" id="overlay-card">
+<h2>🔌 Connecter mon overlay au live</h2>
+<p>Entre ton pseudo TikTok, puis ajoute le lien généré comme « Source navigateur » dans OBS (ou TikTok Live Studio). Il joue tes alertes pendant ton live.</p>
+<form id="overlay-form" class="row">
+<label>Pseudo TikTok (sans @)<input id="overlay-user" maxlength="32" required placeholder="monpseudo"></label>
+<button type="submit" id="overlay-save">Connecter</button>
+</form>
+<div id="overlay-link" hidden>
+<p><code id="overlay-link-url"></code></p>
+<div class="row">
+<button type="button" id="overlay-copy">Copier le lien</button>
+<button type="button" id="overlay-test">Tester (ouvre l’overlay)</button>
+<button type="button" id="overlay-reset" class="danger">Régénérer le lien</button>
+</div>
+<p class="hint">Dans OBS : Sources → + → Navigateur → colle le lien (1080×1920 ou taille de ta scène), coche « Contrôler l’audio via OBS ». Ton live TikTok doit être en cours.</p>
+</div>
+</section>
+
+<nav id="tabs" class="tabs" aria-label="Types d’alertes"></nav>
+<div id="alert-sections"></div>
+<p>Ton overlay peut lire ta configuration sur <code id="overlay-url">/api/media-alerts</code>.</p>
+
+<section class="card"><h2>Bibliothèque</h2><div id="library" class="grid"></div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let state = { files: [], alerts: {} };
+
+function say(text, error) { $('status').textContent = text; $('status').className = error ? 'err' : ''; }
+
+async function api(body) {
+  const res = await fetch('/api/media', body ? {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  } : undefined);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Erreur serveur.');
+  return data;
+}
+
+const nameOf = id => state.files.find(f => f.id === id)?.name || '—';
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+const slug = text => text.trim().toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53);
+const drafts = new Set();
+
+const SECTIONS = [
+  { id: 'follows', title: '👤 Nouveaux abonnés (follow)', hint: 'Déclenchée quand quelqu’un s’abonne à ton compte TikTok.',
+    fixed: [{ key: 'follow', label: 'Nouveau follow' }] },
+  { id: 'subs', title: '⭐ Abonnés (sub)', hint: 'Déclenchée pour les abonnements payants à ton live.',
+    fixed: [{ key: 'sub', label: 'Abonnement (sub)' }] },
+  { id: 'gifts', title: '🎁 Cadeaux', hint: 'Un son/une vidéo par cadeau. « Tous les cadeaux » sert de réglage par défaut.',
+    prefix: 'gift_', fixed: [{ key: 'gift_tous', label: 'Tous les cadeaux' }],
+    addLabel: 'Nom du cadeau (ex. rose, lion)' },
+  { id: 'shares', title: '📣 Partages du live', hint: 'Déclenchée quand un spectateur partage ton live.',
+    fixed: [{ key: 'share', label: 'Partage' }] },
+  { id: 'others', title: '✨ Autres évènements', hint: 'Évènements personnalisés (nom libre).',
+    other: true, addLabel: 'Nom de l’évènement' }
+];
+
+function sectionKeys(section) {
+  const fixedKeys = new Set(SECTIONS.flatMap(s => (s.fixed || []).map(f => f.key)));
+  const keys = Object.keys(state.alerts);
+  if (section.prefix) return keys.filter(k => k.startsWith(section.prefix) && !fixedKeys.has(k));
+  if (section.other) return keys.filter(k => !fixedKeys.has(k) && !k.startsWith('gift_'));
+  return [];
+}
+
+function select(kind, value) {
+  const node = el('select', {}, el('option', { value: '', textContent: 'Aucun' }),
+    ...state.files.filter(f => f.kind === kind).map(f => el('option', { value: f.id, textContent: f.name })));
+  node.value = state.files.some(f => f.id === value) ? value : '';
+  return node;
+}
+
+function slot(key, label, removable) {
+  const alert = state.alerts[key] || {};
+  const audio = select('audio', alert.audio);
+  const video = select('video', alert.video);
+  const active = Boolean(alert.audio || alert.video);
+  const save = el('button', { type: 'button', textContent: 'Enregistrer',
+    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value }), 'Alerte enregistrée.') });
+  const actions = el('div', { className: 'row' }, save);
+  if (state.alerts[key]) {
+    actions.append(el('button', { type: 'button', className: 'danger', textContent: removable ? 'Supprimer' : 'Réinitialiser',
+      onclick: () => drafts.has(key)
+        ? (drafts.delete(key), delete state.alerts[key], renderSections())
+        : run(() => api({ action: 'delete-alert', event: key }), 'Alerte supprimée.') }));
+  }
+  return el('div', { className: 'slot' }, el('h3', { textContent: label }),
+    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), actions,
+    el('span', { className: `state${active ? '' : ' off'}`, textContent: active ? '● Active' : '○ Non configurée' }));
+}
+
+function renderSections() {
+  $('tabs').replaceChildren(...SECTIONS.map(s => el('a', { href: `#${s.id}`, textContent: s.title })));
+  $('alert-sections').replaceChildren(...SECTIONS.map(section => {
+    const card = el('section', { className: 'card', id: section.id }, el('h2', { textContent: section.title }), el('p', { className: 'hint', textContent: section.hint }));
+    for (const f of section.fixed || []) card.append(slot(f.key, f.label, false));
+    for (const key of sectionKeys(section)) card.append(slot(key, section.prefix ? key.slice(section.prefix.length) : key, true));
+    if (section.addLabel) {
+      const input = el('input', { maxlength: 50, placeholder: section.addLabel });
+      const add = el('form', { className: 'row', onsubmit: event => {
+        event.preventDefault();
+        const name = slug(input.value);
+        if (!name) return say('Nom invalide.', true);
+        const key = (section.prefix || '') + name;
+        if (state.alerts[key] || (section.fixed || []).some(f => f.key === key)) return say('Cette alerte existe déjà.', true);
+        state.alerts[key] = { audio: null, video: null };
+        drafts.add(key);
+        renderSections();
+        say('Choisis maintenant un son ou une vidéo puis enregistre.');
+      } }, el('label', {}, 'Ajouter', input), el('button', { type: 'submit', textContent: '+ Ajouter' }));
+      card.append(add);
+    }
+    return card;
+  }));
+}
+
+function render() {
+  drafts.clear();
+  renderSections();
+  $('library').replaceChildren(...state.files.map(f => {
+    const preview = f.kind === 'image' ? el('img', { src: f.url, alt: f.name, loading: 'lazy' })
+      : el(f.kind, { src: f.url, controls: true, preload: 'none' });
+    return el('div', { className: 'media' }, preview, el('strong', { textContent: f.name }),
+      el('span', { textContent: `${(f.size / 1048576).toFixed(2)} Mo` }),
+      el('button', { className: 'danger', textContent: 'Supprimer', onclick: () => confirm('Supprimer ce média ?') && run(() => api({ action: 'delete', id: f.id })) }));
+  }));
+}
+
+function renderOverlay() {
+  const overlay = state.overlay;
+  $('overlay-link').hidden = !overlay;
+  if (!overlay) return;
+  $('overlay-user').value = overlay.username;
+  $('overlay-link-url').textContent = location.origin + overlay.url;
+  $('overlay-save').textContent = 'Mettre à jour';
+}
+
+$('overlay-form').onsubmit = event => {
+  event.preventDefault();
+  run(() => api({ action: 'set-overlay', username: $('overlay-user').value }), 'Overlay connecté : copie le lien dans OBS.');
+};
+$('overlay-reset').onclick = () => confirm('L’ancien lien cessera de fonctionner. Continuer ?') &&
+  run(() => api({ action: 'reset-overlay', username: $('overlay-user').value }), 'Nouveau lien généré.');
+$('overlay-copy').onclick = () => navigator.clipboard.writeText($('overlay-link-url').textContent).then(() => say('Lien copié.'), () => say('Copie impossible : sélectionne le lien à la main.', true));
+$('overlay-test').onclick = () => window.open(`${$('overlay-link-url').textContent}?test=gift_tous`, '_blank');
+
+async function refresh() { state = await api(); $('overlay-url').textContent = `${location.origin}/api/media-alerts?user=${encodeURIComponent(state.user)}`; render(); renderOverlay(); }
+async function run(action, message) {
+  try { await action(); await refresh(); say(message || 'Enregistré.'); } catch (e) { say(e.message, true); }
+}
+
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+$('upload').onclick = async () => {
+  const files = [...$('file').files];
+  if (!files.length) return say('Choisis au moins un fichier.', true);
+  $('upload').disabled = true;
+  try {
+    for (const file of files) {
+      say(`Envoi de ${file.name}…`);
+      await api({ action: 'upload', name: file.name, data: await toBase64(file) });
+    }
+    $('file').value = '';
+    await refresh();
+    say('Média(s) envoyé(s) au serveur.');
+  } catch (e) { say(e.message, true); }
+  $('upload').disabled = false;
+};
+
+$('import-form').onsubmit = async event => {
+  event.preventDefault();
+  say('Import en cours…');
+  await run(() => api({ action: 'import-url', url: $('import-url').value }), 'Média importé.');
+  if ($('status').className !== 'err') $('import-url').value = '';
+};
+
+refresh().catch(e => say(e.message, true));
+</script>
+</body>
+</html>
