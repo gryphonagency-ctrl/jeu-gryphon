@@ -506,6 +506,7 @@ frame();
 /* ============ WEBSOCKET TIKTOK ============ */
 let wsOpen=false;
 function connect(){
+  if(!new URLSearchParams(location.search).get('ws')) return; // connexion directe seulement si ?ws= est fourni ; sinon le panneau (liveConnect) gère le live
   let ws; try{ ws=new WebSocket(WS_URL); }catch(e){ return setTimeout(connect,3000); }
   ws.onopen=()=>{ wsOpen=true; console.log('Connecté au WebSocket TikTok'); };
   ws.onmessage=ev=>{ try{ onLive(JSON.parse(ev.data)); }catch(e){ console.error('Message WS invalide',e); } };
@@ -551,15 +552,15 @@ drawWheel(0);
 $('cpWheel').onclick=()=>startWheel('Sarah',null);
 function onLive(d){
   if(d.type==='gift'||d.type==='tiktok-gift'){ const g=d.gift||d, name=g.username||g.nickname, avatar=g.profilePictureUrl||g.avatar||null;
-    const worth=parseInt(g.coinCount??g.count)||1, n=Math.min(worth,2000); for(let i=0;i<n;i++) spawnCoin(avatar,name);
+    const worth=Math.max(1,Math.floor(Number(g.coinCount)||(Number(g.coinValue??g.diamondCount??g.diamonds)||1)*(Number(g.repeatCount)||1))), n=Math.min(worth,2000); for(let i=0;i<n;i++) spawnCoin(avatar,name);
     if(worth>=WHEEL_MIN) startWheel(name,avatar);
   }
   else if(d.type==='WALLET_RUN'&&!window.ArcadeStars) runStars(d); // sans la plateforme : le relais envoie lui-même l'évènement
   else if(d.type==='vip-trigger') spawnVIPCard(d.username,d.avatar,d.value,false,true);
 }
 // RUN : les étoiles déjà débitées du solde global deviennent des jetons (1 étoile = 1 jeton) lâchés avec la photo du joueur
-function runStars(d){ const n=Math.min(Math.floor(+d.spent)||0,120), p=d.player||{}; if(n<=0) return;
-  for(let i=0;i<n;i++) setTimeout(()=>spawnCoin(p.avatarUrl||null,p.username||p.uniqueId||'run',true),i*70); }
+function runStars(d){ const n=Math.min(Math.floor(+d.spent)||0,2000), p=d.player||{}; if(n<=0) return;
+  for(let i=0;i<n;i++) setTimeout(()=>spawnCoin(p.avatarUrl||null,p.username||p.uniqueId||'run',true),i*40); }
 addEventListener('arcade:wallet-run',e=>runStars(e.detail||{}));
 const cpSet=t=>$('cpStatus').textContent=t;
 function liveConnect(){
@@ -697,9 +698,10 @@ $('cpImp').onclick=()=>$('cpImpFile').click();
 $('cpImpFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; try{ await applySetup(JSON.parse(await f.text())); setupMsg('Setup importé.'); }catch(err){ setupMsg('Import impossible : '+err.message); } };
 $('cpSave').onclick=async()=>{ try{ const o=await buildSetup(); idb(db=>{ const t=db.transaction('f','readwrite'); t.objectStore('f').put(JSON.stringify(o),'setup'); t.oncomplete=()=>setupMsg('Setup sauvegardé dans ce navigateur.'); t.onerror=()=>setupMsg('Sauvegarde impossible (espace insuffisant ?).'); }); }catch(e){ setupMsg('Sauvegarde impossible : '+e.message); } };
 $('cpLoad').onclick=async()=>{ const s=await idbGet('setup'); if(!s) return setupMsg('Aucune sauvegarde trouvée.'); try{ await applySetup(JSON.parse(s)); setupMsg('Setup restauré.'); }catch(e){ setupMsg('Restauration impossible : '+e.message); } };
-$('cpBig').onclick=()=>window.ArcadeEffects&&ArcadeEffects.simulateBigGift('Sarah',100);
+$('cpBig').onclick=()=>{ window.ArcadeEffects&&ArcadeEffects.simulateBigGift('Sarah',100); for(let i=0;i<100;i++) spawnCoin(null,'Sarah'); };
 $('cpShare').onclick=()=>window.ArcadeEffects&&ArcadeEffects.simulateShare();
 try{ $('cpUser').value=localStorage.getItem('coin-pusher-user')||''; const r=localStorage.getItem('coin-pusher-rtp2'); if(r!==null){ $('cpRtp').value=r; $('cpRtp').oninput({target:$('cpRtp')}); } }catch(e){}
+if($('cpUser').value.trim()) liveConnect();
 
 updQuota();
 /* ============ PLUIE DE DÉMO (si aucun flux TikTok) + TESTS CLAVIER C / V ============ */
