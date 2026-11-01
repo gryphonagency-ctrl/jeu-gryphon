@@ -145,6 +145,7 @@ const freeTrialRoutes = new Set([
     '/course-de-billes-controle.html',
     '/flipper-neon.html',
     '/bouteilles-colorees.html',
+    '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
 ]);
 const staticGameIds = [

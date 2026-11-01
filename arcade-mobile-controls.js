@@ -15,7 +15,8 @@
         '/super-mario-live.html': '#gear, #settings',
         '/course-de-billes.html': '#panel',
         '/flipper-neon.html': '#cfg, #cfgBtn',
-        '/bouteilles-colorees.html': '#panel'
+        '/bouteilles-colorees.html': '#panel',
+        '/coin-pusher-tiktok.html': '.sidebar, .pusher-quick-controls'
     };
     var selectors = GAMES[location.pathname];
     if (!selectors) return;
