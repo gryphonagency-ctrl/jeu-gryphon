@@ -40,7 +40,7 @@
         <span class="drawn-label" id="drawing-status">En attente d’une manche</span>
       </div>
       <div class="hint"><span>📋 Indice · nombre de lettres</span><strong class="word" id="hint">—</strong></div>
-      <div class="chat-prompt">💬 Tapez votre réponse dans le chat TikTok !</div>
+      <div class="chat-prompt">💬 Devinez dans le chat TikTok · « run » lance une nouvelle manche (1 étoile minimum).</div>
       <button class="btn new" id="new-game" type="button">🎨 Lancer une nouvelle manche</button>
       <form class="form" id="guess"><input id="answer" autocomplete="off" placeholder="Simuler une réponse du chat…" aria-label="Réponse de démonstration"><button class="btn" type="submit">Tester le chat 🚀</button></form>
       <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
@@ -62,6 +62,7 @@
   let gameId = null;
   let gameFinished = false;
   let nextRoundTimer = null;
+  let gameStartQueue = Promise.resolve();
   let connectorUrl = 'wss://jeu6boite.onrender.com';
 
   function normalize(value) {
@@ -71,6 +72,13 @@
   function showFeedback(message, state = 'info') {
     $('feedback').textContent = message;
     $('feedback').className = `feedback ${state}`;
+  }
+
+  function queueNewGame() {
+    gameStartQueue = gameStartQueue.then(() => newGame()).catch(error => {
+      console.error('Impossible de traiter la demande de nouvelle manche :', error);
+      showFeedback('Impossible de lancer la nouvelle manche. Réessaie.', 'error');
+    });
   }
 
   function renderPlayers() {
@@ -125,7 +133,7 @@
       $('confetti').classList.add('on');
       nextRoundTimer = window.setTimeout(() => {
         nextRoundTimer = null;
-        void newGame();
+        queueNewGame();
       }, NEXT_ROUND_DELAY_MS);
     } catch (error) {
       console.error('Réponse non vérifiée :', error);
@@ -189,9 +197,15 @@
       setStatus(message, /connect|live|rejoint|direct/i.test(message) ? 'on' : '');
       return;
     }
+    if (data.type === 'WALLET_RUN') {
+      queueNewGame();
+      return;
+    }
     if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
       const comment = data.commentData ?? data;
-      void checkGuess(comment.comment ?? comment.text ?? '', comment.nickname ?? comment.username ?? 'spectateur');
+      const text = String(comment.comment ?? comment.text ?? '').trim();
+      if (/^!?\s*run(?:\s+\d+)?$/iu.test(text)) return;
+      void checkGuess(text, comment.nickname ?? comment.username ?? 'spectateur');
     }
   }
 
@@ -257,7 +271,7 @@
   $('backdrop').addEventListener('click', closeSettings);
   $('connect').addEventListener('click', connect);
   $('disconnect').addEventListener('click', disconnect);
-  $('new-game').addEventListener('click', () => void newGame());
+  $('new-game').addEventListener('click', queueNewGame);
   $('guess').addEventListener('submit', event => {
     event.preventDefault();
     void checkGuess($('answer').value, 'testeur');
@@ -272,7 +286,7 @@
       showFeedback('La génération des dessins est momentanément indisponible. Réessayez plus tard.', 'error');
       return;
     }
-    void newGame();
+    queueNewGame();
   }).catch(error => {
     console.error('État du service indisponible :', error);
     showFeedback('Impossible de joindre le serveur du jeu.', 'error');

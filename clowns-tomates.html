@@ -675,6 +675,34 @@ function onGift(user, coins, forcedSide) {
   next = 1 - next;
 }
 
+function onWalletRun(data) {
+  const player = data.player || {};
+  const user = String(player.username || player.nickname || player.uniqueId || 'spectateur').replace(/^@/, '');
+  let remaining = Math.floor(Number(data.spent));
+  if (!Number.isSafeInteger(remaining) || remaining < 1) {
+    console.warn('RUN ignoré : montant d’étoiles invalide.');
+    return;
+  }
+
+  const effects = [];
+  for (const kind of [1000, 500, 100, 10, 5, 2, 1]) {
+    while (remaining >= kind && effects.length < 200) {
+      effects.push(kind);
+      remaining -= kind;
+    }
+  }
+
+  effects.forEach(kind => {
+    const side = Math.random() < 0.5 ? 0 : 1;
+    queueItem(kind, user, side);
+    if (kind < 100) next = 1 - side;
+  });
+
+  $('who').textContent = remaining > 0
+    ? '@' + user + ' : RUN limité à 200 effets (' + effects.length + ' ajoutés, surplus non représenté).'
+    : '@' + user + ' lance ' + effects.length + ' effet' + (effects.length > 1 ? 's' : '') + ' sur les clowns !';
+}
+
 let ws = null, retry = null;
 function setStatus(t) { $('status').textContent = t; }
 function connect() {
@@ -691,6 +719,7 @@ function connect() {
         const g = d.gift || d;
         onGift(g.username || g.nickname || g.uniqueId, Math.floor(Number(g.coinCount) || (Number(g.coinValue ?? g.diamondCount ?? g.diamonds) || 0) * (Number(g.repeatCount) || 1)));
       }
+      if (d.type === 'WALLET_RUN') onWalletRun(d);
       if (d.type === 'comment' && d.commentData) {
         const c = d.commentData;
         onComment(c.username || c.uniqueId || c.nickname, c.comment);
