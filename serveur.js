@@ -3192,10 +3192,7 @@ function deliverTikTokMessage(session, messageData) {
     const overlayEncoded = messageData.type === 'gift'
         ? JSON.stringify({
             ...messageData,
-            matchLive: session.isLive && [...session.clients].some(client =>
-                client.readyState === WebSocket.OPEN &&
-                !overlaySockets.has(client) &&
-                !liveTtsClientUsernames.has(client))
+            matchLive: session.isLive && messageData.gift?.liveMatchActive === true
         })
         : encoded;
     for (const client of session.clients) {

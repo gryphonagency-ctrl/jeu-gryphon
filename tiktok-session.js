@@ -112,6 +112,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     let active = true;
     let connecting = false;
     let retryTimer = null;
+    let liveMatchActive = false;
 
     const send = message => {
         if (active) sendToClients(message);
@@ -125,6 +126,12 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         }, 30_000);
         retryTimer.unref?.();
     };
+
+    connection.on('linkMicBattle', battle => {
+        const action = Number(battle.action);
+        if (action === 4 || action === 7) liveMatchActive = true;
+        else if ([3, 5, 6, 11].includes(action)) liveMatchActive = false;
+    });
 
     connection.on('gift', async gift => {
         const rawGiftId = gift.giftId ?? gift.gift?.id;
@@ -198,6 +205,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 giftType,
                 repeatCount: appliedRepeatCount,
                 coinCount,
+                liveMatchActive,
                 giftName,
                 giftImageUrl: getTikTokGiftImageUrl(gift)
             }
@@ -300,6 +308,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     });
 
     connection.on('disconnected', () => {
+        liveMatchActive = false;
         logDiagnostic('connexion', {
             account: username,
             state: 'interrompue',
