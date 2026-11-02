@@ -85,6 +85,40 @@ test('refuses game generation when the OpenAI key is missing', async t => {
   assert.match((await response.json()).error, /secrets Render/);
 });
 
+test('reports actionable guidance when OpenAI denies access to the drawing model', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: async url => url.endsWith('/chat/completions')
+      ? new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
+      }), { status: 200 })
+      : new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: 'La clé API OpenAI n’a pas accès au modèle de dessin. Vérifie les droits du compte.'
+  });
+});
+
+test('reports when the server cannot contact OpenAI', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: async () => {
+      throw new TypeError('fetch failed');
+    }
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: 'Le serveur ne parvient pas à contacter OpenAI. Réessaie plus tard.'
+  });
+});
+
 test('applies a daily image-generation limit', async t => {
   const app = await startServer({
     apiKey: 'test-key',

@@ -125,18 +125,35 @@ function createServer({
   }
 
   async function openAiRequest(endpoint, payload) {
-    const result = await fetchImpl(`https://api.openai.com/v1/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(120_000)
-    });
+    let result;
+    try {
+      result = await fetchImpl(`https://api.openai.com/v1/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(120_000)
+      });
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(`OpenAI ${endpoint} request failed: ${detail}`);
+      const error = new Error('Le serveur ne parvient pas à contacter OpenAI. Réessaie plus tard.');
+      error.statusCode = 502;
+      throw error;
+    }
     if (!result.ok) {
       console.error(`OpenAI ${endpoint} returned HTTP ${result.status}`);
-      const error = new Error('Le service de dessin IA est momentanément indisponible.');
+      const messages = {
+        400: 'OpenAI refuse les paramètres du dessin. Vérifie le modèle et les options de génération.',
+        401: 'La clé API OpenAI du serveur est invalide ou expirée.',
+        403: 'La clé API OpenAI n’a pas accès au modèle de dessin. Vérifie les droits du compte.',
+        404: 'Le modèle ou la route de génération OpenAI est introuvable.',
+        429: 'Le quota OpenAI est épuisé ou la limite temporaire de requêtes est atteinte.'
+      };
+      const message = messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
+      const error = new Error(message);
       error.statusCode = result.status === 429 ? 503 : 502;
       throw error;
     }
