@@ -1,8 +1,29 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { after, test } = require('node:test');
+const { test } = require('node:test');
 const { createServer } = require('./server');
+
+const VALID_STROKES = [
+  { color: 'black', width: 12, closed: true, fill: 'yellow', points: [[300, 250], [700, 250], [500, 700]] },
+  { color: 'black', width: 10, closed: true, fill: 'red', points: [[350, 600], [500, 800], [650, 600]] },
+  { color: 'blue', width: 8, closed: false, fill: 'none', points: [[400, 400], [500, 350], [600, 400]] }
+];
+
+function createOpenAiFetch({ words = ['Parapluie'], drawing = VALID_STROKES, onRequest } = {}) {
+  let wordIndex = 0;
+  return async (url, options) => {
+    const body = JSON.parse(options.body);
+    onRequest?.(url, body);
+    const isDrawing = body.messages[0].content.includes('Tu dessines un sujet');
+    const content = isDrawing
+      ? JSON.stringify({ strokes: drawing })
+      : JSON.stringify({ word: words[wordIndex++ % words.length] });
+    return new Response(JSON.stringify({
+      choices: [{ message: { content } }]
+    }), { status: 200 });
+  };
+}
 
 async function startServer(options = {}) {
   const server = createServer(options);
@@ -17,36 +38,25 @@ async function startServer(options = {}) {
   };
 }
 
-test('health endpoint reports readiness without revealing secrets', async t => {
-  const app = await startServer({ apiKey: '', imageModel: 'gpt-image-2' });
+test('health endpoint reports drawing readiness without revealing secrets', async t => {
+  const app = await startServer({ apiKey: '' });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/health`);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     ok: true,
-    imageGenerationReady: false,
-    imageModel: 'gpt-image-2',
+    drawingGenerationReady: false,
+    drawingModel: 'gpt-4o-mini',
     dailyDrawLimit: 10
   });
 });
 
-test('draws a unique topic, hides the answer, and validates guesses server-side', async t => {
+test('AI draws safe SVG strokes, hides the answer, and validates guesses server-side', async t => {
   const requests = [];
   const app = await startServer({
     apiKey: 'test-key',
-    imageModel: 'gpt-image-2',
-    fetchImpl: async (url, options) => {
-      requests.push({ url, body: JSON.parse(options.body) });
-      if (url.endsWith('/chat/completions')) {
-        return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({
-        data: [{ b64_json: Buffer.from('mock-png-image-data'.repeat(10)).toString('base64') }]
-      }), { status: 200 });
-    }
+    fetchImpl: createOpenAiFetch({ onRequest: (url, body) => requests.push({ url, body }) })
   });
   t.after(() => app.close());
 
@@ -54,11 +64,15 @@ test('draws a unique topic, hides the answer, and validates guesses server-side'
   assert.equal(newGame.status, 201);
   const game = await newGame.json();
   assert.equal(game.hint, '_ _ _ _ _ _ _ _ _');
-  assert.match(game.image, /^data:image\/png;base64,/);
+  assert.match(game.image, /^data:image\/svg\+xml;base64,/);
   assert.equal('word' in game, false);
   assert.equal(requests.length, 2);
-  assert.equal(requests[1].body.model, 'gpt-image-2');
-  assert.match(requests[1].body.prompt, /child.*mouse/i);
+  assert.ok(requests.every(request => request.url.endsWith('/chat/completions')));
+
+  const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  assert.equal((svg.match(/<path /g) || []).length, VALID_STROKES.length);
+  assert.equal(svg.includes('Parapluie'), false);
 
   const wrongGuess = await fetch(`${app.baseUrl}/api/games/${game.gameId}/guess`, {
     method: 'POST',
@@ -79,6 +93,23 @@ test('draws a unique topic, hides the answer, and validates guesses server-side'
   });
 });
 
+test('rejects invalid AI strokes rather than embedding them in the SVG', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: createOpenAiFetch({
+      drawing: [
+        ...VALID_STROKES.slice(0, 2),
+        { ...VALID_STROKES[2], color: 'red" onload="alert(1)' }
+      ]
+    })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 502);
+  assert.match((await response.json()).error, /Impossible de générer/);
+});
+
 test('refuses game generation when the OpenAI key is missing', async t => {
   const app = await startServer({ apiKey: '' });
   t.after(() => app.close());
@@ -89,13 +120,18 @@ test('refuses game generation when the OpenAI key is missing', async t => {
 });
 
 test('reports actionable guidance when OpenAI denies access to the drawing model', async t => {
+  let requestCount = 0;
   const app = await startServer({
     apiKey: 'test-key',
-    fetchImpl: async url => url.endsWith('/chat/completions')
-      ? new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-      }), { status: 200 })
-      : new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 })
+    fetchImpl: async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 });
+    }
   });
   t.after(() => app.close());
 
@@ -107,43 +143,44 @@ test('reports actionable guidance when OpenAI denies access to the drawing model
 });
 
 test('reports the rejected parameter when OpenAI returns a bad request', async t => {
+  let requestCount = 0;
   const app = await startServer({
     apiKey: 'test-key',
-    fetchImpl: async url => url.endsWith('/chat/completions')
-      ? new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-      }), { status: 200 })
-      : new Response(JSON.stringify({
-        error: { code: 'unsupported_value', param: 'quality', message: 'Not shown to players' }
-      }), { status: 400 })
+    fetchImpl: async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        error: { code: 'unsupported_value', param: 'temperature', message: 'Not shown to players' }
+      }), { status: 400 });
+    }
   });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
-    error: 'OpenAI refuse la requête de dessin (code unsupported_value, paramètre quality). Vérifie le modèle et les options.'
+    error: 'OpenAI refuse la requête de dessin (code unsupported_value, paramètre temperature). Vérifie le modèle et les options.'
   });
 });
 
-test('identifies an image model that the OpenAI organization cannot use', async t => {
+test('identifies a text model that the OpenAI organization cannot use', async t => {
   const app = await startServer({
     apiKey: 'test-key',
-    imageModel: 'gpt-image-2',
-    fetchImpl: async url => url.endsWith('/chat/completions')
-      ? new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-      }), { status: 200 })
-      : new Response(JSON.stringify({
-        error: { code: 'invalid_value', param: 'model', message: 'Not shown to players' }
-      }), { status: 400 })
+    textModel: 'test-model',
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { code: 'invalid_value', param: 'model', message: 'Not shown to players' }
+    }), { status: 400 })
   });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
-    error: 'OpenAI rejette le modèle « gpt-image-2 ». Vérifie OPENAI_IMAGE_MODEL et l’accès de l’organisation à ce modèle.'
+    error: 'OpenAI rejette le modèle texte « test-model ». Vérifie OPENAI_TEXT_MODEL et l’accès de l’organisation à ce modèle.'
   });
 });
 
@@ -163,17 +200,11 @@ test('reports when the server cannot contact OpenAI', async t => {
   });
 });
 
-test('applies a daily image-generation limit', async t => {
+test('applies a daily drawing-generation limit', async t => {
   const app = await startServer({
     apiKey: 'test-key',
     maxDailyDraws: 1,
-    fetchImpl: async url => url.endsWith('/chat/completions')
-      ? new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ word: 'Pomme' }) } }]
-      }), { status: 200 })
-      : new Response(JSON.stringify({
-        data: [{ b64_json: Buffer.from('mock-png-image-data'.repeat(10)).toString('base64') }]
-      }), { status: 200 })
+    fetchImpl: createOpenAiFetch({ words: ['Pomme'] })
   });
   t.after(() => app.close());
 
@@ -185,17 +216,10 @@ test('applies a daily image-generation limit', async t => {
 });
 
 test('allows consecutive automatic rounds within the daily limit', async t => {
-  let topic = 0;
   const app = await startServer({
     apiKey: 'test-key',
     maxDailyDraws: 5,
-    fetchImpl: async url => url.endsWith('/chat/completions')
-      ? new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ word: `Sujet${++topic}` }) } }]
-      }), { status: 200 })
-      : new Response(JSON.stringify({
-        data: [{ b64_json: Buffer.from('mock-png-image-data'.repeat(10)).toString('base64') }]
-      }), { status: 200 })
+    fetchImpl: createOpenAiFetch({ words: ['Sujet1', 'Sujet2', 'Sujet3', 'Sujet4'] })
   });
   t.after(() => app.close());
 

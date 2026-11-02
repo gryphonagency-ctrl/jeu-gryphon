@@ -10,14 +10,11 @@ const MAX_BODY_BYTES = 2_048;
 const GAME_TTL_MS = 60 * 60 * 1_000;
 const RATE_WINDOW_MS = 10 * 60 * 1_000;
 const MAX_REQUESTS_PER_IP = 10;
-const IMAGE_PROMPT = [
-  'Make a very simple, charming child-made computer drawing of: ',
-  '. It should look like a young child slowly drew it with a mouse in a basic paint program: ',
-  'slightly wobbly freehand black outlines, a few broad hand-filled pastel colors, ',
-  'simple recognizable shape, imperfect but clear. Show only the single subject, ',
-  'large and centered on a plain white canvas. Use very few strokes and almost no detail. ',
-  'No letters, words, labels, frame, extra objects, gradients, realism, or polished vector art.'
-].join('');
+const DRAWING_COLORS = new Set([
+  'black', 'brown', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink'
+]);
+const MAX_DRAWING_STROKES = 24;
+const MAX_DRAWING_POINTS = 240;
 
 function normalizeWord(value) {
   return String(value || '')
@@ -28,6 +25,44 @@ function normalizeWord(value) {
     .replace(/[^a-z0-9 ]/g, '')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function makeDrawingSvg(strokes) {
+  if (!Array.isArray(strokes) || strokes.length < 3 || strokes.length > MAX_DRAWING_STROKES) {
+    throw new Error('Dessin IA invalide : nombre de traits incorrect.');
+  }
+
+  let totalPoints = 0;
+  const paths = strokes.map(stroke => {
+    if (!stroke || typeof stroke !== 'object' ||
+      !DRAWING_COLORS.has(stroke.color) ||
+      !Number.isInteger(stroke.width) || stroke.width < 4 || stroke.width > 26 ||
+      typeof stroke.closed !== 'boolean' ||
+      !(stroke.fill === 'none' || DRAWING_COLORS.has(stroke.fill)) ||
+      !Array.isArray(stroke.points) ||
+      stroke.points.length < (stroke.closed ? 3 : 2) ||
+      stroke.points.length > 40) {
+      throw new Error('Dessin IA invalide : trait incorrect.');
+    }
+
+    totalPoints += stroke.points.length;
+    if (totalPoints > MAX_DRAWING_POINTS) {
+      throw new Error('Dessin IA invalide : trop de points.');
+    }
+
+    for (const point of stroke.points) {
+      if (!Array.isArray(point) || point.length !== 2 ||
+        !point.every(value => Number.isInteger(value) && value >= 30 && value <= 970)) {
+        throw new Error('Dessin IA invalide : coordonnées incorrectes.');
+      }
+    }
+
+    const fill = stroke.closed ? stroke.fill : 'none';
+    const path = stroke.points.map(([x, y], index) => `${index ? 'L' : 'M'}${x} ${y}`).join(' ');
+    return `<path d="${path}${stroke.closed ? ' Z' : ''}" fill="${fill}" stroke="${stroke.color}" stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#fbfaf7"/>${paths.join('')}</svg>`;
 }
 
 function sendJson(response, status, payload) {
@@ -75,7 +110,6 @@ function getClientAddress(request) {
 function createServer({
   apiKey = process.env.OPENAI_API_KEY,
   textModel = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
-  imageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
   tiktokConnectorUrl = process.env.TIKTOK_CONNECTOR_URL || 'wss://jeu6boite.onrender.com',
   maxDailyDraws = Number(process.env.MAX_DAILY_DRAWS) || 10,
   fetchImpl = globalThis.fetch,
@@ -124,7 +158,7 @@ function createServer({
     return true;
   }
 
-  async function openAiRequest(endpoint, payload) {
+  async function openAiRequest(endpoint, payload, task = 'dessin') {
     let result;
     try {
       result = await fetchImpl(`https://api.openai.com/v1/${endpoint}`, {
@@ -164,11 +198,9 @@ function createServer({
       const detail = [code && `code ${code}`, param && `paramètre ${param}`].filter(Boolean).join(', ');
       let message;
       if (result.status === 400 && param === 'model') {
-        const setting = endpoint === 'images/generations' ? 'OPENAI_IMAGE_MODEL' : 'OPENAI_TEXT_MODEL';
-        const model = endpoint === 'images/generations' ? imageModel : textModel;
-        message = `OpenAI rejette le modèle « ${model} ». Vérifie ${setting} et l’accès de l’organisation à ce modèle.`;
+        message = `OpenAI rejette le modèle texte « ${textModel} ». Vérifie OPENAI_TEXT_MODEL et l’accès de l’organisation à ce modèle.`;
       } else if (result.status === 400) {
-        message = `OpenAI refuse la requête ${endpoint === 'images/generations' ? 'de dessin' : 'de choix du sujet'}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`;
+        message = `OpenAI refuse la requête ${task}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`;
       } else {
         message = messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
       }
@@ -195,7 +227,7 @@ function createServer({
         }
       ],
       temperature: 1
-    });
+    }, 'de choix du sujet');
     const content = response.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error('Réponse de sujet invalide.');
     const parsed = JSON.parse(content);
@@ -211,18 +243,27 @@ function createServer({
   }
 
   async function drawWord(word) {
-    const result = await openAiRequest('images/generations', {
-      model: imageModel,
-      prompt: `${IMAGE_PROMPT}${word}.`,
-      size: '1024x1024',
-      quality: 'low',
-      n: 1
-    });
-    const image = result.data?.[0]?.b64_json;
-    if (typeof image !== 'string' || image.length < 100) {
-      throw new Error('Le service IA n’a pas renvoyé de dessin valide.');
-    }
-    return `data:image/png;base64,${image}`;
+    const result = await openAiRequest('chat/completions', {
+      model: textModel,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'Tu dessines un sujet pour un jeu familial en produisant uniquement du JSON de traits, jamais du SVG ni du code. Format exact : {"strokes":[{"color":"black","width":12,"closed":true,"fill":"yellow","points":[[300,300],[600,300],[450,600]]}]}. Fais un dessin d’enfant reconnaissable avec 8 à 16 traits épais et légèrement maladroits. Couleurs autorisées : black, brown, red, orange, yellow, green, blue, purple, pink. Chaque trait a 2 à 18 points [x,y], coordonnées entières entre 50 et 950. Chaque largeur est un entier entre 5 et 22. Un trait fermé a au moins 3 points et une couleur de remplissage autorisée ou "none"; un trait ouvert a fill "none". Canvas carré, sujet gros et centré, fond clair. Aucun texte, chiffre ni objet décoratif. Respecte strictement les limites et le JSON.'
+        },
+        {
+          role: 'user',
+          content: `Dessine le sujet mystère suivant, sans écrire son nom : ${word}.`
+        }
+      ],
+      temperature: 0.8,
+      max_tokens: 1_600
+    }, 'de dessin');
+    const content = result.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') throw new Error('Réponse de dessin IA invalide.');
+    const drawing = JSON.parse(content);
+    const svg = makeDrawingSvg(drawing.strokes);
+    return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
   }
 
   const server = http.createServer(async (request, response) => {
@@ -230,8 +271,8 @@ function createServer({
     if (request.method === 'GET' && url.pathname === '/api/health') {
       sendJson(response, 200, {
         ok: true,
-        imageGenerationReady: Boolean(apiKey),
-        imageModel,
+        drawingGenerationReady: Boolean(apiKey),
+        drawingModel: textModel,
         dailyDrawLimit: maxDailyDraws
       });
       return;
