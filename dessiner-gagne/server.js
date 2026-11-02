@@ -44,7 +44,8 @@ function makeDrawingSvg(strokes) {
   }
 
   let totalPoints = 0;
-  const paths = strokes.map(stroke => {
+  const bounds = { minX: 970, minY: 970, maxX: 30, maxY: 30 };
+  for (const stroke of strokes) {
     if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points)) {
       throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
     }
@@ -63,14 +64,27 @@ function makeDrawingSvg(strokes) {
         !point.every(value => Number.isFinite(value) && value >= 30 && value <= 970)) {
         throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
       }
+      bounds.minX = Math.min(bounds.minX, point[0]);
+      bounds.minY = Math.min(bounds.minY, point[1]);
+      bounds.maxX = Math.max(bounds.maxX, point[0]);
+      bounds.maxY = Math.max(bounds.maxY, point[1]);
     }
+  }
 
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const scale = 720 / Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
+  const paths = strokes.map(stroke => {
+    const closed = stroke.closed === true;
     const color = isDrawingColor(stroke.color) ? stroke.color : 'black';
     const fill = isDrawingColor(stroke.fill) ? stroke.fill : 'none';
     const width = Number.isFinite(stroke.width) && stroke.width >= 4 && stroke.width <= 26
       ? Math.round(stroke.width)
       : 12;
-    const points = stroke.points.map(([x, y]) => [Math.round(x), Math.round(y)]);
+    const points = stroke.points.map(([x, y]) => [
+      Math.round(500 + (x - centerX) * scale),
+      Math.round(500 + (y - centerY) * scale)
+    ]);
     const path = smoothPath(points, closed);
     return `<path d="${path}" fill="none" stroke="#b37c68" stroke-opacity=".22" stroke-width="${width + 2}" stroke-linecap="round" stroke-linejoin="round" transform="translate(1.5 2)"/><path d="${path}" fill="${closed ? fill : 'none'}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
   });
@@ -255,7 +269,7 @@ function createServer({
       messages: [
         {
           role: 'system',
-          content: 'Tu es illustrateur de petits rébus dessinés à la main. Choisis un sujet concret, simple et très reconnaissable en français, puis dessine ce sujet. Réponds uniquement en JSON avec cette forme : {"word":"parapluie","strokes":[{"color":"#3f3945","width":11,"closed":true,"fill":"#f8cb70","points":[[300,300],[600,300],[450,600]]}]}. Le dessin doit ressembler à un vrai joli gribouillage fait par une personne avec un feutre et des crayons : formes arrondies, lignes courbes, légères asymétries, aplats de couleur doux et détails expressifs. Il doit être joli, clair et immédiatement devinable, sans être géométrique ou trop parfait. RÈGLE ESSENTIELLE : compose un seul sujet cohérent et centré, grand et occupant les deux tiers du cadre ; rattache les petits détails à la silhouette principale. Ne dispose jamais des formes séparées en colonne, en rangée ou en pile. Trace d’abord la silhouette principale bien remplie, puis ses éléments et 2 ou 3 indices caractéristiques. Les contours sont foncés et chaleureux, les remplissages pastel mais assez colorés pour rester visibles. Autorisés : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, grey, cyan ou couleur hexadécimale #RRGGBB. Produit de 6 à 16 traits dans l’ordre arrière-vers-avant. Chaque trait : couleur color, épaisseur width entre 6 et 20, booléen closed, fill (couleur ou none), et points=[[x,y],...] avec 3 à 10 coordonnées [x,y], nombres entre 60 et 940. Traits fermés : au moins 3 points et remplissage coloré ; traits ouverts : fill none. Le dessin ne contient aucun mot, lettre, chiffre, cadre ni décoration isolée. Les courbes passant par les points seront lissées par le jeu, donc fournis des contours organiques. Choisis et dessine le même sujet. N’utilise pas d’objet facile à confondre avec un autre.'
+          content: 'Tu crées des dessins mystères pour un jeu très facile, jouable par tout le monde. Choisis un objet ou un animal courant, concret et immédiatement reconnaissable, avec un nom français simple (exemples : maison, soleil, pomme, poisson, chat, fleur, voiture, parapluie, ballon, tasse, arbre, chaussure). Évite les concepts abstraits, les scènes, les mots rares, les objets compliqués et tout sujet dont la silhouette serait difficile à deviner. Réponds uniquement en JSON sous cette forme : {"word":"pomme","strokes":[{"color":"#453a46","width":16,"closed":true,"fill":"#f8cb70","points":[[300,300],[600,300],[450,600]]}]}. Dessine UN SEUL objet, vu de face ou de profil, en très grand : sa silhouette doit occuper environ 70 % du cadre et rester parfaitement reconnaissable. Le dessin entier doit être groupé au milieu, sans objet décentré, minuscule, coupé ou éloigné. Dessine d’abord une grande silhouette fermée, bien remplie d’une couleur vive, puis seulement 2 ou 3 détails distinctifs attachés à cette silhouette (par exemple : pour une pomme, un fruit rond rouge, une feuille verte et une petite tige). Le mot choisi doit être évident rien qu’en regardant cette forme ; si tu hésites, choisis un sujet encore plus facile. Style dessin simple d’enfant soigné : gros contours foncés et lisibles, formes rondes, couleurs vives, peu de détails, proportions légèrement irrégulières. PAS de composition artistique, pas de perspective, pas d’arrière-plan, pas d’éléments décoratifs ou de formes séparées. Utilise 5 à 9 traits dans l’ordre arrière-vers-avant. Chaque trait contient color, width de 12 à 22, closed (booléen), fill (couleur ou none) et points=[[x,y],...] (3 à 10 points entre 100 et 900). Les traits fermés ont un remplissage coloré ; les traits ouverts ont fill none. Couleurs autorisées : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, grey, cyan ou hexadécimale #RRGGBB. Les contours seront lissés automatiquement. N’écris aucun texte, lettre, chiffre, cadre ou accessoire sans rapport. Le dessin doit représenter exactement le mot secret.'
         },
         {
           role: 'user',

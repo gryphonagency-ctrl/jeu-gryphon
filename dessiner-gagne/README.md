@@ -14,7 +14,7 @@ Both the subject and the drawing use one request to `OPENAI_TEXT_MODEL` (default
 
 Each round makes one OpenAI text API request. `MAX_DAILY_DRAWS` defaults to 10 to limit unexpected usage, and each IP is limited to 10 new rounds per 10 minutes. The daily limit is held in process memory and resets if Render restarts the service. When the daily limit is reached, automatic rounds stop and the game displays the server error. Increase it only after checking the account’s API usage and budget.
 
-The service generates subjects and drawings when requested; it does not contain a stored collection of 1,000 image files. Recent subjects are excluded from the text model’s next choices while the service process is running.
+The service generates subjects and drawings when requested; it does not contain a stored collection of 1,000 image files. Recent subjects are excluded from the text model’s next choices while the service process is running. Each generated drawing is automatically scaled and centered to occupy most of the page. The prompt favors familiar, easy-to-guess objects with a bold silhouette and only a few identifying details.
 
 The hint displays one blank per letter and gives the letter count without counting spaces. A wrong guess appears in the drawing’s lower-right corner; a correct guess celebrates with floating balloons.
 

@@ -101,6 +101,26 @@ test('draws smooth, safe SVG strokes in one request and hides the answer', async
   });
 });
 
+test('centers and resizes an off-center drawing to fill most of the page', async t => {
+  const offCenterStrokes = VALID_STROKES.map(stroke => ({
+    ...stroke,
+    points: stroke.points.map(([x, y]) => [x + 150, y - 100])
+  }));
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: createOpenAiFetch({ drawing: offCenterStrokes })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 201);
+  const game = await response.json();
+  const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
+
+  assert.match(svg, /d="M238 140/);
+  assert.match(svg, / 860(?: C| Z)/);
+});
+
 test('counts letters, not spaces, in multi-word hints', async t => {
   const app = await startServer({
     apiKey: 'test-key',
