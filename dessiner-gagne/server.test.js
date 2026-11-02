@@ -93,13 +93,34 @@ test('AI draws safe SVG strokes, hides the answer, and validates guesses server-
   });
 });
 
-test('rejects invalid AI strokes rather than embedding them in the SVG', async t => {
+test('sanitizes unexpected AI colors rather than embedding markup in the SVG', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: createOpenAiFetch({
+      drawing: [...VALID_STROKES.slice(0, 2), {
+        ...VALID_STROKES[2],
+        color: 'red" onload="alert(1)',
+        width: null
+      }]
+    })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 201);
+  const game = await response.json();
+  const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /stroke="black" stroke-width="12"/);
+  assert.equal(/onload=|<script/i.test(svg), false);
+});
+
+test('rejects AI strokes that extend outside the drawing canvas', async t => {
   const app = await startServer({
     apiKey: 'test-key',
     fetchImpl: createOpenAiFetch({
       drawing: [
         ...VALID_STROKES.slice(0, 2),
-        { ...VALID_STROKES[2], color: 'red" onload="alert(1)' }
+        { ...VALID_STROKES[2], points: [[-1, 200], [600, 400]] }
       ]
     })
   });
@@ -107,7 +128,7 @@ test('rejects invalid AI strokes rather than embedding them in the SVG', async t
 
   const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
   assert.equal(response.status, 502);
-  assert.match((await response.json()).error, /Impossible de générer/);
+  assert.equal((await response.json()).error, 'L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
 });
 
 test('refuses game generation when the OpenAI key is missing', async t => {

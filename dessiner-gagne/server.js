@@ -11,10 +11,21 @@ const GAME_TTL_MS = 60 * 60 * 1_000;
 const RATE_WINDOW_MS = 10 * 60 * 1_000;
 const MAX_REQUESTS_PER_IP = 10;
 const DRAWING_COLORS = new Set([
-  'black', 'brown', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink'
+  'black', 'white', 'brown', 'red', 'orange', 'yellow', 'green', 'blue',
+  'purple', 'pink', 'gray', 'grey', 'cyan'
 ]);
 const MAX_DRAWING_STROKES = 24;
 const MAX_DRAWING_POINTS = 240;
+
+function isDrawingColor(value) {
+  return DRAWING_COLORS.has(value) || (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value));
+}
+
+function invalidDrawing(message) {
+  const error = new Error(message);
+  error.statusCode = 502;
+  return error;
+}
 
 function normalizeWord(value) {
   return String(value || '')
@@ -29,37 +40,40 @@ function normalizeWord(value) {
 
 function makeDrawingSvg(strokes) {
   if (!Array.isArray(strokes) || strokes.length < 3 || strokes.length > MAX_DRAWING_STROKES) {
-    throw new Error('Dessin IA invalide : nombre de traits incorrect.');
+    throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
   }
 
   let totalPoints = 0;
   const paths = strokes.map(stroke => {
-    if (!stroke || typeof stroke !== 'object' ||
-      !DRAWING_COLORS.has(stroke.color) ||
-      !Number.isInteger(stroke.width) || stroke.width < 4 || stroke.width > 26 ||
-      typeof stroke.closed !== 'boolean' ||
-      !(stroke.fill === 'none' || DRAWING_COLORS.has(stroke.fill)) ||
-      !Array.isArray(stroke.points) ||
-      stroke.points.length < (stroke.closed ? 3 : 2) ||
-      stroke.points.length > 40) {
-      throw new Error('Dessin IA invalide : trait incorrect.');
+    if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points)) {
+      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
+    }
+    const closed = stroke.closed === true;
+    if (stroke.points.length < (closed ? 3 : 2) || stroke.points.length > 40) {
+      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
     }
 
     totalPoints += stroke.points.length;
     if (totalPoints > MAX_DRAWING_POINTS) {
-      throw new Error('Dessin IA invalide : trop de points.');
+      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
     }
 
     for (const point of stroke.points) {
       if (!Array.isArray(point) || point.length !== 2 ||
-        !point.every(value => Number.isInteger(value) && value >= 30 && value <= 970)) {
-        throw new Error('Dessin IA invalide : coordonnées incorrectes.');
+        !point.every(value => Number.isFinite(value) && value >= 30 && value <= 970)) {
+        throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
       }
     }
 
-    const fill = stroke.closed ? stroke.fill : 'none';
-    const path = stroke.points.map(([x, y], index) => `${index ? 'L' : 'M'}${x} ${y}`).join(' ');
-    return `<path d="${path}${stroke.closed ? ' Z' : ''}" fill="${fill}" stroke="${stroke.color}" stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const color = isDrawingColor(stroke.color) ? stroke.color : 'black';
+    const fill = isDrawingColor(stroke.fill) ? stroke.fill : 'none';
+    const width = Number.isFinite(stroke.width) && stroke.width >= 4 && stroke.width <= 26
+      ? Math.round(stroke.width)
+      : 12;
+    const path = stroke.points
+      .map(([x, y], index) => `${index ? 'L' : 'M'}${Math.round(x)} ${Math.round(y)}`)
+      .join(' ');
+    return `<path d="${path}${closed ? ' Z' : ''}" fill="${closed ? fill : 'none'}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
   });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#fbfaf7"/>${paths.join('')}</svg>`;
@@ -249,7 +263,7 @@ function createServer({
       messages: [
         {
           role: 'system',
-          content: 'Tu dessines un sujet pour un jeu familial en produisant uniquement du JSON de traits, jamais du SVG ni du code. Format exact : {"strokes":[{"color":"black","width":12,"closed":true,"fill":"yellow","points":[[300,300],[600,300],[450,600]]}]}. Fais un dessin d’enfant reconnaissable avec 8 à 16 traits épais et légèrement maladroits. Couleurs autorisées : black, brown, red, orange, yellow, green, blue, purple, pink. Chaque trait a 2 à 18 points [x,y], coordonnées entières entre 50 et 950. Chaque largeur est un entier entre 5 et 22. Un trait fermé a au moins 3 points et une couleur de remplissage autorisée ou "none"; un trait ouvert a fill "none". Canvas carré, sujet gros et centré, fond clair. Aucun texte, chiffre ni objet décoratif. Respecte strictement les limites et le JSON.'
+          content: 'Tu dessines un sujet pour un jeu familial en produisant uniquement du JSON de traits, jamais du SVG ni du code. Format exact : {"strokes":[{"color":"black","width":12,"closed":true,"fill":"yellow","points":[[300,300],[600,300],[450,600]]}]}. Fais un dessin d’enfant reconnaissable avec 8 à 16 traits épais et légèrement maladroits. Couleurs autorisées : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, cyan ou une couleur hexadécimale #RRGGBB. Chaque trait a 2 à 18 points [x,y], coordonnées entières entre 50 et 950. Chaque largeur est un entier entre 5 et 22. Un trait fermé a au moins 3 points et une couleur de remplissage autorisée ou "none"; un trait ouvert a fill "none". Canvas carré, sujet gros et centré, fond clair. Aucun texte, chiffre ni objet décoratif. Respecte strictement les limites et le JSON.'
         },
         {
           role: 'user',
@@ -260,8 +274,15 @@ function createServer({
       max_tokens: 1_600
     }, 'de dessin');
     const content = result.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new Error('Réponse de dessin IA invalide.');
-    const drawing = JSON.parse(content);
+    if (typeof content !== 'string') {
+      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
+    }
+    let drawing;
+    try {
+      drawing = JSON.parse(content);
+    } catch {
+      throw invalidDrawing('L’IA a renvoyé un dessin illisible. Réessaie.');
+    }
     const svg = makeDrawingSvg(drawing.strokes);
     return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
   }
