@@ -162,9 +162,16 @@ function createServer({
         429: 'Le quota OpenAI est épuisé ou la limite temporaire de requêtes est atteinte.'
       };
       const detail = [code && `code ${code}`, param && `paramètre ${param}`].filter(Boolean).join(', ');
-      const message = result.status === 400
-        ? `OpenAI refuse la requête ${endpoint === 'images/generations' ? 'de dessin' : 'de choix du sujet'}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`
-        : messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
+      let message;
+      if (result.status === 400 && param === 'model') {
+        const setting = endpoint === 'images/generations' ? 'OPENAI_IMAGE_MODEL' : 'OPENAI_TEXT_MODEL';
+        const model = endpoint === 'images/generations' ? imageModel : textModel;
+        message = `OpenAI rejette le modèle « ${model} ». Vérifie ${setting} et l’accès de l’organisation à ce modèle.`;
+      } else if (result.status === 400) {
+        message = `OpenAI refuse la requête ${endpoint === 'images/generations' ? 'de dessin' : 'de choix du sujet'}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`;
+      } else {
+        message = messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
+      }
       const error = new Error(message);
       error.statusCode = result.status === 429 ? 503 : 502;
       throw error;

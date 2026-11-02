@@ -126,6 +126,27 @@ test('reports the rejected parameter when OpenAI returns a bad request', async t
   });
 });
 
+test('identifies an image model that the OpenAI organization cannot use', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    imageModel: 'gpt-image-2',
+    fetchImpl: async url => url.endsWith('/chat/completions')
+      ? new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
+      }), { status: 200 })
+      : new Response(JSON.stringify({
+        error: { code: 'invalid_value', param: 'model', message: 'Not shown to players' }
+      }), { status: 400 })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: 'OpenAI rejette le modèle « gpt-image-2 ». Vérifie OPENAI_IMAGE_MODEL et l’accès de l’organisation à ce modèle.'
+  });
+});
+
 test('reports when the server cannot contact OpenAI', async t => {
   const app = await startServer({
     apiKey: 'test-key',
