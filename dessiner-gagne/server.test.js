@@ -103,6 +103,26 @@ test('reports actionable guidance when OpenAI denies access to the drawing model
   });
 });
 
+test('reports the rejected parameter when OpenAI returns a bad request', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: async url => url.endsWith('/chat/completions')
+      ? new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
+      }), { status: 200 })
+      : new Response(JSON.stringify({
+        error: { code: 'unsupported_value', param: 'quality', message: 'Not shown to players' }
+      }), { status: 400 })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: 'OpenAI refuse la requête de dessin (code unsupported_value, paramètre quality). Vérifie le modèle et les options.'
+  });
+});
+
 test('reports when the server cannot contact OpenAI', async t => {
   const app = await startServer({
     apiKey: 'test-key',

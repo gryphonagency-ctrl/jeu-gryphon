@@ -144,15 +144,27 @@ function createServer({
       throw error;
     }
     if (!result.ok) {
-      console.error(`OpenAI ${endpoint} returned HTTP ${result.status}`);
+      let upstreamError;
+      try {
+        const body = await result.json();
+        if (body.error && typeof body.error === 'object') upstreamError = body.error;
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        console.error(`OpenAI ${endpoint} returned an unreadable error response: ${detail}`);
+      }
+      const code = typeof upstreamError?.code === 'string' ? upstreamError.code : '';
+      const param = typeof upstreamError?.param === 'string' ? upstreamError.param : '';
+      console.error(`OpenAI ${endpoint} returned HTTP ${result.status}${code ? ` (${code})` : ''}${param ? ` for ${param}` : ''}`);
       const messages = {
-        400: 'OpenAI refuse les paramètres du dessin. Vérifie le modèle et les options de génération.',
         401: 'La clé API OpenAI du serveur est invalide ou expirée.',
         403: 'La clé API OpenAI n’a pas accès au modèle de dessin. Vérifie les droits du compte.',
         404: 'Le modèle ou la route de génération OpenAI est introuvable.',
         429: 'Le quota OpenAI est épuisé ou la limite temporaire de requêtes est atteinte.'
       };
-      const message = messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
+      const detail = [code && `code ${code}`, param && `paramètre ${param}`].filter(Boolean).join(', ');
+      const message = result.status === 400
+        ? `OpenAI refuse la requête ${endpoint === 'images/generations' ? 'de dessin' : 'de choix du sujet'}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`
+        : messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
       const error = new Error(message);
       error.statusCode = result.status === 429 ? 503 : 502;
       throw error;
