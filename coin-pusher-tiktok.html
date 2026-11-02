@@ -233,6 +233,10 @@
       .quick-actions-overlay { bottom: auto; }
     }
     .video-layer { position: fixed; left: -2px; top: -2px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .gift-video-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: transparent; }
+    .gift-video-overlay[hidden] { display: none; }
+    .gift-video-overlay video { max-width: 100%; max-height: 100%; mix-blend-mode: screen; }
+    .gift-video-close { position: absolute; z-index: 1; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
     .range-line { display: flex; justify-content: space-between; gap: 10px; margin: 13px 0 4px; color: var(--muted); font-size: 11px; }
     .range-line output { color: var(--mint); }
     input[type="range"] { width: 100%; accent-color: var(--mint); }
@@ -488,7 +492,7 @@
               <tr><td>Photo du plateau du poussoir</td><td><label class="media-picker"><span>Parcourir</span><input type="file" accept="image/*" aria-label="Parcourir une photo pour le plateau au-dessus du poussoir" data-image-layer="pusherTopImage"></label></td></tr>
             </tbody>
           </table>
-          <p class="hint">La vidéo sous « Méga monstre » couvre toute la largeur de la machine, sous le titre et derrière les pièces. Les vidéos locales sont lues en boucle et sans son. Utilise « Sauvegarder médias » pour les retrouver à la prochaine session dans ce navigateur.</p>
+          <p class="hint">La vidéo sous « Méga monstre » couvre toute la largeur de la machine, sous le titre et derrière les pièces. Les vidéos des surfaces tournent en boucle et sans son. Configure et prévisualise la vidéo du cœur du jour dans Mes médias → Cadeaux → Heart Me (ID 7934) ; le jeu la récupère automatiquement quand tu es connecté.</p>
         </section>
 
         <section class="panel">
@@ -627,11 +631,15 @@
     </table>
   </section>
   <div class="toast" id="toast" role="status"></div>
+  <div class="gift-video-overlay" id="heartOfDayVideoOverlay" hidden>
+    <button class="button gift-video-close" id="closeHeartOfDayVideo" type="button" aria-label="Fermer la vidéo du cœur du jour">Fermer</button>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="./node_modules/matter-js/build/matter.min.js"></script>
   <script>
     const CIRCUIT_LIMIT = 10000;
+    const HEART_OF_DAY_GIFT_ID = 7934;
     const STORAGE_KEY = 'tiktok-coin-pusher-v1';
     const DEFAULT_PUSHER_TRAVEL = 35;
     const LEGACY_PUSHER_FULL_TRAVEL_CONTROL = 32;
@@ -1399,7 +1407,7 @@
         await completed;
         for (const asset of assets) {
           if (!asset || typeof asset.layer !== 'string' || !(asset.blob instanceof Blob)) continue;
-          if (!['left', 'right', 'backgroundVideo', 'playfieldVideo', 'upperTitleVideo', 'pusherTopVideo', 'pusherTopImage', 'profileAvatar'].includes(asset.layer)) continue;
+          if (!['left', 'right', 'backgroundVideo', 'playfieldVideo', 'upperTitleVideo', 'pusherTopVideo', 'heartOfDayVideo', 'pusherTopImage', 'profileAvatar'].includes(asset.layer)) continue;
           const file = new File([asset.blob], asset.name || 'media', { type: asset.mimeType || asset.blob.type });
           if (asset.kind === 'video' && file.type.startsWith('video/')) {
             loadVideoLayer(asset.layer, file, false);
@@ -1414,6 +1422,44 @@
         showToast('Impossible de restaurer les médias enregistrés dans ce navigateur.');
       } finally {
         database?.close();
+      }
+    }
+
+    async function loadAdminHeartOfDayVideo() {
+      try {
+        const sessionResponse = await fetch('/api/session', { cache: 'no-store' });
+        if (!sessionResponse.ok) throw new Error('Impossible de vérifier le compte connecté.');
+        const session = await sessionResponse.json();
+        if (!session.authenticated || !session.username) return;
+
+        const mediaResponse = await fetch(
+          `/api/media-alerts?user=${encodeURIComponent(session.username)}`,
+          { cache: 'no-store' }
+        );
+        if (!mediaResponse.ok) throw new Error('Impossible de charger la vidéo configurée dans Mes médias.');
+        const media = await mediaResponse.json();
+        const videoUrl = media.alerts?.gift_heart_me?.videoUrl;
+        clearMediaLayer('heartOfDayVideo');
+        if (typeof videoUrl !== 'string' || !videoUrl) return;
+
+        const video = document.createElement('video');
+        video.muted = state.controls.effectsMuted;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.controls = true;
+        video.src = videoUrl;
+        video.addEventListener('ended', () => {
+          document.getElementById('heartOfDayVideoOverlay').hidden = true;
+          video.currentTime = 0;
+        });
+        video.addEventListener('error', () => {
+          showToast('Impossible de lire la vidéo du cœur du jour configurée dans Mes médias.');
+        }, { once: true });
+        document.getElementById('heartOfDayVideoOverlay').append(video);
+        videoLayers.set('heartOfDayVideo', video);
+      } catch (error) {
+        console.error('Impossible de charger la vidéo du cœur du jour depuis Mes médias :', error);
+        showToast('La vidéo du cœur du jour de Mes médias est momentanément indisponible.');
       }
     }
 
@@ -2543,6 +2589,7 @@
       }
       if (type === 'gift' || type === 'tiktok-gift') {
         const gift = data.gift || data;
+        if (Number(gift.giftId ?? gift.gift?.id) === HEART_OF_DAY_GIFT_ID) playHeartOfDayVideo();
         const count = gift.coinCount ?? gift.count ?? gift.repeatCount ?? 1;
         const username = gift.username || gift.nickname || 'Spectateur';
         const avatar = getAvatarSource(gift);
@@ -2895,6 +2942,7 @@
       const video = videoLayers.get(layer);
       video?.pause();
       video?.remove();
+      if (layer === 'heartOfDayVideo') document.getElementById('heartOfDayVideoOverlay').hidden = true;
       videoLayers.delete(layer);
       const videoUrl = videoUrls.get(layer);
       if (videoUrl) URL.revokeObjectURL(videoUrl);
@@ -2924,25 +2972,49 @@
       clearMediaLayer(layer);
       const url = URL.createObjectURL(file);
       const video = document.createElement('video');
-      video.className = 'video-layer';
+      const isGiftVideo = layer === 'heartOfDayVideo';
+      video.className = isGiftVideo ? '' : 'video-layer';
       video.muted = state.controls.effectsMuted;
-      video.loop = true;
+      video.loop = !isGiftVideo;
       video.playsInline = true;
       video.preload = 'auto';
+      video.controls = isGiftVideo;
       video.src = url;
+      if (isGiftVideo) {
+        video.addEventListener('ended', () => {
+          document.getElementById('heartOfDayVideoOverlay').hidden = true;
+          video.currentTime = 0;
+        });
+        document.getElementById('heartOfDayVideoOverlay').append(video);
+      }
       video.addEventListener('error', () => {
         showToast(`Impossible de lire la vidéo « ${file.name} ».`);
       }, { once: true });
-      video.addEventListener('loadeddata', () => {
-        video.play().catch(error => {
-          console.warn('Lecture vidéo bloquée :', error);
-          showToast('La vidéo ne peut pas être lue par le navigateur.');
-        });
-      }, { once: true });
+      if (!isGiftVideo) video.addEventListener('loadeddata', () => {
+          video.play().catch(error => {
+            console.warn('Lecture vidéo bloquée :', error);
+            showToast('La vidéo ne peut pas être lue par le navigateur.');
+          });
+        }, { once: true });
       videoUrls.set(layer, url);
       videoLayers.set(layer, video);
       mediaAssets.set(layer, { layer, kind: 'video', name: file.name, mimeType: file.type, blob: file });
       if (notify) showToast(`Vidéo « ${file.name} » chargée · utilise « Sauvegarder médias » pour la conserver.`);
+    }
+
+    function playHeartOfDayVideo() {
+      const video = videoLayers.get('heartOfDayVideo');
+      if (!video) {
+        showToast('Cadeau Heart Me reçu · configure sa vidéo dans Mes médias → Cadeaux → Cœur du jour.');
+        return;
+      }
+      document.getElementById('heartOfDayVideoOverlay').hidden = false;
+      video.muted = state.controls.effectsMuted;
+      video.currentTime = 0;
+      video.play().catch(error => {
+        console.warn('Lecture de la vidéo du cœur du jour bloquée :', error);
+        showToast('La vidéo du cœur du jour est prête · utilise ses commandes pour lancer la lecture.');
+      });
     }
 
     function loadImageLayer(layer, file, notify = true) {
@@ -2965,6 +3037,11 @@
       const input = document.getElementById('backgroundVideoFile');
       if (input) input.value = '';
       showToast('Vidéo d’arrière-plan retirée · refais « Sauvegarder médias » pour l’oublier.');
+    });
+    document.getElementById('closeHeartOfDayVideo').addEventListener('click', () => {
+      const video = videoLayers.get('heartOfDayVideo');
+      video?.pause();
+      document.getElementById('heartOfDayVideoOverlay').hidden = true;
     });
     document.querySelectorAll('[data-video-layer]').forEach(input => {
       input.addEventListener('change', () => {
@@ -4898,7 +4975,7 @@
     requestAnimationFrame(drawMachine);
     connectRelay();
     saveGame();
-    void restoreSavedMedia();
+    void restoreSavedMedia().then(loadAdminHeartOfDayVideo);
     showNextLuckyWheel(false);
   </script>
 </body>

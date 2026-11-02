@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080c20">
+  <title>Alertes live TikTok · Griffon Arcade</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #080c20; color: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+    main { width: min(620px, 100%); padding: 28px; border: 1px solid #ffffff24; border-radius: 20px; background: #121a35; box-shadow: 0 24px 80px #0008; }
+    h1 { margin-top: 0; }
+    p { color: #c4cce1; line-height: 1.55; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    button, a.button { border: 0; border-radius: 10px; padding: 12px 16px; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; color: #071323; background: #75e1ff; }
+    button.secondary, a.secondary { color: #fff; background: #293553; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #status { min-height: 1.5em; color: #9fffd1; }
+    #status.error { color: #ff9aab; }
+    #live-alert { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle, #182d59f5, #080c20f5 72%); text-align: center; }
+    #live-alert[hidden] { display: none; }
+    #live-alert h2 { margin: 0; color: #86edff; font-size: clamp(2.5rem, 11vw, 7rem); letter-spacing: .04em; text-shadow: 0 0 36px #45cfff99; }
+    #live-alert p { color: #fff; font-size: clamp(1.1rem, 3vw, 1.8rem); }
+    #close-alert { margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="/">← Retour à Griffon Arcade</a>
+    <h1>🔴 Alertes TikTok</h1>
+    <p id="description">Le serveur surveille le compte TikTok configuré et détecte le début du live, les cadeaux, les nouveaux abonnés, les abonnements et les partages, même si cette page est fermée.</p>
+    <p>Pour recevoir une alerte sur cet appareil, autorise les notifications. Chaque appareil doit activer cette option une fois. Si la page est ouverte, une alerte visuelle plein écran s’affichera; sinon, le navigateur affichera une notification système.</p>
+    <div class="actions">
+      <button id="enable" type="button">Activer les notifications sur cet appareil</button>
+      <button id="test" class="secondary" type="button">Tester l’alerte</button>
+      <button id="disable" class="secondary" type="button">Désactiver sur cet appareil</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <section id="live-alert" role="alertdialog" aria-modal="true" aria-labelledby="live-title" hidden>
+    <div>
+      <h2 id="live-title">TON LIVE EST EN DIRECT !</h2>
+      <p id="live-message">Ton live TikTok vient de commencer.</p>
+      <button id="close-alert" type="button">Fermer l’alerte</button>
+    </div>
+  </section>
+  <script>
+    const statusBox = document.getElementById('status');
+    let settings;
+
+    function setStatus(message, error = false) {
+      statusBox.textContent = message;
+      statusBox.classList.toggle('error', error);
+    }
+
+    async function requestApi(body) {
+      const response = await fetch('/api/live-alerts', body ? {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      } : { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || 'Service d’alertes indisponible.');
+      return result;
+    }
+
+    function applicationServerKey(value) {
+      const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+      return Uint8Array.from(atob(padded), character => character.charCodeAt(0));
+    }
+
+    async function registerWorker() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('Les notifications push ne sont pas prises en charge par ce navigateur.');
+      }
+      return navigator.serviceWorker.register('/live-alerts-sw.js');
+    }
+
+    async function restoreSubscription() {
+      if (!settings.publicKey || !('serviceWorker' in navigator)) return;
+      const registration = await navigator.serviceWorker.getRegistration('/live-alerts-sw.js');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (!subscription) return;
+      await requestApi({ action: 'subscribe', subscription: subscription.toJSON() });
+      setStatus(`Notifications actives sur cet appareil · compte TikTok @${settings.tiktokUsername}.`);
+    }
+
+    async function enableNotifications() {
+      const button = document.getElementById('enable');
+      button.disabled = true;
+      try {
+        if (!settings.publicKey) throw new Error('Les clés push ne sont pas configurées sur le serveur.');
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('Autorise les notifications dans les réglages du navigateur.');
+        const registration = await registerWorker();
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey(settings.publicKey)
+        });
+        const result = await requestApi({ action: 'subscribe', subscription: subscription.toJSON() });
+        setStatus(`Notifications activées sur cet appareil · ${result.devices} appareil(s) inscrit(s).`);
+      } catch (error) {
+        setStatus(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function disableNotifications() {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration('/live-alerts-sw.js');
+        const subscription = await registration?.pushManager.getSubscription();
+        if (!subscription) {
+          setStatus('Aucun abonnement actif sur cet appareil.');
+          return;
+        }
+        await requestApi({ action: 'unsubscribe', endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+        setStatus('Notifications désactivées sur cet appareil.');
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    async function testAlert() {
+      try {
+        const result = await requestApi({ action: 'test' });
+        setStatus(result.devices
+          ? `Alerte de test envoyée à ${result.devices} appareil(s).`
+          : 'Aucun appareil n’est inscrit. Active d’abord les notifications sur cet appareil.');
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    function showLiveAlert(message, title) {
+      document.getElementById('live-title').textContent = title || 'TON LIVE EST EN DIRECT !';
+      document.getElementById('live-message').textContent = message || 'Ton live TikTok vient de commencer.';
+      document.getElementById('live-alert').hidden = false;
+    }
+
+    document.getElementById('enable').addEventListener('click', enableNotifications);
+    document.getElementById('disable').addEventListener('click', disableNotifications);
+    document.getElementById('test').addEventListener('click', testAlert);
+    document.getElementById('close-alert').addEventListener('click', () => {
+      document.getElementById('live-alert').hidden = true;
+    });
+    navigator.serviceWorker?.addEventListener('message', event => {
+      if (event.data?.type) showLiveAlert(event.data.message, event.data.title);
+    });
+
+    requestApi().then(async result => {
+      settings = result;
+      document.getElementById('description').textContent =
+        `Le serveur surveille @${settings.tiktokUsername} en continu : début du live, cadeaux, nouveaux abonnés, abonnements et partages, même si cette page est fermée.`;
+      if ('Notification' in window && Notification.permission === 'granted') await registerWorker();
+      await restoreSubscription();
+      if (new URLSearchParams(location.search).get('live') === '1') {
+        showLiveAlert(`@${settings.tiktokUsername} est en direct sur TikTok.`);
+      }
+    }).catch(error => setStatus(error.message, true));
+  </script>
+</body>
+</html>

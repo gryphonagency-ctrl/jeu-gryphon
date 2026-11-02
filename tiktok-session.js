@@ -105,9 +105,20 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     const avatarLookupTimes = new Map();
     const avatarCache = new Map();
     let active = true;
+    let connecting = false;
+    let retryTimer = null;
 
     const send = message => {
         if (active) sendToClients(message);
+    };
+
+    const scheduleReconnect = () => {
+        if (!active || retryTimer) return;
+        retryTimer = setTimeout(() => {
+            retryTimer = null;
+            connect();
+        }, 30_000);
+        retryTimer.unref?.();
     };
 
     connection.on('gift', async gift => {
@@ -147,10 +158,12 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         }
 
         const identity = getTikTokIdentity(gift.user);
+        const giftId = Number(gift.giftId ?? gift.gift?.id);
         send({
             type: 'gift',
             gift: {
                 messageId,
+                giftId: Number.isSafeInteger(giftId) ? giftId : null,
                 ...identity,
                 avatarDataUri: null,
                 coinValue,
@@ -247,27 +260,39 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     connection.on('disconnected', () => {
         onRoomState({ connected: false, roomId: null });
         send({ type: 'STATUS', message: `Connexion TikTok interrompue · @${username}` });
+        scheduleReconnect();
     });
 
-    connection.connect()
-        .then(state => {
-            if (!active) return;
-            onRoomState({ connected: true, roomId: String(state.roomId || '') });
-            console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
-            send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
-        })
-        .catch(error => {
-            if (!active) return;
-            onRoomState({ connected: false, roomId: null });
-            console.error(`Erreur de connexion TikTok @${username} :`, error);
-            const detail = error instanceof Error
-                ? error.message.replace(/https?:\/\/\S+/gi, '[adresse masquée]').slice(0, 180)
-                : 'Cause inconnue.';
-            send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username} : ${detail || 'Cause inconnue.'}` });
-        });
+    function connect() {
+        if (!active || connecting) return;
+        connecting = true;
+        connection.connect()
+            .then(state => {
+                if (!active) return;
+                onRoomState({ connected: true, roomId: String(state.roomId || '') });
+                console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
+                send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
+            })
+            .catch(error => {
+                if (!active) return;
+                onRoomState({ connected: false, roomId: null });
+                console.error(`Erreur de connexion TikTok @${username} :`, error);
+                const detail = error instanceof Error
+                    ? error.message.replace(/https?:\/\/\S+/gi, '[adresse masquée]').slice(0, 180)
+                    : 'Cause inconnue.';
+                send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username} : ${detail || 'Cause inconnue.'}` });
+                scheduleReconnect();
+            })
+            .finally(() => {
+                connecting = false;
+            });
+    }
+
+    connect();
 
     return async () => {
         active = false;
+        if (retryTimer) clearTimeout(retryTimer);
         try {
             await connection.disconnect();
         } catch (error) {

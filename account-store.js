@@ -48,6 +48,8 @@ function readStore() {
         parsed.tiktokPlayers ||= {};
         parsed.tiktokPlayerAliases ||= {};
         parsed.tiktokStarTransactions ||= {};
+        parsed.liveAlertPushSubscriptions ||= {};
+        parsed.liveAlertRooms ||= {};
         if (typeof parsed.users !== 'object' || Array.isArray(parsed.users) ||
             typeof parsed.checkouts !== 'object' || Array.isArray(parsed.checkouts) ||
             typeof parsed.plans !== 'object' || Array.isArray(parsed.plans) ||
@@ -74,6 +76,21 @@ function readStore() {
             typeof parsed.tiktokPlayers !== 'object' || Array.isArray(parsed.tiktokPlayers) ||
             typeof parsed.tiktokPlayerAliases !== 'object' || Array.isArray(parsed.tiktokPlayerAliases) ||
             typeof parsed.tiktokStarTransactions !== 'object' || Array.isArray(parsed.tiktokStarTransactions) ||
+            typeof parsed.liveAlertPushSubscriptions !== 'object' || Array.isArray(parsed.liveAlertPushSubscriptions) ||
+            Object.entries(parsed.liveAlertPushSubscriptions).some(([username, subscriptions]) =>
+                !/^[a-zA-Z0-9._]{1,32}$/.test(username) ||
+                !Array.isArray(subscriptions) || subscriptions.length > 50 ||
+                subscriptions.some(subscription =>
+                    !subscription || typeof subscription !== 'object' || Array.isArray(subscription) ||
+                    typeof subscription.id !== 'string' || !/^[a-f0-9]{64}$/.test(subscription.id) ||
+                    typeof subscription.endpoint !== 'string' || subscription.endpoint.length > 2048 ||
+                    typeof subscription.p256dh !== 'string' || subscription.p256dh.length > 256 ||
+                    typeof subscription.auth !== 'string' || subscription.auth.length > 128 ||
+                    typeof subscription.createdAt !== 'string')) ||
+            typeof parsed.liveAlertRooms !== 'object' || Array.isArray(parsed.liveAlertRooms) ||
+            Object.entries(parsed.liveAlertRooms).some(([username, roomId]) =>
+                !/^[a-zA-Z0-9._]{1,32}$/.test(username) ||
+                typeof roomId !== 'string' || roomId.length > 128) ||
             Object.entries(parsed.tiktokPlayers).some(([playerKey, player]) =>
                 !/^(?:id:[A-Za-z0-9._:-]{1,128}|handle:[a-z0-9._]{1,32})$/.test(playerKey) ||
                 !player || typeof player !== 'object' || Array.isArray(player) ||
@@ -201,7 +218,9 @@ function readStore() {
             adminDashboardLayouts: {},
             tiktokPlayers: {},
             tiktokPlayerAliases: {},
-            tiktokStarTransactions: {}
+            tiktokStarTransactions: {},
+            liveAlertPushSubscriptions: {},
+            liveAlertRooms: {}
         };
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
@@ -787,6 +806,56 @@ function listAccountLiveTtsSources() {
     return Object.entries(readStore().liveTtsSources);
 }
 
+function saveLiveAlertPushSubscription(username, subscription) {
+    const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9._]{1,32}$/.test(key)) throw new Error('Pseudo TikTok invalide pour l’abonnement aux alertes.');
+    const id = crypto.createHash('sha256').update(subscription.endpoint).digest('hex');
+    return updateStore(store => {
+        const subscriptions = store.liveAlertPushSubscriptions[key] || [];
+        const next = {
+            id,
+            endpoint: subscription.endpoint,
+            p256dh: subscription.keys.p256dh,
+            auth: subscription.keys.auth,
+            createdAt: new Date().toISOString()
+        };
+        const existingIndex = subscriptions.findIndex(item => item.id === id);
+        if (existingIndex >= 0) subscriptions[existingIndex] = next;
+        else subscriptions.push(next);
+        if (subscriptions.length > 50) subscriptions.shift();
+        store.liveAlertPushSubscriptions[key] = subscriptions;
+        return subscriptions.length;
+    });
+}
+
+function removeLiveAlertPushSubscription(username, endpoint) {
+    const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    const id = crypto.createHash('sha256').update(endpoint).digest('hex');
+    return updateStore(store => {
+        const subscriptions = store.liveAlertPushSubscriptions[key] || [];
+        const filtered = subscriptions.filter(item => item.id !== id);
+        if (filtered.length) store.liveAlertPushSubscriptions[key] = filtered;
+        else delete store.liveAlertPushSubscriptions[key];
+        return subscriptions.length - filtered.length;
+    });
+}
+
+function listLiveAlertPushSubscriptions(username) {
+    const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    return readStore().liveAlertPushSubscriptions[key] || [];
+}
+
+function markLiveAlertRoom(username, roomId) {
+    const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    const normalizedRoomId = String(roomId || '').slice(0, 128);
+    if (!/^[a-z0-9._]{1,32}$/.test(key) || !normalizedRoomId) return false;
+    return updateStore(store => {
+        if (store.liveAlertRooms[key] === normalizedRoomId) return false;
+        store.liveAlertRooms[key] = normalizedRoomId;
+        return true;
+    });
+}
+
 function saveAccountLiveTts(username, source) {
     updateStore(store => {
         const key = username.toLowerCase();
@@ -1054,6 +1123,7 @@ module.exports = {
     getDailyUsageCount,
     getGameFilesDirectory,
     getDataDirectory,
+    listLiveAlertPushSubscriptions,
     getTikTokAvatarPath,
     getGameImage,
     getHiddenGames,
@@ -1075,6 +1145,7 @@ module.exports = {
     saveGameImage,
     saveCloudinaryGameImage,
     saveGameMetadata,
+    saveLiveAlertPushSubscription,
     saveHomepageNotice,
     savePaypalLink,
     saveLiveTtsSource,
@@ -1088,6 +1159,8 @@ module.exports = {
     setCreatorRoomRevoked,
     setCreatorTiktokUsername,
     setCreatorSettingsLocked,
+    markLiveAlertRoom,
+    removeLiveAlertPushSubscription,
     setCreatorGameAccess,
     setCreatorServiceAccess,
     setUserRevoked,

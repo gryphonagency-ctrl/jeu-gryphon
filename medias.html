@@ -21,6 +21,8 @@ button.danger{background:#ff6b7a}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 .media{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;font-size:.85rem;word-break:break-all}
 .media img,.media video{width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#000}
+.slot .heart-preview{grid-column:1/-1;width:min(100%,520px);max-height:280px;object-fit:contain;background:#000;border-radius:8px}
+.slot .heart-preview[hidden]{display:none}
 .media audio{width:100%}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
@@ -106,8 +108,11 @@ const SECTIONS = [
     fixed: [{ key: 'follow', label: 'Nouveau follow' }] },
   { id: 'subs', title: '⭐ Abonnés (sub)', hint: 'Déclenchée pour les abonnements payants à ton live.',
     fixed: [{ key: 'sub', label: 'Abonnement (sub)' }] },
-  { id: 'gifts', title: '🎁 Cadeaux et objets', hint: 'Un son/une vidéo par cadeau. Pour un objet avec multiplicateur, écris par exemple « gant_x5 ». « Tous les cadeaux » sert de réglage par défaut.',
-    prefix: 'gift_', fixed: [{ key: 'gift_tous', label: 'Tous les cadeaux' }],
+  { id: 'gifts', title: '🎁 Cadeaux et objets', hint: 'Un son/une vidéo par cadeau. Pour un objet avec multiplicateur, écris par exemple « gant_x5 ». « Tous les cadeaux » sert de réglage par défaut. La vidéo du cœur du jour est aussi utilisée par le jeu pour Heart Me (ID 7934).',
+    prefix: 'gift_', fixed: [
+      { key: 'gift_tous', label: 'Tous les cadeaux' },
+      { key: 'gift_heart_me', label: 'Cœur du jour · Heart Me (ID 7934)' }
+    ],
     addLabel: 'Nom du cadeau ou objet (ex. rose, gant_x5)' },
   { id: 'multis', title: '✖️ Multiplicateurs (x2, x3…)', hint: 'Déclenchée quand un cadeau arrive en combo ×2, ×3, ×5… (un objet précis comme gant_x5 reste prioritaire).',
     prefix: 'multi_', multi: true,
@@ -138,6 +143,22 @@ function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
   const audio = select('audio', alert.audio);
   const video = select('video', alert.video);
+  let heartPreview;
+  if (key === 'gift_heart_me') {
+    heartPreview = el('video', { className: 'heart-preview', controls: true, preload: 'metadata', hidden: true });
+    const updatePreview = () => {
+      const file = state.files.find(item => item.id === video.value && item.kind === 'video');
+      heartPreview.hidden = !file;
+      if (file) heartPreview.src = file.url;
+      else {
+        heartPreview.pause();
+        heartPreview.removeAttribute('src');
+        heartPreview.load();
+      }
+    };
+    video.addEventListener('change', updatePreview);
+    updatePreview();
+  }
   const active = Boolean(alert.audio || alert.video);
   const save = el('button', { type: 'button', textContent: 'Enregistrer',
     onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value }), 'Alerte enregistrée.') });
@@ -149,6 +170,7 @@ function slot(key, label, removable) {
         : run(() => api({ action: 'delete-alert', event: key }), 'Alerte supprimée.') }));
   }
   return el('div', { className: 'slot' }, el('h3', { textContent: label }),
+    ...(heartPreview ? [heartPreview] : []),
     el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: active ? '● Active' : '○ Non configurée' }));
 }

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const webPush = require('web-push');
 const { createTikTokSession } = require('./tiktok-session');
 const access = require('./access-control');
 const paypal = require('./paypal');
@@ -42,6 +43,40 @@ const adminDashboardWidgetIds = [
 const configuredMaxTikTokSessions = Number(process.env.MAX_TIKTOK_SESSIONS);
 const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
     configuredMaxTikTokSessions > 0 ? configuredMaxTikTokSessions : 25;
+const liveAlertTikTokUsername = String(
+    process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'gryphon.agency'
+).trim().replace(/^@/, '');
+const liveAlertVapidKeys = loadLiveAlertVapidKeys();
+webPush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'https://jeu6boite.onrender.com',
+    liveAlertVapidKeys.publicKey,
+    liveAlertVapidKeys.privateKey
+);
+
+function loadLiveAlertVapidKeys() {
+    const publicKey = process.env.VAPID_PUBLIC_KEY || '';
+    const privateKey = process.env.VAPID_PRIVATE_KEY || '';
+    if (Boolean(publicKey) !== Boolean(privateKey)) {
+        throw new Error('VAPID_PUBLIC_KEY et VAPID_PRIVATE_KEY doivent être configurées ensemble.');
+    }
+    if (publicKey && privateKey) return { publicKey, privateKey };
+
+    const keyFile = path.join(store.getDataDirectory(), 'live-alert-vapid.json');
+    if (fs.existsSync(keyFile)) {
+        const keys = JSON.parse(fs.readFileSync(keyFile, 'utf8'));
+        if (typeof keys.publicKey !== 'string' || typeof keys.privateKey !== 'string') {
+            throw new Error(`Clés Web Push invalides dans ${keyFile}.`);
+        }
+        return keys;
+    }
+    const keys = webPush.generateVAPIDKeys();
+    fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+    const temporaryFile = `${keyFile}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryFile, JSON.stringify(keys), { mode: 0o600, flag: 'wx' });
+    fs.renameSync(temporaryFile, keyFile);
+    console.info('Clés Web Push générées et conservées dans le stockage des données.');
+    return keys;
+}
 const gameFile = path.join(__dirname, 'pousoire.html');
 const hangmanFile = path.join(__dirname, 'pendu.html');
 const footballFile = path.join(__dirname, 'jeu-foot-tiktok.html');
@@ -955,6 +990,108 @@ function canManageMedia(req) {
     return Boolean(username) && access.canUseCreatorService(username, 'tts');
 }
 
+function validPushEndpoint(value) {
+    if (typeof value !== 'string' || value.length > 2048) return false;
+    try {
+        const url = new URL(value);
+        const host = url.hostname.toLowerCase();
+        return url.protocol === 'https:' && !url.username && !url.password &&
+            (!url.port || url.port === '443') &&
+            (host === 'fcm.googleapis.com' ||
+                host === 'web.push.apple.com' ||
+                host === 'push.services.mozilla.com' ||
+                host.endsWith('.push.services.mozilla.com') ||
+                host.endsWith('.notify.windows.com') ||
+                host.endsWith('.wns.windows.com'));
+    } catch {
+        return false;
+    }
+}
+
+async function sendPushAlert({ title, body, tag, event = 'alert', url = '/live-alerts.html' }) {
+    const subscriptions = store.listLiveAlertPushSubscriptions(liveAlertTikTokUsername);
+    const payload = JSON.stringify({ type: event, title, body, tag, url });
+    let sent = 0;
+    await Promise.all(subscriptions.map(async item => {
+        try {
+            await webPush.sendNotification({
+                endpoint: item.endpoint,
+                keys: { p256dh: item.p256dh, auth: item.auth }
+            }, payload, { TTL: 300, urgency: 'high' });
+            sent += 1;
+        } catch (error) {
+            if (error.statusCode === 404 || error.statusCode === 410) {
+                store.removeLiveAlertPushSubscription(liveAlertTikTokUsername, item.endpoint);
+                return;
+            }
+            console.error('Échec d’envoi d’une notification TikTok :', error.message);
+        }
+    }));
+    return sent;
+}
+
+async function sendLiveStartAlert({ username = liveAlertTikTokUsername, roomId = '', test = false } = {}) {
+    if (!test && !store.markLiveAlertRoom(username, roomId)) return { sent: 0, duplicate: true };
+    const sent = await sendPushAlert({
+        event: 'LIVE_STARTED',
+        title: test ? 'Test · Griffon Arcade' : 'TON LIVE EST EN DIRECT !',
+        body: test
+            ? `Les alertes de début de live fonctionnent pour @${liveAlertTikTokUsername}.`
+            : `@${liveAlertTikTokUsername} est en direct sur TikTok.`,
+        url: '/live-alerts.html?live=1',
+        tag: test ? `tiktok-live-test-${Date.now()}` : `tiktok-live-${roomId}`
+    });
+    return { sent, duplicate: false };
+}
+
+async function sendTikTokEventAlert(messageData) {
+    const messageId = messageData.gift?.messageId ||
+        messageData.eventData?.messageId ||
+        messageData.shareData?.messageId || '';
+    const username = messageData.gift?.username ||
+        messageData.eventData?.username ||
+        messageData.shareData?.username || 'Spectateur';
+    let title;
+    let body;
+    let event;
+    switch (messageData.type) {
+        case 'gift': {
+            const gift = messageData.gift || {};
+            title = 'Nouveau cadeau TikTok';
+            body = `@${username} · ${gift.giftName || 'Cadeau'} · ${gift.coinCount || 1} pièce(s).`;
+            event = 'GIFT';
+            break;
+        }
+        case 'follow':
+            title = 'Nouvel abonné TikTok';
+            body = `@${username} vient de suivre le compte.`;
+            event = 'FOLLOW';
+            break;
+        case 'subscribe':
+            title = 'Nouvel abonnement TikTok';
+            body = `@${username} vient de s’abonner au live.`;
+            event = 'SUBSCRIBE';
+            break;
+        case 'share':
+            title = 'Live TikTok partagé';
+            body = `@${username} vient de partager le live.`;
+            event = 'SHARE';
+            break;
+        default:
+            return;
+    }
+    const tag = messageId
+        ? `tiktok-${event.toLowerCase()}-${messageId}`
+        : `tiktok-${event.toLowerCase()}-${Date.now()}`;
+    await sendPushAlert({
+        event,
+        title,
+        body,
+        tag,
+        url: `/live-alerts.html?event=${event.toLowerCase()}`
+    });
+}
+
 const mediaDirectory = process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media');
 const mediaStoragePersistent = process.env.RENDER !== 'true' ||
     path.resolve(mediaDirectory).replace(/\\/g, '/').startsWith('/var/data/');
@@ -1414,6 +1551,95 @@ const server = http.createServer((req, res) => {
                 : { active: false, username: null },
             roomNumber: username ? getCreatorRoomNumber(username) : null
         }));
+        return;
+    }
+    if (pathname === '/api/live-alerts' && req.method === 'GET') {
+        if (!access.isAdmin(req)) {
+            res.writeHead(access.isAuthenticated(req) ? 403 : 401, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'application/json; charset=utf-8'
+            });
+            res.end(JSON.stringify({ message: 'Connecte-toi au compte administrateur pour gérer ces alertes.' }));
+            return;
+        }
+        res.writeHead(200, {
+            'Cache-Control': 'no-store',
+            'Content-Type': 'application/json; charset=utf-8'
+        });
+        res.end(JSON.stringify({
+            tiktokUsername: liveAlertTikTokUsername,
+            publicKey: liveAlertVapidKeys.publicKey
+        }));
+        return;
+    }
+    if (pathname === '/api/live-alerts' && req.method === 'POST') {
+        if (!access.isAdmin(req)) {
+            res.writeHead(access.isAuthenticated(req) ? 403 : 401, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'application/json; charset=utf-8'
+            });
+            res.end(JSON.stringify({ message: 'Connecte-toi au compte administrateur pour gérer ces alertes.' }));
+            return;
+        }
+        readJsonBody(req, res, async body => {
+            const username = liveAlertTikTokUsername;
+            if (body.action === 'subscribe') {
+                const subscription = body.subscription;
+                const keys = subscription?.keys;
+                if (!validPushEndpoint(subscription?.endpoint) ||
+                    !keys || typeof keys !== 'object' ||
+                    typeof keys.p256dh !== 'string' || !/^[a-zA-Z0-9_-]{40,200}$/.test(keys.p256dh) ||
+                    typeof keys.auth !== 'string' || !/^[a-zA-Z0-9_-]{16,128}$/.test(keys.auth)) {
+                    res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Abonnement push invalide.' }));
+                    return;
+                }
+                try {
+                    const devices = store.saveLiveAlertPushSubscription(username, {
+                        endpoint: subscription.endpoint,
+                        keys: { p256dh: keys.p256dh, auth: keys.auth }
+                    });
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, devices }));
+                } catch (error) {
+                    console.error('Impossible d’enregistrer l’appareil pour les alertes live :', error);
+                    res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Impossible d’enregistrer cet appareil.' }));
+                }
+                return;
+            }
+            if (body.action === 'unsubscribe') {
+                if (!validPushEndpoint(body.endpoint)) {
+                    res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Adresse d’abonnement invalide.' }));
+                    return;
+                }
+                try {
+                    const removed = store.removeLiveAlertPushSubscription(username, body.endpoint);
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, removed }));
+                } catch (error) {
+                    console.error('Impossible de désinscrire l’appareil des alertes live :', error);
+                    res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Impossible de désactiver les alertes sur cet appareil.' }));
+                }
+                return;
+            }
+            if (body.action === 'test') {
+                try {
+                    const result = await sendLiveStartAlert({ test: true });
+                    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, devices: result.sent }));
+                } catch (error) {
+                    console.error('Échec du test des alertes TikTok :', error);
+                    res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Impossible d’envoyer l’alerte de test.' }));
+                }
+                return;
+            }
+            res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Action d’alerte inconnue.' }));
+        }, 12 * 1024);
         return;
     }
     if (pathname === '/api/presence' && req.method === 'POST') {
@@ -2057,6 +2283,9 @@ const server = http.createServer((req, res) => {
                 }
                 const sessionKey = username.toLocaleLowerCase();
                 if (body.action === 'disconnect') {
+                    if (sessionKey === centralTikTokSessionKey) {
+                        throw invalidAdminInput('La connexion TikTok centrale reste active pour les alertes et les jeux.');
+                    }
                     if (!disconnectLiveSession(sessionKey)) {
                         const error = new Error('Ce live n’est plus connecté.');
                         error.statusCode = 404;
@@ -2330,6 +2559,8 @@ const server = http.createServer((req, res) => {
     }
     const routes = new Map([
         ['/', [homepageFile, 'text/html; charset=utf-8']],
+        ['/live-alerts.html', [path.join(__dirname, 'live-alerts.html'), 'text/html; charset=utf-8']],
+        ['/live-alerts-sw.js', [path.join(__dirname, 'live-alerts-sw.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
     ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
@@ -2542,7 +2773,13 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (route) {
+    if (route && pathname === '/live-alerts.html' && !access.isAdmin(req)) {
+        res.writeHead(302, {
+            'Cache-Control': 'no-store',
+            Location: access.isAuthenticated(req) ? '/?acces=alertes' : '/?connexion=requise'
+        });
+        res.end();
+    } else if (route) {
         const gameId = gameRouteIds.get(pathname);
         if (protectedRoutes.has(pathname) && !freeTrialRoutes.has(pathname) &&
             (!access.canAccessGames(req) ||
@@ -2566,6 +2803,11 @@ const server = http.createServer((req, res) => {
             const headers = { 'Content-Type': contentType };
             if (contentType.startsWith('text/html;')) {
                 headers['Cache-Control'] = 'no-store';
+            }
+            if (pathname === '/live-alerts-sw.js') {
+                headers['Cache-Control'] = 'no-store';
+                headers['Service-Worker-Allowed'] = '/';
+                headers['X-Content-Type-Options'] = 'nosniff';
             }
             res.writeHead(200, headers);
             res.end(contentType.startsWith('text/html;')
@@ -2691,6 +2933,12 @@ const sessions = new Map();
 const clientSessions = new Map();
 const balloonShotRates = new WeakMap();
 const MAX_BALLOON_GAME_PLAYERS = 30;
+const centralTikTokSessionKey = /^[a-zA-Z0-9._]{1,32}$/.test(liveAlertTikTokUsername)
+    ? liveAlertTikTokUsername.toLocaleLowerCase()
+    : '';
+let centralTikTokStatusMessage = `Connexion TikTok en cours · @${liveAlertTikTokUsername}`;
+let centralTikTokRoomId = null;
+let centralTikTokConnected = false;
 
 function getMessageProfile(messageData) {
     if (messageData.type === 'gift') return messageData.gift || {};
@@ -2863,13 +3111,14 @@ function detachClient(socket) {
     if (!session) return;
     removeBalloonGameClient(session, socket);
     session.clients.delete(socket);
-    if (!session.clients.size) {
+    if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
         sessions.delete(sessionKey);
         void session.disconnect();
     }
 }
 
 function disconnectLiveSession(sessionKey) {
+    if (sessionKey === centralTikTokSessionKey) return false;
     const session = sessions.get(sessionKey);
     if (!session) return false;
     sessions.delete(sessionKey);
@@ -2883,34 +3132,87 @@ function disconnectLiveSession(sessionKey) {
 }
 
 function startTikTokSession(session) {
+    if (centralTikTokSessionKey && session.username.toLocaleLowerCase() === centralTikTokSessionKey) {
+        session.statusMessage = centralTikTokStatusMessage;
+        session.roomId = centralTikTokRoomId;
+        session.isLive = centralTikTokConnected;
+        session.disconnect = async () => {};
+        return;
+    }
     session.statusMessage = '';
     session.roomId = null;
     session.isLive = false;
     session.disconnect = createTikTokSession(messageData => {
-        if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
-        let player = null;
-        try {
-            player = updateSessionWalletProfile(session, messageData);
-        } catch (error) {
-            console.warn('Impossible d’enregistrer le profil TikTok pour le portefeuille :', error.message);
-        }
-        try {
-            processTikTokWalletCommand(session, messageData, player);
-        } catch (error) {
-            console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
-        }
-        const encoded = JSON.stringify(messageData);
-        for (const client of session.clients) {
-            if (session.balloonClients.has(client) &&
-                client !== session.balloonOwner &&
-                messageData.type !== 'STATUS' &&
-                messageData.type !== 'viewer') continue;
-            if (client.readyState === WebSocket.OPEN) client.send(encoded);
-        }
+        deliverTikTokMessage(session, messageData);
     }, session.username, ({ connected, roomId }) => {
         session.isLive = connected;
         session.roomId = roomId;
     });
+}
+
+function deliverTikTokMessage(session, messageData) {
+    if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+    let player = null;
+    try {
+        player = updateSessionWalletProfile(session, messageData);
+    } catch (error) {
+        console.warn('Impossible d’enregistrer le profil TikTok pour le portefeuille :', error.message);
+    }
+    try {
+        processTikTokWalletCommand(session, messageData, player);
+    } catch (error) {
+        console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
+    }
+    const encoded = JSON.stringify(messageData);
+    for (const client of session.clients) {
+        if (session.balloonClients.has(client) &&
+            client !== session.balloonOwner &&
+            messageData.type !== 'STATUS' &&
+            messageData.type !== 'viewer') continue;
+        if (client.readyState === WebSocket.OPEN) client.send(encoded);
+    }
+}
+
+function updateCentralTikTokRoomState({ connected, roomId }) {
+    centralTikTokConnected = connected;
+    centralTikTokRoomId = connected ? roomId : null;
+    centralTikTokStatusMessage = connected
+        ? `Direct TikTok connecté · @${liveAlertTikTokUsername}`
+        : `Connexion TikTok interrompue · @${liveAlertTikTokUsername}`;
+    const session = sessions.get(centralTikTokSessionKey);
+    if (session) {
+        session.isLive = connected;
+        session.roomId = centralTikTokRoomId;
+        deliverTikTokMessage(session, { type: 'STATUS', message: centralTikTokStatusMessage });
+    }
+    if (connected) {
+        sendLiveStartAlert({
+            username: liveAlertTikTokUsername,
+            roomId: String(roomId || '')
+        }).then(result => {
+            if (!result.duplicate) {
+                console.info(
+                    `Début de live détecté pour @${liveAlertTikTokUsername}; ` +
+                    `${result.sent} notification(s) push envoyée(s).`
+                );
+            }
+        }).catch(error => {
+            console.error('Échec de l’alerte de début de live TikTok :', error);
+        });
+    }
+}
+
+function startCentralTikTokListener() {
+    createTikTokSession(messageData => {
+        if (messageData.type === 'STATUS') centralTikTokStatusMessage = messageData.message;
+        const session = sessions.get(centralTikTokSessionKey);
+        if (session) deliverTikTokMessage(session, messageData);
+        if (messageData.type !== 'STATUS') {
+            sendTikTokEventAlert(messageData).catch(error => {
+                console.error('Échec de l’alerte push TikTok :', error);
+            });
+        }
+    }, liveAlertTikTokUsername, updateCentralTikTokRoomState);
 }
 
 wss.on('connection', (socket, req) => {
@@ -3140,6 +3442,11 @@ server.listen(port, '0.0.0.0', () => {
     restoreStarsFromSeed();
     dbSync.startBackups();
     sweepExpiredManualAccounts();
+    if (!centralTikTokSessionKey) {
+        console.error('Surveillance TikTok centrale désactivée : LIVE_ALERT_TIKTOK_USERNAME est invalide.');
+    } else {
+        startCentralTikTokListener();
+    }
     setInterval(() => {
         try {
             sweepExpiredManualAccounts();
