@@ -2,31 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createServer } = require('./server');
-
-const VALID_STROKES = [
-  { color: '#453a46', width: 12, closed: true, fill: '#f8cb70', points: [[300, 250], [700, 250], [500, 700]] },
-  { color: '#453a46', width: 10, closed: true, fill: '#ec826f', points: [[350, 600], [500, 800], [650, 600]] },
-  { color: '#287ca1', width: 8, closed: false, fill: 'none', points: [[400, 400], [500, 350], [600, 400]] }
-];
-
-function createOpenAiFetch({ words = ['Parapluie'], drawing = VALID_STROKES, onRequest } = {}) {
-  let wordIndex = 0;
-  return async (url, options) => {
-    const body = JSON.parse(options.body);
-    onRequest?.(url, body);
-    return new Response(JSON.stringify({
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            word: words[wordIndex++ % words.length],
-            strokes: drawing
-          })
-        }
-      }]
-    }), { status: 200 });
-  };
-}
+const { createServer, DRAWING_CATALOG } = require('./server');
 
 async function startServer(options = {}) {
   const server = createServer(options);
@@ -41,235 +17,153 @@ async function startServer(options = {}) {
   };
 }
 
-test('health endpoint reports drawing readiness without revealing secrets', async t => {
-  const app = await startServer({ apiKey: '' });
+async function createGame(baseUrl, difficulty = 1) {
+  const response = await fetch(`${baseUrl}/api/games`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ difficulty })
+  });
+  assert.equal(response.status, 201);
+  return response.json();
+}
+
+async function submitGuess(baseUrl, gameId, guess) {
+  return fetch(`${baseUrl}/api/games/${gameId}/guess`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guess, username: 'joueur' })
+  });
+}
+
+test('bundles exactly 1,000 different answers across five difficulty levels', () => {
+  assert.equal(DRAWING_CATALOG.length, 1_000);
+  assert.equal(new Set(DRAWING_CATALOG.map(drawing => drawing.id)).size, 1_000);
+  assert.equal(new Set(DRAWING_CATALOG.map(drawing => drawing.word.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr')
+    .replace(/œ/g, 'oe').replace(/[^a-z0-9 ]/g, '').trim().replace(/\s+/g, ' '))).size, 1_000);
+  assert.deepEqual(
+    Object.fromEntries([1, 2, 3, 4, 5].map(level => [
+      level,
+      DRAWING_CATALOG.filter(drawing => drawing.difficulty === level).length
+    ])),
+    { 1: 248, 2: 230, 3: 200, 4: 180, 5: 142 }
+  );
+  assert.ok(new Set(DRAWING_CATALOG.map(drawing => drawing.theme)).size >= 8);
+});
+
+test('health endpoint confirms the game works offline without an AI key', async t => {
+  const app = await startServer({ random: () => 0 });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/health`);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     ok: true,
-    drawingGenerationReady: false,
-    drawingModel: 'gpt-4o-mini',
-    dailyDrawLimit: 10
+    aiRequired: false,
+    drawingCount: 1_000,
+    difficultyLevels: 5
   });
-});
 
-test('draws smooth, safe SVG strokes in one request and hides the answer', async t => {
-  const requests = [];
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: createOpenAiFetch({ onRequest: (url, body) => requests.push({ url, body }) })
-  });
-  t.after(() => app.close());
-
-  const newGame = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(newGame.status, 201);
-  const game = await newGame.json();
-  assert.equal(game.hint, '_ _ _ _ _ _ _ _ _');
-  assert.equal(game.wordLength, 9);
-  assert.match(game.image, /^data:image\/svg\+xml;base64,/);
+  const game = await createGame(app.baseUrl);
+  assert.equal(game.difficulty, 1);
+  assert.equal(game.difficultyName, 'Facile');
+  assert.equal(game.theme, 'objets familiers');
+  assert.equal(game.hint, '_ _ _ _ _ _');
+  assert.equal(game.wordLength, 6);
   assert.equal('word' in game, false);
-  assert.equal(requests.length, 1);
-  assert.ok(requests[0].url.endsWith('/chat/completions'));
-  assert.deepEqual(requests[0].body.response_format, { type: 'json_object' });
+  assert.match(game.image, /^data:image\/svg\+xml;base64,/);
 
   const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
-  assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
-  assert.equal((svg.match(/<path /g) || []).length, VALID_STROKES.length * 2);
-  assert.match(svg, / C/);
-  assert.match(svg, /pattern id="paper"/);
-  assert.equal(svg.includes('Parapluie'), false);
-  assert.equal(/<script|onload=|javascript:/i.test(svg), false);
+  assert.match(svg, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  assert.match(svg, /<g>/);
+  assert.equal(svg.includes('soleil'), false);
 
-  const wrongGuess = await fetch(`${app.baseUrl}/api/games/${game.gameId}/guess`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ guess: 'chat', username: 'joueur' })
-  });
+  const wrongGuess = await submitGuess(app.baseUrl, game.gameId, 'chat');
   assert.deepEqual(await wrongGuess.json(), { correct: false });
 
-  const rightGuess = await fetch(`${app.baseUrl}/api/games/${game.gameId}/guess`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ guess: 'PARAPLUIE', username: '@joueur' })
-  });
+  const rightGuess = await submitGuess(app.baseUrl, game.gameId, 'SOLEIL');
   assert.deepEqual(await rightGuess.json(), {
     correct: true,
     winner: 'joueur',
-    answer: 'Parapluie'
+    answer: 'soleil'
   });
 });
 
-test('centers and resizes an off-center drawing to fill most of the page', async t => {
-  const offCenterStrokes = VALID_STROKES.map(stroke => ({
-    ...stroke,
-    points: stroke.points.map(([x, y]) => [x + 150, y - 100])
-  }));
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: createOpenAiFetch({ drawing: offCenterStrokes })
-  });
+test('serves centered pictograms safely as bundled SVG artwork', async t => {
+  const pictogram = {
+    id: 'test-pictogram',
+    word: 'visage test',
+    emoji: '<script>alert(1)</script>',
+    theme: 'visages et émotions',
+    difficulty: 1
+  };
+  const app = await startServer({ catalog: [pictogram], random: () => 0 });
   t.after(() => app.close());
 
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 201);
-  const game = await response.json();
+  const game = await createGame(app.baseUrl);
   const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
-
-  assert.match(svg, /d="M238 140/);
-  assert.match(svg, / 860(?: C| Z)/);
+  assert.match(svg, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.equal(/<script|onload=|javascript:/i.test(svg), false);
+  assert.match(svg, /text-anchor="middle"/);
 });
 
-test('counts letters, not spaces, in multi-word hints', async t => {
+test('starts consecutive rounds instantly without daily or per-IP generation limits', async t => {
+  const app = await startServer({ random: () => 0 });
+  t.after(() => app.close());
+
+  const images = new Set();
+  for (let round = 0; round < 15; round += 1) {
+    const game = await createGame(app.baseUrl);
+    images.add(game.image);
+  }
+  assert.equal(images.size, 15);
+});
+
+test('serves the requested difficulty and rejects invalid difficulty levels', async t => {
+  const catalog = Array.from({ length: 5 }, (_, index) => ({
+    id: `level-${index + 1}`,
+    word: `niveau ${index + 1}`,
+    emoji: '🎨',
+    theme: 'objets familiers',
+    difficulty: index + 1
+  }));
+  const app = await startServer({ catalog, random: () => 0 });
+  t.after(() => app.close());
+
+  for (let level = 1; level <= 5; level += 1) {
+    const game = await createGame(app.baseUrl, level);
+    assert.equal(game.difficulty, level);
+    assert.equal(game.difficultyName, ['Facile', 'Intermédiaire', 'Moyen', 'Difficile', 'Expert'][level - 1]);
+  }
+
+  const invalid = await fetch(`${app.baseUrl}/api/games`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ difficulty: 6 })
+  });
+  assert.equal(invalid.status, 400);
+});
+
+test('counts letters without spaces in a multi-word answer', async t => {
   const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: createOpenAiFetch({ words: ['Chat noir'] })
+    catalog: [{
+      id: 'multi-word',
+      word: 'chat noir',
+      emoji: '🐈‍⬛',
+      theme: 'animaux et nature',
+      difficulty: 1
+    }],
+    random: () => 0
   });
   t.after(() => app.close());
 
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 201);
-  const game = await response.json();
+  const game = await createGame(app.baseUrl);
   assert.equal(game.wordLength, 8);
   assert.equal((game.hint.match(/_/g) || []).length, 8);
-});
-
-test('sanitizes unexpected AI colors rather than embedding markup in the SVG', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: createOpenAiFetch({
-      drawing: [...VALID_STROKES.slice(0, 2), {
-        ...VALID_STROKES[2],
-        color: 'red" onload="alert(1)',
-        width: null
-      }]
-    })
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 201);
-  const game = await response.json();
-  const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
-  assert.match(svg, /stroke="black" stroke-width="12"/);
-  assert.equal(/onload=|<script/i.test(svg), false);
-});
-
-test('rejects AI strokes that extend outside the drawing canvas', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: createOpenAiFetch({
-      drawing: [
-        ...VALID_STROKES.slice(0, 2),
-        { ...VALID_STROKES[2], points: [[-1, 200], [600, 400]] }
-      ]
-    })
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 502);
-  assert.equal((await response.json()).error, 'L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-});
-
-test('refuses game generation when the OpenAI key is missing', async t => {
-  const app = await startServer({ apiKey: '' });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 503);
-  assert.match((await response.json()).error, /secrets Render/);
-});
-
-test('reports actionable guidance when OpenAI denies access to the drawing model', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: async () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 })
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 502);
+  const response = await submitGuess(app.baseUrl, game.gameId, 'CHAT NOIR');
   assert.deepEqual(await response.json(), {
-    error: 'La clé API OpenAI n’a pas accès au modèle de dessin. Vérifie les droits du compte.'
+    correct: true,
+    winner: 'joueur',
+    answer: 'chat noir'
   });
-});
-
-test('reports the rejected parameter when OpenAI returns a bad request', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: async () => new Response(JSON.stringify({
-      error: { code: 'unsupported_value', param: 'temperature', message: 'Not shown to players' }
-    }), { status: 400 })
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 502);
-  assert.deepEqual(await response.json(), {
-    error: 'OpenAI refuse la requête du choix du sujet et du dessin (code unsupported_value, paramètre temperature). Vérifie le modèle et les options.'
-  });
-});
-
-test('identifies a text model that the OpenAI organization cannot use', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    textModel: 'test-model',
-    fetchImpl: async () => new Response(JSON.stringify({
-      error: { code: 'invalid_value', param: 'model', message: 'Not shown to players' }
-    }), { status: 400 })
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 502);
-  assert.deepEqual(await response.json(), {
-    error: 'OpenAI rejette le modèle texte « test-model ». Vérifie OPENAI_TEXT_MODEL et l’accès de l’organisation à ce modèle.'
-  });
-});
-
-test('reports when the server cannot contact OpenAI', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    fetchImpl: async () => {
-      throw new TypeError('fetch failed');
-    }
-  });
-  t.after(() => app.close());
-
-  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(response.status, 502);
-  assert.deepEqual(await response.json(), {
-    error: 'Le serveur ne parvient pas à contacter OpenAI. Réessaie plus tard.'
-  });
-});
-
-test('applies a daily drawing-generation limit', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    maxDailyDraws: 1,
-    fetchImpl: createOpenAiFetch({ words: ['Pomme'] })
-  });
-  t.after(() => app.close());
-
-  const first = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(first.status, 201);
-  const second = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-  assert.equal(second.status, 429);
-  assert.match((await second.json()).error, /limite quotidienne/);
-});
-
-test('allows consecutive automatic rounds within the daily limit', async t => {
-  const app = await startServer({
-    apiKey: 'test-key',
-    maxDailyDraws: 5,
-    fetchImpl: createOpenAiFetch({ words: ['Sujet1', 'Sujet2', 'Sujet3', 'Sujet4'] })
-  });
-  t.after(() => app.close());
-
-  for (let round = 0; round < 4; round += 1) {
-    const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
-    assert.equal(response.status, 201);
-  }
 });

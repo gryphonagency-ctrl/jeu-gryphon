@@ -25,21 +25,21 @@
 </aside>
 <main class="app">
   <header class="hero">
-    <div class="badge"><i class="dot"></i> DESSIN FAIT À LA MAIN PAR L’IA</div>
+    <div class="badge"><i class="dot"></i> 1 000 DESSINS · 5 NIVEAUX</div>
     <h1>🎨 Dessiner, c'est <span>gagné !</span></h1>
     <p>Un dessin simple, grand et centré, facile à reconnaître.<br>Le chat TikTok devine : le premier à trouver gagne, puis la manche suivante démarre automatiquement !</p>
   </header>
   <div class="layout">
     <section class="card" aria-label="Jeu de dessin">
-      <div class="cardhead"><span class="label">Le dessin mystère 🤖</span><span class="round" id="round">Prêt à jouer</span></div>
+      <div class="cardhead"><span class="label">Le dessin mystère 🎨</span><span class="round" id="round">Prêt à jouer</span></div>
       <div class="drawing" role="img" aria-label="Dessin mystère">
-        <img id="image" alt="Dessin mystère généré par l’IA">
+        <img id="image" alt="Dessin mystère de la collection du jeu">
         <div class="placeholder" id="placeholder">
           <svg viewBox="0 0 220 170" aria-hidden="true">
             <path d="M37 78Q70 19 111 33q43-7 73 47-17 11-31-1-18 17-37 1-21 16-37 0-22 12-42-2Z" fill="#ffe7a3" stroke="#343344" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M112 79q-3 31 1 57 2 17 17 14" fill="none" stroke="#e99bb1" stroke-width="7" stroke-linecap="round"/>
           </svg>
-          <span id="placeholder-text">Lance une manche pour voir le croquis de l’IA.</span>
+          <span id="placeholder-text">Lance une manche pour découvrir un dessin.</span>
         </div>
         <span class="drawn-label" id="drawing-status">En attente d’une manche</span>
         <span class="guess-result" id="guess-result" role="status" aria-live="polite" hidden></span>
@@ -49,7 +49,7 @@
       <button class="btn new" id="new-game" type="button">🎨 Lancer une nouvelle manche</button>
       <form class="form" id="guess"><input id="answer" autocomplete="off" placeholder="Simuler une réponse du chat…" aria-label="Réponse de démonstration"><button class="btn" type="submit">Tester le chat 🚀</button></form>
       <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
-      <p class="foot">Un sujet et un croquis uniques à chaque manche · 10 générations IA par jour par défaut.</p>
+      <p class="foot" id="collection-info">1 000 dessins disponibles · manches rapides, sans appel à une IA.</p>
     </section>
     <aside class="sidecard" aria-label="Joueurs gagnants">
       <div class="sidehead"><h2>🏆 Premiers gagnants</h2><span class="connected" id="live-badge">Démo</span></div>
@@ -63,6 +63,14 @@
   const $ = id => document.getElementById(id);
   const guessers = new Map();
   const NEXT_ROUND_DELAY_MS = 4_000;
+  const savedDifficulty = Number.parseInt(localStorage.getItem('dessiner-difficulty-level'), 10);
+  const savedLevelWins = Number.parseInt(localStorage.getItem('dessiner-level-wins'), 10);
+  let difficultyLevel = Number.isInteger(savedDifficulty) && savedDifficulty >= 1 && savedDifficulty <= 5
+    ? savedDifficulty
+    : 1;
+  let winsAtDifficulty = Number.isInteger(savedLevelWins) && savedLevelWins >= 0 && savedLevelWins < 10
+    ? savedLevelWins
+    : 0;
   let socket = null;
   let gameId = null;
   let gameFinished = false;
@@ -131,6 +139,15 @@
         return;
       }
       gameFinished = true;
+      winsAtDifficulty = Math.min(10, winsAtDifficulty + 1);
+      let levelMessage = '';
+      if (winsAtDifficulty === 10 && difficultyLevel < 5) {
+        difficultyLevel += 1;
+        winsAtDifficulty = 0;
+        levelMessage = ` Niveau ${difficultyLevel} débloqué !`;
+      }
+      localStorage.setItem('dessiner-difficulty-level', String(difficultyLevel));
+      localStorage.setItem('dessiner-level-wins', String(winsAtDifficulty));
       $('guess-result').hidden = true;
       const name = result.winner || 'spectateur';
       const player = guessers.get(name) || { name, points: 0 };
@@ -139,7 +156,7 @@
       renderPlayers();
       $('round').textContent = 'Manche terminée';
       $('drawing-status').textContent = 'Quelqu’un a trouvé !';
-      showFeedback(`🎉 @${name} a trouvé : c’était ${result.answer} ! Nouvelle manche dans ${NEXT_ROUND_DELAY_MS / 1000} secondes…`, 'win');
+      showFeedback(`🎉 @${name} a trouvé : c’était ${result.answer} !${levelMessage} Nouvelle manche dans ${NEXT_ROUND_DELAY_MS / 1000} secondes…`, 'win');
       $('confetti').classList.remove('on');
       void $('confetti').offsetWidth;
       $('confetti').classList.add('on');
@@ -163,19 +180,23 @@
     button.disabled = true;
     $('image').classList.remove('visible');
     $('placeholder').hidden = false;
-    $('placeholder-text').textContent = 'L’IA choisit un sujet et le dessine…';
+    $('placeholder-text').textContent = 'Le jeu prépare un dessin…';
     $('hint').textContent = '…';
     $('hint-label').textContent = '📋 Indice · nombre de lettres';
     $('guess-result').hidden = true;
     $('guess-result').textContent = '';
-    $('round').textContent = 'Génération en cours';
-    $('drawing-status').textContent = 'Croquis en cours…';
+    $('round').textContent = 'Préparation…';
+    $('drawing-status').textContent = 'Dessin en cours…';
     $('feedback').textContent = '';
     $('confetti').classList.remove('on');
     gameId = null;
     gameFinished = false;
     try {
-      const response = await fetch('/api/games', { method: 'POST' });
+      const response = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ difficulty: difficultyLevel })
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'La génération du dessin a échoué.');
       gameId = result.gameId;
@@ -184,12 +205,12 @@
       $('placeholder').hidden = true;
       $('hint').textContent = result.hint;
       $('hint-label').textContent = `📋 Indice · ${result.wordLength} lettre${result.wordLength === 1 ? '' : 's'}`;
-      $('round').textContent = 'Nouvelle manche';
-      $('drawing-status').textContent = 'À vous de deviner !';
+      $('round').textContent = `Niveau ${result.difficulty} · ${result.difficultyName}`;
+      $('drawing-status').textContent = `Thème : ${result.theme}`;
       showFeedback('Le dessin est prêt : proposez vos réponses dans le chat TikTok.');
     } catch (error) {
       console.error('Nouvelle manche impossible :', error);
-      const message = error instanceof Error ? error.message : 'La génération du dessin a échoué.';
+      const message = error instanceof Error ? error.message : 'La préparation du dessin a échoué.';
       $('round').textContent = 'Manche indisponible';
       $('drawing-status').textContent = 'Génération impossible';
       $('placeholder-text').textContent = message;
@@ -299,9 +320,8 @@
     if (typeof config.tiktokConnectorUrl === 'string') connectorUrl = config.tiktokConnectorUrl;
   }).catch(error => console.error('Configuration du connecteur TikTok indisponible :', error));
   fetch('/api/health').then(response => response.json()).then(health => {
-    if (!health.drawingGenerationReady) {
-      showFeedback('La génération des dessins est momentanément indisponible. Réessayez plus tard.', 'error');
-      return;
+    if (Number.isInteger(health.drawingCount)) {
+      $('collection-info').textContent = `${health.drawingCount.toLocaleString('fr-FR')} dessins · 5 niveaux · aucune génération IA.`;
     }
     queueNewGame();
   }).catch(error => {

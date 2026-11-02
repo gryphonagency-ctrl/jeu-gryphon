@@ -4,28 +4,22 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { DRAWINGS } = require('./drawing-library');
+const PICTOGRAMS = require('./drawing-catalog.json');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY_BYTES = 2_048;
 const GAME_TTL_MS = 60 * 60 * 1_000;
-const RATE_WINDOW_MS = 10 * 60 * 1_000;
-const MAX_REQUESTS_PER_IP = 10;
-const DRAWING_COLORS = new Set([
-  'black', 'white', 'brown', 'red', 'orange', 'yellow', 'green', 'blue',
-  'purple', 'pink', 'gray', 'grey', 'cyan'
-]);
-const MAX_DRAWING_STROKES = 24;
-const MAX_DRAWING_POINTS = 240;
-
-function isDrawingColor(value) {
-  return DRAWING_COLORS.has(value) || (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value));
-}
-
-function invalidDrawing(message) {
-  const error = new Error(message);
-  error.statusCode = 502;
-  return error;
-}
+const DIFFICULTY_NAMES = ['Facile', 'Intermédiaire', 'Moyen', 'Difficile', 'Expert'];
+const DRAWING_CATALOG = [
+  ...DRAWINGS.map((drawing, index) => ({
+    ...drawing,
+    id: `handmade-${index + 1}`,
+    theme: 'objets familiers',
+    difficulty: 1
+  })),
+  ...PICTOGRAMS
+];
 
 function normalizeWord(value) {
   return String(value || '')
@@ -38,81 +32,20 @@ function normalizeWord(value) {
     .replace(/\s+/g, ' ');
 }
 
-function makeDrawingSvg(strokes) {
-  if (!Array.isArray(strokes) || strokes.length < 3 || strokes.length > MAX_DRAWING_STROKES) {
-    throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-  }
-
-  let totalPoints = 0;
-  const bounds = { minX: 970, minY: 970, maxX: 30, maxY: 30 };
-  for (const stroke of strokes) {
-    if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points)) {
-      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-    }
-    const closed = stroke.closed === true;
-    if (stroke.points.length < (closed ? 3 : 2) || stroke.points.length > 40) {
-      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-    }
-
-    totalPoints += stroke.points.length;
-    if (totalPoints > MAX_DRAWING_POINTS) {
-      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-    }
-
-    for (const point of stroke.points) {
-      if (!Array.isArray(point) || point.length !== 2 ||
-        !point.every(value => Number.isFinite(value) && value >= 30 && value <= 970)) {
-        throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-      }
-      bounds.minX = Math.min(bounds.minX, point[0]);
-      bounds.minY = Math.min(bounds.minY, point[1]);
-      bounds.maxX = Math.max(bounds.maxX, point[0]);
-      bounds.maxY = Math.max(bounds.maxY, point[1]);
-    }
-  }
-
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
-  const scale = 720 / Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
-  const paths = strokes.map(stroke => {
-    const closed = stroke.closed === true;
-    const color = isDrawingColor(stroke.color) ? stroke.color : 'black';
-    const fill = isDrawingColor(stroke.fill) ? stroke.fill : 'none';
-    const width = Number.isFinite(stroke.width) && stroke.width >= 4 && stroke.width <= 26
-      ? Math.round(stroke.width)
-      : 12;
-    const points = stroke.points.map(([x, y]) => [
-      Math.round(500 + (x - centerX) * scale),
-      Math.round(500 + (y - centerY) * scale)
-    ]);
-    const path = smoothPath(points, closed);
-    return `<path d="${path}" fill="none" stroke="#b37c68" stroke-opacity=".22" stroke-width="${width + 2}" stroke-linecap="round" stroke-linejoin="round" transform="translate(1.5 2)"/><path d="${path}" fill="${closed ? fill : 'none'}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  });
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><pattern id="paper" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#b9a98c" opacity=".14"/></pattern></defs><rect width="1000" height="1000" fill="#fffdf8"/><rect width="1000" height="1000" fill="url(#paper)"/>${paths.join('')}</svg>`;
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
-function smoothPath(points, closed) {
-  const [firstX, firstY] = points[0];
-  let path = `M${firstX} ${firstY}`;
-  const segmentCount = closed ? points.length : points.length - 1;
-  for (let index = 0; index < segmentCount; index += 1) {
-    const nextIndex = (index + 1) % points.length;
-    const previous = points[closed ? (index - 1 + points.length) % points.length : Math.max(0, index - 1)];
-    const current = points[index];
-    const next = points[nextIndex];
-    const after = points[closed ? (index + 2) % points.length : Math.min(points.length - 1, index + 2)];
-    const control1 = [
-      current[0] + (next[0] - previous[0]) / 6,
-      current[1] + (next[1] - previous[1]) / 6
-    ];
-    const control2 = [
-      next[0] - (after[0] - current[0]) / 6,
-      next[1] - (after[1] - current[1]) / 6
-    ];
-    path += ` C${control1[0].toFixed(1)} ${control1[1].toFixed(1)} ${control2[0].toFixed(1)} ${control2[1].toFixed(1)} ${next[0]} ${next[1]}`;
-  }
-  return closed ? `${path} Z` : path;
+function makeDrawingSvg(drawing) {
+  const illustration = typeof drawing.svg === 'string'
+    ? drawing.svg
+    : `<text x="200" y="195" text-anchor="middle" dominant-baseline="central" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="230">${escapeXml(drawing.emoji)}</text><path d="M126 317q74 18 148 0" fill="none" stroke="#bb8069" stroke-width="5" stroke-linecap="round" opacity=".6"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#b9a98c" opacity=".12"/></pattern></defs><rect width="400" height="400" fill="#fffdf8"/><rect width="400" height="400" fill="url(#paper)"/>${illustration}</svg>`;
 }
 
 function sendJson(response, status, payload) {
@@ -148,158 +81,70 @@ async function readJson(request) {
   }
 }
 
-function getClientAddress(request) {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    const addresses = forwarded.split(',').map(value => value.trim()).filter(Boolean);
-    if (addresses.length) return addresses[addresses.length - 1];
+function validateCatalog(catalog) {
+  if (!Array.isArray(catalog) || catalog.length === 0) {
+    throw new TypeError('The drawing catalog must contain at least one drawing.');
   }
-  return request.socket.remoteAddress || 'unknown';
+  const ids = new Set();
+  const words = new Set();
+  for (const drawing of catalog) {
+    const word = normalizeWord(drawing?.word);
+    if (!drawing || !drawing.id || !word || word.length > 50 ||
+      typeof drawing.theme !== 'string' ||
+      !Number.isInteger(drawing.difficulty) || drawing.difficulty < 1 || drawing.difficulty > 5 ||
+      (typeof drawing.svg !== 'string' && typeof drawing.emoji !== 'string')) {
+      throw new TypeError('The drawing catalog contains an invalid entry.');
+    }
+    if (ids.has(drawing.id) || words.has(word)) {
+      throw new TypeError('Drawing IDs and answers must be unique.');
+    }
+    ids.add(drawing.id);
+    words.add(word);
+  }
 }
 
 function createServer({
-  apiKey = process.env.OPENAI_API_KEY,
-  textModel = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
   tiktokConnectorUrl = process.env.TIKTOK_CONNECTOR_URL || 'wss://jeu6boite.onrender.com',
-  maxDailyDraws = Number(process.env.MAX_DAILY_DRAWS) || 10,
-  fetchImpl = globalThis.fetch,
+  catalog = DRAWING_CATALOG,
+  random = Math.random,
   clock = Date.now
 } = {}) {
+  validateCatalog(catalog);
   const games = new Map();
-  const usedWords = new Set();
-  const requestsByAddress = new Map();
-  let dailyDrawCount = 0;
-  let currentUtcDate = new Date(clock()).toISOString().slice(0, 10);
+  const usedByDifficulty = new Map();
 
-  function pruneState() {
+  function pruneGames() {
     const now = clock();
     for (const [id, game] of games) {
       if (now - game.createdAt > GAME_TTL_MS) games.delete(id);
     }
-    for (const [address, requests] of requestsByAddress) {
-      const active = requests.filter(timestamp => now - timestamp < RATE_WINDOW_MS);
-      if (active.length) requestsByAddress.set(address, active);
-      else requestsByAddress.delete(address);
-    }
   }
 
-  function checkRateLimit(request, response) {
-    pruneState();
-    const now = clock();
-    const address = getClientAddress(request);
-    const requests = requestsByAddress.get(address) || [];
-    if (requests.length >= MAX_REQUESTS_PER_IP) {
-      sendJson(response, 429, { error: 'Trop de dessins demandés. Réessaie dans quelques minutes.' });
-      return false;
+  function selectDrawing(difficulty) {
+    const candidates = catalog.filter(drawing => drawing.difficulty === difficulty);
+    if (!candidates.length) {
+      throw new Error(`No drawings are configured for difficulty ${difficulty}.`);
     }
-    requests.push(now);
-    requestsByAddress.set(address, requests);
 
-    const date = new Date(now).toISOString().slice(0, 10);
-    if (date !== currentUtcDate) {
-      currentUtcDate = date;
-      dailyDrawCount = 0;
+    let used = usedByDifficulty.get(difficulty);
+    if (!used) {
+      used = new Set();
+      usedByDifficulty.set(difficulty, used);
     }
-    if (dailyDrawCount >= maxDailyDraws) {
-      sendJson(response, 429, { error: 'La limite quotidienne de dessins IA est atteinte.' });
-      return false;
-    }
-    dailyDrawCount += 1;
-    return true;
-  }
+    if (used.size >= candidates.length) used.clear();
 
-  async function openAiRequest(endpoint, payload, task = 'dessin') {
-    let result;
-    try {
-      result = await fetchImpl(`https://api.openai.com/v1/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(120_000)
-      });
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      console.error(`OpenAI ${endpoint} request failed: ${detail}`);
-      const error = new Error('Le serveur ne parvient pas à contacter OpenAI. Réessaie plus tard.');
-      error.statusCode = 502;
-      throw error;
+    const available = candidates.filter(drawing => !used.has(drawing.id));
+    const handDrawn = difficulty === 1
+      ? available.filter(drawing => drawing.id.startsWith('handmade-'))
+      : [];
+    const selectionPool = handDrawn.length ? handDrawn : available;
+    const randomValue = random();
+    if (!Number.isFinite(randomValue) || randomValue < 0 || randomValue >= 1) {
+      throw new RangeError('The drawing selector must return a number from 0 up to, but not including, 1.');
     }
-    if (!result.ok) {
-      let upstreamError;
-      try {
-        const body = await result.json();
-        if (body.error && typeof body.error === 'object') upstreamError = body.error;
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        console.error(`OpenAI ${endpoint} returned an unreadable error response: ${detail}`);
-      }
-      const code = typeof upstreamError?.code === 'string' ? upstreamError.code : '';
-      const param = typeof upstreamError?.param === 'string' ? upstreamError.param : '';
-      console.error(`OpenAI ${endpoint} returned HTTP ${result.status}${code ? ` (${code})` : ''}${param ? ` for ${param}` : ''}`);
-      const messages = {
-        401: 'La clé API OpenAI du serveur est invalide ou expirée.',
-        403: 'La clé API OpenAI n’a pas accès au modèle de dessin. Vérifie les droits du compte.',
-        404: 'Le modèle ou la route de génération OpenAI est introuvable.',
-        429: 'Le quota OpenAI est épuisé ou la limite temporaire de requêtes est atteinte.'
-      };
-      const detail = [code && `code ${code}`, param && `paramètre ${param}`].filter(Boolean).join(', ');
-      let message;
-      if (result.status === 400 && param === 'model') {
-        message = `OpenAI rejette le modèle texte « ${textModel} ». Vérifie OPENAI_TEXT_MODEL et l’accès de l’organisation à ce modèle.`;
-      } else if (result.status === 400) {
-        message = `OpenAI refuse la requête ${task}${detail ? ` (${detail})` : ''}. Vérifie le modèle et les options.`;
-      } else {
-        message = messages[result.status] || `Le service de dessin IA a répondu avec une erreur HTTP ${result.status}.`;
-      }
-      const error = new Error(message);
-      error.statusCode = result.status === 429 ? 503 : 502;
-      throw error;
-    }
-    return result.json();
-  }
-
-  async function chooseWordAndDraw() {
-    const excluded = [...usedWords].slice(-100);
-    const response = await openAiRequest('chat/completions', {
-      model: textModel,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'Tu crées des dessins mystères pour un jeu très facile, jouable par tout le monde. Choisis un objet ou un animal courant, concret et immédiatement reconnaissable, avec un nom français simple (exemples : maison, soleil, pomme, poisson, chat, fleur, voiture, parapluie, ballon, tasse, arbre, chaussure). Évite les concepts abstraits, les scènes, les mots rares, les objets compliqués et tout sujet dont la silhouette serait difficile à deviner. Réponds uniquement en JSON sous cette forme : {"word":"pomme","strokes":[{"color":"#453a46","width":16,"closed":true,"fill":"#f8cb70","points":[[300,300],[600,300],[450,600]]}]}. Dessine UN SEUL objet, vu de face ou de profil, en très grand : sa silhouette doit occuper environ 70 % du cadre et rester parfaitement reconnaissable. Le dessin entier doit être groupé au milieu, sans objet décentré, minuscule, coupé ou éloigné. Dessine d’abord une grande silhouette fermée, bien remplie d’une couleur vive, puis seulement 2 ou 3 détails distinctifs attachés à cette silhouette (par exemple : pour une pomme, un fruit rond rouge, une feuille verte et une petite tige). Le mot choisi doit être évident rien qu’en regardant cette forme ; si tu hésites, choisis un sujet encore plus facile. Style dessin simple d’enfant soigné : gros contours foncés et lisibles, formes rondes, couleurs vives, peu de détails, proportions légèrement irrégulières. PAS de composition artistique, pas de perspective, pas d’arrière-plan, pas d’éléments décoratifs ou de formes séparées. Utilise 5 à 9 traits dans l’ordre arrière-vers-avant. Chaque trait contient color, width de 12 à 22, closed (booléen), fill (couleur ou none) et points=[[x,y],...] (3 à 10 points entre 100 et 900). Les traits fermés ont un remplissage coloré ; les traits ouverts ont fill none. Couleurs autorisées : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, grey, cyan ou hexadécimale #RRGGBB. Les contours seront lissés automatiquement. N’écris aucun texte, lettre, chiffre, cadre ou accessoire sans rapport. Le dessin doit représenter exactement le mot secret.'
-        },
-        {
-          role: 'user',
-          content: `Choisis un seul sujet facile à faire deviner, différent de ceux-ci, et rends immédiatement le mot secret avec son dessin : ${JSON.stringify(excluded)}`
-        }
-      ],
-      temperature: 0.8,
-      max_tokens: 1_700
-    }, 'du choix du sujet et du dessin');
-    const content = response.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      throw invalidDrawing('L’IA a renvoyé un dessin illisible. Réessaie.');
-    }
-    const word = String(parsed.word || '').trim();
-    const normalized = normalizeWord(word);
-    if (!normalized || normalized.length > 50 || normalized.split(' ').length > 5) {
-      throw invalidDrawing('L’IA n’a pas choisi un sujet exploitable. Réessaie.');
-    }
-    if (usedWords.has(normalized)) throw invalidDrawing('L’IA a choisi un sujet déjà utilisé. Réessaie.');
-    const svg = makeDrawingSvg(parsed.strokes);
-    usedWords.add(normalized);
-    if (usedWords.size > 1_000) usedWords.delete(usedWords.values().next().value);
-    return {
-      word,
-      image: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
-    };
+    const drawing = selectionPool[Math.floor(randomValue * selectionPool.length)];
+    used.add(drawing.id);
+    return drawing;
   }
 
   const server = http.createServer(async (request, response) => {
@@ -307,9 +152,9 @@ function createServer({
     if (request.method === 'GET' && url.pathname === '/api/health') {
       sendJson(response, 200, {
         ok: true,
-        drawingGenerationReady: Boolean(apiKey),
-        drawingModel: textModel,
-        dailyDrawLimit: maxDailyDraws
+        aiRequired: false,
+        drawingCount: catalog.length,
+        difficultyLevels: DIFFICULTY_NAMES.length
       });
       return;
     }
@@ -331,25 +176,39 @@ function createServer({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/games') {
-      if (!apiKey) {
-        sendJson(response, 503, { error: 'La clé OpenAI doit être configurée dans les secrets Render.' });
-        return;
-      }
-      if (!checkRateLimit(request, response)) return;
       try {
-        const { word, image } = await chooseWordAndDraw();
+        pruneGames();
+        const body = await readJson(request);
+        if (body.difficulty !== undefined &&
+          (!Number.isInteger(body.difficulty) || body.difficulty < 1 || body.difficulty > DIFFICULTY_NAMES.length)) {
+          sendJson(response, 400, { error: 'Le niveau de difficulté demandé est invalide.' });
+          return;
+        }
+        const difficulty = body.difficulty || 1;
+        const drawing = selectDrawing(difficulty);
         const id = crypto.randomUUID();
-        games.set(id, { answer: normalizeWord(word), word, createdAt: clock(), winner: null });
+        const svg = makeDrawingSvg(drawing);
+        games.set(id, {
+          answer: normalizeWord(drawing.word),
+          word: drawing.word,
+          createdAt: clock(),
+          winner: null
+        });
         sendJson(response, 201, {
           gameId: id,
-          image,
-          hint: Array.from(word, character => character === ' ' ? '  ' : '_').join(' '),
-          wordLength: Array.from(word).filter(character => character !== ' ').length
+          image: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`,
+          hint: Array.from(drawing.word, character => character === ' ' ? '  ' : '_').join(' '),
+          wordLength: Array.from(drawing.word).filter(character => character !== ' ').length,
+          theme: drawing.theme,
+          difficulty,
+          difficultyName: DIFFICULTY_NAMES[difficulty - 1]
         });
       } catch (error) {
-        console.error('Game generation failed:', error.message);
-        sendJson(response, error.statusCode || 502, {
-          error: error.statusCode ? error.message : 'Impossible de générer le sujet et son dessin. Réessaie.'
+        console.error('Game creation failed:', error);
+        sendJson(response, error.statusCode || 503, {
+          error: error.statusCode === 400
+            ? 'La demande de dessin est invalide.'
+            : 'Impossible de préparer un dessin. Réessaie.'
         });
       }
       return;
@@ -358,6 +217,7 @@ function createServer({
     const guessMatch = request.method === 'POST' && url.pathname.match(/^\/api\/games\/([0-9a-f-]{36})\/guess$/i);
     if (guessMatch) {
       try {
+        pruneGames();
         const body = await readJson(request);
         const game = games.get(guessMatch[1]);
         const guess = String(body.guess || '').slice(0, 100);
@@ -396,4 +256,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, normalizeWord };
+module.exports = { createServer, normalizeWord, DRAWING_CATALOG };
