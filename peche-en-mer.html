@@ -1418,7 +1418,7 @@
         for (let i = lines.length - 1; i >= 0; i--) {
           if (drawLine(lines[i], time)) {
             const [line] = lines.splice(i, 1);
-            resolveCatch(line.target, line.user);
+            resolveCatch(line.target, line.user, line.transactionId);
           }
         }
       }
@@ -1454,7 +1454,7 @@
         if (job.remaining === 0) queue.shift();
         sfx.cast();
         lines.push({
-          target, user, startedAt: performance.now(), duration: reducedMotion ? 350 : 1500,
+          target, user, transactionId: user?.real ? `peche:${crypto.randomUUID()}` : '', startedAt: performance.now(), duration: reducedMotion ? 350 : 1500,
           reelDuration: reducedMotion ? 450 : 1700, hookedAt: 0
         });
         document.getElementById('hint').textContent = `${label} · la ligne file vers sa proie…`;
@@ -1464,7 +1464,7 @@
         }, queue.length ? 100 : reducedMotion ? 450 : 1100);
       }
 
-      function resolveCatch(target, user) {
+      function resolveCatch(target, user, transactionId) {
         const index = entities.indexOf(target);
         if (index < 0) return;
         const { kind, value } = target;
@@ -1477,8 +1477,16 @@
         const remaining = entities.filter(entity => entity.kind === 'fish').length;
         showCatch(kind, value, user);
         sfx.catchChime(kind);
-        if (user?.name && socket && socket.readyState === 1 && window.ArcadeStars) {
-          window.ArcadeStars.award({ username: user.name, amount: value }).catch(() => {});
+        if (user?.real && window.ArcadeStars?.award) {
+          window.ArcadeStars.award({
+            playerId: user.playerId,
+            username: user.username || user.name,
+            amount: value,
+            transactionId
+          }).catch(error => {
+            console.error(`Crédit des étoiles impossible pour @${user.username || user.name}.`, error);
+            setLiveStatus(`Prise réussie, mais crédit des étoiles impossible pour @${user.username || user.name}.`, 'error');
+          });
         }
         document.getElementById('hint').textContent = `Belle prise ! +${value} étoile${value > 1 ? 's' : ''} · ${remaining.toLocaleString('fr-FR')} poisson${remaining > 1 ? 's' : ''} restant${remaining > 1 ? 's' : ''} dans ce cycle.`;
         if (remaining === 0 && targets.fish > 0) resetCycle();
@@ -1687,9 +1695,14 @@
             ? coinValue * repeatCount
             : repeatCount;
         const name = String(gift.giftName || gift.gift || 'Cadeau TikTok');
-        const viewer = String(gift.nickname || gift.username || gift.uniqueId || data.nickname || data.username || data.uniqueId || 'Un spectateur').slice(0, 40);
+        const walletPlayer = gift.walletPlayer || data.walletPlayer || {};
+        const username = String(walletPlayer.uniqueId || gift.uniqueId || gift.username || data.uniqueId || data.username || '').trim().replace(/^@/, '');
+        const viewer = String(gift.nickname || walletPlayer.nickname || username || data.nickname || 'Un spectateur').slice(0, 40);
         const user = {
           name: viewer,
+          username,
+          playerId: walletPlayer.playerId || '',
+          real: Boolean(username),
           avatar: gift.profilePictureUrl || gift.userProfilePictureUrl || gift.avatar || gift.avatarUrl || gift.profilePicture || data.profilePictureUrl || data.avatar || ''
         };
         state.gifts += count;
@@ -1700,7 +1713,14 @@
       window.addEventListener('arcade:wallet-run', event => {
         const { player, spent } = event.detail || {};
         const lineCount = Math.max(1, Math.min(25, Math.floor(Number(spent) || 0)));
-        const user = { name: player?.username || 'Spectateur', avatar: player?.avatarUrl || '' };
+        const username = String(player?.uniqueId || player?.username || '').trim().replace(/^@/, '');
+        const user = {
+          name: player?.nickname || username || 'Spectateur',
+          username,
+          playerId: player?.playerId || '',
+          real: Boolean(username),
+          avatar: player?.avatarUrl || ''
+        };
         for (let i = 0; i < lineCount; i++) enqueueCast('Run', user);
         setLiveStatus(`Run de ${user.name} : ${lineCount} ligne${lineCount > 1 ? 's' : ''}.`, 'online');
       });
