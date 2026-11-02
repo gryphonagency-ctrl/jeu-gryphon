@@ -99,11 +99,16 @@ async function getAvatarData(user, cache) {
     }
 }
 
-function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
+function createTikTokSession(sendToClients, username, onRoomState = () => {}, { diagnostics = false } = {}) {
     const connection = new TikTokLiveConnection(username, {});
     const processedGiftMessageIds = new Set();
     const avatarLookupTimes = new Map();
     const avatarCache = new Map();
+    const logDiagnostic = (event, details) => {
+        if (diagnostics && process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true') {
+            console.info(`[TikTok diagnostic] ${event} ${JSON.stringify(details)}`);
+        }
+    };
     let active = true;
     let connecting = false;
     let retryTimer = null;
@@ -122,6 +127,10 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     };
 
     connection.on('gift', async gift => {
+        const rawGiftId = gift.giftId ?? gift.gift?.id;
+        const parsedGiftId = Number(rawGiftId);
+        const giftId = Number.isSafeInteger(parsedGiftId) ? parsedGiftId : null;
+        const giftName = String(gift.gift?.name || '');
         const giftType = Number(
             gift.giftDetails?.giftType ??
             gift.giftType ??
@@ -131,7 +140,6 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         );
         const repeatEnd = gift.repeatEnd === true ||
             Number(gift.repeatEnd ?? gift.gift?.repeat_end ?? gift.gift?.repeatEnd) === 1;
-        if (giftType === 1 && !repeatEnd) return;
 
         const coinValue = Number(
             gift.coinValue ??
@@ -146,10 +154,30 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
         );
         const appliedRepeatCount = giftType === 1 ? repeatCount : 1;
         const coinCount = Math.floor(coinValue * appliedRepeatCount);
-        if (!Number.isSafeInteger(coinCount) || coinCount < 1) return;
+        const diagnosticDetails = {
+            account: username,
+            giftId,
+            giftName,
+            giftType,
+            repeatEnd,
+            repeatCount,
+            coinCount,
+            timestamp: new Date().toISOString()
+        };
+        if (giftType === 1 && !repeatEnd) {
+            logDiagnostic('cadeau', { ...diagnosticDetails, result: 'combo-incomplet' });
+            return;
+        }
+        if (!Number.isSafeInteger(coinCount) || coinCount < 1) {
+            logDiagnostic('cadeau', { ...diagnosticDetails, result: 'valeur-invalide' });
+            return;
+        }
 
         const messageId = String(gift.common?.msgId ?? '');
-        if (messageId && processedGiftMessageIds.has(messageId)) return;
+        if (messageId && processedGiftMessageIds.has(messageId)) {
+            logDiagnostic('cadeau', { ...diagnosticDetails, result: 'doublon' });
+            return;
+        }
         if (messageId) {
             processedGiftMessageIds.add(messageId);
             if (processedGiftMessageIds.size > 5000) {
@@ -157,8 +185,8 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
             }
         }
 
+        logDiagnostic('cadeau', { ...diagnosticDetails, result: 'transmis' });
         const identity = getTikTokIdentity(gift.user);
-        const giftId = Number(gift.giftId ?? gift.gift?.id);
         send({
             type: 'gift',
             gift: {
@@ -170,7 +198,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
                 giftType,
                 repeatCount: appliedRepeatCount,
                 coinCount,
-                giftName: gift.gift?.name || '',
+                giftName,
                 giftImageUrl: getTikTokGiftImageUrl(gift)
             }
         });
@@ -258,6 +286,11 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
     });
 
     connection.on('disconnected', () => {
+        logDiagnostic('connexion', {
+            account: username,
+            state: 'interrompue',
+            timestamp: new Date().toISOString()
+        });
         onRoomState({ connected: false, roomId: null });
         send({ type: 'STATUS', message: `Connexion TikTok interrompue · @${username}` });
         scheduleReconnect();
@@ -270,16 +303,28 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}) {
             .then(state => {
                 if (!active) return;
                 onRoomState({ connected: true, roomId: String(state.roomId || '') });
+                logDiagnostic('connexion', {
+                    account: username,
+                    state: 'connectee',
+                    roomId: String(state.roomId || ''),
+                    timestamp: new Date().toISOString()
+                });
                 console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
                 send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
             })
             .catch(error => {
                 if (!active) return;
                 onRoomState({ connected: false, roomId: null });
-                console.error(`Erreur de connexion TikTok @${username} :`, error);
                 const detail = error instanceof Error
                     ? error.message.replace(/https?:\/\/\S+/gi, '[adresse masquée]').slice(0, 180)
                     : 'Cause inconnue.';
+                logDiagnostic('connexion', {
+                    account: username,
+                    state: 'echec',
+                    error: detail || 'Cause inconnue.',
+                    timestamp: new Date().toISOString()
+                });
+                console.error(`Erreur de connexion TikTok @${username} :`, error);
                 send({ type: 'STATUS', message: `Erreur de connexion TikTok · @${username} : ${detail || 'Cause inconnue.'}` });
                 scheduleReconnect();
             })

@@ -46,6 +46,7 @@ const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
 const liveAlertTikTokUsername = String(
     process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'gryphon.agency'
 ).trim().replace(/^@/, '');
+const liveTikTokDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true';
 const liveAlertVapidKeys = loadLiveAlertVapidKeys();
 webPush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'https://jeu6boite.onrender.com',
@@ -3203,16 +3204,29 @@ function updateCentralTikTokRoomState({ connected, roomId }) {
 }
 
 function startCentralTikTokListener() {
+    if (liveTikTokDiagnostics) {
+        console.info(`[TikTok diagnostic] surveillance activée pour @${liveAlertTikTokUsername}`);
+    }
     createTikTokSession(messageData => {
         if (messageData.type === 'STATUS') centralTikTokStatusMessage = messageData.message;
         const session = sessions.get(centralTikTokSessionKey);
+        if (liveTikTokDiagnostics && messageData.type === 'gift') {
+            console.info(`[TikTok diagnostic] routage cadeau ${JSON.stringify({
+                giftId: messageData.gift?.giftId ?? null,
+                giftName: messageData.gift?.giftName || '',
+                connected: centralTikTokConnected,
+                roomId: centralTikTokRoomId,
+                clients: session?.clients.size || 0,
+                timestamp: new Date().toISOString()
+            })}`);
+        }
         if (session) deliverTikTokMessage(session, messageData);
         if (messageData.type !== 'STATUS') {
             sendTikTokEventAlert(messageData).catch(error => {
                 console.error('Échec de l’alerte push TikTok :', error);
             });
         }
-    }, liveAlertTikTokUsername, updateCentralTikTokRoomState);
+    }, liveAlertTikTokUsername, updateCentralTikTokRoomState, { diagnostics: true });
 }
 
 wss.on('connection', (socket, req) => {
