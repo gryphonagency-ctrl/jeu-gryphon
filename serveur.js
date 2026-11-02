@@ -3165,12 +3165,23 @@ function deliverTikTokMessage(session, messageData) {
         console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
     }
     const encoded = JSON.stringify(messageData);
+    const overlayEncoded = messageData.type === 'gift'
+        ? JSON.stringify({
+            ...messageData,
+            matchLive: session.isLive && [...session.clients].some(client =>
+                client.readyState === WebSocket.OPEN &&
+                !overlaySockets.has(client) &&
+                !liveTtsClientUsernames.has(client))
+        })
+        : encoded;
     for (const client of session.clients) {
         if (session.balloonClients.has(client) &&
             client !== session.balloonOwner &&
             messageData.type !== 'STATUS' &&
             messageData.type !== 'viewer') continue;
-        if (client.readyState === WebSocket.OPEN) client.send(encoded);
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(overlaySockets.has(client) ? overlayEncoded : encoded);
+        }
     }
 }
 
