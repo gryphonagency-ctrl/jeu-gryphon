@@ -1547,11 +1547,35 @@ const server = http.createServer((req, res) => {
             hasSubscription: access.hasActiveSubscription(account),
             canUseTts: canUseCreatorTts(username),
             canAccessGames: access.canAccessGames(req),
+            arcadeBigGiftOverlayEnabled: username
+                ? store.getCreatorSettings(username).arcadeBigGiftOverlayEnabled !== false
+                : false,
             creatorTts: creatorTts
                 ? { active: true, username: creatorTts.username }
                 : { active: false, username: null },
             roomNumber: username ? getCreatorRoomNumber(username) : null
         }));
+        return;
+    }
+    if (pathname === '/api/arcade-effects-settings' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.canAccessGames(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            if (typeof body.arcadeBigGiftOverlayEnabled !== 'boolean') {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Le réglage de l’effet cadeau est invalide.' }));
+                return;
+            }
+            const username = access.usernameForRequest(req);
+            store.setCreatorArcadeBigGiftOverlayEnabled(username, body.arcadeBigGiftOverlayEnabled);
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                arcadeBigGiftOverlayEnabled: body.arcadeBigGiftOverlayEnabled
+            }));
+        });
         return;
     }
     if (pathname === '/api/live-alerts' && req.method === 'GET') {

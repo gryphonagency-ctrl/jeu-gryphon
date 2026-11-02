@@ -148,6 +148,8 @@ function readStore() {
                 (settings.tiktokUsername !== undefined &&
                     (typeof settings.tiktokUsername !== 'string' ||
                         !/^[a-zA-Z0-9._]{1,32}$/.test(settings.tiktokUsername))) ||
+                (settings.arcadeBigGiftOverlayEnabled !== undefined &&
+                    typeof settings.arcadeBigGiftOverlayEnabled !== 'boolean') ||
                 (settings.locked !== undefined && typeof settings.locked !== 'boolean')) ||
             Object.entries(parsed.dailyUsage).some(([date, users]) =>
                 !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -771,6 +773,16 @@ function setCreatorSettingsLocked(username, locked) {
     });
 }
 
+function setCreatorArcadeBigGiftOverlayEnabled(username, enabled) {
+    if (typeof enabled !== 'boolean') throw new TypeError('Arcade big-gift overlay setting must be a boolean.');
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        settings.arcadeBigGiftOverlayEnabled = enabled;
+        store.creatorSettings[key] = settings;
+    });
+}
+
 function getAdminDashboardLayout(username) {
     return readStore().adminDashboardLayouts[username.toLowerCase()] ||
         { order: [], pinned: [], hidden: [] };
@@ -1159,6 +1171,7 @@ module.exports = {
     setCreatorRoomRevoked,
     setCreatorTiktokUsername,
     setCreatorSettingsLocked,
+    setCreatorArcadeBigGiftOverlayEnabled,
     markLiveAlertRoom,
     removeLiveAlertPushSubscription,
     setCreatorGameAccess,

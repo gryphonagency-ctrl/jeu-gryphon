@@ -1,7 +1,7 @@
 /*
  * Griffon Arcade — effets de live communs à tous les jeux.
  *  - partage du live      -> petit avion en papier discret
- *  - gros cadeau (>= 100) -> photo de profil dans une bulle qui monte puis explose en feu d'artifice
+ *  - gros cadeau (>= 100) -> bulle et feu d'artifice, désactivables par compte dans les réglages
  * Le script écoute les WebSocket TikTok de la page : aucun jeu n'a besoin d'être modifié.
  */
 (function () {
@@ -12,7 +12,20 @@
     const seen = new Set();
     const avatars = new Map();
     const liveBubbles = new Map();
+    let bigGiftOverlayEnabled = false;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
+
+    fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
+        .then(response => {
+            if (!response.ok) throw new Error(`Session HTTP ${response.status}`);
+            return response.json();
+        })
+        .then(session => {
+            bigGiftOverlayEnabled = session.authenticated === true &&
+                session.canAccessGames === true &&
+                session.arcadeBigGiftOverlayEnabled === true;
+        })
+        .catch(error => console.warn('Préférence de l’effet cadeau indisponible :', error.message));
 
     function injectStyle() {
         if (document.getElementById('arcade-effects-style')) return;
@@ -323,7 +336,8 @@
         } else if (data.type === 'gift' && data.gift) {
             const gift = data.gift;
             const coins = Number(gift.coinCount) || (Number(gift.coinValue ?? gift.diamondCount ?? gift.diamonds) || 0) * (Number(gift.repeatCount) || 1);
-            if (coins < config.bigGiftCoins || !firstSeen(gift.messageId && 'gift:' + gift.messageId)) return;
+            if (!bigGiftOverlayEnabled || coins < config.bigGiftCoins ||
+                !firstSeen(gift.messageId && 'gift:' + gift.messageId)) return;
             const name = gift.uniqueId || gift.username || gift.nickname || '';
             giftBurst({ username: name, avatarUrl: gift.avatarDataUri || gift.avatarUrl || '' });
         } else if (data.type === 'viewer' && data.viewer) {

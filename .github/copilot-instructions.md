@@ -5,7 +5,7 @@ Chaque jeu est un fichier HTML autonome servi par `serveur.js`. Pour créer un j
 ## Effets de live obligatoires (bibliothèque `arcade-effects.js`)
 Le serveur injecte `/arcade-effects.js` dans toutes les pages de jeu ; ne pas le recopier dans un jeu.
 - **Partage du live** (`type: 'share'`) : petit avion en papier discret.
-- **Gros cadeau ≥ 100 pièces** (`type: 'gift'`, `coinCount`) : photo de profil dans une bulle qui monte, puis feu d'artifice.
+- **Gros cadeau ≥ 100 pièces** (`type: 'gift'`, `coinCount`) : par défaut, photo de profil dans une bulle qui monte, puis feu d'artifice. Chaque compte peut désactiver cet effet dans « Configurer mon overlay » sans toucher à son overlay principal.
 - **Sons** : chaque explosion est accompagnée de sons festifs synthétisés (lancement, pop, boum, scintillements). Réglage : `ArcadeEffects.setSound(actif, volume)`.
 - Les messages WebSocket sont écoutés automatiquement : aucun code de jeu n'est nécessaire.
 - Simulateur de chaque jeu : appeler `ArcadeEffects.simulateBigGift(pseudo, pièces)` et `ArcadeEffects.simulateShare()`.

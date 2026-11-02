@@ -725,6 +725,11 @@
                     <p id="creator-overlay-locked" hidden>L’overlay et les médias personnalisés sont réservés aux abonnés et aux comptes autorisés par l’administrateur.</p>
                     <div id="creator-overlay-body">
                         <p>Un lien privé à ajouter comme source navigateur (OBS, TikTok LIVE Studio) : alertes, sons, vidéos et feux d’artifice, avec tous les jeux.</p>
+                        <p>L’effet cadeau interactif intégré aux jeux (à partir de 100 pièces) est indépendant de ce lien principal.</p>
+                        <div class="creator-overlay-options">
+                            <label><input id="creator-game-gift-overlay" type="checkbox" checked> Activer l’effet cadeau interactif dans les jeux</label>
+                        </div>
+                        <button id="creator-game-gift-overlay-save" class="button button-secondary" type="button">Enregistrer ce réglage</button>
                         <div class="creator-overlay-options">
                             <label><input id="creator-overlay-fire" type="checkbox" checked> Feu d’artifice</label>
                             <label>dès <input id="creator-overlay-threshold" type="number" min="1" max="100000" value="10"> pièces</label>
@@ -2213,6 +2218,8 @@
             generate: document.getElementById('creator-overlay-generate'),
             fire: document.getElementById('creator-overlay-fire'),
             threshold: document.getElementById('creator-overlay-threshold'),
+            gameGiftEffect: document.getElementById('creator-game-gift-overlay'),
+            gameGiftEffectSave: document.getElementById('creator-game-gift-overlay-save'),
             status: document.getElementById('creator-overlay-status'),
             path: null,
             owner: null
@@ -2262,6 +2269,7 @@
             overlayCard.username.textContent = session.username || '';
             overlayCard.locked.hidden = !!session.canUseTts;
             overlayCard.body.hidden = !session.canUseTts;
+            overlayCard.gameGiftEffect.checked = session.arcadeBigGiftOverlayEnabled !== false;
             if (!session.canUseTts || overlayCard.owner === session.username) return;
             overlayCard.owner = session.username;
             try {
@@ -2276,6 +2284,28 @@
 
         overlayCard.fire.addEventListener('change', renderOverlayUrl);
         overlayCard.threshold.addEventListener('input', renderOverlayUrl);
+        overlayCard.gameGiftEffectSave.addEventListener('click', async () => {
+            overlayCard.gameGiftEffectSave.disabled = true;
+            try {
+                const response = await fetch('/api/arcade-effects-settings', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        arcadeBigGiftOverlayEnabled: overlayCard.gameGiftEffect.checked
+                    })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible d’enregistrer ce réglage.');
+                overlayMessage(result.arcadeBigGiftOverlayEnabled
+                    ? 'Effet cadeau interactif activé dans les jeux. Le lien principal reste inchangé.'
+                    : 'Effet cadeau interactif désactivé dans les jeux. Le lien principal reste inchangé.');
+            } catch (error) {
+                overlayMessage(error.message || 'Impossible d’enregistrer ce réglage.', true);
+            } finally {
+                overlayCard.gameGiftEffectSave.disabled = false;
+            }
+        });
         overlayCard.generate.addEventListener('click', async () => {
             if (overlayCard.path && !confirm('L’ancien lien cessera de fonctionner. Continuer ?')) return;
             try {
