@@ -283,6 +283,20 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 likeCount
             }
         });
+
+        const identity = getTikTokIdentity(message.user);
+        const viewerKey = String(identity.userId || identity.uniqueId || identity.username).toLocaleLowerCase();
+        const lastLookup = avatarLookupTimes.get(viewerKey) || 0;
+        if (!viewerKey || Date.now() - lastLookup < 60000) return;
+        avatarLookupTimes.set(viewerKey, Date.now());
+        if (avatarLookupTimes.size > 500) {
+            avatarLookupTimes.delete(avatarLookupTimes.keys().next().value);
+        }
+        getAvatarData(message.user, avatarCache).then(({ avatarDataUri }) => {
+            if (avatarDataUri) send({ type: 'viewer', viewer: { ...identity, avatarDataUri } });
+        }).catch(error => {
+            console.warn(`Impossible de charger l’avatar TikTok de ${identity.username || 'un spectateur'} :`, error);
+        });
     });
 
     connection.on('disconnected', () => {

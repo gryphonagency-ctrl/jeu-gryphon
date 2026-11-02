@@ -29,6 +29,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 #queueBox div.q span{overflow:hidden;text-overflow:ellipsis}
 #queueBox div.more{font:700 1.6vh Arial;color:#ffd0a0;text-align:center;margin-top:.4vh}
 #banner.win span{background:linear-gradient(#7a1630,#3a0a18);color:#fff2a8}
+#chestReward{position:fixed;left:50%;top:12vh;z-index:8;display:flex;align-items:center;gap:14px;max-width:min(90vw,540px);padding:12px 20px 12px 12px;border:3px solid #ffc93c;border-radius:20px;background:linear-gradient(145deg,#8a1e3c,#3a0a18);box-shadow:0 0 30px #ffc93c99,0 8px 22px #000b;color:#fff2a8;transform:translateX(-50%);animation:chestpop .45s cubic-bezier(.2,1.6,.4,1)}
+#chestReward[hidden]{display:none}
+#chestReward .av{width:clamp(54px,9vh,86px);height:clamp(54px,9vh,86px);flex:none;border:3px solid #ffc93c;border-radius:50%;background:#5a2a7a center/cover;display:grid;place-items:center;font:900 clamp(24px,5vh,42px) Arial;color:#fff}
+#chestReward small{display:block;font:800 clamp(10px,1.6vh,15px) Arial,sans-serif;color:#ffd0a0;letter-spacing:.08em}
+#chestReward b{display:block;font:900 clamp(16px,2.7vh,28px) Georgia,serif;overflow-wrap:anywhere}
+#chestReward em{display:block;margin-top:3px;font:900 clamp(20px,3.8vh,38px) Georgia,serif;font-style:normal;color:#ffd24a;text-shadow:0 2px 4px #000}
+@keyframes chestpop{from{opacity:0;transform:translateX(-50%) scale(.55)}to{opacity:1;transform:translateX(-50%) scale(1)}}
+#chestProgress{font-size:12px;color:#ffe08a;line-height:1.5}
 #spinner{position:fixed;z-index:3;display:flex;align-items:center;gap:.8vh;padding:.6vh 1.4vh .6vh .6vh;border-radius:60px;background:rgba(40,8,18,.9);border:2px solid #ffc93c;box-shadow:0 0 18px rgba(255,190,40,.5);opacity:0;transition:opacity .3s;pointer-events:none;max-width:24vw}
 #spinner.on{opacity:1}
 #spinner .av{width:6.4vh;height:6.4vh;flex:none;border-radius:50%;border:2px solid #fff;background:#5a2a7a center/cover;display:grid;place-items:center;font:900 3vh Arial;color:#fff}
@@ -72,6 +80,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
 <div id="spinner"><div class="av" id="spAv"></div><div><b id="spName"></b><small id="spSub"></small></div></div>
 <div id="whoNow"></div>
 <div id="starcard" hidden></div>
+<div id="chestReward" role="status" aria-live="polite" hidden></div>
 <div id="queueBox"></div>
 <div id="banner"><span id="bannerText"></span></div>
 <button id="qeye" aria-label="Afficher ou masquer la file d'attente">🙈</button>
@@ -95,6 +104,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#050b1f;font-family:Ar
     <label>Valeur du test <input id="testCoins" type="number" min="1" value="10"></label>
     <div class="row"><button id="spinTest">▶ Lancer un tour</button><button id="clearQ">Vider la file</button></div>
     <p class="hint" id="qinfo">File d'attente : 0</p>
+  </section>
+  <section>
+    <h4>🎁 COFFRE DES LIKES</h4>
+    <div id="chestProgress" aria-live="polite"></div>
+    <p class="hint">Tous les 1 000 likes, le meilleur liker de ce palier gagne 10 étoiles.</p>
   </section>
   <section>
     <h4>RÉGLAGES</h4>
@@ -165,6 +179,9 @@ if (!Array.isArray(CFG.sectors) || CFG.sectors.length !== N) CFG.sectors = DEFAU
 const save = () => localStorage.setItem('cw-cfg', JSON.stringify(CFG));
 
 const cv = $('cv'), ctx = cv.getContext('2d');
+const CHEST_LIKES_KEY = 'cw-chest-likes-v1';
+const CHEST_LIKES_TARGET = 1000;
+const CHEST_REWARD = 10;
 let sc = 1, ox = 0, oy = 0, dpr = 1;
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -438,6 +455,33 @@ function drawClownVector(t) {
   ctx.restore();
   ctx.restore();
 }
+let chestOpenedAt = 0, chestOpenUntil = 0;
+function drawChest() {
+  const isOpen = time < chestOpenUntil;
+  let lid = isOpen ? Math.min(1, (time - chestOpenedAt) / .45) : 0;
+  if (isOpen && chestOpenUntil - time < .4) lid = Math.min(lid, (chestOpenUntil - time) / .4);
+  ctx.save(); ctx.translate(510, 744);
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0, 0, 54, 9, 0, 0, Math.PI * 2); ctx.fill();
+  if (lid > 0) {
+    ctx.globalAlpha = lid;
+    ctx.fillStyle = '#ffe27a'; ctx.shadowColor = '#ffc93c'; ctx.shadowBlur = 28;
+    ctx.beginPath(); ctx.ellipse(0, -35, 44, 32, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    ctx.font = '900 24px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff2a8';
+    ctx.fillText('★', 0, -55 - Math.sin(time * 10) * 5);
+  }
+  ctx.fillStyle = '#61300f'; ctx.strokeStyle = '#e8b64a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(-43, -40, 86, 39, 5); ctx.fill(); ctx.stroke();
+  ctx.save(); ctx.translate(0, -39); ctx.rotate(-lid * 1.25);
+  const wood = ctx.createLinearGradient(0, -18, 0, 0);
+  wood.addColorStop(0, '#bd7831'); wood.addColorStop(1, '#754019');
+  ctx.fillStyle = wood; ctx.strokeStyle = '#e8b64a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(-44, -17, 88, 18, 5); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#f2c14e'; ctx.fillRect(-6, -32, 12, 19);
+  ctx.fillStyle = '#5a2a12'; ctx.beginPath(); ctx.arc(0, -25, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 
 /* ---------- Résultats et file d'attente ---------- */
 const queue = []; let state = 'idle', timer = 0, cur = null, chain = 0;
@@ -505,11 +549,114 @@ try { viewers = JSON.parse(localStorage.getItem('cw-viewers') || '{}') || {}; } 
 const saveViewers = () => { try { const s = JSON.stringify(viewers); localStorage.setItem('cw-viewers', s); localStorage.setItem('cw-viewers-auto', JSON.stringify({ date: Date.now(), data: viewers })); } catch (e) {} };
 function viewer(name) { const k = vkey(name); return viewers[k] || (viewers[k] = { name: String(name).slice(0, 24), stars: 0, last: 0 }); }
 function addStars(name, n) { const v = viewer(name); v.stars = Math.round((v.stars + n) * 100) / 100; saveViewers(); try { window.ArcadeStars?.record?.(v.name || name, n); } catch (e) {} }
+let chestStats = { likesInRound: 0, totalLikes: 0, milestones: 0, leaders: {}, leaderKey: '', leaderLikes: 0, pendingAwards: [] };
+let chestStorageWarning = false, chestAwardBusy = false, chestAwardRetry = null, chestRewardTimer = 0;
+try {
+  const saved = JSON.parse(localStorage.getItem(CHEST_LIKES_KEY) || 'null');
+  if (saved && typeof saved === 'object') {
+    chestStats.likesInRound = Math.max(0, Math.min(CHEST_LIKES_TARGET - 1, Math.floor(Number(saved.likesInRound) || 0)));
+    chestStats.totalLikes = Math.max(chestStats.likesInRound, Math.floor(Number(saved.totalLikes) || 0));
+    chestStats.milestones = Math.max(0, Math.floor(Number(saved.milestones) || 0));
+    chestStats.leaders = Object.fromEntries(Object.entries(saved.leaders || {}).filter(([, p]) =>
+      p && typeof p.name === 'string' && Number.isFinite(Number(p.likes)) && Number(p.likes) > 0
+    ).map(([key, p]) => [key, { name: p.name.slice(0, 24), likes: Math.floor(Number(p.likes)) }]));
+    chestStats.leaderKey = chestStats.leaders[saved.leaderKey] ? saved.leaderKey : '';
+    chestStats.leaderLikes = chestStats.leaderKey ? chestStats.leaders[chestStats.leaderKey].likes : 0;
+    chestStats.pendingAwards = Array.isArray(saved.pendingAwards) ? saved.pendingAwards.filter(item =>
+      item && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0 && typeof item.name === 'string' && item.name.trim()
+    ).map(item => ({ id: Number(item.id), name: item.name.slice(0, 24) })) : [];
+  }
+} catch (error) {
+  console.warn('Progression du coffre illisible ; elle repart de zéro.', error);
+}
+function saveChestStats() {
+  try { localStorage.setItem(CHEST_LIKES_KEY, JSON.stringify(chestStats)); }
+  catch (error) {
+    if (!chestStorageWarning) {
+      console.error('Impossible de sauvegarder la progression du coffre.', error);
+      chestStorageWarning = true;
+    }
+  }
+}
+function renderChestProgress() {
+  const leader = chestStats.leaderKey && chestStats.leaders[chestStats.leaderKey];
+  $('chestProgress').textContent = `Coffre : ${chestStats.likesInRound.toLocaleString('fr-FR')} / 1 000 likes · Meilleur liker : ${leader ? `@${leader.name} (${leader.likes})` : '—'}`;
+}
 let starTimer = 0, pendingStarTimer = 0;
 function setAvatar(el, name, url) {
   const ok = /^(https?:|data:image\/)/.test(url || '');
   el.style.backgroundImage = ok ? `url("${url.replace(/"/g, '%22')}")` : 'none';
   el.textContent = ok ? '' : (String(name).trim()[0] || '?').toUpperCase();
+}
+function showChestReward(name, success, message = '') {
+  const v = viewer(name), card = $('chestReward');
+  card.replaceChildren();
+  const av = document.createElement('div'); av.className = 'av'; setAvatar(av, v.name, v.avatar);
+  const text = document.createElement('div');
+  const title = document.createElement('small'); title.textContent = success ? 'Voici la récompense du coffre' : 'Récompense du coffre en attente';
+  const player = document.createElement('b'); player.textContent = `@${v.name}`;
+  const reward = document.createElement('em'); reward.textContent = success ? `⭐ +${CHEST_REWARD} étoiles` : message;
+  text.append(title, player, reward); card.append(av, text);
+  card.hidden = false; clearTimeout(chestRewardTimer);
+  chestRewardTimer = setTimeout(() => { card.hidden = true; }, success ? 6000 : 10000);
+}
+async function processChestAwards() {
+  if (chestAwardBusy) return;
+  chestAwardBusy = true; clearTimeout(chestAwardRetry);
+  try {
+    while (chestStats.pendingAwards.length) {
+      const item = chestStats.pendingAwards[0];
+      try {
+        if (typeof window.ArcadeStars?.award !== 'function') throw new Error('Le portefeuille d’étoiles est indisponible.');
+        await window.ArcadeStars.award({
+          username: item.name,
+          amount: CHEST_REWARD,
+          transactionId: `roue-coffre:${item.id}`
+        });
+        chestStats.pendingAwards.shift(); saveChestStats();
+        showChestReward(item.name, true);
+        addLog(`🎁 @${item.name} gagne ${CHEST_REWARD} étoiles grâce au coffre.`);
+      } catch (error) {
+        console.error(`Attribution du coffre à @${item.name} non confirmée.`, error);
+        showChestReward(item.name, false, 'Attribution à réessayer');
+        setStatus('Attribution du coffre en attente : nouvelle tentative automatique.');
+        chestAwardRetry = setTimeout(processChestAwards, 15000);
+        break;
+      }
+    }
+  } finally {
+    chestAwardBusy = false;
+  }
+}
+function onLike(name, count = 1, avatar = '') {
+  const playerName = String(name || '').trim().replace(/^@/, '').slice(0, 24);
+  let remaining = Math.floor(Number(count) || 0);
+  if (!playerName || !Number.isFinite(remaining) || remaining < 1) return;
+  const player = viewer(playerName), key = vkey(playerName);
+  if (avatar && avatar !== player.avatar) { player.avatar = avatar; saveViewers(); }
+  while (remaining > 0) {
+    const earned = Math.min(remaining, CHEST_LIKES_TARGET - chestStats.likesInRound);
+    const leader = chestStats.leaders[key] || (chestStats.leaders[key] = { name: player.name, likes: 0 });
+    leader.likes += earned;
+    if (!chestStats.leaderKey || leader.likes > chestStats.leaderLikes) {
+      chestStats.leaderKey = key;
+      chestStats.leaderLikes = leader.likes;
+    }
+    chestStats.likesInRound += earned;
+    chestStats.totalLikes += earned;
+    remaining -= earned;
+    if (chestStats.likesInRound === CHEST_LIKES_TARGET) {
+      const winner = chestStats.leaders[chestStats.leaderKey];
+      chestStats.milestones += 1;
+      chestStats.pendingAwards.push({ id: chestStats.milestones, name: winner.name });
+      chestStats.likesInRound = 0; chestStats.leaders = {}; chestStats.leaderKey = ''; chestStats.leaderLikes = 0;
+      chestOpenedAt = time; chestOpenUntil = time + 3.4;
+      saveChestStats();
+      $('chestProgress').textContent = `Coffre ouvert ! @${winner.name} remporte 10 étoiles.`;
+      processChestAwards();
+    }
+  }
+  saveChestStats(); renderChestProgress();
 }
 function showStars(name, note, globalStars) {
   const v = viewer(name), c = $('starcard');
@@ -580,7 +727,7 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.setTransform(sc, 0, 0, sc, ox, oy); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   if (!CFG.video) drawBackdrop();
-  drawFloor(); drawSign(); drawWheel(); drawClown(time);
+  drawFloor(); drawSign(); drawWheel(); drawClown(time); drawChest();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const sp = $('spinner'); sp.style.left = ((ox + 985 * sc) / dpr) + 'px'; sp.style.top = ((oy + 8 * sc) / dpr) + 'px';
   sp.classList.toggle('on', state === 'spin' || state === 'show');
@@ -608,8 +755,16 @@ function handleMessage(data) {
     onGift(id, coins, repeat, g.avatarDataUri || g.profilePictureUrl || '');
   } else if (data.type === 'viewer') {
     const v = data.viewer ?? data;
-    const id = v.username || v.nickname || v.uniqueId;
-    if (id && v.avatarDataUri) viewer(id).avatar = v.avatarDataUri;
+    const id = v.uniqueId || v.username || v.nickname;
+    if (id && v.avatarDataUri) {
+      const player = viewer(id);
+      if (player.avatar !== v.avatarDataUri) { player.avatar = v.avatarDataUri; saveViewers(); }
+      const card = $('chestReward'), name = card.querySelector('b');
+      if (!card.hidden && name && name.textContent === `@${player.name}`) setAvatar(card.querySelector('.av'), player.name, player.avatar);
+    }
+  } else if (data.type === 'like') {
+    const l = data.likeData ?? data;
+    onLike(l.username || l.uniqueId || l.nickname, l.likeCount, l.avatarDataUri || l.profilePictureUrl || '');
   } else if (data.type === 'comment' || data.type === 'tiktok-comment' || data.type === 'chat') {
     const c = data.commentData ?? data;
     handleChat(c.username || c.nickname || c.uniqueId, c.comment ?? c.text ?? '', c.avatarDataUri || c.profilePictureUrl || '', true);
@@ -646,7 +801,7 @@ function connect() {
     try {
       const data = JSON.parse(ev.data);
       if (data.type === 'STATUS' && /connect|live|rejoint|en direct/i.test(data.message || '') && !/impossible|erreur|invalide|pas en direct|hors/i.test(data.message || '')) setLive('on');
-      if (data.type === 'comment' || data.type === 'gift') setLive('on');
+      if (data.type === 'comment' || data.type === 'gift' || data.type === 'like') setLive('on');
       handleMessage(data);
     } catch (e) { /* message ignoré */ }
   });
@@ -837,8 +992,10 @@ function renderQList() {
   if (queue.length > 50) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `+ ${queue.length - 50} autres`; box.appendChild(p); }
 }
 $('qClearAll').onclick = () => { queue.length = 0; $('qinfo').textContent = 'File d\'attente : 0'; renderQList(); };
-setInterval(renderQList, 400); renderQList();
-window.__roue = { pickSector, handleChat, viewers, onGift, update, render, get state() { return state; }, get queue() { return queue.length; }, CFG };
+setInterval(renderQList, 400); renderQList(); renderChestProgress();
+if (chestStats.pendingAwards.length) setTimeout(processChestAwards, 1500);
+window.addEventListener('online', processChestAwards);
+window.__roue = { pickSector, handleChat, viewers, onGift, onLike, update, render, get state() { return state; }, get queue() { return queue.length; }, get chestStats() { return chestStats; }, CFG };
 requestAnimationFrame(frame);
 </script>
 </body>
