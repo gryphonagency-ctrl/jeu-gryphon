@@ -59,12 +59,13 @@ function push(key, value) {
 async function restore(key, file) {
     if (!enabled) return false;
     await ensureTable();
+    if (fs.existsSync(file)) {
+        push(key, fs.readFileSync(file, 'utf8'));
+        console.log('Données locales conservées; synchronisation PostgreSQL lancée.');
+        return true;
+    }
     const result = await getPool().query('SELECT value FROM app_store WHERE key = $1', [key]);
     if (!result.rows.length) {
-        if (fs.existsSync(file)) {
-            push(key, fs.readFileSync(file, 'utf8'));
-            console.log('Base vide : import du fichier local vers PostgreSQL.');
-        }
         return false;
     }
     fs.mkdirSync(path.dirname(file), { recursive: true });
