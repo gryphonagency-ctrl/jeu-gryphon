@@ -34,6 +34,7 @@ test('draws a unique topic, hides the answer, and validates guesses server-side'
   const requests = [];
   const app = await startServer({
     apiKey: 'test-key',
+    imageModel: 'gpt-image-2',
     fetchImpl: async (url, options) => {
       requests.push({ url, body: JSON.parse(options.body) });
       if (url.endsWith('/chat/completions')) {
@@ -55,6 +56,7 @@ test('draws a unique topic, hides the answer, and validates guesses server-side'
   assert.match(game.image, /^data:image\/png;base64,/);
   assert.equal('word' in game, false);
   assert.equal(requests.length, 2);
+  assert.equal(requests[1].body.model, 'gpt-image-2');
   assert.match(requests[1].body.prompt, /child.*mouse/i);
 
   const wrongGuess = await fetch(`${app.baseUrl}/api/games/${game.gameId}/guess`, {
