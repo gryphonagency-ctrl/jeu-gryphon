@@ -236,7 +236,19 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 if (!file || file.kind !== kind) throw fail(`Média ${kind} introuvable.`);
                 return value;
             };
-            index.alerts[event] = { audio: pick(body.audio, 'audio'), video: pick(body.video, 'video') };
+            const previousVolume = Number.isFinite(index.alerts[event]?.videoVolume)
+                ? index.alerts[event].videoVolume
+                : 1;
+            const videoVolume = body.videoVolume === undefined ? previousVolume : body.videoVolume;
+            if (typeof videoVolume !== 'number' || !Number.isFinite(videoVolume) ||
+                videoVolume < 0 || videoVolume > 1) {
+                throw fail('Le volume vidéo doit être compris entre 0 et 100 %.');
+            }
+            index.alerts[event] = {
+                audio: pick(body.audio, 'audio'),
+                video: pick(body.video, 'video'),
+                videoVolume
+            };
             writeIndex(owner, index);
             return { success: true };
         }
@@ -254,7 +266,8 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
             alerts[event] = {
                 audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
-                videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null
+                videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
+                videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1
             };
         }
         return alerts;
@@ -306,7 +319,8 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
                 alerts[event] = {
                     audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
-                    videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null
+                    videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
+                    videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1
                 };
             }
             send(res, 200, { alerts });

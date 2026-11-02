@@ -30,6 +30,8 @@ button.danger{background:#ff6b7a}
 #alert-sections{display:grid;gap:18px}
 .slot{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
 .slot h3{grid-column:1/-1;margin:0;font-size:1rem}
+.slot .video-volume{grid-column:1/-1}
+.slot .video-volume input{width:100%;padding:0;accent-color:var(--accent)}
 .slot .state{grid-column:1/-1;font-size:.8rem;color:#9dffb0}
 .slot .state.off{color:#bac9e8}
 .hint{margin:0;color:#bac9e8;font-size:.9rem}
@@ -114,7 +116,7 @@ const SECTIONS = [
       { key: 'gift_heart_me', label: 'Cœur du jour · Heart Me (ID 7934)' }
     ],
     addLabel: 'Nom du cadeau ou objet (ex. rose, gant_x5)' },
-  { id: 'multis', title: '✖️ Multiplicateurs (x2, x3…)', hint: 'Déclenchée quand un cadeau arrive en combo ×2, ×3, ×5… (un objet précis comme gant_x5 reste prioritaire).',
+  { id: 'multis', title: '✖️ Multiplicateurs (x2, x3…)', hint: 'Déclenchée quand un cadeau arrive en combo ×2, ×3, ×5… Une règle précise comme gant_x5 reste prioritaire sur le multiplicateur général.',
     prefix: 'multi_', multi: true,
     fixed: [2, 3, 5, 10].map(n => ({ key: `multi_x${n}`, label: `Multiplicateur ×${n}` })),
     addLabel: 'Multiplicateur (ex. x4)' },
@@ -143,6 +145,11 @@ function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
   const audio = select('audio', alert.audio);
   const video = select('video', alert.video);
+  const volume = el('input', { type: 'range', min: 0, max: 100, step: 5,
+    value: String(Math.round(Math.min(1, Math.max(0, Number(alert.videoVolume ?? 1))) * 100)) });
+  const volumeValue = el('span', { textContent: `${volume.value} %` });
+  volume.addEventListener('input', () => { volumeValue.textContent = `${volume.value} %`; });
+  const videoVolume = el('label', { className: 'video-volume' }, 'Volume de la vidéo', volumeValue, volume);
   let heartPreview;
   if (key === 'gift_heart_me') {
     heartPreview = el('video', { className: 'heart-preview', controls: true, preload: 'metadata', hidden: true });
@@ -161,7 +168,8 @@ function slot(key, label, removable) {
   }
   const active = Boolean(alert.audio || alert.video);
   const save = el('button', { type: 'button', textContent: 'Enregistrer',
-    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value }), 'Alerte enregistrée.') });
+    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value,
+      videoVolume: Number(volume.value) / 100 }), 'Alerte enregistrée.') });
   const actions = el('div', { className: 'row' }, save);
   if (state.alerts[key]) {
     actions.append(el('button', { type: 'button', className: 'danger', textContent: removable ? 'Supprimer' : 'Réinitialiser',
@@ -171,7 +179,7 @@ function slot(key, label, removable) {
   }
   return el('div', { className: 'slot' }, el('h3', { textContent: label }),
     ...(heartPreview ? [heartPreview] : []),
-    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), actions,
+    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), videoVolume, actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: active ? '● Active' : '○ Non configurée' }));
 }
 
