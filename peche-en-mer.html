@@ -1432,28 +1432,36 @@
         return target;
       }
 
-      function enqueueCast(label = 'Cadeau TikTok', user = null) {
-        queue.push({ label, user });
+      function enqueueCast(label = 'Cadeau TikTok', user = null, count = 1) {
+        const remaining = Math.floor(Number(count));
+        if (!Number.isSafeInteger(remaining) || remaining < 1) return;
+        queue.push({ label, user, remaining });
         processQueue();
       }
 
       function processQueue() {
         if (state.processing || !queue.length) return;
         state.processing = true;
-        const { label, user } = queue.shift();
+        const job = queue[0];
+        const { label, user } = job;
         const target = selectTarget();
-        if (target) {
-          sfx.cast();
-          lines.push({
-            target, user, startedAt: performance.now(), duration: reducedMotion ? 350 : 1500,
-            reelDuration: reducedMotion ? 450 : 1700, hookedAt: 0
-          });
-          document.getElementById('hint').textContent = `${label} · la ligne file vers sa proie…`;
+        if (!target) {
+          state.processing = false;
+          window.setTimeout(processQueue, 250);
+          return;
         }
+        job.remaining--;
+        if (job.remaining === 0) queue.shift();
+        sfx.cast();
+        lines.push({
+          target, user, startedAt: performance.now(), duration: reducedMotion ? 350 : 1500,
+          reelDuration: reducedMotion ? 450 : 1700, hookedAt: 0
+        });
+        document.getElementById('hint').textContent = `${label} · la ligne file vers sa proie…`;
         window.setTimeout(() => {
           state.processing = false;
           processQueue();
-        }, reducedMotion ? 450 : 1100);
+        }, queue.length ? 100 : reducedMotion ? 450 : 1100);
       }
 
       function resolveCatch(target, user) {
@@ -1670,7 +1678,14 @@
           seenGiftIds.add(messageId);
           if (seenGiftIds.size > 500) seenGiftIds.delete(seenGiftIds.values().next().value);
         }
-        const count = Math.max(1, Math.min(100, Math.floor(Number(gift.repeatCount) || 1)));
+        const repeatCount = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
+        const coinCount = Math.floor(Number(gift.coinCount));
+        const coinValue = Math.floor(Number(gift.coinValue ?? gift.diamondCount));
+        const count = Number.isSafeInteger(coinCount) && coinCount > 0
+          ? coinCount
+          : Number.isSafeInteger(coinValue * repeatCount) && coinValue > 0
+            ? coinValue * repeatCount
+            : repeatCount;
         const name = String(gift.giftName || gift.gift || 'Cadeau TikTok');
         const viewer = String(gift.nickname || gift.username || gift.uniqueId || data.nickname || data.username || data.uniqueId || 'Un spectateur').slice(0, 40);
         const user = {
@@ -1678,8 +1693,8 @@
           avatar: gift.profilePictureUrl || gift.userProfilePictureUrl || gift.avatar || gift.avatarUrl || gift.profilePicture || data.profilePictureUrl || data.avatar || ''
         };
         state.gifts += count;
-        for (let i = 0; i < count; i++) enqueueCast(name, user);
-        setLiveStatus(`${count} ligne${count > 1 ? 's' : ''} lancée${count > 1 ? 's' : ''} par ${viewer}.`, 'online');
+        enqueueCast(name, user, count);
+        setLiveStatus(`${count.toLocaleString('fr-FR')} lancer${count > 1 ? 's' : ''} ajouté${count > 1 ? 's' : ''} à la file pour @${viewer}.`, 'online');
       }
       // « run » : chaque étoile dépensée relance une ligne, plafonnée à 25 par commande
       window.addEventListener('arcade:wallet-run', event => {
