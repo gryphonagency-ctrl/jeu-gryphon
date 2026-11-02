@@ -70,13 +70,35 @@ function makeDrawingSvg(strokes) {
     const width = Number.isFinite(stroke.width) && stroke.width >= 4 && stroke.width <= 26
       ? Math.round(stroke.width)
       : 12;
-    const path = stroke.points
-      .map(([x, y], index) => `${index ? 'L' : 'M'}${Math.round(x)} ${Math.round(y)}`)
-      .join(' ');
-    return `<path d="${path}${closed ? ' Z' : ''}" fill="${closed ? fill : 'none'}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const points = stroke.points.map(([x, y]) => [Math.round(x), Math.round(y)]);
+    const path = smoothPath(points, closed);
+    return `<path d="${path}" fill="none" stroke="#b37c68" stroke-opacity=".22" stroke-width="${width + 2}" stroke-linecap="round" stroke-linejoin="round" transform="translate(1.5 2)"/><path d="${path}" fill="${closed ? fill : 'none'}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#fbfaf7"/>${paths.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><pattern id="paper" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#b9a98c" opacity=".14"/></pattern></defs><rect width="1000" height="1000" fill="#fffdf8"/><rect width="1000" height="1000" fill="url(#paper)"/>${paths.join('')}</svg>`;
+}
+
+function smoothPath(points, closed) {
+  const [firstX, firstY] = points[0];
+  let path = `M${firstX} ${firstY}`;
+  const segmentCount = closed ? points.length : points.length - 1;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const nextIndex = (index + 1) % points.length;
+    const previous = points[closed ? (index - 1 + points.length) % points.length : Math.max(0, index - 1)];
+    const current = points[index];
+    const next = points[nextIndex];
+    const after = points[closed ? (index + 2) % points.length : Math.min(points.length - 1, index + 2)];
+    const control1 = [
+      current[0] + (next[0] - previous[0]) / 6,
+      current[1] + (next[1] - previous[1]) / 6
+    ];
+    const control2 = [
+      next[0] - (after[0] - current[0]) / 6,
+      next[1] - (after[1] - current[1]) / 6
+    ];
+    path += ` C${control1[0].toFixed(1)} ${control1[1].toFixed(1)} ${control2[0].toFixed(1)} ${control2[1].toFixed(1)} ${next[0]} ${next[1]}`;
+  }
+  return closed ? `${path} Z` : path;
 }
 
 function sendJson(response, status, payload) {
@@ -225,7 +247,7 @@ function createServer({
     return result.json();
   }
 
-  async function chooseWord() {
+  async function chooseWordAndDraw() {
     const excluded = [...usedWords].slice(-100);
     const response = await openAiRequest('chat/completions', {
       model: textModel,
@@ -233,58 +255,37 @@ function createServer({
       messages: [
         {
           role: 'system',
-          content: 'Tu choisis des sujets simples et concrets pour un jeu de dessin familial en français. Réponds uniquement en JSON avec la forme {"word":"..."} : un nom commun court, singulier, facile à dessiner et à deviner. Choisis un sujet différent de la liste d’exclusion.'
+          content: 'Tu es illustrateur de petits rébus dessinés à la main. Choisis un sujet concret, simple et très reconnaissable en français, puis dessine ce sujet. Réponds uniquement en JSON avec cette forme : {"word":"parapluie","strokes":[{"color":"#3f3945","width":11,"closed":true,"fill":"#f8cb70","points":[[300,300],[600,300],[450,600]]}]}. Le dessin doit ressembler à un vrai joli gribouillage fait par une personne avec un feutre et des crayons : formes arrondies, lignes courbes, légères asymétries, aplats de couleur doux et détails expressifs. Il doit être joli, clair et immédiatement devinable, sans être géométrique ou trop parfait. RÈGLE ESSENTIELLE : compose un seul sujet cohérent et centré, grand et occupant les deux tiers du cadre ; rattache les petits détails à la silhouette principale. Ne dispose jamais des formes séparées en colonne, en rangée ou en pile. Trace d’abord la silhouette principale bien remplie, puis ses éléments et 2 ou 3 indices caractéristiques. Les contours sont foncés et chaleureux, les remplissages pastel mais assez colorés pour rester visibles. Autorisés : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, grey, cyan ou couleur hexadécimale #RRGGBB. Produit de 6 à 16 traits dans l’ordre arrière-vers-avant. Chaque trait : couleur color, épaisseur width entre 6 et 20, booléen closed, fill (couleur ou none), et points=[[x,y],...] avec 3 à 10 coordonnées [x,y], nombres entre 60 et 940. Traits fermés : au moins 3 points et remplissage coloré ; traits ouverts : fill none. Le dessin ne contient aucun mot, lettre, chiffre, cadre ni décoration isolée. Les courbes passant par les points seront lissées par le jeu, donc fournis des contours organiques. Choisis et dessine le même sujet. N’utilise pas d’objet facile à confondre avec un autre.'
         },
         {
           role: 'user',
-          content: `Choisis un sujet concret que les spectateurs peuvent reconnaître dans un dessin très simple. Exclusions récentes : ${JSON.stringify(excluded)}`
-        }
-      ],
-      temperature: 1
-    }, 'de choix du sujet');
-    const content = response.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new Error('Réponse de sujet invalide.');
-    const parsed = JSON.parse(content);
-    const word = String(parsed.word || '').trim();
-    const normalized = normalizeWord(word);
-    if (!normalized || normalized.length > 50 || normalized.split(' ').length > 5) {
-      throw new Error('Sujet choisi invalide.');
-    }
-    if (usedWords.has(normalized)) throw new Error('Le sujet choisi a déjà été utilisé.');
-    usedWords.add(normalized);
-    if (usedWords.size > 1_000) usedWords.delete(usedWords.values().next().value);
-    return word;
-  }
-
-  async function drawWord(word) {
-    const result = await openAiRequest('chat/completions', {
-      model: textModel,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'Tu dessines un sujet pour un jeu familial en produisant uniquement du JSON de traits, jamais du SVG ni du code. Format exact : {"strokes":[{"color":"black","width":12,"closed":true,"fill":"yellow","points":[[300,300],[600,300],[450,600]]}]}. Fais un dessin d’enfant reconnaissable avec 8 à 16 traits épais et légèrement maladroits. Couleurs autorisées : black, white, brown, red, orange, yellow, green, blue, purple, pink, gray, cyan ou une couleur hexadécimale #RRGGBB. Chaque trait a 2 à 18 points [x,y], coordonnées entières entre 50 et 950. Chaque largeur est un entier entre 5 et 22. Un trait fermé a au moins 3 points et une couleur de remplissage autorisée ou "none"; un trait ouvert a fill "none". Canvas carré, sujet gros et centré, fond clair. Aucun texte, chiffre ni objet décoratif. Respecte strictement les limites et le JSON.'
-        },
-        {
-          role: 'user',
-          content: `Dessine le sujet mystère suivant, sans écrire son nom : ${word}.`
+          content: `Choisis un seul sujet facile à faire deviner, différent de ceux-ci, et rends immédiatement le mot secret avec son dessin : ${JSON.stringify(excluded)}`
         }
       ],
       temperature: 0.8,
-      max_tokens: 1_600
-    }, 'de dessin');
-    const content = result.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
-    }
-    let drawing;
+      max_tokens: 1_700
+    }, 'du choix du sujet et du dessin');
+    const content = response.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') throw invalidDrawing('L’IA n’a pas renvoyé un dessin exploitable. Réessaie.');
+    let parsed;
     try {
-      drawing = JSON.parse(content);
+      parsed = JSON.parse(content);
     } catch {
       throw invalidDrawing('L’IA a renvoyé un dessin illisible. Réessaie.');
     }
-    const svg = makeDrawingSvg(drawing.strokes);
-    return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+    const word = String(parsed.word || '').trim();
+    const normalized = normalizeWord(word);
+    if (!normalized || normalized.length > 50 || normalized.split(' ').length > 5) {
+      throw invalidDrawing('L’IA n’a pas choisi un sujet exploitable. Réessaie.');
+    }
+    if (usedWords.has(normalized)) throw invalidDrawing('L’IA a choisi un sujet déjà utilisé. Réessaie.');
+    const svg = makeDrawingSvg(parsed.strokes);
+    usedWords.add(normalized);
+    if (usedWords.size > 1_000) usedWords.delete(usedWords.values().next().value);
+    return {
+      word,
+      image: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
+    };
   }
 
   const server = http.createServer(async (request, response) => {
@@ -322,8 +323,7 @@ function createServer({
       }
       if (!checkRateLimit(request, response)) return;
       try {
-        const word = await chooseWord();
-        const image = await drawWord(word);
+        const { word, image } = await chooseWordAndDraw();
         const id = crypto.randomUUID();
         games.set(id, { answer: normalizeWord(word), word, createdAt: clock(), winner: null });
         sendJson(response, 201, {

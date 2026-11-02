@@ -5,9 +5,9 @@ const { test } = require('node:test');
 const { createServer } = require('./server');
 
 const VALID_STROKES = [
-  { color: 'black', width: 12, closed: true, fill: 'yellow', points: [[300, 250], [700, 250], [500, 700]] },
-  { color: 'black', width: 10, closed: true, fill: 'red', points: [[350, 600], [500, 800], [650, 600]] },
-  { color: 'blue', width: 8, closed: false, fill: 'none', points: [[400, 400], [500, 350], [600, 400]] }
+  { color: '#453a46', width: 12, closed: true, fill: '#f8cb70', points: [[300, 250], [700, 250], [500, 700]] },
+  { color: '#453a46', width: 10, closed: true, fill: '#ec826f', points: [[350, 600], [500, 800], [650, 600]] },
+  { color: '#287ca1', width: 8, closed: false, fill: 'none', points: [[400, 400], [500, 350], [600, 400]] }
 ];
 
 function createOpenAiFetch({ words = ['Parapluie'], drawing = VALID_STROKES, onRequest } = {}) {
@@ -15,12 +15,15 @@ function createOpenAiFetch({ words = ['Parapluie'], drawing = VALID_STROKES, onR
   return async (url, options) => {
     const body = JSON.parse(options.body);
     onRequest?.(url, body);
-    const isDrawing = body.messages[0].content.includes('Tu dessines un sujet');
-    const content = isDrawing
-      ? JSON.stringify({ strokes: drawing })
-      : JSON.stringify({ word: words[wordIndex++ % words.length] });
     return new Response(JSON.stringify({
-      choices: [{ message: { content } }]
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            word: words[wordIndex++ % words.length],
+            strokes: drawing
+          })
+        }
+      }]
     }), { status: 200 });
   };
 }
@@ -52,7 +55,7 @@ test('health endpoint reports drawing readiness without revealing secrets', asyn
   });
 });
 
-test('AI draws safe SVG strokes, hides the answer, and validates guesses server-side', async t => {
+test('draws smooth, safe SVG strokes in one request and hides the answer', async t => {
   const requests = [];
   const app = await startServer({
     apiKey: 'test-key',
@@ -66,13 +69,17 @@ test('AI draws safe SVG strokes, hides the answer, and validates guesses server-
   assert.equal(game.hint, '_ _ _ _ _ _ _ _ _');
   assert.match(game.image, /^data:image\/svg\+xml;base64,/);
   assert.equal('word' in game, false);
-  assert.equal(requests.length, 2);
-  assert.ok(requests.every(request => request.url.endsWith('/chat/completions')));
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].url.endsWith('/chat/completions'));
+  assert.deepEqual(requests[0].body.response_format, { type: 'json_object' });
 
   const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
   assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
-  assert.equal((svg.match(/<path /g) || []).length, VALID_STROKES.length);
+  assert.equal((svg.match(/<path /g) || []).length, VALID_STROKES.length * 2);
+  assert.match(svg, / C/);
+  assert.match(svg, /pattern id="paper"/);
   assert.equal(svg.includes('Parapluie'), false);
+  assert.equal(/<script|onload=|javascript:/i.test(svg), false);
 
   const wrongGuess = await fetch(`${app.baseUrl}/api/games/${game.gameId}/guess`, {
     method: 'POST',
@@ -141,18 +148,9 @@ test('refuses game generation when the OpenAI key is missing', async t => {
 });
 
 test('reports actionable guidance when OpenAI denies access to the drawing model', async t => {
-  let requestCount = 0;
   const app = await startServer({
     apiKey: 'test-key',
-    fetchImpl: async () => {
-      requestCount += 1;
-      if (requestCount === 1) {
-        return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 });
-    }
+    fetchImpl: async () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 403 })
   });
   t.after(() => app.close());
 
@@ -164,27 +162,18 @@ test('reports actionable guidance when OpenAI denies access to the drawing model
 });
 
 test('reports the rejected parameter when OpenAI returns a bad request', async t => {
-  let requestCount = 0;
   const app = await startServer({
     apiKey: 'test-key',
-    fetchImpl: async () => {
-      requestCount += 1;
-      if (requestCount === 1) {
-        return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({ word: 'Parapluie' }) } }]
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({
-        error: { code: 'unsupported_value', param: 'temperature', message: 'Not shown to players' }
-      }), { status: 400 });
-    }
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { code: 'unsupported_value', param: 'temperature', message: 'Not shown to players' }
+    }), { status: 400 })
   });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
-    error: 'OpenAI refuse la requête de dessin (code unsupported_value, paramètre temperature). Vérifie le modèle et les options.'
+    error: 'OpenAI refuse la requête du choix du sujet et du dessin (code unsupported_value, paramètre temperature). Vérifie le modèle et les options.'
   });
 });
 
