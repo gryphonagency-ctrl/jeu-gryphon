@@ -330,7 +330,7 @@ function createServer({
           gameId: id,
           image,
           hint: Array.from(word, character => character === ' ' ? '  ' : '_').join(' '),
-          wordLength: Array.from(word).length
+          wordLength: Array.from(word).filter(character => character !== ' ').length
         });
       } catch (error) {
         console.error('Game generation failed:', error.message);

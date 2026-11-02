@@ -67,6 +67,7 @@ test('draws smooth, safe SVG strokes in one request and hides the answer', async
   assert.equal(newGame.status, 201);
   const game = await newGame.json();
   assert.equal(game.hint, '_ _ _ _ _ _ _ _ _');
+  assert.equal(game.wordLength, 9);
   assert.match(game.image, /^data:image\/svg\+xml;base64,/);
   assert.equal('word' in game, false);
   assert.equal(requests.length, 1);
@@ -98,6 +99,20 @@ test('draws smooth, safe SVG strokes in one request and hides the answer', async
     winner: 'joueur',
     answer: 'Parapluie'
   });
+});
+
+test('counts letters, not spaces, in multi-word hints', async t => {
+  const app = await startServer({
+    apiKey: 'test-key',
+    fetchImpl: createOpenAiFetch({ words: ['Chat noir'] })
+  });
+  t.after(() => app.close());
+
+  const response = await fetch(`${app.baseUrl}/api/games`, { method: 'POST' });
+  assert.equal(response.status, 201);
+  const game = await response.json();
+  assert.equal(game.wordLength, 8);
+  assert.equal((game.hint.match(/_/g) || []).length, 8);
 });
 
 test('sanitizes unexpected AI colors rather than embedding markup in the SVG', async t => {

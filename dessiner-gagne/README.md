@@ -16,4 +16,6 @@ Each round makes one OpenAI text API request. `MAX_DAILY_DRAWS` defaults to 10 t
 
 The service generates subjects and drawings when requested; it does not contain a stored collection of 1,000 image files. Recent subjects are excluded from the text model’s next choices while the service process is running.
 
+The hint displays one blank per letter and gives the letter count without counting spaces. A wrong guess appears in the drawing’s lower-right corner; a correct guess celebrates with floating balloons.
+
 Run locally with `npm start` and validate with `npm test`.
