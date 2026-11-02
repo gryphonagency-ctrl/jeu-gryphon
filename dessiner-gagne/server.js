@@ -224,6 +224,7 @@ function createServer({
       sendJson(response, 200, {
         ok: true,
         imageGenerationReady: Boolean(apiKey),
+        imageModel,
         dailyDrawLimit: maxDailyDraws
       });
       return;

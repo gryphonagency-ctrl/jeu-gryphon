@@ -18,7 +18,7 @@ async function startServer(options = {}) {
 }
 
 test('health endpoint reports readiness without revealing secrets', async t => {
-  const app = await startServer({ apiKey: '' });
+  const app = await startServer({ apiKey: '', imageModel: 'gpt-image-2' });
   t.after(() => app.close());
 
   const response = await fetch(`${app.baseUrl}/api/health`);
@@ -26,6 +26,7 @@ test('health endpoint reports readiness without revealing secrets', async t => {
   assert.deepEqual(await response.json(), {
     ok: true,
     imageGenerationReady: false,
+    imageModel: 'gpt-image-2',
     dailyDrawLimit: 10
   });
 });
