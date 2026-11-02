@@ -10,6 +10,7 @@ const PICTOGRAMS = require('./drawing-catalog.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY_BYTES = 2_048;
 const GAME_TTL_MS = 60 * 60 * 1_000;
+const ROUND_DURATION_MS = 15_000;
 const DIFFICULTY_NAMES = ['Facile', 'Intermédiaire', 'Moyen', 'Difficile', 'Expert'];
 const DRAWING_CATALOG = [
   ...DRAWINGS.map((drawing, index) => ({
@@ -45,7 +46,7 @@ function makeDrawingSvg(drawing) {
   const illustration = typeof drawing.svg === 'string'
     ? drawing.svg
     : `<text x="200" y="195" text-anchor="middle" dominant-baseline="central" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="230">${escapeXml(drawing.emoji)}</text><path d="M126 317q74 18 148 0" fill="none" stroke="#bb8069" stroke-width="5" stroke-linecap="round" opacity=".6"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#b9a98c" opacity=".12"/></pattern></defs><rect width="400" height="400" fill="#fffdf8"/><rect width="400" height="400" fill="url(#paper)"/>${illustration}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#777" opacity=".12"/></pattern><filter id="rough" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="7" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="10" xChannelSelector="R" yChannelSelector="G"/><feColorMatrix type="saturate" values="0"/></filter><style>.sketch{fill:#fff;stroke:#171717;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}.sketch *{stroke:#171717;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}.sketch *[fill]:not([fill="none"]){fill:#fff!important}.sketch text{fill:#171717!important;stroke:none!important;font-family:"Comic Sans MS",cursive}</style></defs><rect width="400" height="400" fill="#fff"/><rect width="400" height="400" fill="url(#paper)"/><g class="sketch" transform="translate(3 2)" filter="url(#rough)" opacity=".32">${illustration}</g><g class="sketch" filter="url(#rough)">${illustration}</g></svg>`;
 }
 
 function sendJson(response, status, payload) {
@@ -188,17 +189,21 @@ function createServer({
         const drawing = selectDrawing(difficulty);
         const id = crypto.randomUUID();
         const svg = makeDrawingSvg(drawing);
+        const createdAt = clock();
         games.set(id, {
           answer: normalizeWord(drawing.word),
           word: drawing.word,
-          createdAt: clock(),
-          winner: null
+          createdAt,
+          winner: null,
+          finished: false,
+          expired: false
         });
         sendJson(response, 201, {
           gameId: id,
           image: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`,
           hint: Array.from(drawing.word, character => character === ' ' ? '  ' : '_').join(' '),
           wordLength: Array.from(drawing.word).filter(character => character !== ' ').length,
+          roundDurationSeconds: ROUND_DURATION_MS / 1_000,
           theme: drawing.theme,
           difficulty,
           difficultyName: DIFFICULTY_NAMES[difficulty - 1]
@@ -226,8 +231,14 @@ function createServer({
           sendJson(response, 404, { error: 'Cette manche n’existe plus.' });
           return;
         }
-        if (game.winner) {
-          sendJson(response, 200, { correct: false, finished: true });
+        if (game.finished) {
+          sendJson(response, 200, { correct: false, finished: true, expired: game.expired });
+          return;
+        }
+        if (clock() - game.createdAt >= ROUND_DURATION_MS) {
+          game.finished = true;
+          game.expired = true;
+          sendJson(response, 200, { correct: false, finished: true, expired: true });
           return;
         }
         if (normalizeWord(guess) !== game.answer) {
@@ -235,6 +246,7 @@ function createServer({
           return;
         }
         game.winner = username;
+        game.finished = true;
         sendJson(response, 200, { correct: true, winner: username, answer: game.word });
       } catch (error) {
         sendJson(response, error.statusCode || 400, { error: 'Réponse de jeu invalide.' });

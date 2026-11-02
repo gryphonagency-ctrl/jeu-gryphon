@@ -4,9 +4,9 @@ Le jeu Render contient une collection locale de **1 000 cartes de dessin**. Chaq
 
 ## Collection
 
-La collection comprend 29 dessins SVG originaux, prioritaires pendant les premières manches, et 971 pictogrammes avec leurs noms français. Les thèmes incluent les animaux, la nature, les aliments, les lieux, les loisirs, les objets, les émotions, les gestes et les symboles. Les métadonnées des pictogrammes proviennent d’Emojibase 18.0.0 ; leur licence MIT est fournie dans `EMOJIBASE-LICENSE.txt`. Le navigateur du joueur dessine les emojis avec les caractères de son appareil.
+La collection comprend 29 dessins SVG originaux, prioritaires pendant les premières manches, et 971 pictogrammes avec leurs noms français. Le serveur rend les images en noir et blanc, avec des contours tremblants et un léger tracé dédoublé pour évoquer un croquis enfantin, tout en gardant les sujets reconnaissables. Les thèmes incluent les animaux, la nature, les aliments, les lieux, les loisirs, les objets, les émotions, les gestes et les symboles. Les métadonnées des pictogrammes proviennent d’Emojibase 18.0.0 ; leur licence MIT est fournie dans `EMOJIBASE-LICENSE.txt`. Le navigateur du joueur dessine les emojis avec les caractères de son appareil, eux aussi désaturés et légèrement irréguliers.
 
-La difficulté augmente d’un niveau tous les dix gagnants, jusqu’au niveau Expert. La progression est sauvegardée dans le navigateur qui pilote le jeu. Une carte n’est pas répétée dans son niveau avant que celui-ci ait été parcouru en entier. Les manches n’utilisent ni appels d’IA, ni limite journalière, ni frais par dessin.
+La difficulté augmente d’un niveau tous les dix gagnants, jusqu’au niveau Expert. Chaque manche dure 15 secondes ; les réponses tardives sont refusées et l’image suivante se lance automatiquement. La progression est sauvegardée dans le navigateur qui pilote le jeu. Une carte n’est pas répétée dans son niveau avant que celui-ci ait été parcouru en entier. Les manches n’utilisent ni appels d’IA, ni limite journalière, ni frais par dessin.
 
 ## Déploiement Render
 

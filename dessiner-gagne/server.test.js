@@ -70,12 +70,16 @@ test('health endpoint confirms the game works offline without an AI key', async 
   assert.equal(game.theme, 'objets familiers');
   assert.equal(game.hint, '_ _ _ _ _ _');
   assert.equal(game.wordLength, 6);
+  assert.equal(game.roundDurationSeconds, 15);
   assert.equal('word' in game, false);
   assert.match(game.image, /^data:image\/svg\+xml;base64,/);
 
   const svg = Buffer.from(game.image.split(',')[1], 'base64').toString('utf8');
   assert.match(svg, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
-  assert.match(svg, /<g>/);
+  assert.match(svg, /<g class="sketch" filter="url\(#rough\)">/);
+  assert.match(svg, /<feTurbulence type="fractalNoise"/);
+  assert.match(svg, /feColorMatrix type="saturate" values="0"/);
+  assert.match(svg, /stroke:#171717/);
   assert.equal(svg.includes('soleil'), false);
 
   const wrongGuess = await submitGuess(app.baseUrl, game.gameId, 'chat');
@@ -105,6 +109,8 @@ test('serves centered pictograms safely as bundled SVG artwork', async t => {
   assert.match(svg, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.equal(/<script|onload=|javascript:/i.test(svg), false);
   assert.match(svg, /text-anchor="middle"/);
+  assert.match(svg, /<g class="sketch" filter="url\(#rough\)">/);
+  assert.match(svg, /feColorMatrix type="saturate" values="0"/);
 });
 
 test('starts consecutive rounds instantly without daily or per-IP generation limits', async t => {
@@ -165,5 +171,42 @@ test('counts letters without spaces in a multi-word answer', async t => {
     correct: true,
     winner: 'joueur',
     answer: 'chat noir'
+  });
+});
+
+test('expires a round after 15 seconds and rejects late guesses', async t => {
+  let now = 1_000;
+  const app = await startServer({
+    catalog: [{
+      id: 'timed-drawing',
+      word: 'soleil',
+      emoji: '☀️',
+      theme: 'objets familiers',
+      difficulty: 1
+    }],
+    random: () => 0,
+    clock: () => now
+  });
+  t.after(() => app.close());
+
+  const game = await createGame(app.baseUrl);
+  now += 14_999;
+  const inTime = await submitGuess(app.baseUrl, game.gameId, 'soleil');
+  assert.equal((await inTime.json()).correct, true);
+
+  const nextGame = await createGame(app.baseUrl);
+  now += 15_000;
+  const expired = await submitGuess(app.baseUrl, nextGame.gameId, 'soleil');
+  assert.deepEqual(await expired.json(), {
+    correct: false,
+    finished: true,
+    expired: true
+  });
+
+  const lateGuess = await submitGuess(app.baseUrl, nextGame.gameId, 'soleil');
+  assert.deepEqual(await lateGuess.json(), {
+    correct: false,
+    finished: true,
+    expired: true
   });
 });
