@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESCAPE BUNKER : PROTOCOLE OMÉGA</title>
+<style>
+body{margin:0;overflow:hidden;background:#050505;font-family:'Share Tech Mono','Courier New',monospace}
+#canvas-container{position:absolute;inset:0;z-index:1}
+#scene-transition{position:fixed;inset:0;z-index:4;display:grid;align-items:start;justify-items:end;padding:104px 24px 12px;box-sizing:border-box;pointer-events:none;opacity:0;background:rgba(0,0,0,0);transition:opacity .55s,background .55s}
+body.travelling #scene-transition{opacity:1;background:rgba(0,0,0,.16)}
+#transition-card{box-sizing:border-box;width:min(420px,calc(100vw - 48px));padding:14px 20px;text-align:center;border:1px solid rgba(0,255,65,.8);background:rgba(0,8,0,.82);box-shadow:0 0 28px rgba(0,255,65,.35);transform:translateY(12px);transition:transform .35s}
+body.travelling #transition-card{transform:translateY(0)}
+#transition-label{display:block;color:#9eb99e;font-size:.75rem;letter-spacing:.3em}
+#transition-destination{display:block;margin:8px 0;color:#00FF41;font-size:clamp(1rem,3vw,1.5rem);letter-spacing:.12em;text-shadow:0 0 10px #00FF41}
+#transition-progress{height:3px;background:#123012;overflow:hidden}
+#transition-progress i{display:block;width:100%;height:100%;background:#00FF41;transform:scaleX(0);transform-origin:left}
+body.travelling #transition-progress i{animation:travel-progress 2.4s linear both}
+@keyframes travel-progress{to{transform:scaleX(1)}}
+canvas{display:block}
+#ui-layer{position:absolute;inset:0;z-index:3;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;color:#00FF41;padding:14px;box-sizing:border-box}
+.interactive{pointer-events:auto}
+#hud{background:rgba(0,10,0,.45);border:1px solid rgba(0,143,17,.75);padding:5px 10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.9rem;text-shadow:0 0 5px #00FF41;border-radius:5px;margin-right:52px}
+#command-toggle,#banner-toggle,#fullscreen-toggle{position:fixed;right:12px;z-index:6;width:38px;height:38px;display:grid;place-items:center;background:rgba(0,10,0,.78);color:#00FF41;border:1px solid rgba(0,255,65,.75);border-radius:50%;cursor:pointer;box-shadow:0 0 12px rgba(0,255,65,.22)}
+#command-toggle{top:12px}
+#banner-toggle{top:58px}
+#fullscreen-toggle{top:104px}
+#command-toggle:hover,#command-toggle:focus-visible,#banner-toggle:hover,#banner-toggle:focus-visible,#fullscreen-toggle:hover,#fullscreen-toggle:focus-visible{background:rgba(0,40,0,.96);box-shadow:0 0 16px rgba(0,255,65,.6);outline:2px solid #00FF41;outline-offset:2px}
+#command-toggle svg,#banner-toggle svg,#fullscreen-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#command-toggle .eye-off,#banner-toggle .eye-off{display:none}
+#command-toggle[aria-expanded="false"] .eye-on,#banner-toggle[aria-expanded="false"] .eye-on{display:none}
+#command-toggle[aria-expanded="false"] .eye-off,#banner-toggle[aria-expanded="false"] .eye-off{display:block}
+#command-panel{position:fixed;top:150px;right:12px;z-index:6;width:min(330px,calc(100vw - 28px));background:rgba(0,10,0,.96);border:2px solid #00FF41;padding:12px;box-shadow:0 0 18px rgba(0,255,65,.35);color:#00FF41}
+#command-panel[hidden]{display:none}
+#stream-banner{position:fixed;top:58px;left:50%;z-index:6;transform:translateX(-50%);max-width:calc(100vw - 84px);padding:8px 14px;border:1px solid rgba(0,255,65,.75);background:rgba(0,10,0,.92);color:#fff;text-align:center;font-size:.85rem;box-shadow:0 0 16px rgba(0,255,65,.24)}
+#stream-banner[hidden]{display:none}
+#command-panel h2{font-size:1rem;letter-spacing:.14em;margin:0 0 10px}
+#command-panel input{width:100%;margin-bottom:8px;background:#061006;border:1px solid #008F11;color:#00FF41;padding:8px;font:inherit;box-sizing:border-box}
+#command-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+#command-panel button{background:#0A190A;color:#00FF41;border:1px solid #00FF41;padding:8px;font:inherit;cursor:pointer}
+#command-panel button:hover{background:#00FF41;color:#0D110D}
+#command-panel #status{grid-column:1/-1;border-top:1px solid #008F11;padding-top:8px;min-height:1.3em}
+#status.connected{color:#8cff8c}
+#status.error{color:#ff8585}
+#clock{min-width:34px;color:#fff;font-size:.85rem;letter-spacing:.08em;text-align:right}
+#interaction-panel{position:fixed;right:14px;bottom:26px;z-index:5;box-sizing:border-box;background:rgba(5,10,5,.62);border:2px solid #00FF41;padding:12px 16px;width:min(55vw,740px);max-width:740px;margin:0;border-radius:10px;box-shadow:0 0 20px rgba(0,255,65,.4);backdrop-filter:blur(2px);transform-origin:top left;transition:opacity .25s ease,transform .25s ease,visibility .25s}
+body.travelling #interaction-panel{visibility:hidden;opacity:0;transform:translateY(12px);pointer-events:none}
+#panel-drag-handle{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:0 0 10px;padding:4px 8px;background:rgba(0,255,65,.08);border:1px solid rgba(0,255,65,.4);border-radius:4px;color:#8cff8c;font:inherit;font-size:.72rem;letter-spacing:.14em;cursor:grab;touch-action:none;user-select:none}
+#panel-drag-handle:active{cursor:grabbing}
+#panel-drag-handle svg{width:14px;height:14px;fill:currentColor}
+#timer{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+#timer i{display:block;flex:1;height:4px;background:#00FF41;transform-origin:left;box-shadow:0 0 6px #00FF41}
+#narrative-screen{font-size:clamp(.85rem,1.4vw,1.2rem);line-height:1.4;margin-bottom:10px;min-height:50px;text-shadow:0 0 3px #00FF41}
+.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button.action-btn{position:relative;overflow:hidden;background:rgba(10,25,10,.8);color:#00FF41;border:2px solid #00FF41;padding:9px 12px;font-family:inherit;font-size:clamp(.8rem,1.2vw,1rem);cursor:pointer;text-align:left;transition:.2s;border-radius:5px}
+button.action-btn .fill{position:absolute;inset:0 auto 0 0;background:rgba(0,255,65,.25);width:0;transition:width .3s}
+button.action-btn span{position:relative}
+button.action-btn:hover{background:#00FF41;color:#0D110D;box-shadow:0 0 15px #00FF41}
+button.action-btn.win{box-shadow:0 0 22px #fff;border-color:#fff}
+@media(max-width:700px){#interaction-panel{width:84vw;padding:10px 12px}.control-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="canvas-container"><canvas id="gameCanvas"></canvas></div>
+<div id="scene-transition" aria-hidden="true">
+  <div id="transition-card">
+    <span id="transition-label">TRANSFERT DE SECTEUR</span>
+    <strong id="transition-destination"></strong>
+    <div id="transition-progress"><i></i></div>
+  </div>
+</div>
+
+<div id="ui-layer">
+  <div id="stream-banner" role="status" hidden>MODE INTERACTIF : votes A, B, C ou D dans le chat.</div>
+  <div id="hud" class="interactive">
+    <span>SECTEUR : <span id="sector-hud">SAS</span></span>
+    <span>RISQUE : <span id="danger-hud">ÉLEVÉ</span></span>
+    <span>MUNITIONS : <span id="ammo-hud">100</span>%</span>
+  </div>
+
+  <button id="command-toggle" class="interactive" type="button" aria-controls="command-panel" aria-expanded="false" aria-label="Afficher les commandes" title="Afficher les commandes">
+    <svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+    <svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.5 10.5 0 0 0 4.1-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+  </button>
+  <button id="banner-toggle" class="interactive" type="button" aria-controls="stream-banner" aria-expanded="false" aria-label="Afficher le mode interactif" title="Afficher le mode interactif">
+    <svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+    <svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.5 10.5 0 0 0 4.1-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+  </button>
+  <button id="fullscreen-toggle" class="interactive" type="button" aria-label="Passer en plein écran" title="Plein écran">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>
+  </button>
+  <section id="command-panel" class="interactive" aria-label="Panneau de commande" hidden>
+    <h2>CONTRÔLE DU STREAM</h2>
+    <input id="user" placeholder="Pseudo TikTok" maxlength="32" autocomplete="username" aria-label="Pseudo TikTok">
+    <div id="command-actions">
+      <button id="connect" type="button">Connecter TikTok</button>
+      <button id="demo" type="button">Lancer la démo auto</button>
+      <button id="voice" type="button">Voix : ON</button>
+      <button id="stop-demo" type="button">Arrêter la démo</button>
+      <span id="status" role="status" aria-live="polite">Hors ligne</span>
+    </div>
+  </section>
+
+  <div id="interaction-panel" class="interactive">
+    <button id="panel-drag-handle" type="button" aria-label="Déplacer le panneau d'interaction" title="Glisser pour déplacer le panneau, ou utiliser les flèches du clavier" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="3" r="1"/><circle cx="9" cy="3" r="1"/><circle cx="3" cy="6" r="1"/><circle cx="9" cy="6" r="1"/><circle cx="3" cy="9" r="1"/><circle cx="9" cy="9" r="1"/></svg>
+    </button>
+    <div id="timer"><span id="clock">20 s</span><i></i></div>
+    <div id="narrative-screen">Initialisation du flux visuel...</div>
+    <div class="control-grid" id="button-container"></div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);
+function resizeCanvas(){canvas.width=innerWidth;canvas.height=innerHeight}
+addEventListener('resize',resizeCanvas);resizeCanvas();
+
+const sectorBackgroundFiles={
+  hub:'bunker-player-original.jpg',
+  vent_north:'bunker-route-02.jpg',
+  main_east:'bunker-route-03.jpg',
+  lift_south:'bunker-route-04.jpg',
+  lab_west:'bunker-route-05.jpg',
+  armory:'bunker-route-06.jpg',
+  server_room:'bunker-route-03.jpg',
+  reactor:'bunker-route-05.jpg',
+  surface_fail:'bunker-route-06.jpg',
+  victory:'bunker-route-06.jpg',
+  defeat:'bunker-route-06.jpg'
+};
+const sectorBackgrounds=new Map(),backgroundImages=new Map();
+for(const [sector,src] of Object.entries(sectorBackgroundFiles)){
+  let image=backgroundImages.get(src);
+  if(!image){
+    image=new Image();
+    image.src=src;
+    backgroundImages.set(src,image);
+    image.addEventListener('load',()=>{
+      for(const [id,background] of sectorBackgrounds){
+        if(background===image)sceneCanvases.delete(id);
+      }
+    });
+  }
+  sectorBackgrounds.set(sector,image);
+}
+const backgroundsReady=Promise.all(Array.from(backgroundImages,([src,image])=>
+  new Promise((resolve,reject)=>{
+    const loaded=()=>image.naturalWidth
+      ?resolve(image)
+      :reject(new Error(`Image de décor invalide : ${src}`));
+    if(image.complete)loaded();
+    else{
+      image.addEventListener('load',loaded,{once:true});
+      image.addEventListener('error',()=>reject(new Error(`Impossible de charger l’image ${src}`)),{once:true});
+    }
+  })
+));
+
+let ammunition=100,currentSector='hub',t=0,mx=0,my=0,tmx=0,tmy=0,shake=0,voiceOn=true,travelProgress=0,travelStartedAt=0;
+const VOTE_TIME=20;
+const TRAVEL_DURATION=2400;
+const CONNECTOR_URL='wss://jeu6boite.onrender.com';
+const sceneViews={
+  hub:{x:0,y:0,zoom:1.12,light:.55,radius:.55,tint:[10,35,18,.10]},
+  vent_north:{x:-.005,y:-.005,zoom:1.15,light:.46,radius:.48,tint:[18,42,38,.14]},
+  main_east:{x:.005,y:-.004,zoom:1.15,light:.58,radius:.56,tint:[45,34,16,.12]},
+  lift_south:{x:.002,y:.005,zoom:1.16,light:.43,radius:.49,tint:[15,35,24,.17]},
+  lab_west:{x:-.006,y:.002,zoom:1.16,light:.38,radius:.46,tint:[36,20,24,.20]},
+  armory:{x:.004,y:.004,zoom:1.14,light:.68,radius:.62,tint:[34,40,18,.12]},
+  server_room:{x:.004,y:-.005,zoom:1.15,light:.49,radius:.5,tint:[12,28,42,.18]},
+  reactor:{x:.002,y:-.005,zoom:1.16,light:.36,radius:.43,tint:[54,27,12,.2]},
+  surface_fail:{x:-.004,y:-.004,zoom:1.14,light:.7,radius:.68,tint:[16,25,20,.08]},
+  victory:{x:0,y:-.004,zoom:1.12,light:.8,radius:.72,tint:[28,48,30,.08]},
+  defeat:{x:.003,y:.002,zoom:1.16,light:.25,radius:.37,tint:[54,8,8,.28]}
+};
+let cameraView={...sceneViews.hub},cameraFrom={...sceneViews.hub},cameraTo={...sceneViews.hub};
+let passageDirection={x:0,y:0};
+let sceneCanvases=new Map(),sceneCanvasWidth=0,sceneCanvasHeight=0;
+let transitionFrom='hub',transitionToScene='hub';
+const sceneEffects={
+  'bunker-player-original.jpg':{
+    flashlight:{x:515,y:443,angle:-.08,length:330,width:90},
+    lights:[
+      {x:407,y:463,r:88,color:'255,228,175',power:.13,flicker:.09,speed:5},
+      {x:492,y:274,r:55,color:'255,180,92',power:.14,flicker:.11,speed:4},
+      {x:1033,y:409,r:56,color:'255,184,96',power:.12,flicker:.08,speed:5}
+    ]
+  },
+  'bunker-route-02.jpg':{
+    flashlight:{x:831,y:420,angle:3.02,length:360,width:110},
+    water:{points:[[340,407],[630,415],[1010,439],[1180,492],[1380,752],[300,752]]},
+    lights:[
+      {x:589,y:267,r:68,color:'255,186,101',power:.2,flicker:.1,speed:4},
+      {x:1035,y:386,r:58,color:'255,205,151',power:.13,flicker:.06,speed:3},
+      {x:907,y:426,r:68,color:'255,237,192',power:.11,flicker:.05,speed:4},
+      {x:864,y:452,r:86,color:'184,218,225',power:.09,flicker:.04,speed:2}
+    ],
+    steam:[
+      {x:982,y:194,dx:-65,dy:50,spread:15,size:30,count:18}
+    ],
+    ripples:[
+      {x:464,y:590,r:26},{x:620,y:538,r:19},{x:780,y:633,r:31},{x:1020,y:585,r:25}
+    ]
+  },
+  'bunker-route-03.jpg':{
+    flashlight:{x:553,y:465,angle:-.1,length:320,width:94},
+    lights:[
+      {x:834,y:69,r:92,color:'166,255,194',power:.21,flicker:.08,speed:4},
+      {x:641,y:163,r:74,color:'136,255,176',power:.18,flicker:.1,speed:5},
+      {x:935,y:258,r:42,color:'255,48,42',power:.25,flicker:.26,speed:9},
+      {x:454,y:461,r:68,color:'255,239,197',power:.11,flicker:.05,speed:4},
+      {x:274,y:280,r:78,color:'117,255,169',power:.15,flicker:.05,speed:3}
+    ],
+    steam:[
+      {x:1015,y:91,dx:-30,dy:80,spread:14,size:27,count:15}
+    ],
+    flickerPanels:[
+      {x:226,y:232,w:118,h:112,color:'107,255,155'},
+      {x:359,y:240,w:92,h:96,color:'132,255,174'}
+    ]
+  },
+  'bunker-route-04.jpg':{
+    flashlight:{x:712,y:474,angle:-.54,length:310,width:100},
+    lights:[
+      {x:351,y:258,r:82,color:'255,178,78',power:.22,flicker:.09,speed:4},
+      {x:584,y:292,r:66,color:'255,201,117',power:.2,flicker:.08,speed:3},
+      {x:1110,y:229,r:50,color:'255,49,42',power:.31,flicker:.25,speed:9},
+      {x:676,y:493,r:76,color:'255,237,195',power:.12,flicker:.06,speed:4},
+      {x:1272,y:259,r:92,color:'255,191,79',power:.24,flicker:.07,speed:3}
+    ],
+    steam:[
+      {x:657,y:310,dx:-34,dy:-174,spread:28,size:37,count:24}
+    ]
+  },
+  'bunker-route-05.jpg':{
+    flashlight:{x:870,y:378,angle:3.02,length:300,width:88},
+    lights:[
+      {x:861,y:252,r:92,color:'255,183,91',power:.22,flicker:.19,speed:7},
+      {x:845,y:238,r:34,color:'255,228,154',power:.14,flicker:.12,speed:6},
+      {x:741,y:242,r:47,color:'255,216,155',power:.12,flicker:.08,speed:4}
+    ],
+    steam:[
+      {x:454,y:86,dx:10,dy:80,spread:12,size:24,count:12}
+    ],
+    exitSign:{x:697,y:88,w:330,h:98}
+  },
+  'bunker-route-06.jpg':{
+    flashlight:{x:558,y:390,angle:-.08,length:320,width:92},
+    lights:[
+      {x:841,y:28,r:72,color:'226,241,232',power:.2,flicker:.16,speed:7},
+      {x:454,y:378,r:72,color:'255,240,201',power:.12,flicker:.07,speed:5},
+      {x:761,y:259,r:44,color:'255,215,145',power:.1,flicker:.08,speed:4}
+    ]
+  }
+};
+
+const sectorPalettes={
+  hub:{wall:'#333b35',shadow:'#111715',floor:'#272c27',accent:'#8b987f',glow:'#d5d5a5',horizon:.5},
+  vent_north:{wall:'#273735',shadow:'#101a1a',floor:'#333b35',accent:'#8ba59b',glow:'#9be6d6',horizon:.48},
+  main_east:{wall:'#37362e',shadow:'#171916',floor:'#292a25',accent:'#b18949',glow:'#ffcf69',horizon:.5},
+  lift_south:{wall:'#242b2b',shadow:'#070b0d',floor:'#171d20',accent:'#8c9995',glow:'#e64232',horizon:.43},
+  lab_west:{wall:'#343c38',shadow:'#111917',floor:'#303330',accent:'#90b9a2',glow:'#7fffd0',horizon:.5},
+  armory:{wall:'#3d392b',shadow:'#18180f',floor:'#29271e',accent:'#ae8b48',glow:'#f5d276',horizon:.49},
+  server_room:{wall:'#252f37',shadow:'#0b1118',floor:'#222a30',accent:'#5186a4',glow:'#46d6ff',horizon:.49},
+  reactor:{wall:'#3b3026',shadow:'#16110e',floor:'#29211b',accent:'#b77841',glow:'#ff7b32',horizon:.43},
+  surface_fail:{wall:'#303735',shadow:'#101412',floor:'#272d28',accent:'#807e68',glow:'#a3a68c',horizon:.55},
+  victory:{wall:'#53574a',shadow:'#1b241e',floor:'#394337',accent:'#c9ae72',glow:'#ffe7a1',horizon:.57},
+  defeat:{wall:'#382526',shadow:'#10090c',floor:'#231619',accent:'#a5463e',glow:'#ff2525',horizon:.43}
+};
+
+function polygon(c,points,fill,stroke){
+  c.beginPath();c.moveTo(points[0][0],points[0][1]);
+  for(let i=1;i<points.length;i++)c.lineTo(points[i][0],points[i][1]);
+  c.closePath();c.fillStyle=fill;c.fill();
+  if(stroke){c.strokeStyle=stroke;c.stroke()}
+}
+function makeSectorCanvas(id,W,H){
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d');
+  const image=sectorBackgrounds.get(id);
+  if(image&&image.complete&&image.naturalWidth){
+    const coverScale=Math.max(W/image.naturalWidth,H/image.naturalHeight);
+    const coverWidth=image.naturalWidth*coverScale,coverHeight=image.naturalHeight*coverScale;
+    g.save();
+    g.filter=`blur(${Math.max(16,Math.round(W*.02))}px) brightness(.38)`;
+    g.drawImage(image,(W-coverWidth)/2,(H-coverHeight)/2,coverWidth,coverHeight);
+    g.restore();
+    const scale=Math.min(W/image.naturalWidth,H/image.naturalHeight);
+    const iw=image.naturalWidth*scale,ih=image.naturalHeight*scale;
+    g.drawImage(image,(W-iw)/2,(H-ih)/2,iw,ih);
+    return c;
+  }
+  const p=sectorPalettes[id]||sectorPalettes.hub;
+  const horizon=H*p.horizon,center=W*.5;
+  const ceiling=g.createLinearGradient(0,0,0,horizon);
+  ceiling.addColorStop(0,p.shadow);ceiling.addColorStop(1,p.wall);
+  g.fillStyle=ceiling;g.fillRect(0,0,W,H);
+  polygon(g,[[0,horizon],[center-W*.12,horizon*.77],[center+W*.12,horizon*.77],[W,horizon]],p.wall);
+  polygon(g,[[0,horizon],[center-W*.12,horizon*.77],[center-W*.12,horizon*1.03],[0,H]],p.shadow);
+  polygon(g,[[W,horizon],[center+W*.12,horizon*.77],[center+W*.12,horizon*1.03],[W,H]],p.shadow);
+  polygon(g,[[0,H],[center-W*.12,horizon*1.03],[center+W*.12,horizon*1.03],[W,H]],p.floor);
+
+  const floorGrad=g.createLinearGradient(0,horizon,0,H);
+  floorGrad.addColorStop(0,'rgba(0,0,0,.05)');floorGrad.addColorStop(1,'rgba(0,0,0,.58)');
+  g.fillStyle=floorGrad;g.fillRect(0,horizon,W,H-horizon);
+  g.strokeStyle='rgba(185,196,174,.18)';g.lineWidth=Math.max(1,W*.0015);
+  for(let i=-5;i<=5;i++){
+    g.beginPath();g.moveTo(center+i*W*.018,horizon*.8);g.lineTo(center+i*W*.13,H);g.stroke();
+  }
+  for(let i=1;i<9;i++){
+    const y=horizon+(H-horizon)*(i/9)**2;
+    g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();
+  }
+  for(let side=0;side<2;side++){
+    const x=side?W*.93:W*.07,sign=side?-1:1;
+    g.strokeStyle='rgba(180,188,166,.2)';g.lineWidth=Math.max(2,W*.004);
+    g.beginPath();g.moveTo(x,0);g.lineTo(x,horizon);g.lineTo(center+sign*W*.12,horizon*.77);g.stroke();
+    for(let i=0;i<5;i++){
+      const y=horizon*.15+i*horizon*.17;
+      g.fillStyle=i%2?'rgba(0,0,0,.2)':'rgba(190,190,170,.08)';
+      g.fillRect(side?W*.82:W*.08,y,W*.1,horizon*.1);
+    }
+  }
+  const lamp=g.createRadialGradient(center,horizon*.2,1,center,horizon*.2,W*.2);
+  lamp.addColorStop(0,p.glow+'99');lamp.addColorStop(1,p.glow+'00');
+  g.fillStyle=lamp;g.fillRect(center-W*.22,0,W*.44,horizon*.7);
+  g.fillStyle=p.accent;g.fillRect(center-W*.025,horizon*.18,W*.05,H*.008);
+
+  if(id==='vent_north'){
+    for(let i=0;i<12;i++){
+      const y=horizon*.15+i*horizon*.045;
+      g.strokeStyle='rgba(180,210,198,.34)';g.lineWidth=2;
+      g.beginPath();g.moveTo(W*.24,y);g.lineTo(W*.76,y);g.stroke();
+    }
+    const fx=center,fy=horizon*.9,r=Math.min(W,H)*.14;
+    g.fillStyle='#111918';g.beginPath();g.arc(fx,fy,r,0,Math.PI*2);g.fill();
+    g.strokeStyle=p.accent;g.lineWidth=5;g.beginPath();g.arc(fx,fy,r,0,Math.PI*2);g.stroke();
+    for(let i=0;i<8;i++){const a=i*Math.PI/4;g.beginPath();g.moveTo(fx,fy);g.quadraticCurveTo(fx+Math.cos(a+.5)*r*.9,fy+Math.sin(a+.5)*r*.9,fx+Math.cos(a)*r,fy+Math.sin(a)*r);g.stroke()}
+  }else if(id==='main_east'){
+    for(let i=0;i<4;i++){const x=W*(.14+i*.24);g.strokeStyle='#806d48';g.lineWidth=8-i;g.beginPath();g.moveTo(x,0);g.lineTo(x,horizon*.82);g.quadraticCurveTo(x+W*.03,horizon,x+W*.08,H);g.stroke()}
+    for(let i=0;i<5;i++){g.fillStyle=`rgba(92,126,113,${.16+i*.025})`;g.beginPath();g.ellipse(W*(.2+i*.15),horizon+(H-horizon)*(.2+i*.13),W*(.09-i*.01),H*.018,0,0,Math.PI*2);g.fill()}
+    g.strokeStyle=p.glow;g.lineWidth=3;g.beginPath();g.moveTo(W*.12,horizon*.3);g.lineTo(W*.88,horizon*.3);g.stroke();
+  }else if(id==='lift_south'){
+    polygon(g,[[W*.31,0],[W*.69,0],[W*.59,H*.87],[W*.41,H*.87]],'#080c0e','#66736c');
+    for(let i=0;i<9;i++){const y=H*(.07+i*.09);g.strokeStyle='rgba(146,162,154,.35)';g.lineWidth=3;g.beginPath();g.moveTo(W*.32,y);g.lineTo(W*.68,y);g.stroke()}
+    for(let i=0;i<4;i++){const x=W*(.36+i*.09);g.strokeStyle=i===1?p.glow:'#918977';g.lineWidth=3;g.beginPath();g.moveTo(x,0);g.lineTo(center+(i-1.5)*W*.02,H);g.stroke()}
+  }else if(id==='lab_west'){
+    for(let i=0;i<4;i++){const x=W*(.17+i*.2),y=horizon*.48;g.fillStyle='rgba(90,210,172,.2)';g.fillRect(x,y,W*.09,H*.28);g.strokeStyle=p.glow;g.lineWidth=3;g.strokeRect(x,y,W*.09,H*.28);g.fillStyle='rgba(96,255,190,.28)';g.fillRect(x+W*.012,y+H*.08,W*.066,H*.1);g.beginPath();g.arc(x+W*.045,y+H*.19,W*.025,0,Math.PI*2);g.fill()}
+    for(let i=0;i<6;i++){g.strokeStyle='rgba(151,204,173,.5)';g.lineWidth=2;g.beginPath();g.moveTo(W*(.1+i*.15),0);g.bezierCurveTo(W*(.2+i*.1),H*.2,W*(.4+i*.05),H*.1,W*(.5+i*.06),horizon);g.stroke()}
+  }else if(id==='armory'){
+    for(let side=0;side<2;side++)for(let i=0;i<4;i++){const x=side?W*.72+i*W*.055:W*.08+i*W*.055;g.fillStyle='#20231b';g.fillRect(x,horizon*.32,W*.045,H*.45);g.strokeStyle=p.accent;g.lineWidth=2;g.strokeRect(x,horizon*.32,W*.045,H*.45);for(let j=0;j<3;j++){g.strokeStyle='rgba(200,190,150,.3)';g.beginPath();g.moveTo(x+W*.008,horizon*.4+j*H*.12);g.lineTo(x+W*.037,horizon*.4+j*H*.12);g.stroke()}}
+    for(let i=0;i<3;i++){const x=W*(.25+i*.2);polygon(g,[[x,H*.72],[x+W*.12,H*.69],[x+W*.14,H*.91],[x+W*.02,H*.94]],'#51432d','#a18a58')}
+  }else if(id==='server_room'){
+    for(let i=0;i<7;i++){const x=W*(.09+i*.12),y=horizon*.12,w=W*.075,h=H*.75;g.fillStyle=i%2?'#101b25':'#16232b';g.fillRect(x,y,w,h);g.strokeStyle='#608092';g.lineWidth=2;g.strokeRect(x,y,w,h);for(let j=0;j<9;j++){g.fillStyle=(i+j)%3===0?p.glow:'#557b70';g.fillRect(x+w*.16,y+h*(.08+j*.095),w*.1,H*.009);g.fillStyle='rgba(180,210,218,.22)';g.fillRect(x+w*.36,y+h*(.08+j*.095),w*.48,H*.035)}}
+  }else if(id==='reactor'||id==='defeat'){
+    const coreX=center,coreY=H*.48,coreR=W*.16;
+    const glow=g.createRadialGradient(coreX,coreY,coreR*.1,coreX,coreY,coreR*2.5);
+    glow.addColorStop(0,id==='defeat'?'rgba(255,24,16,.65)':'rgba(255,121,39,.62)');glow.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=glow;g.fillRect(0,0,W,H);
+    for(let i=0;i<4;i++){g.strokeStyle=i%2?p.accent:p.glow;g.lineWidth=6-i;g.beginPath();g.ellipse(coreX,coreY,coreR*(1+i*.22),H*(.23+i*.06),0,0,Math.PI*2);g.stroke()}
+    g.fillStyle='#17120e';g.fillRect(coreX-coreR*.48,H*.16,coreR*.96,H*.65);
+    const core=g.createLinearGradient(coreX-coreR*.45,0,coreX+coreR*.45,0);core.addColorStop(0,'#572a18');core.addColorStop(.5,p.glow);core.addColorStop(1,'#572a18');
+    g.fillStyle=core;g.fillRect(coreX-coreR*.32,H*.2,coreR*.64,H*.57);
+    for(let i=0;i<7;i++){const x=W*(.09+i*.13);g.strokeStyle='#77503a';g.lineWidth=7;g.beginPath();g.moveTo(x,0);g.lineTo(x,horizon*.8);g.stroke()}
+  }else if(id==='surface_fail'||id==='victory'){
+    const sky=g.createLinearGradient(0,0,0,H);sky.addColorStop(0,id==='victory'?'#415647':'#111a1b');sky.addColorStop(.58,id==='victory'?'#c2915f':'#515448');sky.addColorStop(1,p.shadow);g.fillStyle=sky;g.fillRect(0,0,W,H);
+    g.fillStyle=id==='victory'?'rgba(255,222,154,.9)':'rgba(132,142,129,.35)';g.beginPath();g.arc(W*.72,H*.24,H*.09,0,Math.PI*2);g.fill();
+    polygon(g,[[0,H*.57],[W*.2,H*.43],[W*.34,H*.58],[W*.5,H*.4],[W*.68,H*.57],[W*.83,H*.45],[W,H*.58],[W,H],[0,H]],id==='victory'?'#313d31':'#1a201d');
+    for(let i=0;i<16;i++){const x=(i*W/13)%W,y=H*(.67+(i%4)*.06);polygon(g,[[x,y],[x+W*.045,y-H*.03],[x+W*.09,y],[x+W*.07,y+H*.04],[x+W*.02,y+H*.05]],i%2?'#37372d':'#292b26')}
+    if(id==='victory'){g.fillStyle='#202921';g.fillRect(W*.43,H*.48,W*.14,H*.35);g.strokeStyle=p.glow;g.lineWidth=4;g.strokeRect(W*.43,H*.48,W*.14,H*.35)}
+  }
+  for(let i=0;i<Math.floor(W*H/18000);i++){
+    const x=(i*137.5)%W,y=(i*83.3)%H;
+    g.fillStyle=`rgba(210,205,177,${(i%4+1)*.025})`;g.fillRect(x,y,2+(i%3),2+(i%2));
+  }
+  return c;
+}
+function getSectorCanvas(id,W,H){
+  if(sceneCanvasWidth!==W||sceneCanvasHeight!==H){sceneCanvases.clear();sceneCanvasWidth=W;sceneCanvasHeight=H}
+  if(!sceneCanvases.has(id))sceneCanvases.set(id,makeSectorCanvas(id,W,H));
+  return sceneCanvases.get(id);
+}
+const labyrinth={
+hub:{name:"SAS",danger:"MOYEN",text:"Les portes blindées s'ouvrent sur un carrefour lugubre. L'air est vicié. Quatre conduits mènent dans les entrailles du complexe. Choisir un vecteur d'infiltration.",options:[
+ {text:"[A] Longer les conduits",target:"vent_north"},
+ {text:"[B] Suivre les signaux lumineux",target:"vent_north"},
+ {text:"[C] Avancer dans l'obscurité",target:"vent_north"},
+ {text:"[D] Forcer le passage",target:"vent_north"}]},
+vent_north:{name:"VENTILATION",danger:"ÉLEVÉ",text:"Vous rampez dans un boyau étroit. Un ventilateur géant bloque le passage, contrôlé par un boîtier électrique corrodé.",options:[
+ {text:"[A] Forcer le panneau de contrôle",target:"main_east",action:()=>adjustAmmo(-20)},
+ {text:"[B] Tirer dans les engrenages",target:"main_east",action:()=>adjustAmmo(-10)},
+ {text:"[C] Passer par la trappe de maintenance",target:"main_east"},
+ {text:"[D] Se glisser sous les conduites",target:"main_east"}]},
+main_east:{name:"TUNNEL",danger:"CRITIQUE",text:"Un couloir inondé traversé par des câbles dénudés. Des tourelles automatiques en veille scannent la zone.",options:[
+ {text:"[A] Pirater le disjoncteur",target:"lift_south"},
+ {text:"[B] Utiliser les caisses comme couverture",target:"lift_south"},
+ {text:"[C] Créer une diversion",target:"lift_south",action:()=>adjustAmmo(-10)},
+ {text:"[D] Courir sous les lasers",target:"lift_south",action:()=>adjustAmmo(-20)}]},
+lift_south:{name:"ASCENSEUR",danger:"MOYEN",text:"La cage d'ascenseur est béante. Les câbles pendent. Vous pouvez descendre en rappel ou explorer les passerelles.",options:[
+ {text:"[A] Descendre en rappel dans le puits",target:"lab_west"},
+ {text:"[B] Forcer les portes intermédiaires",target:"lab_west"},
+ {text:"[C] Activer le contrepoids",target:"lab_west"},
+ {text:"[D] Suivre les câbles",target:"lab_west"}]},
+lab_west:{name:"LABORATOIRE",danger:"EXTRÊME",text:"Fioles brisées et spécimens inconnus. Une alerte de confinement retentit, verrouillant progressivement les issues.",options:[
+ {text:"[A] Enclencher la stérilisation",target:"armory"},
+ {text:"[B] Récupérer la clé d'accès",target:"armory"},
+ {text:"[C] Colmater les brèches",target:"armory"},
+ {text:"[D] Fuir devant la menace",target:"armory"}]},
+armory:{name:"ARMURERIE",danger:"FAIBLE",text:"Une planque inespérée. Vous trouvez des munitions et des cartes tactiques du complexe.",options:[
+ {text:"[A] Faire le plein de munitions",target:"victory",action:()=>resetAmmo()},
+ {text:"[B] Prendre un blindage lourd",target:"victory"},
+ {text:"[C] Télécharger les plans des sous-sols",target:"victory"},
+ {text:"[D] Quitter la salle",target:"victory"}]},
+server_room:{name:"SERVEURS",danger:"MOYEN",text:"Les serveurs vrombissent. Vous avez accès à toutes les caméras et systèmes de sécurité du bunker.",options:[
+ {text:"[A] Désactiver les tourelles Est",target:"main_east"},
+ {text:"[B] Déverrouiller les accès",target:"reactor"},
+ {text:"[C] Effacer les journaux système",target:"hub"},
+ {text:"[D] Provoquer une surcharge",target:"surface_fail"}]},
+reactor:{name:"RÉACTEUR",danger:"MAXIMUM",text:"Le cœur du complexe. La température est insupportable. Le panneau principal permet de stabiliser le complexe ou de le détruire.",options:[
+ {text:"[A] Stabiliser le réacteur",target:"victory"},
+ {text:"[B] Amorcer l'autodestruction",target:"defeat"},
+ {text:"[C] Tenter une dérivation manuelle",target:"hub",action:()=>adjustAmmo(-40)},
+ {text:"[D] Fuir par le conduit d'évacuation",target:"hub"}]},
+surface_fail:{name:"SURFACE",danger:"NÉANT",text:"Vous abandonnez la mission. La zone est perdue.",options:[
+ {text:"[A] Relancer l'infiltration",target:"hub",action:()=>resetAmmo()}]},
+victory:{name:"VICTOIRE",danger:"NÉANT",text:"Le complexe est sécurisé. Vous et vos spectateurs avez survécu à l'enfer du bunker.",options:[
+ {text:"[A] Rejouer",target:"hub",action:()=>resetAmmo()}]},
+defeat:{name:"ÉCHEC",danger:"NÉANT",text:"Le complexe explose, effaçant toute trace de votre passage.",options:[
+ {text:"[A] Rejouer",target:"hub",action:()=>resetAmmo()}]}
+};
+
+function setAmmo(){$('ammo-hud').textContent=ammunition}
+function adjustAmmo(n){
+  ammunition=Math.max(0,ammunition+n);shake=1;setAmmo();
+}
+function resetAmmo(){ammunition=100;setAmmo()}
+
+/* ---------- Voix ---------- */
+function say(txt){
+  if(!voiceOn||!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(txt);u.lang='fr-FR';u.rate=.95;u.pitch=.8;
+  const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.startsWith('fr'));if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- Jeu + votes ---------- */
+let votes=new Map(),locked=false,voteTimer=null,cur=null,activeSocket=null,transitionTimer=null;
+function go(id){
+  if(!document.body.classList.contains('travelling'))cameraView={...sceneViews[id]};
+  clearInterval(voteTimer);currentSector=id;cur=labyrinth[id];locked=false;votes=new Map();
+  $('sector-hud').textContent=cur.name;$('danger-hud').textContent=cur.danger;$('narrative-screen').textContent=cur.text;
+  const box=$('button-container');box.innerHTML='';
+  cur.options.forEach((o,i)=>{
+    const b=document.createElement('button');b.className='action-btn';
+    b.innerHTML='<div class="fill"></div><span></span>';b.querySelector('span').textContent=o.text;
+    b.onclick=()=>cast('Streamer',i);box.appendChild(b);
+  });
+  const narration=demoI?cur.text:cur.text+' '+cur.options.map(o=>o.text.replace(/^\[(.)\]/,'Choix $1 :')).join('. ');
+  say(narration);
+  startVoteClock(demoI?10:VOTE_TIME);
+}
+function startVoteClock(seconds){
+  clearInterval(voteTimer);
+  if(['victory','defeat','surface_fail'].includes(currentSector)){
+    $('clock').textContent='--';
+    $('timer').querySelector('i').style.transform='scaleX(0)';
+    return;
+  }
+  let left=seconds;const bar=$('timer').querySelector('i');bar.style.transform='scaleX(1)';
+  $('clock').textContent=left+' s';
+  voteTimer=setInterval(()=>{left=Math.max(0,left-.1);bar.style.transform=`scaleX(${left/seconds})`;if(Math.ceil(left)!==Math.ceil(left+.1))$('clock').textContent=Math.ceil(left)+' s';if(left<=0)resolve()},100);
+}
+function cast(user,i){
+  if(locked||!cur||i<0||i>=cur.options.length)return;
+  votes.set(user,i);
+  const n=cur.options.map(()=>0);votes.forEach(v=>n[v]++);const tot=Math.max(1,votes.size);
+  document.querySelectorAll('.action-btn').forEach((b,k)=>b.querySelector('.fill').style.width=(n[k]/tot*100)+'%');
+}
+function resolve(){
+  clearInterval(voteTimer);locked=true;
+  const n=cur.options.map(()=>0);votes.forEach(v=>n[v]++);
+  const max=Math.max(...n);const best=n.map((c,i)=>c===max?i:-1).filter(i=>i>=0);
+  const w=best[Math.random()*best.length|0],opt=cur.options[w];
+  document.querySelectorAll('.action-btn')[w].classList.add('win');
+  setTimeout(()=>{
+    if(opt.action)opt.action();
+    const destination=ammunition>0||opt.target==='surface_fail'?opt.target:'surface_fail';
+    transitionTo(destination);
+  },800);
+}
+function transitionTo(id){
+  clearTimeout(transitionTimer);
+  travelProgress=0;travelStartedAt=performance.now();
+  transitionFrom=currentSector;
+  transitionToScene=id;
+  cameraFrom={...cameraView};
+  cameraTo={...sceneViews[id]};
+  passageDirection={
+    vent_north:{x:0,y:-1},main_east:{x:1,y:0},lift_south:{x:0,y:1},
+    lab_west:{x:-1,y:0},armory:{x:1,y:-.4},server_room:{x:1,y:.3},
+    reactor:{x:0,y:1},surface_fail:{x:0,y:-1},victory:{x:0,y:-1},defeat:{x:0,y:1}
+  }[id]||{x:0,y:0};
+  $('transition-destination').textContent=labyrinth[id].name;
+  document.body.classList.add('travelling');
+  transitionTimer=setTimeout(()=>{
+    document.body.classList.remove('travelling');
+    travelProgress=1;
+    go(id);
+  },TRAVEL_DURATION);
+}
+function drawPassageTransition(W,H){
+  if(!document.body.classList.contains('travelling'))return;
+  const strength=Math.sin(Math.PI*travelProgress);
+  if(strength<.01)return;
+  const cx=W*(.5+passageDirection.x*.13*travelProgress);
+  const cy=H*(.43+passageDirection.y*.12*travelProgress);
+
+  const walls=ctx.createLinearGradient(0,0,0,H);
+  walls.addColorStop(0,`rgba(0,4,2,${strength*.08})`);
+  walls.addColorStop(.55,`rgba(0,5,2,${strength*.14})`);
+  walls.addColorStop(1,`rgba(0,0,0,${strength*.34})`);
+  ctx.fillStyle=walls;ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.globalAlpha=strength*.72;
+  ctx.lineWidth=Math.max(2,W*.002);
+  ctx.strokeStyle='rgba(134,177,127,.72)';
+  ctx.shadowColor='rgba(88,255,124,.65)';
+  ctx.shadowBlur=14*strength;
+  for(let i=0;i<4;i++){
+    const z=(i/4+travelProgress*1.35)%1;
+    const scale=.12+z*.9;
+    const width=W*scale;
+    const height=H*scale*.72;
+    const top=cy-height*.56;
+    const bottom=cy+height*.48;
+    ctx.globalAlpha=strength*(.18+z*.42);
+    ctx.beginPath();
+    ctx.moveTo(cx-width*.48,top);
+    ctx.lineTo(cx-width*.42,bottom);
+    ctx.lineTo(cx+width*.42,bottom);
+    ctx.lineTo(cx+width*.48,top);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.shadowBlur=0;
+  ctx.globalAlpha=strength*.35;
+  ctx.strokeStyle='rgba(202,180,112,.7)';
+  for(let i=0;i<8;i++){
+    const spread=(i+1)/8;
+    const startX=cx+passageDirection.x*W*.1;
+    const startY=cy+passageDirection.y*H*.08;
+    ctx.beginPath();
+    ctx.moveTo(startX,startY);
+    ctx.lineTo(W*(spread-.5),H);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawSectorEffects(id,W,H,alpha,offsetX=0,offsetY=0,zoom=1){
+  if(alpha<=0)return;
+  const image=sectorBackgrounds.get(id);
+  const effects=sceneEffects[sectorBackgroundFiles[id]];
+  if(!effects||!image||!image.complete||!image.naturalWidth)return;
+  const scene=getSectorCanvas(id,W,H);
+  const drawScale=Math.max(W/scene.width,H/scene.height)*zoom;
+  const originX=(W-scene.width*drawScale)/2+cameraView.x*W+offsetX;
+  const originY=(H-scene.height*drawScale)/2+cameraView.y*H+offsetY;
+  const imageScale=Math.min(scene.width/image.naturalWidth,scene.height/image.naturalHeight);
+  const imageX=(scene.width-image.naturalWidth*imageScale)/2;
+  const imageY=(scene.height-image.naturalHeight*imageScale)/2;
+  const scale=imageScale*drawScale;
+  const toScreen=(x,y)=>({
+    x:originX+(imageX+x*imageScale)*drawScale,
+    y:originY+(imageY+y*imageScale)*drawScale
+  });
+  ctx.save();
+  if(effects.flashlight){
+    const lamp=effects.flashlight;
+    const sweep=Math.sin(t*.72)*.035+Math.sin(t*1.31)*.012;
+    const angle=lamp.angle+sweep;
+    const source=toScreen(lamp.x,lamp.y);
+    const target=toScreen(
+      lamp.x+Math.cos(angle)*lamp.length,
+      lamp.y+Math.sin(angle)*lamp.length
+    );
+    const beamWidth=lamp.width*scale;
+    const beamPulse=.84+.16*Math.sin(t*1.8);
+    ctx.save();
+    ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=alpha;
+    const beam=ctx.createLinearGradient(source.x,source.y,target.x,target.y);
+    beam.addColorStop(0,`rgba(255,244,211,${.16*beamPulse})`);
+    beam.addColorStop(.18,`rgba(255,244,211,${.09*beamPulse})`);
+    beam.addColorStop(1,'rgba(255,244,211,0)');
+    ctx.fillStyle=beam;
+    ctx.beginPath();
+    ctx.moveTo(source.x,source.y);
+    ctx.lineTo(target.x-Math.sin(angle)*beamWidth,target.y+Math.cos(angle)*beamWidth);
+    ctx.lineTo(target.x+Math.sin(angle)*beamWidth,target.y-Math.cos(angle)*beamWidth);
+    ctx.closePath();
+    ctx.fill();
+    const haloRadius=beamWidth*.9;
+    const halo=ctx.createRadialGradient(source.x,source.y,1,source.x,source.y,haloRadius);
+    halo.addColorStop(0,`rgba(255,242,205,${.2*beamPulse})`);
+    halo.addColorStop(1,'rgba(255,242,205,0)');
+    ctx.fillStyle=halo;
+    ctx.fillRect(source.x-haloRadius,source.y-haloRadius,haloRadius*2,haloRadius*2);
+    ctx.restore();
+  }
+  if(effects.water){
+    ctx.save();
+    ctx.beginPath();
+    effects.water.points.forEach((point,index)=>{
+      const {x,y}=toScreen(point[0],point[1]);
+      if(index===0)ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.clip();
+    ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=alpha;
+    for(let i=0;i<9;i++){
+      const y=463+i*33;
+      ctx.beginPath();
+      for(let x=330;x<=1380;x+=35){
+        const point=toScreen(x,y+Math.sin(t*1.25+i*.83+x*.013)*4);
+        if(x===330)ctx.moveTo(point.x,point.y);
+        else ctx.lineTo(point.x,point.y);
+      }
+      ctx.strokeStyle=`rgba(190,224,230,${.045+(i%3)*.018})`;
+      ctx.lineWidth=Math.max(1,scale*(i%3===0?2:1));
+      ctx.stroke();
+    }
+    const glintX=390+(t*74%900);
+    const glint=toScreen(glintX,468+Math.sin(t*.9)*12);
+    const glintWidth=105*scale;
+    const reflection=ctx.createRadialGradient(glint.x,glint.y,1,glint.x,glint.y,glintWidth);
+    reflection.addColorStop(0,'rgba(225,245,247,.14)');
+    reflection.addColorStop(1,'rgba(225,245,247,0)');
+    ctx.fillStyle=reflection;
+    ctx.fillRect(glint.x-glintWidth,glint.y-glintWidth*.35,glintWidth*2,glintWidth*.7);
+    ctx.restore();
+  }
+  for(const [index,panel] of (effects.flickerPanels||[]).entries()){
+    const {x,y}=toScreen(panel.x,panel.y);
+    const width=panel.w*scale,height=panel.h*scale;
+    const flicker=Math.sin(t*(8+index*1.7)+index*2.4)>.88?.18:1;
+    const pulse=.18+.17*(.5+.5*Math.sin(t*4.2+index*1.8));
+    ctx.save();
+    ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=alpha*flicker;
+    const screenGlow=ctx.createRadialGradient(
+      x+width*.5,y+height*.48,1,x+width*.5,y+height*.48,width*.86
+    );
+    screenGlow.addColorStop(0,`rgba(${panel.color},${pulse*.72})`);
+    screenGlow.addColorStop(1,`rgba(${panel.color},0)`);
+    ctx.fillStyle=screenGlow;
+    ctx.fillRect(x-width*.25,y-height*.25,width*1.5,height*1.5);
+    ctx.fillStyle=`rgba(${panel.color},${pulse*.22})`;
+    ctx.fillRect(x,y,width,height);
+    ctx.restore();
+  }
+  for(let i=0;i<(effects.lights||[]).length;i++){
+    const light=effects.lights[i];
+    const variation=light.flicker===undefined?0.11:light.flicker;
+    const flickerWave=Math.sin(t*(light.speed||3)+i*2.7)
+      +variation*.45*Math.sin(t*7.1+i*4.3);
+    const blink=light.flicker>=.18&&Math.sin(t*(light.speed||3)*.37+i*1.9)>.94?0.42:1;
+    const flicker=Math.max(.48,1+variation*flickerWave)*blink;
+    const {x,y}=toScreen(light.x,light.y);
+    const radius=light.r*scale;
+    const glow=ctx.createRadialGradient(x,y,1,x,y,radius);
+    glow.addColorStop(0,`rgba(${light.color},${light.power*flicker*.3*alpha})`);
+    glow.addColorStop(.32,`rgba(${light.color},${light.power*flicker*.11*alpha})`);
+    glow.addColorStop(1,`rgba(${light.color},0)`);
+    ctx.fillStyle=glow;ctx.fillRect(x-radius,y-radius,radius*2,radius*2);
+    const coreRadius=Math.max(2,5*scale);
+    const core=ctx.createRadialGradient(x,y,0,x,y,coreRadius*2);
+    core.addColorStop(0,`rgba(${light.color},${Math.min(.8,light.power*flicker)*alpha})`);
+    core.addColorStop(1,`rgba(${light.color},0)`);
+    ctx.fillStyle=core;
+    ctx.fillRect(x-coreRadius*2,y-coreRadius*2,coreRadius*4,coreRadius*4);
+  }
+  for(const vent of effects.steam||[]){
+    const count=vent.count||20;
+    const source=toScreen(vent.x,vent.y);
+    const sourceRadius=Math.max(2,vent.size*scale*.3);
+    const pulse=.82+.18*Math.sin(t*2.4);
+    const leak=ctx.createRadialGradient(
+      source.x,source.y,1,source.x,source.y,sourceRadius
+    );
+    leak.addColorStop(0,`rgba(205,219,207,${alpha*.16*pulse})`);
+    leak.addColorStop(.38,`rgba(176,197,183,${alpha*.09*pulse})`);
+    leak.addColorStop(1,'rgba(148,170,155,0)');
+    ctx.fillStyle=leak;
+    ctx.fillRect(source.x-sourceRadius,source.y-sourceRadius,sourceRadius*2,sourceRadius*2);
+    for(let i=0;i<count;i++){
+      const phase=(t*.34+i/count)%1;
+      const drift=Math.sin(t*1.8+i*2.17)*vent.spread*phase;
+      const {x,y}=toScreen(
+        vent.x+vent.dx*phase+drift,
+        vent.y+vent.dy*phase
+      );
+      const radius=Math.max(2,vent.size*scale*(.12+phase*.88));
+      const opacity=alpha*(.025+Math.sin(phase*Math.PI)*.12)*(1-phase*.5)*pulse;
+      const vapor=ctx.createRadialGradient(x-radius*.2,y-radius*.25,1,x,y,radius);
+      vapor.addColorStop(0,`rgba(191,211,197,${opacity})`);
+      vapor.addColorStop(.55,`rgba(143,174,157,${opacity*.55})`);
+      vapor.addColorStop(1,'rgba(129,156,141,0)');
+      ctx.fillStyle=vapor;
+      ctx.beginPath();ctx.ellipse(x,y,radius,radius*.62,drift*4,0,Math.PI*2);ctx.fill();
+    }
+  }
+  for(let i=0;i<(effects.ripples||[]).length;i++){
+    const ripple=effects.ripples[i];
+    const phase=(t*.55+i*.37)%1;
+    const {x,y}=toScreen(ripple.x,ripple.y);
+    const radius=ripple.r*scale*(.2+phase);
+    ctx.globalAlpha=alpha*(1-phase)*.32;
+    ctx.strokeStyle='rgba(190,218,222,.72)';
+    ctx.lineWidth=Math.max(.7,scale*.9);
+    ctx.beginPath();
+    ctx.ellipse(x,y,radius,radius*.16,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+  if(effects.exitSign){
+    const sign=effects.exitSign;
+    const {x,y}=toScreen(sign.x,sign.y);
+    const width=sign.w*scale,height=sign.h*scale;
+    const pulse=.82+.18*Math.sin(t*2.3);
+    ctx.save();
+    ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=alpha;
+    ctx.shadowColor='rgba(81,255,133,.9)';
+    ctx.shadowBlur=18*scale*pulse;
+    ctx.fillStyle=`rgba(8,76,34,${.88*pulse})`;
+    ctx.fillRect(x,y,width,height);
+    ctx.strokeStyle=`rgba(180,255,199,${.95*pulse})`;
+    ctx.lineWidth=Math.max(1.5,2.5*scale);
+    ctx.strokeRect(x,y,width,height);
+    ctx.shadowBlur=8*scale;
+    ctx.fillStyle='#edfff1';
+    ctx.font=`700 ${Math.max(14,48*scale)}px "Segoe UI",sans-serif`;
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText('SORTIE',x+width*.43,y+height*.51);
+    const arrowX=x+width*.82,arrowY=y+height*.51;
+    ctx.lineWidth=Math.max(2,5*scale);
+    ctx.beginPath();
+    ctx.moveTo(arrowX-width*.075,arrowY);
+    ctx.lineTo(arrowX+width*.065,arrowY);
+    ctx.lineTo(arrowX+width*.015,arrowY-height*.14);
+    ctx.moveTo(arrowX+width*.065,arrowY);
+    ctx.lineTo(arrowX+width*.015,arrowY+height*.14);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+function drawDoorAnimation(W,H){
+  if(!document.body.classList.contains('travelling'))return;
+  const progress=travelProgress;
+  const open=progress<.2
+    ?1-(1-Math.max(0,Math.min(1,progress/.2)))**3
+    :progress<.7?1:1-Math.max(0,Math.min(1,(progress-.7)/.3))**2;
+  const retreat=progress<.7?1:1-Math.max(0,Math.min(1,(progress-.7)/.3))*.45;
+  const alpha=progress<.7?1:1-Math.max(0,Math.min(1,(progress-.7)/.3));
+  if(alpha<=.01)return;
+  const cx=W*.52,cy=H*.52,doorW=W*.56*retreat,doorH=H*.72*retreat;
+  const left=cx-doorW/2,top=cy-doorH/2;
+  const half=doorW/2,travel=half*open;
+  ctx.save();ctx.globalAlpha=alpha;
+  ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=18;
+  ctx.strokeStyle='rgba(146,169,143,.8)';ctx.lineWidth=Math.max(3,W*.006);
+  ctx.strokeRect(left,top,doorW,doorH);
+  ctx.shadowBlur=0;
+  for(const side of [-1,1]){
+    const x=side<0?cx-half-travel:cx+travel;
+    const panel=ctx.createLinearGradient(x,0,x+half,0);
+    panel.addColorStop(0,'#101715');panel.addColorStop(.22,'#36413a');
+    panel.addColorStop(.5,'#202a25');panel.addColorStop(.82,'#465247');
+    panel.addColorStop(1,'#111815');
+    ctx.fillStyle=panel;ctx.fillRect(x,top+doorH*.025,half,doorH*.95);
+    ctx.strokeStyle='rgba(173,190,166,.62)';ctx.lineWidth=Math.max(1,W*.002);
+    ctx.strokeRect(x+half*.08,top+doorH*.07,half*.84,doorH*.86);
+    for(let rib=1;rib<5;rib++){
+      const rx=x+half*(((rib-1)%2)*.7+.15);
+      ctx.beginPath();ctx.moveTo(rx,top+doorH*.1);ctx.lineTo(rx,top+doorH*.9);ctx.stroke();
+    }
+    ctx.fillStyle='#9ca68c';
+    ctx.fillRect(side<0?x+half*.78:x+half*.12,cy-doorH*.035,Math.max(3,W*.004),doorH*.07);
+  }
+  ctx.fillStyle='rgba(158,255,162,.7)';
+  ctx.shadowColor='#69ff7c';ctx.shadowBlur=12;
+  ctx.fillRect(cx-W*.006,top+doorH*.12,W*.012,H*.018);
+  ctx.shadowBlur=0;ctx.restore();
+}
+function drawSceneLayer(id,W,H,alpha,offsetX,offsetY,zoom){
+  if(alpha<=0)return;
+  const scene=getSectorCanvas(id,W,H);
+  const scale=Math.max(W/scene.width,H/scene.height)*zoom;
+  const width=scene.width*scale,height=scene.height*scale;
+  ctx.globalAlpha=alpha;
+  ctx.drawImage(scene,(W-width)/2+cameraView.x*W+offsetX,
+    (H-height)/2+cameraView.y*H+offsetY,width,height);
+  ctx.globalAlpha=1;
+}
+function onComment(d){
+  const text=String(d.comment??d.text??'').trim();
+  const m=/^!?\s*([a-d1-4])$/i.exec(text);if(!m)return;
+  const user=String(d.username??d.nickname??'anonyme').replace(/^@/,'');
+  cast(user,isNaN(m[1])?'abcd'.indexOf(m[1].toLowerCase()):m[1]-1);
+}
+function connect(){
+  const u=$('user').value.trim().replace(/^@/,'');if(!u){setStatus('Saisissez votre pseudo TikTok.','error');$('user').focus();return}
+  if(activeSocket&&activeSocket.readyState<2){activeSocket.close();return}
+  let ws;try{ws=new WebSocket(CONNECTOR_URL)}catch(e){setStatus('Connexion impossible : adresse invalide.','error');return}
+  activeSocket=ws;setStatus('Connexion au live…','');
+  $('connect').textContent='Déconnecter';
+  localStorage.setItem('bunker-tiktok-user',u);
+  ws.onopen=()=>ws.send(JSON.stringify({action:'CONNECT_TIKTOK',username:u}));
+  ws.onmessage=ev=>{try{const d=JSON.parse(ev.data);
+    if(d.type==='STATUS'){const connected=/direct tiktok connecté/i.test(d.message||'');setStatus(d.message||'Statut reçu',connected?'connected':'');}
+    else if(d.type==='comment'||d.type==='tiktok-comment')onComment(d.commentData??d)}catch(e){console.error('Message du connecteur invalide',e)}};
+  ws.onerror=()=>setStatus('Connexion impossible au connecteur.','error');
+  ws.onclose=()=>{if(activeSocket===ws)activeSocket=null;$('connect').textContent='Connecter TikTok';setStatus('Hors ligne','')};
+}
+function setStatus(message,state){$('status').textContent=message;$('status').className=state}
+let demoI=null;
+$('demo').onclick=()=>{
+  if(demoI)return;
+  $('demo').textContent='Démo en cours…';$('demo').disabled=true;
+  setStatus('Démo active — votes simulés, histoire en progression.','connected');
+  say(cur?cur.text:'Démonstration automatique. Les spectateurs votent et le personnage avance dans le bunker.');
+  demoI=setInterval(()=>{
+    if(!cur||locked)return;
+    if(currentSector==='victory'||currentSector==='defeat'||currentSector==='surface_fail'){stopDemo();return}
+    const route={
+      hub:'vent_north',
+      vent_north:'main_east',
+      main_east:'lift_south',
+      lift_south:'lab_west',
+      lab_west:'armory',
+      armory:'victory'
+    };
+    const next=route[currentSector];
+    let choice=next?cur.options.findIndex(o=>o.target===next):-1;
+    if(choice<0)choice=Math.floor(Math.random()*cur.options.length);
+    for(let i=0;i<9;i++)cast('Spectateur démo '+i,choice);
+  },300);
+  startVoteClock(10);
+};
+$('stop-demo').onclick=stopDemo;
+function stopDemo(){if(demoI){clearInterval(demoI);demoI=null}$('demo').textContent='Lancer la démo auto';$('demo').disabled=false;if(!activeSocket)setStatus('Démo arrêtée.','')}
+$('connect').onclick=()=>{if(activeSocket&&activeSocket.readyState<2)activeSocket.close();else connect()};
+$('voice').onclick=()=>{voiceOn=!voiceOn;$('voice').textContent='Voix : '+(voiceOn?'ON':'OFF');if(!voiceOn)speechSynthesis.cancel()};
+const interactionPanel=$('interaction-panel'),panelDragHandle=$('panel-drag-handle');
+let panelPointer=null,panelHasCustomPosition=false;
+function clampPanelPosition(left,top){
+  const rect=interactionPanel.getBoundingClientRect();
+  return{
+    left:Math.max(0,Math.min(left,innerWidth-rect.width)),
+    top:Math.max(0,Math.min(top,innerHeight-rect.height))
+  };
+}
+function fitInteractionPanel(){
+  if(document.body.classList.contains('travelling'))return;
+  const previousRect=interactionPanel.getBoundingClientRect();
+  interactionPanel.style.scale='1';
+  const width=interactionPanel.offsetWidth,height=interactionPanel.offsetHeight;
+  const scale=Math.min(1,(innerWidth-16)/width,(innerHeight-16)/height);
+  interactionPanel.style.scale=String(Math.max(.35,scale));
+  if(panelHasCustomPosition){
+    moveInteractionPanel(previousRect.left,previousRect.top);
+  }else{
+    const rect=interactionPanel.getBoundingClientRect();
+    interactionPanel.style.left=Math.max(0,innerWidth-rect.width-14)+'px';
+    interactionPanel.style.top=Math.max(0,innerHeight-rect.height-26)+'px';
+    interactionPanel.style.right='auto';
+    interactionPanel.style.bottom='auto';
+  }
+}
+function moveInteractionPanel(left,top){
+  const position=clampPanelPosition(left,top);
+  interactionPanel.style.left=position.left+'px';
+  interactionPanel.style.top=position.top+'px';
+  interactionPanel.style.right='auto';
+  interactionPanel.style.bottom='auto';
+  panelHasCustomPosition=true;
+}
+panelDragHandle.addEventListener('pointerdown',event=>{
+  if(event.button!==0||!event.isPrimary)return;
+  event.preventDefault();
+  const rect=interactionPanel.getBoundingClientRect();
+  panelPointer={id:event.pointerId,startX:event.clientX,startY:event.clientY,left:rect.left,top:rect.top};
+  panelDragHandle.setPointerCapture(event.pointerId);
+});
+panelDragHandle.addEventListener('pointermove',event=>{
+  if(!panelPointer||event.pointerId!==panelPointer.id)return;
+  moveInteractionPanel(
+    panelPointer.left+event.clientX-panelPointer.startX,
+    panelPointer.top+event.clientY-panelPointer.startY
+  );
+});
+function finishPanelDrag(event){
+  if(panelPointer&&event.pointerId===panelPointer.id)panelPointer=null;
+}
+panelDragHandle.addEventListener('pointerup',finishPanelDrag);
+panelDragHandle.addEventListener('pointercancel',finishPanelDrag);
+panelDragHandle.addEventListener('keydown',event=>{
+  const directions={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+  const direction=directions[event.key];
+  if(!direction)return;
+  event.preventDefault();
+  const rect=interactionPanel.getBoundingClientRect(),step=event.shiftKey?40:12;
+  moveInteractionPanel(rect.left+direction[0]*step,rect.top+direction[1]*step);
+});
+addEventListener('resize',()=>{
+  fitInteractionPanel();
+});
+new ResizeObserver(fitInteractionPanel).observe(interactionPanel);
+fitInteractionPanel();
+$('command-toggle').onclick=()=>{
+  const hidden=!$('command-panel').hidden;
+  $('command-panel').hidden=hidden;
+  $('command-toggle').setAttribute('aria-expanded',String(!hidden));
+  $('command-toggle').setAttribute('aria-label',hidden?'Afficher les commandes':'Masquer les commandes');
+  $('command-toggle').title=hidden?'Afficher les commandes':'Masquer les commandes';
+};
+$('banner-toggle').onclick=()=>{
+  const hidden=!$('stream-banner').hidden;
+  $('stream-banner').hidden=hidden;
+  $('banner-toggle').setAttribute('aria-expanded',String(!hidden));
+  $('banner-toggle').setAttribute('aria-label',hidden?'Afficher le mode interactif':'Masquer le mode interactif');
+  $('banner-toggle').title=hidden?'Afficher le mode interactif':'Masquer le mode interactif';
+};
+function updateFullscreenButton(){
+  const fullscreen=Boolean(document.fullscreenElement);
+  $('fullscreen-toggle').setAttribute('aria-label',fullscreen?'Quitter le plein écran':'Passer en plein écran');
+  $('fullscreen-toggle').title=fullscreen?'Quitter le plein écran':'Plein écran';
+}
+$('fullscreen-toggle').onclick=async()=>{
+  try{
+    if(document.fullscreenElement)await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  }catch(error){
+    console.error('Impossible de modifier le mode plein écran.',error);
+    setStatus('Le plein écran n’est pas disponible dans ce navigateur.','error');
+  }
+};
+document.addEventListener('fullscreenchange',updateFullscreenButton);
+updateFullscreenButton();
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('command-panel').hidden)$('command-toggle').click()});
+if(localStorage.getItem('bunker-tiktok-user'))$('user').value=localStorage.getItem('bunker-tiktok-user');
+addEventListener('keydown',e=>{const i='abcd'.indexOf(e.key.toLowerCase());if(i>=0)cast('Streamer',i)});
+addEventListener('mousemove',e=>{tmx=e.clientX/innerWidth-.5;tmy=e.clientY/innerHeight-.5});
+addEventListener('click',()=>{if(!window._v){window._v=1;say(cur.text)}},{once:true});
+
+/* ---------- Rendu ---------- */
+function drawScene(){
+  t+=.016;mx+=(tmx-mx)*.05;my+=(tmy-my)*.05;
+  const sx=Math.sin(t*.9)*6+mx*-40,sy=Math.cos(t*1.7)*4+my*-24;
+  const W=canvas.width,H=canvas.height;
+  const isTravelling=document.body.classList.contains('travelling');
+  if(isTravelling)travelProgress=Math.min(1,(performance.now()-travelStartedAt)/TRAVEL_DURATION);
+  const walkEnvelope=isTravelling?Math.sin(Math.PI*travelProgress):0;
+  const easedTravel=travelProgress**3*(travelProgress*(travelProgress*6-15)+10);
+  if(isTravelling){
+    for(const key of ['x','y','zoom','light','radius']){
+      cameraView[key]=cameraFrom[key]+(cameraTo[key]-cameraFrom[key])*easedTravel;
+    }
+    cameraView.tint=cameraFrom.tint.map((channel,index)=>
+      channel+(cameraTo.tint[index]-channel)*easedTravel
+    );
+  }
+  const travelZoom=walkEnvelope*.1;
+  const step=Math.sin(t*15)*walkEnvelope;
+  const travelX=isTravelling
+    ?passageDirection.x*W*.045*walkEnvelope+step*W*.008
+    :0;
+  const travelY=isTravelling
+    ?passageDirection.y*H*.035*walkEnvelope+Math.abs(step)*H*.012
+    :0;
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const landingBounce=!isTravelling&&travelProgress>0
+    ?Math.sin((performance.now()-travelStartedAt-TRAVEL_DURATION)/320)*Math.exp(-(performance.now()-travelStartedAt-TRAVEL_DURATION)/150)*.025
+    :0;
+  const sceneZoom=(cameraView.zoom+travelZoom+landingBounce)/1.12;
+  const jx=shake>0?(Math.random()-.5)*30*shake:0,jy=shake>0?(Math.random()-.5)*20*shake:0;
+  const sceneTravelX=isTravelling?passageDirection.x*W*.035*easedTravel:0;
+  const sceneTravelY=isTravelling?passageDirection.y*H*.035*easedTravel:0;
+  const transitionZoom=sceneZoom*(1+walkEnvelope*.025);
+  if(isTravelling){
+    drawSceneLayer(transitionFrom,W,H,1-easedTravel,
+      sx+jx+sceneTravelX,sy+jy+sceneTravelY,transitionZoom);
+    drawSceneLayer(transitionToScene,W,H,easedTravel,
+      sx+jx+sceneTravelX,sy+jy+sceneTravelY,transitionZoom);
+  }else{
+    drawSceneLayer(currentSector,W,H,1,sx+jx,sy+jy,sceneZoom);
+  }
+  const tint=cameraView.tint;
+  ctx.fillStyle=`rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3]})`;
+  ctx.fillRect(0,0,W,H);
+  if(shake>0)shake=Math.max(0,shake-.04);
+  drawPassageTransition(W,H);
+  // Poussière en parallaxe (plus proche = plus de déplacement)
+  for(let i=0;i<60;i++){
+    const z=.3+(i%5)*.25;
+    const x=((i*173.3+t*8*z+mx*-80*z+travelX*(.5+z))%W+W)%W;
+    const y=((i*97.7+t*5*z+my*-50*z+travelY*(.5+z))%H+H)%H;
+    ctx.fillStyle=`rgba(220,230,200,${.08*z})`;ctx.fillRect(x,y,1+z*1.5,1+z*1.5);
+  }
+  if(isTravelling){
+    drawSectorEffects(transitionFrom,W,H,1-easedTravel,
+      sx+jx+sceneTravelX,sy+jy+sceneTravelY,transitionZoom);
+    drawSectorEffects(transitionToScene,W,H,easedTravel,
+      sx+jx+sceneTravelX,sy+jy+sceneTravelY,transitionZoom);
+  }else{
+    drawSectorEffects(currentSector,W,H,1,sx+jx,sy+jy,sceneZoom);
+  }
+  drawDoorAnimation(W,H);
+  // Scanlines et cadre
+  ctx.fillStyle='rgba(0,255,65,.04)';for(let y=0;y<H;y+=4)ctx.fillRect(0,y,W,1);
+  ctx.strokeStyle='rgba(0,255,65,.15)';ctx.lineWidth=2;ctx.strokeRect(20,20,W-40,H-40);
+  requestAnimationFrame(drawScene);
+}
+backgroundsReady.then(()=>{
+  resetAmmo();go('hub');drawScene();
+}).catch(error=>{
+  console.error('Impossible de charger les images du parcours.',error);
+  setStatus('Erreur : impossible de charger les décors du parcours.','error');
+  $('command-panel').hidden=false;
+  $('command-toggle').setAttribute('aria-expanded','true');
+  $('command-toggle').setAttribute('aria-label','Masquer les commandes');
+  $('command-toggle').title='Masquer les commandes';
+});
+</script>
+</body>
+</html>
