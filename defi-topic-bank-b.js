@@ -1,0 +1,308 @@
+window.DEFI_TOPIC_BANKS = window.DEFI_TOPIC_BANKS || Array.from({length:8},()=>({}));
+while (window.DEFI_TOPIC_BANKS.length < 8) window.DEFI_TOPIC_BANKS.push({});
+window.DEFI_TOPIC_BANKS[2] = window.DEFI_TOPIC_BANKS[2] || {};
+window.DEFI_TOPIC_BANKS[3] = window.DEFI_TOPIC_BANKS[3] || {};
+Object.assign(window.DEFI_TOPIC_BANKS[2], {
+  "Mario": [
+    ["Quel métier Mario exerce-t-il le plus souvent ?", "Plombier", "Médecin", "Pilote", "Pompier"],
+    ["Comment s’appelle le frère de Mario ?", "Luigi", "Wario", "Toad", "Yoshi"],
+    ["Quelle princesse Mario tente souvent de sauver ?", "Peach", "Daisy", "Harmonie", "Pauline"],
+    ["Quel dinosaure vert accompagne Mario ?", "Yoshi", "Birdo", "Wiggler", "Bowser"],
+    ["Quel est le nom de l’ennemi principal de Mario ?", "Bowser", "Donkey Kong", "Kamek", "Waluigi"],
+    ["Quel objet fait grandir Mario ?", "Le super champignon", "La fleur de feu", "L’étoile", "La carapace rouge"],
+    ["Quel objet rend Mario temporairement invincible ?", "L’étoile", "Le super champignon", "La plume", "La fleur de glace"],
+    ["Dans quel jeu Mario fait-il ses débuts ?", "Donkey Kong", "Mario Bros.", "Super Mario Bros.", "Wrecking Crew"],
+    ["Quel personnage est le roi des Koopas ?", "Bowser", "Goomba", "Toad", "Diddy Kong"],
+    ["Quel royaume est le cadre principal de Super Mario Odyssey ?", "Le royaume Champignon", "Le royaume des Sables", "Le royaume de la Lune", "New Donk City"]
+  ],
+  "The Legend of Zelda": [
+    ["Quel est le nom du héros jouable dans la plupart des jeux Zelda ?", "Link", "Zelda", "Ganondorf", "Impa"],
+    ["Quel royaume est souvent au cœur de l’aventure ?", "Hyrule", "Termina", "Lorule", "Labrynna"],
+    ["Quel objet emblématique Link utilise-t-il souvent pour combattre à distance ?", "Un arc", "Un boomerang", "Un grappin", "Une fronde"],
+    ["Quel est le nom de la princesse associée à la série ?", "Zelda", "Malon", "Midona", "Navi"],
+    ["Quel artefact sacré est composé de trois fragments ?", "La Triforce", "L’Ocarina du Temps", "L’Épée de Légende", "Le Masque de Majora"],
+    ["Comment s’appelle l’épée légendaire de Link ?", "L’Épée de Légende", "L’Épée des Quatre", "L’Épée Kokiri", "L’Épée de Locomo"],
+    ["Quel peuple vit dans le village Cocorico dans plusieurs épisodes ?", "Les Sheikahs", "Les Zoras", "Les Gorons", "Les Gerudos"],
+    ["Quel instrument Link joue-t-il dans Ocarina of Time ?", "Un ocarina", "Une harpe", "Une flûte traversière", "Un tambour"],
+    ["Quel est le nom du méchant récurrent souvent appelé le roi des Gerudos ?", "Ganondorf", "Vaati", "Zant", "Ghirahim"],
+    ["Quel compagnon féerique guide Link dans Ocarina of Time ?", "Navi", "Tatl", "Midona", "Fi"]
+  ],
+  "Minecraft": [
+    ["Quel matériau faut-il miner pour fabriquer des outils en fer ?", "Du minerai de fer", "Du minerai de cuivre", "Du charbon", "Du lapis-lazuli"],
+    ["Quel objet permet généralement de dormir et de réapparaître à un point choisi ?", "Un lit", "Un coffre", "Une enclume", "Un établi"],
+    ["Quelle créature verte explose en s’approchant du joueur ?", "Le Creeper", "Le Zombie", "Le Slime", "Le Husk"],
+    ["Dans quelle dimension trouve-t-on notamment des Endermen et l’Ender Dragon ?", "L’End", "Le Nether", "Le monde normal", "La dimension de l’Éther"],
+    ["Quel outil sert principalement à couper du bois ?", "La hache", "La pioche", "La houe", "La pelle"],
+    ["Quel minerai fournit des diamants lorsqu’il est miné avec un outil adapté ?", "Le minerai de diamant", "Le minerai d’or", "Le minerai de redstone", "Le minerai d’émeraude"],
+    ["Quel bloc permet de fabriquer de nombreux objets ?", "La table de fabrication", "Le four", "Le composteur", "Le pupitre"],
+    ["Quel matériau est nécessaire pour fabriquer un portail du Nether ?", "L’obsidienne", "Le quartz", "La prismarine", "La pierre lumineuse"],
+    ["Quelle créature hostile lance des boules de feu dans le Nether ?", "Le Ghast", "Le Blaze", "Le Piglin", "Le Magma Cube"],
+    ["Quel objet permet de se téléporter vers l’End ?", "Un œil de l’Ender", "Une perle de l’Ender", "Une larme de Ghast", "Une boussole"]
+  ],
+  "Sonic": [
+    ["Quelle est la couleur principale de Sonic ?", "Bleue", "Rouge", "Verte", "Jaune"],
+    ["Quel animal est Sonic ?", "Un hérisson", "Un renard", "Un échidné", "Un chat"],
+    ["Quel est le nom du scientifique ennemi de Sonic ?", "Docteur Eggman", "Docteur Wily", "Docteur Neo Cortex", "Docteur Nefarious"],
+    ["Combien de queues Tails a-t-il ?", "Deux", "Une", "Trois", "Quatre"],
+    ["Quel personnage est un échidné rouge ?", "Knuckles", "Shadow", "Silver", "Vector"],
+    ["Quel objet doré Sonic collecte-t-il souvent ?", "Des anneaux", "Des pièces étoiles", "Des émeraudes", "Des cristaux chaos"],
+    ["Quel est le prénom de Tails ?", "Miles", "Max", "Milo", "Martin"],
+    ["Quel hérisson noir et rouge est souvent présenté comme rival de Sonic ?", "Shadow", "Silver", "Amy", "Metal Sonic"],
+    ["Quel groupe d’émeraudes permet à Sonic de se transformer en Super Sonic ?", "Les Émeraudes du Chaos", "Les Émeraudes du Temps", "Les Pierres du Monde", "Les Cristaux Solaires"],
+    ["Quel personnage est amoureux de Sonic et porte un marteau ?", "Amy Rose", "Blaze", "Rouge", "Cream"]
+  ],
+  "Fortnite": [
+    ["Quel mode de Fortnite a popularisé les parties où les joueurs s’affrontent jusqu’au dernier survivant ?", "Battle Royale", "Sauver le monde", "Créatif", "Course"],
+    ["Quel phénomène réduit progressivement la zone sûre sur la carte ?", "La tempête", "Le raz-de-marée", "Le brouillard", "Le tremblement de terre"],
+    ["Quel objet permet de construire rapidement des structures en bois ?", "Des matériaux de construction", "Des cartes au trésor", "Des potions de bouclier", "Des jetons de ravitaillement"],
+    ["Quel est le nom du mode coopératif contre des créatures appelé husks ?", "Sauver le monde", "Battle Royale", "Zéro construction", "Fête royale"],
+    ["Comment s’appelle la monnaie virtuelle du jeu ?", "Les V-bucks", "Les Poképièces", "Les Robux", "Les couronnes"],
+    ["Quel véhicule aérien a souvent servi à déposer les joueurs au début d’une partie ?", "Le bus de combat", "Le bus scolaire", "Le dirigeable royal", "Le train express"],
+    ["Que désigne généralement une « skin » dans Fortnite ?", "L’apparence d’un personnage", "Une arme spéciale", "Un mode de jeu", "Une zone de la carte"],
+    ["Quel mode supprime la possibilité de construire pendant les combats ?", "Zéro construction", "Sauver le monde", "Créatif", "Recharge"],
+    ["Quel type de lieu contient souvent du butin sur la carte ?", "Un point d’intérêt", "Un atelier de pêche", "Un portail de raid", "Un circuit de course"],
+    ["Comment les joueurs peuvent-ils rejoindre une partie ensemble ?", "En formant un groupe", "En partageant un coffre", "En fusionnant leurs comptes", "En échangeant leurs cartes"]
+  ],
+  "Pokémon": [
+    ["Quel professeur remet généralement un premier Pokémon aux nouveaux dresseurs dans les jeux ?", "Le professeur Pokémon", "Le champion de la Ligue", "Le président du musée", "Le chef de la Team Rocket"],
+    ["Quel type est super efficace contre le type Eau ?", "Électrik", "Feu", "Roche", "Sol"],
+    ["En quel Pokémon Pikachu évolue-t-il avec une Pierre Foudre ?", "Raichu", "Pichu", "Élektek", "Voltali"],
+    ["Quel objet sert principalement à capturer des Pokémon ?", "Une Poké Ball", "Une Potion", "Un Vélo", "Un Bonbon Rare"],
+    ["Quel est le numéro national de Bulbizarre ?", "001", "004", "007", "025"],
+    ["Quel type possède Salamèche à son stade de base ?", "Feu", "Feu et Vol", "Dragon", "Feu et Combat"],
+    ["Quel Pokémon est connu comme le Pokémon légendaire créateur de l’univers dans les jeux ?", "Arceus", "Mewtwo", "Lugia", "Rayquaza"],
+    ["Quel type est immunisé contre les attaques de type Spectre dans les jeux principaux ?", "Normal", "Psy", "Combat", "Fée"],
+    ["Quel est le nom de l’organisation criminelle de Kanto dirigée par Giovanni ?", "La Team Rocket", "La Team Aqua", "La Team Plasma", "La Team Skull"],
+    ["Quel Pokémon évolue en Tortank ?", "Carabaffe", "Carapuce", "Écayon", "Lokhlass"]
+  ],
+  "The Witcher": [
+    ["Quel est le nom du sorceleur surnommé le Loup blanc ?", "Geralt de Riv", "Vesemir", "Eskel", "Lambert"],
+    ["Quel est le prénom de la barde amie de Geralt, appelée Jaskier en polonais ?", "Jaskier", "Dandelion", "Cahir", "Emhyr"],
+    ["Quel pouvoir magique est associé à Ciri ?", "Le voyage entre les mondes", "La maîtrise du feu draconique", "La guérison des vampires", "La transformation en loup"],
+    ["Quel est le nom de l’école de sorceleurs de Geralt ?", "L’école du Loup", "L’école du Chat", "L’école de la Vipère", "L’école du Griffon"],
+    ["Quel est le nom de la magicienne aimée de Geralt ?", "Yennefer de Vengerberg", "Triss Merigold", "Philippa Eilhart", "Keira Metz"],
+    ["Quel monstre se nourrit du sang et est souvent associé aux tombes ?", "Un vampire", "Un griffon", "Un doppler", "Un troll"],
+    ["Quel est le nom du cheval que Geralt appelle toujours ainsi, quel que soit son sexe ?", "Ablette", "Roach", "Kelpie", "Pégase"],
+    ["Dans quel royaume se trouve la capitale Novigrad ?", "Rédanie", "Nilfgaard", "Skellige", "Toussaint"],
+    ["Quel métal est traditionnellement utilisé contre de nombreux monstres ?", "L’argent", "Le cuivre", "L’étain", "Le plomb"],
+    ["Quel empereur règne sur Nilfgaard dans les jeux ?", "Emhyr var Emreis", "Foltest", "Radovid V", "Henselt"]
+  ],
+  "Halo": [
+    ["Quel est le matricule de Master Chief ?", "117", "007", "042", "214"],
+    ["Quel est le nom de l’intelligence artificielle qui accompagne Master Chief ?", "Cortana", "Anders", "Roland", "Serina"],
+    ["Quelle espèce extraterrestre forme une alliance appelée le Covenant ?", "Des espèces réunies sous une alliance religieuse", "Des humains augmentés", "Des machines Forerunners", "Des parasites Flood uniquement"],
+    ["Quel est le nom des anneaux géants au centre de la série ?", "Les Halos", "Les Arches", "Les Portails", "Les Sentinelles"],
+    ["Quel parasite cherche à infecter les êtres vivants ?", "Le Flood", "Le Covenant", "Les Brutes", "Les Kig-Yars"],
+    ["Quel type d’armure porte Master Chief ?", "Une armure MJOLNIR", "Une armure T-51", "Une armure N7", "Une armure ODST standard"],
+    ["Quel est le nom de l’espèce de Master Chief ?", "Humain", "Sangheili", "Jiralhanae", "Forerunner"],
+    ["Quel véhicule humain est un char d’assaut emblématique de Halo ?", "Le Scorpion", "Le Warthog", "Le Pélican", "Le Banshee"],
+    ["Quel est le nom de l’organisation militaire humaine dans Halo ?", "L’UNSC", "L’ONI uniquement", "Le Covenant", "L’Alliance rebelle"],
+    ["Quel personnage est le frère de l’Arbiter dans Halo 2 ?", "Rtas ‘Vadum", "Thel ‘Vadam", "Tartarus", "Regret"]
+  ],
+  "PlayStation": [
+    ["Quelle entreprise a créé la marque PlayStation ?", "Sony", "Nintendo", "Sega", "Microsoft"],
+    ["En quelle année la première PlayStation est-elle sortie au Japon ?", "1994", "1989", "1998", "2001"],
+    ["Quel support utilisait principalement la PlayStation originale pour ses jeux ?", "Le CD-ROM", "La cartouche", "Le disque Blu-ray", "La disquette"],
+    ["Quelle console PlayStation a introduit les jeux sur disques Blu-ray ?", "PlayStation 3", "PlayStation 2", "PlayStation Portable", "PlayStation Vita"],
+    ["Quel est le nom du service d’abonnement en ligne de PlayStation ?", "PlayStation Plus", "Xbox Live Gold", "Nintendo Switch Online", "Game Pass Core"],
+    ["Quelle console portable Sony est sortie avant la PlayStation Vita ?", "PlayStation Portable", "PocketStation 2", "Game Gear", "PlayStation Go"],
+    ["Quel symbole n’est pas l’un des quatre symboles des boutons de manette PlayStation ?", "Un hexagone", "Un cercle", "Un triangle", "Une croix"],
+    ["Quel studio est à l’origine de la série God of War ?", "Santa Monica Studio", "Naughty Dog", "Insomniac Games", "Media Molecule"],
+    ["Quel personnage est le protagoniste de la série Uncharted ?", "Nathan Drake", "Joel Miller", "Aloy", "Kratos"],
+    ["Quel est le nom de la manette qui a ajouté les sticks analogiques à la PlayStation originale ?", "Dual Analog Controller", "DualSense", "Sixaxis", "Move"]
+  ],
+  "Tetris": [
+    ["Qui a créé Tetris ?", "Alexeï Pajitnov", "Shigeru Miyamoto", "Hideo Kojima", "Sid Meier"],
+    ["Combien de carrés composent chacun des tétriminos classiques ?", "Quatre", "Trois", "Cinq", "Six"],
+    ["Que se passe-t-il lorsqu’une ligne horizontale est entièrement remplie ?", "Elle disparaît", "Elle se transforme en bloc indestructible", "Elle monte au sommet", "Elle change de couleur seulement"],
+    ["Quel tétrimino est formé de quatre carrés alignés ?", "Le I", "Le O", "Le T", "Le L"],
+    ["Quel est le nom courant du bloc carré de Tetris ?", "Le O", "Le S", "Le Z", "Le J"],
+    ["Dans quelle ville Alexeï Pajitnov a-t-il développé Tetris ?", "Moscou", "Kiev", "Varsovie", "Prague"],
+    ["Quel accessoire Nintendo a contribué au succès de Tetris sur console portable ?", "La Game Boy", "La Nintendo 64", "La Wii Remote", "Le Super Scope"],
+    ["Quel est l’objectif principal d’une partie classique ?", "Empiler les pièces sans atteindre le haut", "Capturer toutes les pièces adverses", "Relier des couleurs identiques en diagonale", "Faire tomber le plateau"],
+    ["Quel tétrimino a la forme d’un T ?", "Le T", "Le J", "Le Z", "Le I"],
+    ["Que signifie généralement un « Tetris » dans le jeu classique ?", "Effacer quatre lignes avec une pièce I", "Faire tomber quatre pièces à la suite", "Remplir les quatre coins du plateau", "Terminer quatre niveaux d’un coup"]
+  ],
+  "Call of Duty": [
+    ["Quel studio a développé le premier Call of Duty sorti en 2003 ?", "Infinity Ward", "Treyarch", "Sledgehammer Games", "Respawn Entertainment"],
+    ["Quel sous-titre porte l’épisode sorti en 2007 mettant en scène Captain Price et Soap ?", "Modern Warfare", "World at War", "Black Ops", "Ghosts"],
+    ["Comment s’appelle le mode où les joueurs affrontent des vagues de morts-vivants dans plusieurs épisodes ?", "Zombies", "Infecté", "Survie alien", "Horde antique"],
+    ["Quel personnage est connu sous le nom de Ghost dans Modern Warfare ?", "Simon Riley", "John Price", "Kyle Garrick", "Alex Mason"],
+    ["Quel conflit historique est au cœur de Call of Duty: World at War ?", "La Seconde Guerre mondiale", "La guerre de Corée", "La guerre du Vietnam uniquement", "La guerre de Cent Ans"],
+    ["Quel mode oppose généralement deux équipes de joueurs en ligne ?", "Multijoueur", "Campagne", "Entraînement", "Cinématique"],
+    ["Quel personnage est un protagoniste de la série Black Ops ?", "Alex Mason", "Arthur Morgan", "Nathan Drake", "Marcus Fenix"],
+    ["Quel est le nom du mode de combat en grande carte introduit par Warzone ?", "Battle Royale", "Capture du drapeau", "Domination navale", "Course de relais"],
+    ["Quel véhicule aérien est fréquemment utilisé dans les campagnes de la série ?", "L’hélicoptère", "Le dirigeable à vapeur", "Le planeur de course", "La montgolfière"],
+    ["Quel est le nom de l’unité spéciale de Price dans Modern Warfare ?", "La Task Force 141", "La Delta Force 9", "L’Escouade Spectre", "Le Groupe X-Ray"]
+  ],
+  "Pac-Man": [
+    ["Quel personnage jaune est le héros du jeu Pac-Man ?", "Pac-Man", "Blinky", "Inky", "Pinky"],
+    ["Quel est l’objectif principal du labyrinthe classique de Pac-Man ?", "Manger toutes les pac-gommes", "Éliminer les fantômes définitivement", "Trouver une clé", "Construire un chemin"],
+    ["Combien de fantômes poursuivent Pac-Man dans le jeu d’arcade original ?", "Quatre", "Trois", "Cinq", "Six"],
+    ["Quel fantôme rouge est généralement le plus direct dans sa poursuite ?", "Blinky", "Pinky", "Inky", "Clyde"],
+    ["Que permet une super pac-gomme ?", "De manger temporairement les fantômes", "De traverser les murs", "De terminer le niveau immédiatement", "De doubler le labyrinthe"],
+    ["Quel est le nom japonais original de Pac-Man ?", "Puck Man", "Pac Boy", "Paku Hero", "Munch Man"],
+    ["Qui a conçu Pac-Man chez Namco ?", "Toru Iwatani", "Shigeru Miyamoto", "Gunpei Yokoi", "Yu Suzuki"],
+    ["Quel fruit peut apparaître comme bonus dans le labyrinthe ?", "Une cerise", "Une pomme de pin", "Un citron vert", "Une poire d’hiver"],
+    ["Quelle couleur est souvent associée au fantôme Pinky ?", "Rose", "Orange", "Bleue", "Verte"],
+    ["Quel est le nom de la compagne de Pac-Man ?", "Ms. Pac-Man", "Lady Pac", "Pinky Pac", "Pac-Girl"]
+  ],
+  "Assassin's Creed": [
+    ["Quel est le nom de la machine qui permet de revivre les souvenirs d’ancêtres ?", "L’Animus", "Le Nexus", "L’Oculus", "Le Helix"],
+    ["Quel personnage est le protagoniste du premier Assassin’s Creed ?", "Altaïr Ibn-La’Ahad", "Ezio Auditore", "Bayek de Siwa", "Edward Kenway"],
+    ["Quelle organisation s’oppose généralement aux Assassins ?", "Les Templiers", "Les Assurés", "Les Hospitaliers uniquement", "Les Assyriens"],
+    ["Dans quelle ville se déroule une grande partie d’Assassin’s Creed II ?", "Florence", "Paris", "Londres", "Athènes"],
+    ["Quel Assassin est le héros de la trilogie se déroulant à la Renaissance italienne ?", "Ezio Auditore", "Connor Kenway", "Arno Dorian", "Jacob Frye"],
+    ["Quel est le nom du navire commandé par Edward Kenway dans Black Flag ?", "Le Jackdaw", "Le Morrigan", "L’Aquila", "Le Mayflower"],
+    ["Dans quelle civilisation ancienne se déroule Assassin’s Creed Origins ?", "L’Égypte ptolémaïque", "La Grèce classique", "La Rome impériale", "La Perse achéménide"],
+    ["Quel personnage est le héros d’Assassin’s Creed Odyssey ?", "Kassandra ou Alexios", "Eivor", "Bayek", "Shay Cormac"],
+    ["Quel insigne est associé aux Assassins ?", "La lame secrète", "Le marteau de guerre", "Le bouclier rond", "La couronne à trois pointes"],
+    ["Dans quelle ville se déroule principalement Assassin’s Creed Unity ?", "Paris", "Venise", "Constantinople", "Damas"]
+  ]
+});
+Object.assign(window.DEFI_TOPIC_BANKS[3], {
+  "France": [
+    ["Quelle est la capitale de la France ?", "Paris", "Lyon", "Marseille", "Bordeaux"],
+    ["Quel fleuve traverse Paris ?", "La Seine", "La Loire", "Le Rhône", "La Garonne"],
+    ["Quel est le plus haut sommet des Alpes françaises ?", "Le mont Blanc", "Le mont Ventoux", "Le puy de Sancy", "La Meije"],
+    ["Quel jour est la fête nationale française ?", "Le 14 juillet", "Le 1er mai", "Le 11 novembre", "Le 8 mai"],
+    ["Quelle mer borde le sud-est de la France métropolitaine ?", "La mer Méditerranée", "La mer du Nord", "La mer Baltique", "La mer Noire"],
+    ["Quelle région française a pour capitale Rennes ?", "La Bretagne", "La Normandie", "Les Pays de la Loire", "Le Centre-Val de Loire"],
+    ["Quel est le nom de la monnaie utilisée en France ?", "L’euro", "Le franc suisse", "La livre sterling", "Le dollar"],
+    ["Quel monument parisien a été construit pour l’Exposition universelle de 1889 ?", "La tour Eiffel", "L’Arc de triomphe", "Le Panthéon", "La basilique du Sacré-Cœur"],
+    ["Quel est le plus long fleuve entièrement situé en France ?", "La Loire", "La Seine", "Le Rhin", "Le Rhône"],
+    ["Quel est le nom de la devise de la République française ?", "Liberté, Égalité, Fraternité", "Unité, Force, Progrès", "Paix, Justice, Travail", "Honneur, Patrie, Courage"]
+  ],
+  "Révolution française": [
+    ["En quelle année la Révolution française commence-t-elle traditionnellement ?", "1789", "1776", "1792", "1804"],
+    ["Quel événement du 14 juillet 1789 est devenu un symbole de la Révolution ?", "La prise de la Bastille", "La fuite à Varennes", "Le Serment du Jeu de paume", "La prise des Tuileries"],
+    ["Quel roi régnait au début de la Révolution française ?", "Louis XVI", "Louis XIV", "Louis XVIII", "Charles X"],
+    ["Quel texte proclame les libertés et l’égalité des citoyens en août 1789 ?", "La Déclaration des droits de l’homme et du citoyen", "Le Code civil", "La Constitution de l’an III", "L’édit de Nantes"],
+    ["Quel régime est proclamé en France en septembre 1792 ?", "La Première République", "Le Premier Empire", "La monarchie de Juillet", "Le Consulat"],
+    ["Quelle reine de France est exécutée en 1793 ?", "Marie-Antoinette", "Madame de Pompadour", "Joséphine de Beauharnais", "Anne d’Autriche"],
+    ["Quel groupe politique est associé à Maximilien Robespierre ?", "Les Jacobins", "Les Girondins", "Les Feuillants", "Les monarchiens"],
+    ["Quel événement de 1794 met fin au pouvoir de Robespierre ?", "La réaction thermidorienne", "Le coup d’État du 18 Brumaire", "La fuite à Varennes", "Le traité de Campo-Formio"],
+    ["Quel instrument fut utilisé pour les exécutions durant la Révolution ?", "La guillotine", "Le garrot", "La roue", "La potence à bascule"],
+    ["Quel coup d’État de 1799 porte Bonaparte au pouvoir ?", "Le 18 Brumaire", "Le 9 Thermidor", "Le 10 Août", "Le 20 Juin"]
+  ],
+  "Napoléon": [
+    ["En quelle année Napoléon Bonaparte devient-il empereur des Français ?", "1804", "1799", "1812", "1815"],
+    ["Quelle bataille navale de 1805 se termine par une victoire britannique contre Napoléon ?", "Trafalgar", "Austerlitz", "Iéna", "Wagram"],
+    ["Quel code juridique est promulgué en 1804 sous Napoléon ?", "Le Code civil", "Le Code pénal de 1791", "Le Code de commerce de 1867", "Le Code forestier de 1827"],
+    ["Sur quelle île Napoléon est-il exilé après sa première abdication ?", "L’île d’Elbe", "Sainte-Hélène", "La Corse", "Malte"],
+    ["Quelle bataille marque sa défaite finale en 1815 ?", "Waterloo", "Marengo", "Austerlitz", "Friedland"],
+    ["Quel pays Napoléon envahit-il en 1812 avec la Grande Armée ?", "La Russie", "L’Espagne", "L’Égypte", "Le Portugal"],
+    ["Où Napoléon est-il exilé après les Cent-Jours ?", "À Sainte-Hélène", "Sur l’île d’Elbe", "À Corfou", "En Corse"],
+    ["Quel accord de 1801 rétablit la paix religieuse entre la France et le pape ?", "Le Concordat", "Le traité de Tilsit", "Le concordat de Bologne", "Le traité de Vienne"],
+    ["Dans quelle cathédrale Napoléon se couronne-t-il empereur ?", "Notre-Dame de Paris", "La cathédrale de Reims", "La basilique de Saint-Denis", "La cathédrale de Chartres"],
+    ["Quel est le nom de la période de retour au pouvoir de Napoléon en 1815 ?", "Les Cent-Jours", "Le Directoire", "La Terreur", "La Restauration"]
+  ],
+  "Égypte ancienne": [
+    ["Quel fleuve est à l’origine de la fertilité de l’Égypte ancienne ?", "Le Nil", "Le Tigre", "L’Euphrate", "Le Jourdain"],
+    ["Quel titre portaient les souverains de l’Égypte ancienne ?", "Pharaon", "Consul", "Satrape", "Archonte"],
+    ["Quelle écriture monumentale utilisait des signes figuratifs ?", "Les hiéroglyphes", "Le cunéiforme", "L’alphabet phénicien", "Le linéaire B"],
+    ["Quel monument funéraire célèbre se trouve à Gizeh ?", "La grande pyramide de Khéops", "Le Colisée", "Le temple de Karnak", "Le phare d’Alexandrie"],
+    ["Quel dieu égyptien est souvent représenté avec une tête de chacal ?", "Anubis", "Horus", "Thot", "Ptah"],
+    ["Quelle reine fut l’épouse d’Akhenaton et la mère de Toutânkhamon selon la plupart des spécialistes ?", "Néfertiti", "Cléopâtre VII", "Hatchepsout", "Néfertari"],
+    ["À quoi servait principalement la momification ?", "À préserver le corps pour l’au-delà", "À soigner les blessures de guerre", "À identifier les scribes", "À préparer les récoltes"],
+    ["Quel pharaon est célèbre pour son tombeau découvert presque intact en 1922 ?", "Toutânkhamon", "Ramsès II", "Khéops", "Amenhotep III"],
+    ["Quelle pierre permit de déchiffrer les hiéroglyphes grâce à un texte en plusieurs écritures ?", "La pierre de Rosette", "La stèle de Mérenptah", "L’obélisque de Louxor", "La palette de Narmer"],
+    ["Quel dieu à tête de faucon est associé au ciel et à la royauté ?", "Horus", "Anubis", "Seth", "Osiris"]
+  ],
+  "Rome antique": [
+    ["Selon la tradition, en quelle année Rome aurait-elle été fondée ?", "753 av. J.-C.", "509 av. J.-C.", "44 av. J.-C.", "27 av. J.-C."],
+    ["Quel était le nom de la place publique centrale de Rome ?", "Le Forum romain", "L’Agora", "Le Champ de Mars grec", "Le Panathénaïque"],
+    ["Quel général romain est assassiné aux ides de mars en 44 av. J.-C. ?", "Jules César", "Cicéron", "Pompée", "Marc Antoine"],
+    ["Quel empereur est le premier à régner après la fin de la République romaine ?", "Auguste", "Néron", "Trajan", "Dioclétien"],
+    ["Quel amphithéâtre romain accueillait des combats de gladiateurs ?", "Le Colisée", "Le Panthéon", "Le Circus Maximus", "Les thermes de Caracalla"],
+    ["Quelle langue était la langue officielle de l’administration romaine en Occident ?", "Le latin", "Le grec ancien", "L’étrusque", "Le phénicien"],
+    ["Quel empereur fit construire une grande muraille dans le nord de la Bretagne romaine ?", "Hadrien", "Claude", "Titus", "Caligula"],
+    ["Quel volcan détruisit Pompéi en 79 apr. J.-C. ?", "Le Vésuve", "L’Etna", "Le Stromboli", "Le mont Olympe"],
+    ["Quel système d’adduction transportait l’eau vers les villes romaines ?", "L’aqueduc", "Le qanat perse", "La citerne grecque", "Le barrage flottant"],
+    ["Quel empereur légalisa le christianisme dans l’Empire par l’édit de Milan en 313 ?", "Constantin", "Théodose Ier", "Néron", "Marc Aurèle"]
+  ],
+  "Géographie et capitales": [
+    ["Quelle est la capitale de l’Australie ?", "Canberra", "Sydney", "Melbourne", "Perth"],
+    ["Quelle est la capitale du Japon ?", "Tokyo", "Kyoto", "Osaka", "Nagoya"],
+    ["Quelle est la capitale du Canada ?", "Ottawa", "Toronto", "Montréal", "Vancouver"],
+    ["Quelle est la capitale du Brésil ?", "Brasília", "Rio de Janeiro", "São Paulo", "Salvador"],
+    ["Quelle est la capitale de l’Égypte ?", "Le Caire", "Alexandrie", "Louxor", "Gizeh"],
+    ["Quelle est la capitale de la Norvège ?", "Oslo", "Bergen", "Stockholm", "Helsinki"],
+    ["Quelle est la capitale du Maroc ?", "Rabat", "Casablanca", "Marrakech", "Fès"],
+    ["Quelle est la capitale de la Nouvelle-Zélande ?", "Wellington", "Auckland", "Christchurch", "Dunedin"],
+    ["Quelle est la capitale de la Turquie ?", "Ankara", "Istanbul", "Izmir", "Antalya"],
+    ["Quelle est la capitale de l’Argentine ?", "Buenos Aires", "Córdoba", "Mendoza", "Rosario"]
+  ],
+  "Première Guerre mondiale": [
+    ["En quelle année la Première Guerre mondiale commence-t-elle ?", "1914", "1912", "1916", "1918"],
+    ["Quel événement déclenche la crise de juillet 1914 ?", "L’assassinat de l’archiduc François-Ferdinand", "L’invasion de la Belgique", "La bataille de la Marne", "La révolution russe"],
+    ["Quel traité met officiellement fin à la guerre entre l’Allemagne et les Alliés en 1919 ?", "Le traité de Versailles", "Le traité de Brest-Litovsk", "Le traité de Trianon", "Le traité de Sèvres"],
+    ["Quel jour l’armistice entre en vigueur en 1918 ?", "Le 11 novembre", "Le 8 mai", "Le 14 juillet", "Le 1er septembre"],
+    ["Quel type de guerre caractérise largement le front occidental ?", "La guerre de tranchées", "La guerre de course navale", "La guerre de guérilla urbaine", "La guerre de mouvement permanente"],
+    ["Quelle bataille de 1916 est l’une des plus longues et meurtrières du conflit ?", "La bataille de Verdun", "La bataille de Waterloo", "La bataille de Tannenberg", "La bataille de Hastings"],
+    ["Quel pays entre en guerre aux côtés des Alliés en 1917 ?", "Les États-Unis", "La Suède", "L’Espagne", "La Suisse"],
+    ["Quel empire disparaît à la fin de la guerre et de la révolution russe ?", "L’Empire russe", "L’Empire britannique", "L’Empire japonais", "L’Empire portugais"],
+    ["Quel véhicule blindé apparaît sur le champ de bataille durant le conflit ?", "Le char d’assaut", "Le sous-marin nucléaire", "L’hélicoptère de combat", "Le missile balistique"],
+    ["Quelle organisation internationale est fondée après la guerre pour favoriser la paix ?", "La Société des Nations", "L’Organisation des Nations unies", "L’Union européenne", "L’OTAN"]
+  ],
+  "Seconde Guerre mondiale": [
+    ["En quelle année la Seconde Guerre mondiale commence-t-elle en Europe ?", "1939", "1936", "1941", "1945"],
+    ["Quel événement marque l’entrée en guerre des États-Unis en décembre 1941 ?", "L’attaque de Pearl Harbor", "Le débarquement de Normandie", "La bataille de Midway", "La conférence de Yalta"],
+    ["Quel jour les forces alliées débarquent-elles en Normandie en 1944 ?", "Le 6 juin", "Le 8 mai", "Le 11 novembre", "Le 1er septembre"],
+    ["Quel nom désigne le génocide des Juifs perpétré par les nazis ?", "La Shoah", "La Terreur", "La Nakba", "La Grande Famine"],
+    ["Quelle ville japonaise est la première cible d’une bombe atomique en août 1945 ?", "Hiroshima", "Nagasaki", "Tokyo", "Osaka"],
+    ["Quel pays l’Allemagne nazie envahit-elle le 1er septembre 1939 ?", "La Pologne", "La Belgique", "La Norvège", "La Grèce"],
+    ["Quel chef d’État britannique dirige le Royaume-Uni pendant une grande partie de la guerre ?", "Winston Churchill", "Neville Chamberlain", "Clement Attlee", "Anthony Eden"],
+    ["Quel nom porte l’invasion allemande de l’Union soviétique en 1941 ?", "Opération Barbarossa", "Opération Overlord", "Opération Torch", "Opération Market Garden"],
+    ["Quelle bataille de 1942-1943 constitue un tournant sur le front de l’Est ?", "La bataille de Stalingrad", "La bataille de Waterloo", "La bataille de Verdun", "La bataille de Gallipoli"],
+    ["Quel organisme international est créé en 1945 pour favoriser la coopération entre États ?", "L’Organisation des Nations unies", "La Société des Nations", "L’Union africaine", "Le Conseil de l’Europe"]
+  ],
+  "Europe": [
+    ["Quel fleuve traverse Budapest ?", "Le Danube", "Le Rhin", "La Seine", "L’Elbe"],
+    ["Quel pays européen a pour capitale Lisbonne ?", "Le Portugal", "L’Espagne", "La Grèce", "La Croatie"],
+    ["Quelle chaîne de montagnes forme une frontière naturelle entre la France et l’Espagne ?", "Les Pyrénées", "Les Alpes", "Les Carpates", "Les Apennins"],
+    ["Quelle est la plus grande île de la Méditerranée ?", "La Sicile", "La Sardaigne", "Chypre", "La Crète"],
+    ["Quel pays est surnommé le pays des mille lacs ?", "La Finlande", "L’Irlande", "La Belgique", "La Hongrie"],
+    ["Quelle mer se trouve entre la Suède et les pays baltes ?", "La mer Baltique", "La mer Adriatique", "La mer Égée", "La mer de Norvège"],
+    ["Quelle est la capitale de la Pologne ?", "Varsovie", "Cracovie", "Gdańsk", "Łódź"],
+    ["Quel pays européen est entièrement entouré par l’Italie ?", "Saint-Marin", "Monaco", "Andorre", "Liechtenstein"],
+    ["Quel détroit sépare l’Espagne du Maroc ?", "Le détroit de Gibraltar", "Le détroit du Bosphore", "Le détroit de Messine", "Le détroit de Douvres"],
+    ["Quelle est la capitale de l’Islande ?", "Reykjavik", "Oslo", "Tórshavn", "Nuuk"]
+  ],
+  "Amériques": [
+    ["Quel est le plus grand pays d’Amérique du Sud par sa superficie ?", "Le Brésil", "L’Argentine", "Le Pérou", "La Colombie"],
+    ["Quel canal relie l’océan Atlantique à l’océan Pacifique à travers l’Amérique centrale ?", "Le canal de Panama", "Le canal de Suez", "Le canal de Beagle", "Le canal du Nicaragua"],
+    ["Quelle chaîne de montagnes longe l’ouest de l’Amérique du Sud ?", "Les Andes", "Les Rocheuses", "Les Appalaches", "La Sierra Madre orientale"],
+    ["Quel est le plus grand lac d’Amérique du Nord par superficie ?", "Le lac Supérieur", "Le lac Michigan", "Le lac Ontario", "Le Grand Lac Salé"],
+    ["Quel pays d’Amérique du Sud a pour capitale Lima ?", "Le Pérou", "Le Chili", "L’Équateur", "La Bolivie"],
+    ["Quel fleuve traverse le Grand Canyon ?", "Le Colorado", "Le Mississippi", "Le Missouri", "Le Rio Grande"],
+    ["Quelle est la capitale du Mexique ?", "Mexico", "Guadalajara", "Monterrey", "Puebla"],
+    ["Quel pays partage une longue frontière terrestre avec les États-Unis au nord ?", "Le Canada", "Le Mexique", "Le Guatemala", "Cuba"],
+    ["Quel est le nom de l’archipel situé au large de l’Équateur et célèbre pour sa faune endémique ?", "Les îles Galápagos", "Les Antilles", "Les îles Falkland", "Les Bermudes"],
+    ["Quel est le point culminant des Amériques ?", "L’Aconcagua", "Le Denali", "Le mont Logan", "Le Chimborazo"]
+  ],
+  "Asie": [
+    ["Quel est le plus vaste pays d’Asie par sa superficie ?", "La Russie", "La Chine", "L’Inde", "L’Arabie saoudite"],
+    ["Quelle est la capitale de la Thaïlande ?", "Bangkok", "Hanoï", "Phnom Penh", "Kuala Lumpur"],
+    ["Quel désert s’étend entre la Mongolie et la Chine ?", "Le désert de Gobi", "Le désert du Thar", "Le désert d’Arabie", "Le désert du Karakoum"],
+    ["Quel est le plus haut sommet du monde, situé dans l’Himalaya ?", "L’Everest", "Le K2", "Le Kangchenjunga", "Le Lhotse"],
+    ["Quel pays insulaire d’Asie a pour capitale Tokyo ?", "Le Japon", "Les Philippines", "L’Indonésie", "Sri Lanka"],
+    ["Quel fleuve traverse l’Irak et rejoint le Chatt-el-Arab avec l’Euphrate ?", "Le Tigre", "L’Indus", "Le Mékong", "Le Yangzi Jiang"],
+    ["Quelle est la capitale de la Corée du Sud ?", "Séoul", "Pyongyang", "Busan", "Incheon"],
+    ["Quel pays abrite la ville de Samarcande ?", "L’Ouzbékistan", "Le Kazakhstan", "Le Tadjikistan", "Le Kirghizistan"],
+    ["Quelle mer borde la côte sud de l’Iran ?", "Le golfe Persique", "La mer Caspienne", "La mer d’Aral", "La mer Noire"],
+    ["Quel est le nom du grand fleuve qui traverse le sud de la Chine et se jette en mer de Chine orientale ?", "Le Yangzi Jiang", "Le Mékong", "Le fleuve Jaune", "Le Brahmapoutre"]
+  ],
+  "Fleuves et océans": [
+    ["Quel est le plus long fleuve d’Amérique du Sud ?", "L’Amazone", "Le Paraná", "L’Orénoque", "Le São Francisco"],
+    ["Quel océan est le plus vaste ?", "L’océan Pacifique", "L’océan Atlantique", "L’océan Indien", "L’océan Arctique"],
+    ["Quel fleuve traverse Londres ?", "La Tamise", "La Seine", "Le Rhin", "La Loire"],
+    ["Dans quelle mer le Nil se jette-t-il ?", "La mer Méditerranée", "La mer Rouge", "La mer Noire", "La mer d’Arabie"],
+    ["Quel fleuve traverse Le Caire ?", "Le Nil", "Le Jourdain", "Le Tigre", "L’Euphrate"],
+    ["Quel océan borde la côte ouest de l’Afrique ?", "L’océan Atlantique", "L’océan Indien", "L’océan Pacifique", "L’océan Austral"],
+    ["Quel fleuve traverse Paris avant de se jeter dans la Manche ?", "La Seine", "La Garonne", "Le Rhône", "Le Rhin"],
+    ["Quel détroit relie la mer Méditerranée à l’océan Atlantique ?", "Le détroit de Gibraltar", "Le détroit de Béring", "Le détroit d’Ormuz", "Le détroit de Malacca"],
+    ["Quel fleuve traverse plusieurs capitales d’Europe centrale, dont Vienne et Budapest ?", "Le Danube", "Le Pô", "Le Tage", "Le Dniepr"],
+    ["Quel océan entoure l’Antarctique ?", "L’océan Austral", "L’océan Arctique", "L’océan Indien", "L’océan Atlantique Nord"]
+  ]
+});
