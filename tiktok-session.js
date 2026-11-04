@@ -283,16 +283,18 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     connection.on('like', message => {
         const likeCount = Math.floor(Number(message.likeCount) || 0);
         if (likeCount < 1) return;
+        const identity = getTikTokIdentity(message.user);
         send({
             type: 'like',
             likeData: {
-                username: message.user?.uniqueId || message.user?.nickname || '',
-                nickname: message.user?.nickname || '',
+                userId: identity.userId,
+                username: identity.uniqueId || identity.username,
+                uniqueId: identity.uniqueId || identity.username,
+                nickname: identity.nickname,
                 likeCount
             }
         });
 
-        const identity = getTikTokIdentity(message.user);
         const viewerKey = String(identity.userId || identity.uniqueId || identity.username).toLocaleLowerCase();
         const lastLookup = avatarLookupTimes.get(viewerKey) || 0;
         if (!viewerKey || Date.now() - lastLookup < 60000) return;
