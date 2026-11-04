@@ -99,8 +99,9 @@
     .agency-card {
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: 10px 15px;
+      gap: 13px;
+      min-width: 220px;
+      padding: 13px 20px;
       border: 1px solid rgba(255, 234, 176, .7);
       border-radius: 15px;
       background: linear-gradient(135deg, #fff0b5, #f8c65f 60%, #e8a649);
@@ -110,19 +111,19 @@
 
     .agency-mark {
       display: grid;
-      width: 38px;
-      height: 38px;
+      width: 52px;
+      height: 52px;
       flex: 0 0 auto;
       place-items: center;
       border: 2px solid rgba(75, 108, 57, .5);
       border-radius: 50%;
       background: #fff8dc;
-      font-size: 22px;
+      font-size: 30px;
     }
 
     .agency-name { display: grid; gap: 2px; line-height: 1; }
-    .agency-name strong { font-size: 11px; letter-spacing: .1em; }
-    .agency-name span { color: #6b542d; font-size: 9px; font-weight: 900; letter-spacing: .19em; }
+    .agency-name strong { font-size: 16px; letter-spacing: .1em; }
+    .agency-name span { color: #6b542d; font-size: 12px; font-weight: 900; letter-spacing: .19em; }
 
     .turn-card img, .turn-fallback {
       width: 42px;
@@ -292,8 +293,9 @@
 
     .coordinate-help {
       margin: 8px 0 0;
-      color: #e7c89d;
+      color: #17120b;
       font-size: 11px;
+      font-weight: 800;
       text-align: center;
     }
 
@@ -477,10 +479,10 @@
       .brand { flex: 1 0 100%; padding: 9px; gap: 7px; }
       .brand-mark { font-size: 22px; }
       .subtitle { max-width: 210px; font-size: 10px; }
-      .agency-card { gap: 6px; padding: 7px 9px; }
-      .agency-mark { width: 32px; height: 32px; font-size: 18px; }
-      .agency-name strong { font-size: 9px; }
-      .agency-name span { font-size: 8px; }
+      .agency-card { min-width: 0; gap: 7px; padding: 8px 11px; }
+      .agency-mark { width: 38px; height: 38px; font-size: 21px; }
+      .agency-name strong { font-size: 11px; }
+      .agency-name span { font-size: 9px; }
       .turn-card { min-width: 0; flex: 1 1 auto; padding: 7px; gap: 6px; }
       .turn-card img, .turn-fallback { width: 34px; height: 34px; }
       #turn-name { max-width: 95px; font-size: 12px; }
@@ -619,6 +621,7 @@
     let board = createEmptyBoard();
     let gameOver = false;
     let liveSocket = null;
+    let confettiAnimationFrame = 0;
     let pendingCommands = new Map();
     const seenGiftIds = new Set();
 
@@ -1134,10 +1137,16 @@
     function simulateConfetti() {
       const canvas = document.getElementById('confetti');
       const context = canvas.getContext('2d');
+      if (confettiAnimationFrame) cancelAnimationFrame(confettiAnimationFrame);
+      confettiAnimationFrame = 0;
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = window.innerWidth * ratio;
       canvas.height = window.innerHeight * ratio;
-      context.scale(ratio, ratio);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
       const colors = ['#ffd166', '#f28c45', '#d8674f', '#91c788', '#fff0bd'];
       const pieces = Array.from({ length: 130 }, () => ({
         x: window.innerWidth * (.25 + Math.random() * .5),
@@ -1148,9 +1157,21 @@
         color: colors[Math.floor(Math.random() * colors.length)],
         spin: Math.random() * 6
       }));
-      let frame = 0;
-      function draw() {
+      const duration = 2400;
+      function clearConfetti() {
+        if (confettiAnimationFrame) cancelAnimationFrame(confettiAnimationFrame);
+        context.setTransform(1, 0, 0, 1, 0, 0);
         context.clearRect(0, 0, canvas.width, canvas.height);
+        confettiAnimationFrame = 0;
+      }
+      function draw(timestamp) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (timestamp - startTime >= duration) {
+          clearConfetti();
+          return;
+        }
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
         for (const piece of pieces) {
           piece.x += piece.vx;
           piece.y += piece.vy;
@@ -1163,11 +1184,10 @@
           context.fillRect(-piece.size / 2, -piece.size / 2, piece.size, piece.size * .65);
           context.restore();
         }
-        frame++;
-        if (frame < 120) requestAnimationFrame(draw);
-        else context.clearRect(0, 0, canvas.width, canvas.height);
+        confettiAnimationFrame = requestAnimationFrame(draw);
       }
-      requestAnimationFrame(draw);
+      let startTime = performance.now();
+      confettiAnimationFrame = requestAnimationFrame(draw);
     }
 
     function resizeAmbience() {
