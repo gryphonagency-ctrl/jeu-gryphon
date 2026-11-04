@@ -132,6 +132,7 @@ const protectedRoutes = new Set([
     '/showdown-tiktok.html',
     '/super-mario-live.html',
     '/bingo-gryphon.html',
+    '/puissance-4-tiktok.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -216,6 +217,7 @@ const staticGameIds = [
     '/dessiner-cest-gagne.html',
     '/super-mario-live.html',
     '/bingo-gryphon.html',
+    '/puissance-4-tiktok.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -288,6 +290,7 @@ store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
+store.grantGameAccessToExistingCreators('/puissance-4-tiktok.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
@@ -298,6 +301,7 @@ const staticGameTitles = {
     '/dessiner-cest-gagne.html': 'Dessiner, c’est gagné !',
     '/super-mario-live.html': 'Mario',
     '/bingo-gryphon.html': 'Bingo Gryphon',
+    '/puissance-4-tiktok.html': 'Puissance 4 · TikTok Live',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
@@ -347,6 +351,7 @@ const gameRouteIds = new Map([
     ['/dessiner-cest-gagne.html', '/dessiner-cest-gagne.html'],
     ['/super-mario-live.html', '/super-mario-live.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
+    ['/puissance-4-tiktok.html', '/puissance-4-tiktok.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
     ['/arene-combattants.html', '/arene-combattants.html'],
@@ -2615,6 +2620,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/super-mario-live.png', [path.join(__dirname, 'images-vitrine', 'super-mario-live.png'), 'image/png']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
         ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
+        ['/puissance-4-tiktok.html', [path.join(__dirname, 'puissance-4-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/puissance-4-apercu.svg', [path.join(__dirname, 'images-vitrine', 'puissance-4-apercu.svg'), 'image/svg+xml']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
         ['/images-vitrine/bingo-gryphon.png', [path.join(__dirname, 'images-vitrine', 'bingo-gryphon.png'), 'image/png']],
         ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
