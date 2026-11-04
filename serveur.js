@@ -100,6 +100,11 @@ const marbleRaceGameFile = path.join(__dirname, 'course-de-billes.html');
 const duckFishingGameFile = path.join(__dirname, 'peche-aux-canards.html');
 const circusWheelGameFile = path.join(__dirname, 'roue-du-cirque.html');
 const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.html');
+const mayaIslandDirectory = path.join(__dirname, 'maya-island');
+const mayaIslandFile = path.join(mayaIslandDirectory, 'index.html');
+const mayaIslandScriptFile = path.join(mayaIslandDirectory, 'assets', 'index-D2suOsh3.js');
+const mayaIslandStylesheetFile = path.join(mayaIslandDirectory, 'assets', 'index-B0kkXLGt.css');
+const mayaIslandMapFile = path.join(mayaIslandDirectory, 'images', 'maya-island-clean.jpg');
 const aquariumFishBossImage = path.join(__dirname, 'aquarium-fish-boss.png');
 const sixBoxesScript = path.join(__dirname, 'gemini-code-1792321382503.js');
 const gryphonPlinkoFile = path.join(__dirname, 'index.html');
@@ -159,6 +164,7 @@ const protectedRoutes = new Set([
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
     '/bataille-des-planetes.html',
+    '/maya-island.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
@@ -240,6 +246,7 @@ const staticGameIds = [
     '/petits-chevaux-tiktok.html',
     '/wish-lab.html',
     '/bataille-des-planetes.html',
+    '/maya-island.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
@@ -280,6 +287,7 @@ store.grantGameAccessToExistingCreators('/clowns-tomates.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
 store.grantGameAccessToExistingCreators('/ile-au-tresor.html');
 store.grantGameAccessToExistingCreators('/course-karts.html');
+store.grantGameAccessToExistingCreators('/maya-island.html');
 store.grantGameAccessToExistingCreators('/bouteilles-colorees.html');
 store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
@@ -321,6 +329,7 @@ const staticGameTitles = {
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/wish-lab.html': 'Wish Lab',
     '/bataille-des-planetes.html': 'Bataille des planètes',
+    '/maya-island.html': 'Maya Island',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
@@ -371,6 +380,7 @@ const gameRouteIds = new Map([
     ['/defi-des-questions.html', '/defi-des-questions.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
+    ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
@@ -2668,6 +2678,10 @@ const server = http.createServer((req, res) => {
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
+        ['/maya-island.html', [mayaIslandFile, 'text/html; charset=utf-8']],
+        ['/maya-island/assets/index-D2suOsh3.js', [mayaIslandScriptFile, 'text/javascript; charset=utf-8']],
+        ['/maya-island/assets/index-B0kkXLGt.css', [mayaIslandStylesheetFile, 'text/css; charset=utf-8']],
+        ['/maya-island/images/maya-island-clean.jpg', [mayaIslandMapFile, 'image/jpeg']],
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
@@ -3012,6 +3026,7 @@ let centralTikTokConnected = false;
 function getMessageProfile(messageData) {
     if (messageData.type === 'gift') return messageData.gift || {};
     if (messageData.type === 'comment') return messageData.commentData || {};
+    if (messageData.type === 'like') return messageData.likeData || {};
     if (messageData.type === 'viewer') return messageData.viewer || {};
     return null;
 }
