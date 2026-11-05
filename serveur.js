@@ -2811,6 +2811,8 @@ const server = http.createServer((req, res) => {
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
+        ['/bataille-planetes-centre-frames.webp', [path.join(__dirname, 'bataille-planetes-centre-frames.webp'), 'image/webp']],
+        ['/bataille-planetes-blanche-frames.webp', [path.join(__dirname, 'bataille-planetes-blanche-frames.webp'), 'image/webp']],
         ['/maya-island.html', [mayaIslandFile, 'text/html; charset=utf-8']],
         ['/maya-island/assets/index-D2suOsh3.js', [mayaIslandScriptFile, 'text/javascript; charset=utf-8']],
         ['/maya-island/assets/index-B0kkXLGt.css', [mayaIslandStylesheetFile, 'text/css; charset=utf-8']],
