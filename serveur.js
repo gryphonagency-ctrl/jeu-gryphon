@@ -2748,6 +2748,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
+        ['/images-vitrine/machine-cadeaux-circulaire.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux-circulaire.png'), 'image/png']],
         ['/images-vitrine/machine-a-pinces.png', [path.join(__dirname, 'images-vitrine', 'machine-a-pinces.png'), 'image/png']],
         ['/images-vitrine/memoire-du-cirque.png', [path.join(__dirname, 'images-vitrine', 'memoire-du-cirque.png'), 'image/png']],
         ['/images-vitrine/lancer-de-cerceaux.png', [path.join(__dirname, 'images-vitrine', 'lancer-de-cerceaux.png'), 'image/png']],
