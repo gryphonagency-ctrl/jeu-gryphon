@@ -251,6 +251,7 @@ const staticGameIds = [
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
     '/machine-cadeaux.html',
+    '/machina-cadeau-circulaire.html',
     '/mots-associes.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
@@ -276,6 +277,7 @@ store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
+store.grantGameAccessToExistingCreators('/machina-cadeau-circulaire.html');
 store.grantGameAccessToExistingCreators('/machine-a-pinces.html');
 store.grantGameAccessToExistingCreators('/memoire-du-cirque.html');
 store.grantGameAccessToExistingCreators('/lancer-de-cerceaux.html');
@@ -333,7 +335,8 @@ const staticGameTitles = {
     '/maya-island.html': 'Maya Island',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
-    '/machine-cadeaux.html': 'Machina Cadeau circulaire',
+    '/machine-cadeaux.html': 'Machine à Cadeaux',
+    '/machina-cadeau-circulaire.html': 'Machina Cadeau circulaire',
     '/machine-a-pinces.html': 'Machine à Pinces',
     '/memoire-du-cirque.html': 'Mémoire du Cirque',
     '/lancer-de-cerceaux.html': 'Lancer de Cerceaux',
@@ -385,7 +388,7 @@ const gameRouteIds = new Map([
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
-    ['/machina-cadeau-circulaire.html', '/machine-cadeaux.html'],
+    ['/machina-cadeau-circulaire.html', '/machina-cadeau-circulaire.html'],
     ['/machine-a-pinces.html', '/machine-a-pinces.html'],
     ['/memoire-du-cirque.html', '/memoire-du-cirque.html'],
     ['/lancer-de-cerceaux.html', '/lancer-de-cerceaux.html'],
