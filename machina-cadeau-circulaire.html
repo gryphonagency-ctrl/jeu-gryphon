@@ -180,16 +180,16 @@
   <h3>Chat (simulation)</h3>
   <div class="row"><input id="chatUser" placeholder="pseudo" value="testeur"></div>
   <div class="row"><input id="chatMsg" placeholder="étoile | run | run 5"><button onclick="sendChat()">Envoyer</button></div>
-  <div class="row"><input id="giftVal" type="number" value="5" min="1"><button onclick="simGift()">Cadeau (valeur)</button></div>
+  <div class="row"><input id="giftVal" type="number" value="5" min="1"><button onclick="simGift()">Tester un cadeau</button></div>
 
   <h3>Sonic destructible — 8 phases</h3>
   <div id="diamondStatus" role="status">Intact</div>
   <progress id="diamondHealth" value="0" max="1000" aria-label="Dégâts des diamants"></progress>
   <div class="row"><label for="diamondDurability">Résistance (pièces)</label><input id="diamondDurability" type="number" min="5000" max="10000" step="100" value="5000"></div>
   <div class="row"><label for="diamondRepairDelay">Réparation (secondes)</label><input id="diamondRepairDelay" type="number" min="1" max="60" step="1" value="5"></div>
-  <div class="row"><label for="diamondBreakReward">Récompense à la casse (étoiles)</label><input id="diamondBreakReward" type="number" min="1000" max="10000" step="1" value="1000"></div>
-  <div style="opacity:.8;margin:2px 0">Les sept diamants disparaissent un à un pendant les sept premières phases. La huitième détruit Sonic et attribue au moins 1 000 étoiles à la personne qui envoie le cadeau final. Les réglages sont enregistrés et modifiables ici.</div>
-  <div class="row"><button onclick="applyDiamondSettings()">Appliquer</button><button onclick="repairDiamond()">Réparer maintenant</button></div>
+  <div class="row"><label for="diamondBreakReward">Récompense à la casse (étoiles)</label><input id="diamondBreakReward" type="number" min="1000" max="5000" step="1000" value="1000"></div>
+  <div style="opacity:.8;margin:2px 0">Les sept diamants disparaissent un à un pendant les sept premières phases. À la huitième, le GIF de célébration apparaît avec une image de cadeau envoyée, et la récompense choisie est attribuée au joueur du cadeau final.</div>
+  <div class="row"><button onclick="applyDiamondSettings()">Appliquer</button><button onclick="repairDiamond()">Réparer maintenant</button><button onclick="testDiamondReward()">Tester le GIF (sans crédit)</button></div>
 
   <h3>Chance de victoire par tour</h3>
   <input id="rtp" type="range" min="0" max="100" value="10"><span id="rtpOut">10%</span>
@@ -459,15 +459,16 @@ function showStars(pseudo, stars) {
 // Un cadeau aligné vaut autant d'étoiles que sa valeur en pièces (1 pièce = 1 étoile)
 function awardStars(who, amount) {
   amount = Math.floor(Number(amount)); if (!(amount >= 1)) return;
-  if (liveSocket && liveSocket.readyState === 1 && window.ArcadeStars) {
-    window.ArcadeStars.award({ username: who, amount }).catch(() => {});
-  } else {
-    const id = ensureViewer(who), v = adminControls.viewers.get(id);
-    v.stars += amount; refreshPanel();
+  if (window.ArcadeStars && typeof window.ArcadeStars.award === 'function') {
+    return window.ArcadeStars.award({ username: who, amount });
   }
+  const id = ensureViewer(who), v = adminControls.viewers.get(id);
+  v.stars += amount;
+  refreshPanel();
+  return Promise.resolve(v);
 }
 
-async function playResult(res, who, label) {
+async function playResult(res, who, label, simulated = false) {
   // Le résultat d'un tour est tiré au moment où il joue, avec la chance de victoire actuelle
   if (res.lazy) res = Math.random() < adminControls.rtp ? adminControls.drawWeightedGift() : { id: 0, name: 'Empty', value: 0 };
   const pool = symbols();
@@ -493,8 +494,15 @@ async function playResult(res, who, label) {
     reels.forEach(r => r.el.classList.add('hit'));
     dia.classList.add('win'); bell(); showVip(who, res);
     if (Number(res.value) >= 1000) showBigWin(who, res.value, res);
-    if (!res.manualReward) awardStars(who, res.value);
-    hud(`🎉 ${who} aligne six cadeaux !`);
+    let rewardError = '';
+    if (!res.manualReward && !simulated) {
+      try { await awardStars(who, res.value); }
+      catch (error) {
+        console.error('Échec de l’enregistrement du gain :', error);
+        rewardError = `⚠ Gain de ${Number(res.value).toLocaleString('fr-FR')} étoiles non enregistré pour ${who}.`;
+      }
+    }
+    hud(rewardError || `🎉 ${who} aligne six cadeaux !`);
     await (superTurbo ? sleep(350) : turbo ? sleep(700) : wait(1000));
     dia.classList.remove('win');
     await (res.manualReward ? sleep(4000) : superTurbo ? sleep(650) : turbo ? sleep(1300) : wait(fast ? 1200 : 3000));
@@ -518,7 +526,7 @@ async function drain() {
   while (jobs.length) {
     const j = activeJob = nextJob();
     if (!j.repeats || j.repeats === 1 || j.repeats % 100 === 0) refreshPanel();
-    await playResult(j.res, j.who, j.label);
+    await playResult(j.res, j.who, j.label, j.simulated);
     if (j.repeats > 1) { j.repeats--; jobs.push(j); }
     activeJob = null;
     // Le spectateur sort de la file quand tous ses tours sont joués
@@ -528,21 +536,21 @@ async function drain() {
   busy = false; hud('');
   curPlayer = null; streak = 0; adminControls.queue = []; refreshPanel();
 }
-function enqueueResults(list, who, label) {
+function enqueueResults(list, who, label, simulated = false) {
   adminControls.addToQueue(viewerId(who));
-  list.forEach(res => jobs.push({ res, who, label })); drain(); refreshPanel();
+  list.forEach(res => jobs.push({ res, who, label, simulated })); drain(); refreshPanel();
 }
-function enqueueRuns(spins, who, label) {
+function enqueueRuns(spins, who, label, simulated = false) {
   if (!Number.isSafeInteger(spins) || spins < 1) return;
   adminControls.addToQueue(viewerId(who));
   // Le RUN reste compact en mémoire et son tour revient en fin de file après chaque résultat.
-  jobs.push({ res: { lazy: true }, who, label, repeats: spins });
+  jobs.push({ res: { lazy: true }, who, label, repeats: spins, simulated });
   drain(); refreshPanel();
 }
 
 // Cadeau reçu : le personnage pulse, les étoiles sont créditées, puis une partie est lancée
 let diamondDurability = 5000, diamondRepairDelay = 5000, diamondBreakReward = 1000;
-let diamondDamage = 0, diamondRepairTimer = null, diamondBrokenBy = '';
+let diamondDamage = 0, diamondRepairTimer = null, diamondRewardStatus = '';
 function updateDiamondGems() {
   const gems = $('diamondGems').children;
   const gone = Math.min(gems.length, Math.floor(Math.min(diamondDamage, diamondDurability) * 8 / diamondDurability));
@@ -556,7 +564,7 @@ function updateDiamondStatus() {
   const remaining = updateDiamondGems();
   const phase = Math.min(8, Math.floor(Math.min(diamondDamage, diamondDurability) * 8 / diamondDurability));
   status.textContent = $('diamond').classList.contains('broken')
-    ? `Sonic détruit — phase 8/8 — réparation automatique dans ${diamondRepairDelay / 1000} s${diamondBrokenBy ? ` · @${diamondBrokenBy} a reçu ${diamondBreakReward} ⭐` : ''}`
+    ? `Sonic détruit — phase 8/8 — réparation automatique dans ${diamondRepairDelay / 1000} s${diamondRewardStatus}`
     : `Phase ${phase}/8 — ${remaining}/7 diamants intacts — ${diamondDamage} / ${diamondDurability} pièces de dégâts`;
 }
 function saveDiamondSettings() {
@@ -567,7 +575,8 @@ function loadDiamondSettings(settings) {
   const durability = Number(settings.durability), repairDelay = Number(settings.repairDelay), breakReward = Number(settings.breakReward);
   if (Number.isFinite(durability)) diamondDurability = Math.min(10000, Math.max(5000, Math.round(durability / 100) * 100));
   if (Number.isFinite(repairDelay)) diamondRepairDelay = Math.min(60000, Math.max(1000, Math.round(repairDelay / 1000) * 1000));
-  if (Number.isFinite(breakReward)) diamondBreakReward = Math.min(10000, Math.max(1000, Math.floor(breakReward)));
+  if (Number.isFinite(breakReward)) diamondBreakReward = [1000, 2000, 3000, 4000, 5000]
+    .reduce((nearest, value) => Math.abs(value - breakReward) < Math.abs(nearest - breakReward) ? value : nearest, 1000);
   $('diamondDurability').value = diamondDurability;
   $('diamondRepairDelay').value = diamondRepairDelay / 1000;
   $('diamondBreakReward').value = diamondBreakReward;
@@ -575,8 +584,8 @@ function loadDiamondSettings(settings) {
 }
 function applyDiamondSettings() {
   const durability = Number($('diamondDurability').value), repairSeconds = Number($('diamondRepairDelay').value), breakReward = Number($('diamondBreakReward').value);
-  if (!Number.isFinite(durability) || durability < 5000 || durability > 10000 || !Number.isFinite(repairSeconds) || repairSeconds < 1 || repairSeconds > 60 || !Number.isSafeInteger(breakReward) || breakReward < 1000 || breakReward > 10000) {
-    hud('Réglages invalides : résistance de 5 000 à 10 000 pièces, réparation de 1 à 60 secondes, récompense de 1 000 à 10 000 étoiles.');
+  if (!Number.isFinite(durability) || durability < 5000 || durability > 10000 || !Number.isFinite(repairSeconds) || repairSeconds < 1 || repairSeconds > 60 || ![1000, 2000, 3000, 4000, 5000].includes(breakReward)) {
+    hud('Réglages invalides : résistance de 5 000 à 10 000 pièces, réparation de 1 à 60 secondes, récompense de 1 000, 2 000, 3 000, 4 000 ou 5 000 étoiles.');
     return;
   }
   diamondDurability = Math.round(durability / 100) * 100;
@@ -585,8 +594,7 @@ function applyDiamondSettings() {
   $('diamondDurability').value = diamondDurability;
   $('diamondRepairDelay').value = diamondRepairDelay / 1000;
   $('diamondBreakReward').value = diamondBreakReward;
-  if (diamondDamage >= diamondDurability && !$('diamond').classList.contains('broken')) breakDiamond();
-  else updateDiamondStatus();
+  updateDiamondStatus();
   if ($('diamond').classList.contains('broken')) {
     clearTimeout(diamondRepairTimer);
     diamondRepairTimer = setTimeout(repairDiamond, diamondRepairDelay);
@@ -597,42 +605,68 @@ function repairDiamond() {
   clearTimeout(diamondRepairTimer);
   diamondRepairTimer = null;
   diamondDamage = 0;
-  diamondBrokenBy = '';
+  diamondRewardStatus = '';
   $('diamond').classList.remove('broken');
   updateDiamondStatus();
 }
-function breakDiamond(who) {
+function breakDiamond(who, simulated = false) {
   const dia = $('diamond');
   if (dia.classList.contains('broken')) return;
   dia.classList.add('broken');
-  diamondBrokenBy = who || '';
+  const reward = diamondBreakReward;
+  diamondRewardStatus = simulated
+    ? ' · simulation, aucun crédit'
+    : who ? ` · attribution de ${reward.toLocaleString('fr-FR')} étoiles en cours…` : ' · aucun joueur associé, aucun crédit';
   beep(110, .45);
   diamondRepairTimer = setTimeout(repairDiamond, diamondRepairDelay);
   updateDiamondStatus();
-  if (who && diamondBreakReward > 0) {
-    awardStars(who, diamondBreakReward);
-    hud(`${who} a détruit Sonic et gagne ${diamondBreakReward} étoiles !`);
+  const gift = exclusiveGifts[Math.floor(Math.random() * exclusiveGifts.length)];
+  showBigWin(who || 'Sonic', reward, gift);
+  if (simulated) {
+    hud(`Simulation : Sonic est détruit — ${reward.toLocaleString('fr-FR')} étoiles (aucun crédit).`);
+    return;
+  }
+  if (who) {
+    awardStars(who, reward).then(() => {
+      diamondRewardStatus = ` · ${reward.toLocaleString('fr-FR')} étoiles attribuées à @${who}`;
+      updateDiamondStatus();
+      hud(`${who} a détruit Sonic et gagne ${reward.toLocaleString('fr-FR')} étoiles !`);
+    }).catch(error => {
+      const message = error instanceof Error ? error.message : String(error);
+      diamondRewardStatus = ` · récompense non enregistrée : ${message}`;
+      updateDiamondStatus();
+      hud(`⚠ Récompense de ${reward.toLocaleString('fr-FR')} étoiles non enregistrée pour ${who}.`);
+      console.error('Échec de l’enregistrement de la récompense de Sonic :', error);
+    });
+  } else {
+    hud('Sonic est détruit, mais aucun joueur n’est associé au cadeau final.');
   }
 }
-function damageDiamond(coins, who) {
+function testDiamondReward() {
+  const who = $('chatUser').value.trim() || 'testeur';
+  showBigWin(who, diamondBreakReward, exclusiveGifts[Math.floor(Math.random() * exclusiveGifts.length)]);
+  hud(`Test visuel : récompense de ${diamondBreakReward.toLocaleString('fr-FR')} étoiles — aucun crédit.`);
+}
+function damageDiamond(coins, who, simulated = false) {
   const dia = $('diamond');
   if (dia.classList.contains('broken')) return;
   diamondDamage = Math.min(diamondDurability, diamondDamage + Math.max(0, Math.floor(Number(coins) || 0)));
   if (diamondDamage === 0) return;
   updateDiamondStatus();
-  if (diamondDamage >= diamondDurability) breakDiamond(who);
+  if (diamondDamage >= diamondDurability) breakDiamond(who, simulated);
 }
 function receiveGift(pseudo, coins, forceWin, live) {
-  const id = ensureViewer(pseudo);
+  ensureViewer(pseudo);
   const dia = $('diamond');
-  damageDiamond(coins, pseudo);
+  const simulated = live !== true;
+  damageDiamond(coins, pseudo, simulated);
   dia.classList.remove('gift'); void dia.getBoundingClientRect(); dia.classList.add('gift');
   setTimeout(() => dia.classList.remove('gift'), 1300);
   // Les étoiles viennent uniquement des cadeaux gagnés sur les roues (voir awardStars)
   // Un cadeau de N pièces fait tourner la machine N fois (gratuit), chaque tour gagne selon la chance de victoire
   const spins = Math.min(coins, 500);
   const results = forceWin ? [adminControls.drawWeightedGift()] : Array.from({ length: spins }, () => ({ lazy: true }));
-  enqueueResults(results, pseudo, `🎁 ${pseudo} a envoyé ${results.length} tour${results.length > 1 ? 's' : ''} (${coins} pièce${coins > 1 ? 's' : ''}) !`);
+  enqueueResults(results, pseudo, `🎁 ${pseudo} a envoyé ${results.length} tour${results.length > 1 ? 's' : ''} (${coins} pièce${coins > 1 ? 's' : ''}) !`, simulated);
   refreshPanel();
 }
 
@@ -762,17 +796,15 @@ function handleChat(pseudo, msg) {
     const out = adminControls.processRun(id, bet);
     if (!out.success) { hud(`${pseudo} : ${out.message}`); return; }
     showStars(pseudo, out.remainingStars);
-    enqueueRuns(out.spins, pseudo, `⭐ ${pseudo} rejoue ${out.spins} étoile${out.spins > 1 ? 's' : ''} !`);
+    enqueueRuns(out.spins, pseudo, `⭐ ${pseudo} rejoue ${out.spins} étoile${out.spins > 1 ? 's' : ''} !`, true);
   }
   refreshPanel();
 }
 function sendChat() { handleChat($('chatUser').value, $('chatMsg').value); $('chatMsg').value = ''; }
 function simGift() {
   const pseudo = $('chatUser').value.trim() || 'testeur';
-  const id = ensureViewer(pseudo);
   const val = Math.max(1, parseInt($('giftVal').value, 10) || 1);
-  adminControls.processGift(id, 0, val); // les étoiles sont créditées ; le joueur lance avec « run »
-  hud(`${pseudo} reçoit ${val} étoiles`); refreshPanel();
+  receiveGift(pseudo, val, false, false);
 }
 
 // Panneau de contrôle
