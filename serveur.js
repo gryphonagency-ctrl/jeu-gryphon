@@ -2825,7 +2825,7 @@ const server = http.createServer((req, res) => {
 
     if (pathname.startsWith('/cadeaux-machine/')) {
         const file = pathname.slice('/cadeaux-machine/'.length);
-        if (!/^[a-z0-9-]+\.(?:svg|png|jpg)$/.test(file)) {
+        if (!/^[a-z0-9-]+\.(?:svg|png|jpg|gif)$/.test(file)) {
             res.writeHead(404);
             res.end('Image introuvable.');
             return;
@@ -2838,7 +2838,7 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, {
                 'Cache-Control': 'public, max-age=3600',
-                'Content-Type': file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : 'image/jpeg',
+                'Content-Type': file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : file.endsWith('.gif') ? 'image/gif' : 'image/jpeg',
                 'X-Content-Type-Options': 'nosniff'
             });
             res.end(content);
