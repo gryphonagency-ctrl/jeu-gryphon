@@ -137,6 +137,7 @@ const protectedRoutes = new Set([
     '/showdown-tiktok.html',
     '/super-mario-live.html',
     '/bingo-gryphon.html',
+    '/puissance-4-tiktok.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -147,6 +148,8 @@ const protectedRoutes = new Set([
     '/coffres.html',
     '/jeu-foot-tiktok.html',
     '/qui-veut-gagner-des-etoiles.html',
+    '/escape-bunker.html',
+    '/defi-des-questions.html',
     '/inedexd.html',
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
@@ -221,6 +224,7 @@ const staticGameIds = [
     '/dessiner-cest-gagne.html',
     '/super-mario-live.html',
     '/bingo-gryphon.html',
+    '/puissance-4-tiktok.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -235,6 +239,8 @@ const staticGameIds = [
     '/coin-pusher-tiktok-2d-ancien.html',
     '/jeu-foot-tiktok-v2.html',
     '/qui-veut-gagner-des-etoiles.html',
+    '/escape-bunker.html',
+    '/defi-des-questions.html',
     '/peche-en-mer.html',
     '/ile-au-tresor.html',
     '/course-karts.html',
@@ -263,6 +269,8 @@ const staticGameIds = [
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
+store.grantGameAccessToExistingCreators('/escape-bunker.html');
+store.grantGameAccessToExistingCreators('/defi-des-questions.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
@@ -293,6 +301,7 @@ store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
+store.grantGameAccessToExistingCreators('/puissance-4-tiktok.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
@@ -303,6 +312,7 @@ const staticGameTitles = {
     '/dessiner-cest-gagne.html': 'Dessiner, c’est gagné !',
     '/super-mario-live.html': 'Mario',
     '/bingo-gryphon.html': 'Bingo Gryphon',
+    '/puissance-4-tiktok.html': 'Puissance 4 · TikTok Live',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
@@ -317,6 +327,8 @@ const staticGameTitles = {
     '/coin-pusher-tiktok-2d-ancien.html': 'Coin Pusher 2D (ancien)',
     '/jeu-foot-tiktok-v2.html': 'Le Coup de Pied (v2)',
     '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
+    '/escape-bunker.html': 'Escape Bunker : Protocole Oméga',
+    '/defi-des-questions.html': 'Le Défi des Questions',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/wish-lab.html': 'Wish Lab',
     '/bataille-des-planetes.html': 'Bataille des planètes',
@@ -352,6 +364,7 @@ const gameRouteIds = new Map([
     ['/dessiner-cest-gagne.html', '/dessiner-cest-gagne.html'],
     ['/super-mario-live.html', '/super-mario-live.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
+    ['/puissance-4-tiktok.html', '/puissance-4-tiktok.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
     ['/arene-combattants.html', '/arene-combattants.html'],
@@ -367,6 +380,8 @@ const gameRouteIds = new Map([
     ['/coin-pusher-tiktok-2d-ancien.html', '/coin-pusher-tiktok-2d-ancien.html'],
     ['/jeu-foot-tiktok-v2.html', '/jeu-foot-tiktok-v2.html'],
     ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
+    ['/escape-bunker.html', '/escape-bunker.html'],
+    ['/defi-des-questions.html', '/defi-des-questions.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
     ['/maya-island.html', '/maya-island.html'],
@@ -2620,6 +2635,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/super-mario-live.png', [path.join(__dirname, 'images-vitrine', 'super-mario-live.png'), 'image/png']],
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
         ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
+        ['/puissance-4-tiktok.html', [path.join(__dirname, 'puissance-4-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/puissance-4-apercu.svg', [path.join(__dirname, 'images-vitrine', 'puissance-4-apercu.svg'), 'image/svg+xml']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
         ['/images-vitrine/bingo-gryphon.png', [path.join(__dirname, 'images-vitrine', 'bingo-gryphon.png'), 'image/png']],
         ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
@@ -2636,6 +2653,25 @@ const server = http.createServer((req, res) => {
         ['/coffres.html', [coffersGameFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok.html', [footballFile, 'text/html; charset=utf-8']],
         ['/qui-veut-gagner-des-etoiles.html', [starsGameFile, 'text/html; charset=utf-8']],
+        ['/escape-bunker.html', [path.join(__dirname, 'escape-bunker.html'), 'text/html; charset=utf-8']],
+        ['/defi-des-questions.html', [path.join(__dirname, 'defi-des-questions.html'), 'text/html; charset=utf-8']],
+        ['/defi-questions-1.js', [path.join(__dirname, 'defi-questions-1.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-questions-2.js', [path.join(__dirname, 'defi-questions-2.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-a.js', [path.join(__dirname, 'defi-topic-bank-a.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-b.js', [path.join(__dirname, 'defi-topic-bank-b.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-c.js', [path.join(__dirname, 'defi-topic-bank-c.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-d.js', [path.join(__dirname, 'defi-topic-bank-d.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-e.js', [path.join(__dirname, 'defi-topic-bank-e.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-f.js', [path.join(__dirname, 'defi-topic-bank-f.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-g.js', [path.join(__dirname, 'defi-topic-bank-g.js'), 'text/javascript; charset=utf-8']],
+        ['/defi-topic-bank-h.js', [path.join(__dirname, 'defi-topic-bank-h.js'), 'text/javascript; charset=utf-8']],
+        ['/bunker-player-original.jpg', [path.join(__dirname, 'bunker-player-original.jpg'), 'image/jpeg']],
+        ['/bunker-route-02.jpg', [path.join(__dirname, 'bunker-route-02.jpg'), 'image/jpeg']],
+        ['/bunker-route-03.jpg', [path.join(__dirname, 'bunker-route-03.jpg'), 'image/jpeg']],
+        ['/bunker-route-04.jpg', [path.join(__dirname, 'bunker-route-04.jpg'), 'image/jpeg']],
+        ['/bunker-route-05.jpg', [path.join(__dirname, 'bunker-route-05.jpg'), 'image/jpeg']],
+        ['/bunker-route-06.jpg', [path.join(__dirname, 'bunker-route-06.jpg'), 'image/jpeg']],
+        ['/defi-decor.jpg', [path.join(__dirname, 'defi-decor.jpg'), 'image/jpeg']],
         ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
@@ -2696,6 +2732,8 @@ const server = http.createServer((req, res) => {
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
         ['/aquarium-fish-boss.png', [aquariumFishBossImage, 'image/png']],
         ['/images-vitrine/table-a-pieces.png', [path.join(__dirname, 'images-vitrine', 'table-a-pieces.png'), 'image/png']],
+        ['/images-vitrine/escape-bunker.png', [path.join(__dirname, 'images-vitrine', 'escape-bunker.png'), 'image/png']],
+        ['/images-vitrine/defi-des-questions.png', [path.join(__dirname, 'images-vitrine', 'defi-des-questions.png'), 'image/png']],
         ['/images-vitrine/pendu.png', [path.join(__dirname, 'images-vitrine', 'pendu.png'), 'image/png']],
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
@@ -2710,6 +2748,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
+        ['/images-vitrine/machine-cadeaux-circulaire.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux-circulaire.png'), 'image/png']],
         ['/images-vitrine/machine-a-pinces.png', [path.join(__dirname, 'images-vitrine', 'machine-a-pinces.png'), 'image/png']],
         ['/images-vitrine/memoire-du-cirque.png', [path.join(__dirname, 'images-vitrine', 'memoire-du-cirque.png'), 'image/png']],
         ['/images-vitrine/lancer-de-cerceaux.png', [path.join(__dirname, 'images-vitrine', 'lancer-de-cerceaux.png'), 'image/png']],
