@@ -1486,6 +1486,9 @@ const server = http.createServer((req, res) => {
         readJsonBody(req, res, body => {
             try {
                 const gifts = new Map([
+                    [3007, { name: 'Dinosaure', amount: 1000 }],
+                    [3008, { name: 'Batterie', amount: 1000 }],
+                    [3009, { name: 'Rubans fleuris', amount: 1000 }],
                     [3001, { name: 'Couple puissant', amount: 2000 }],
                     [3002, { name: "Je t'offre une rose !", amount: 2000 }],
                     [3003, { name: 'Drift en voiture', amount: 3000 }],
