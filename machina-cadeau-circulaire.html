@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #151521; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; }
-  #bg { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; display: none; }
+  #bg, #bgImage { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; display: none; opacity: .38; }
   #stage { position: relative; z-index: 1; height: 100%; display: block; padding: 0; overflow: hidden; }
   #diamondWrap { position: absolute; z-index: 2; left: 50%; top: 52%; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; height: min(40vh, 52vw, 360px); transform: translate(-50%, -50%); }
   #diamond { height: 100%; filter: drop-shadow(0 0 38px rgba(120,200,255,.7)); animation: float 4s ease-in-out infinite; }
@@ -40,6 +40,14 @@
   #starCard img { width: 90px; height: 90px; }
   #starCard .name { font-weight: 800; font-size: 28px; }
   #starCard .bal { font-weight: 900; font-size: 44px; color: #ffd700; text-shadow: 0 0 14px #ff9a00; }
+  #bigWinCelebration { position: fixed; z-index: 30; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(5,5,18,.88); text-align: center; }
+  #bigWinCelebration.show { display: grid; }
+  #bigWinCelebration img { display: block; width: min(84vw, 560px); max-height: 65vh; object-fit: contain; border: 3px solid #ffd700; border-radius: 18px; box-shadow: 0 0 32px #ff2bd6, 0 0 70px rgba(255,215,0,.7); }
+  #bigWinCelebration .win-player { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; }
+  #bigWinCelebration .win-player img { width: clamp(52px, 12vw, 100px); height: clamp(52px, 12vw, 100px); border: 3px solid #fff; border-radius: 50%; background: #333; object-fit: cover; }
+  #bigWinCelebration .win-player img:last-child { border-color: #ffd700; border-radius: 14px; object-fit: contain; }
+  #bigWinCelebration .win-message { margin-top: 16px; color: #ffe600; font: 900 clamp(24px, 5vw, 48px) Impact,'Arial Black',sans-serif; text-shadow: 0 3px 8px #000; }
+  #bigWinCelebration button { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; border: 1px solid #fff8; border-radius: 50%; background: #151521; color: #fff; font-size: 26px; cursor: pointer; }
   @keyframes float { 50% { transform: translateY(-10px) } }
   @keyframes flash { 50% { filter: drop-shadow(0 0 70px #fff) brightness(1.6) } }
   #reels { position: absolute; z-index: 1; left: 50%; top: 52%; width: min(80vmin, 700px); aspect-ratio: 1; padding: 0; border-radius: 50%; transform: translate(-50%, -50%); background: transparent; border: 0; box-shadow: none; }
@@ -90,6 +98,12 @@
   #panel input[type=range] { width: 100%; padding: 0; }
   #panel .row { display: flex; gap: 6px; flex-wrap: wrap; }
   #panel .row > input { flex: 1; min-width: 70px; }
+  #adminGiftPanel[hidden] { display: none; }
+  #exclusiveGiftButtons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  #exclusiveGiftButtons button { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px; }
+  #exclusiveGiftButtons img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+  #exclusiveGiftButtons span { font-size: 11px; line-height: 1.2; text-align: center; }
+  #adminGiftStatus, #backgroundStatus { min-height: 1.2em; opacity: .85; }
   #diamondStatus { margin: 4px 0; font-weight: 700; }
   #diamondHealth { display: block; width: 100%; height: 12px; accent-color: #69d7ff; }
   #giftList img { width: 32px; height: 32px; object-fit: contain; vertical-align: middle; }
@@ -108,11 +122,20 @@
 </style>
 </head>
 <body>
-<video id="bg" autoplay muted loop playsinline></video>
+<img id="bgImage" alt="" aria-hidden="true">
+<video id="bg" autoplay muted loop playsinline aria-hidden="true"></video>
 
 <div id="stage">
   <div id="reels"></div>
   <div id="hud"></div>
+  <div id="bigWinCelebration" role="alert" aria-live="assertive">
+    <button type="button" onclick="hideBigWin()" aria-label="Fermer l'animation de gain">×</button>
+    <div>
+      <img id="bigWinGif" alt="Animation de célébration d'un gros gain">
+      <div class="win-player"><img id="bigWinAvatar" alt="Photo de profil du gagnant"><img id="bigWinGift" alt="Cadeau remporté"></div>
+      <div id="bigWinMessage" class="win-message"></div>
+    </div>
+  </div>
   <h1 id="brand">GRYPHON <span>AGENCY</span></h1>
   <div id="diamondWrap">
     <img id="diamond" src="cadeaux-machine/personnage-sans-gemmes.gif" alt="Sonic animé">
@@ -162,10 +185,10 @@
   <h3>Sonic destructible — 8 phases</h3>
   <div id="diamondStatus" role="status">Intact</div>
   <progress id="diamondHealth" value="0" max="1000" aria-label="Dégâts des diamants"></progress>
-  <div class="row"><label for="diamondDurability">Résistance (pièces)</label><input id="diamondDurability" type="number" min="100" max="10000" step="100" value="1000"></div>
+  <div class="row"><label for="diamondDurability">Résistance (pièces)</label><input id="diamondDurability" type="number" min="5000" max="10000" step="100" value="5000"></div>
   <div class="row"><label for="diamondRepairDelay">Réparation (secondes)</label><input id="diamondRepairDelay" type="number" min="1" max="60" step="1" value="5"></div>
-  <div class="row"><label for="diamondBreakReward">Récompense à la casse (étoiles)</label><input id="diamondBreakReward" type="number" min="0" max="10000" step="1" value="0"></div>
-  <div style="opacity:.8;margin:2px 0">Les sept diamants disparaissent un à un pendant les sept premières phases. La huitième détruit Sonic et attribue la récompense en étoiles à la personne qui envoie le cadeau final. 0 désactive la récompense.</div>
+  <div class="row"><label for="diamondBreakReward">Récompense à la casse (étoiles)</label><input id="diamondBreakReward" type="number" min="1000" max="10000" step="1" value="1000"></div>
+  <div style="opacity:.8;margin:2px 0">Les sept diamants disparaissent un à un pendant les sept premières phases. La huitième détruit Sonic et attribue au moins 1 000 étoiles à la personne qui envoie le cadeau final. Les réglages sont enregistrés et modifiables ici.</div>
   <div class="row"><button onclick="applyDiamondSettings()">Appliquer</button><button onclick="repairDiamond()">Réparer maintenant</button></div>
 
   <h3>Chance de victoire par tour</h3>
@@ -175,8 +198,18 @@
   <div style="opacity:.8;margin:2px 0">Ils ne tombent jamais seuls. Choisis-en un et déclenche-le.</div>
   <div class="row"><select id="bigGift" style="flex:1"></select><button onclick="triggerBigGift()">👑 Déclencher</button></div>
 
-  <h3>Vidéo d'arrière-plan</h3>
-  <input id="bgFile" type="file" accept="video/*,image/*">
+  <section id="adminGiftPanel" hidden>
+    <h3>Cadeaux exclusifs — attribution manuelle</h3>
+    <div style="opacity:.8;margin:2px 0">Ces symboles tournent sur les rouleaux, mais ne sont jamais gagnés au hasard. Saisis un pseudo TikTok et choisis le cadeau à attribuer.</div>
+    <div class="row"><input id="exclusiveGiftUser" placeholder="Pseudo TikTok" maxlength="32"></div>
+    <div id="exclusiveGiftButtons"></div>
+    <div id="adminGiftStatus" role="status" aria-live="polite"></div>
+    <h3>Fond animé du jeu</h3>
+    <div style="opacity:.8;margin:2px 0">Le GIF boucle en arrière-plan. Une URL HTTPS directe remplace le fond pour tous. Un fichier choisi ci-dessous ne s’applique que dans ce navigateur.</div>
+    <div class="row"><input id="backgroundUrl" type="url" aria-label="URL du fond animé"></div>
+    <div class="row"><button type="button" onclick="applyBackgroundUrl()">Appliquer le fond</button><input id="bgFile" type="file" accept="video/*,image/*" aria-label="Prévisualiser un fond animé localement"></div>
+    <div id="backgroundStatus" role="status" aria-live="polite"></div>
+  </section>
 
   <h3>Affichage</h3>
   <div class="row"><button id="soundBtn" onclick="toggleSound()">🔊 Son : ON (M)</button><button onclick="toggleQueue()">File d'attente</button></div>
@@ -254,7 +287,7 @@ class TikTokGameController {
   // Poids : petits cadeaux (50) contre autres cadeaux ≤ 100 pièces (15), soit ≈77 % / ≈23 % des victoires.
   // Les cadeaux de plus de 100 pièces ne sont jamais tirés : seul le déclenchement manuel les fait tomber.
   drawWeightedGift() {
-    const eligible = this.gifts.filter(g => !this.initialGiftIds.has(g.id) && g.value <= 100);
+    const eligible = this.gifts.filter(g => !g.manualOnly && !this.initialGiftIds.has(g.id) && g.value <= 100);
     const small = eligible.filter(g => g.tier === 'small');
     const others = eligible.filter(g => g.tier !== 'small');
     if (eligible.length === 0) return { id: 0, name: 'Empty', value: 0 };
@@ -299,6 +332,22 @@ const initialGifts = [
   { id: 5, name: 'TikTok Stars', value: 100, img: D + 'stars.png' },
   { id: 6, name: 'Zeus', value: 3, img: D + 'zeus.png' }
 ];
+const exclusiveGifts = [
+  { id: 3001, name: 'Couple puissant', value: 2000, img: D + 'cadeau-couple-puissant.png' },
+  { id: 3002, name: "Je t'offre une rose !", value: 2000, img: D + 'cadeau-rose.png' },
+  { id: 3003, name: 'Drift en voiture', value: 3000, img: D + 'cadeau-drift.png' },
+  { id: 3004, name: 'Pluie de météorites', value: 3000, img: D + 'cadeau-meteorites.png' },
+  { id: 3005, name: 'Fusil à Diamants', value: 5000, img: D + 'cadeau-fusil-diamants.png' },
+  { id: 3006, name: "Elise l'éléphante", value: 5000, img: D + 'cadeau-elephante.png' }
+];
+function ensureExclusiveGifts() {
+  for (const gift of exclusiveGifts) {
+    const index = adminControls.gifts.findIndex(item => item.id === gift.id);
+    const savedGift = { ...gift, manualOnly: true };
+    if (index === -1) adminControls.gifts.push(savedGift);
+    else adminControls.gifts[index] = savedGift;
+  }
+}
 const adminControls = new TikTokGameController(initialGifts);
 
 // Nouveaux cadeaux, ajoutés aux six actuels (images non modifiées).
@@ -316,6 +365,7 @@ const adminControls = new TikTokGameController(initialGifts);
   ['GG', 1, 'gg.png'], ['Main', 1, 'gift-1-1.png'], ['Café', 1, 'cafe.png'],
   ['Cœur en flammes', 1, 'coeur-flamme.png'], ['Cœur nuage', 1, 'coeur-nuage.png']
 ].forEach(([name, value, f], i) => adminControls.gifts.push({ id: 100 + i, name, value, img: D + f, tier: value === 1 ? 'small' : 'normal' }));
+exclusiveGifts.forEach(gift => adminControls.gifts.push({ ...gift, manualOnly: true }));
 let nextId = 200;
 
 const $ = id => document.getElementById(id);
@@ -373,14 +423,30 @@ const AVATAR_FALLBACK = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="
 function avatarOf(pseudo) { const v = adminControls.viewers.get(viewerId(pseudo)); return (v && v.profilePicture) || AVATAR_FALLBACK; }
 const timers = {};
 function popup(el, ms) { el.classList.add('show'); clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms); }
+const BIG_WIN_GIF = 'https://media.giphy.com/media/brQCJIFZEU7HDdNonO/giphy.gif';
+function showBigWin(who, amount, gift) {
+  const gif = $('bigWinGif');
+  gif.removeAttribute('src');
+  gif.src = BIG_WIN_GIF;
+  $('bigWinAvatar').src = avatarOf(who);
+  $('bigWinGift').src = gift && gift.img ? gift.img : D + 'stars.png';
+  $('bigWinMessage').textContent = `@${who} gagne ${Number(amount).toLocaleString('fr-FR')} étoiles !`;
+  popup($('bigWinCelebration'), 8000);
+}
+function hideBigWin() {
+  $('bigWinCelebration').classList.remove('show');
+  clearTimeout(timers.bigWinCelebration);
+}
 function showVip(who, gift) {
   $('vipImg').src = avatarOf(who); $('vipName').textContent = '@' + who;
   const vip = $('vip');
-  vip.classList.toggle('manual-jackpot', Boolean(gift && gift.manualReward));
-  $('vipTag').textContent = gift && gift.manualReward ? '💎 JACKPOT SPÉCIAL 💎' : '👑 VIP — GAGNANT 👑';
-  $('vipSub').textContent = gift && gift.manualReward
-    ? `Tu as remporté ${Number(gift.value).toLocaleString('fr-FR')} étoiles ! · Jackpot spécial attribué par le créateur`
-    : (gift && gift.name ? `a aligné 6 × ${gift.name}` : 'a aligné six cadeaux') + (gift && gift.value ? ` · +${gift.value} ⭐` : '');
+  vip.classList.toggle('manual-jackpot', Boolean(gift && (gift.manualReward || gift.manualOnly)));
+  $('vipTag').textContent = gift && gift.manualOnly ? '🎁 CADEAU EXCLUSIF 🎁' : gift && gift.manualReward ? '💎 JACKPOT SPÉCIAL 💎' : '👑 VIP — GAGNANT 👑';
+  $('vipSub').textContent = gift && gift.manualOnly
+    ? `${gift.name} · ${Number(gift.value).toLocaleString('fr-FR')} étoiles attribuées par le créateur`
+    : gift && gift.manualReward
+      ? `Tu as remporté ${Number(gift.value).toLocaleString('fr-FR')} étoiles ! · Jackpot spécial attribué par le créateur`
+      : (gift && gift.name ? `a aligné 6 × ${gift.name}` : 'a aligné six cadeaux') + (gift && gift.value ? ` · +${gift.value} ⭐` : '');
   const vg = $('vipGift');
   if (gift && gift.img) { vg.src = gift.img; vg.hidden = false; } else vg.hidden = true;
   popup($('vip'), 7000);
@@ -426,6 +492,7 @@ async function playResult(res, who, label) {
   if (res.id) {
     reels.forEach(r => r.el.classList.add('hit'));
     dia.classList.add('win'); bell(); showVip(who, res);
+    if (Number(res.value) >= 1000) showBigWin(who, res.value, res);
     if (!res.manualReward) awardStars(who, res.value);
     hud(`🎉 ${who} aligne six cadeaux !`);
     await (superTurbo ? sleep(350) : turbo ? sleep(700) : wait(1000));
@@ -474,7 +541,7 @@ function enqueueRuns(spins, who, label) {
 }
 
 // Cadeau reçu : le personnage pulse, les étoiles sont créditées, puis une partie est lancée
-let diamondDurability = 1000, diamondRepairDelay = 5000, diamondBreakReward = 0;
+let diamondDurability = 5000, diamondRepairDelay = 5000, diamondBreakReward = 1000;
 let diamondDamage = 0, diamondRepairTimer = null, diamondBrokenBy = '';
 function updateDiamondGems() {
   const gems = $('diamondGems').children;
@@ -498,9 +565,9 @@ function saveDiamondSettings() {
 function loadDiamondSettings(settings) {
   if (!settings || typeof settings !== 'object') return;
   const durability = Number(settings.durability), repairDelay = Number(settings.repairDelay), breakReward = Number(settings.breakReward);
-  if (Number.isFinite(durability)) diamondDurability = Math.min(10000, Math.max(100, Math.round(durability / 100) * 100));
+  if (Number.isFinite(durability)) diamondDurability = Math.min(10000, Math.max(5000, Math.round(durability / 100) * 100));
   if (Number.isFinite(repairDelay)) diamondRepairDelay = Math.min(60000, Math.max(1000, Math.round(repairDelay / 1000) * 1000));
-  if (Number.isFinite(breakReward)) diamondBreakReward = Math.min(10000, Math.max(0, Math.floor(breakReward)));
+  if (Number.isFinite(breakReward)) diamondBreakReward = Math.min(10000, Math.max(1000, Math.floor(breakReward)));
   $('diamondDurability').value = diamondDurability;
   $('diamondRepairDelay').value = diamondRepairDelay / 1000;
   $('diamondBreakReward').value = diamondBreakReward;
@@ -508,8 +575,8 @@ function loadDiamondSettings(settings) {
 }
 function applyDiamondSettings() {
   const durability = Number($('diamondDurability').value), repairSeconds = Number($('diamondRepairDelay').value), breakReward = Number($('diamondBreakReward').value);
-  if (!Number.isFinite(durability) || durability < 100 || durability > 10000 || !Number.isFinite(repairSeconds) || repairSeconds < 1 || repairSeconds > 60 || !Number.isSafeInteger(breakReward) || breakReward < 0 || breakReward > 10000) {
-    hud('Réglages invalides : résistance de 100 à 10 000, réparation de 1 à 60 secondes, récompense de 0 à 10 000 étoiles.');
+  if (!Number.isFinite(durability) || durability < 5000 || durability > 10000 || !Number.isFinite(repairSeconds) || repairSeconds < 1 || repairSeconds > 60 || !Number.isSafeInteger(breakReward) || breakReward < 1000 || breakReward > 10000) {
+    hud('Réglages invalides : résistance de 5 000 à 10 000 pièces, réparation de 1 à 60 secondes, récompense de 1 000 à 10 000 étoiles.');
     return;
   }
   diamondDurability = Math.round(durability / 100) * 100;
@@ -718,10 +785,95 @@ function triggerBigGift() {
   if (!g) return;
   enqueueResults([g], 'Gryphon Agency', `👑 Gros cadeau déclenché : ${g.name} (${g.value})`);
 }
+const DEFAULT_BACKGROUND_URL = 'https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3Y3VyZzNwdHdrMDVkM2RnemJxNWFkYWl0cXFpaWUxeWtuZDZ0N3JjcCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xFHhDYm05cAOknxco6/giphy.gif';
+let backgroundObjectUrl = '';
+function setBackgroundUrl(source) {
+  let url;
+  try {
+    url = new URL(String(source || '').trim(), location.href);
+    if (url.protocol !== 'https:') throw new Error('Choisis une URL HTTPS.');
+  } catch (error) {
+    throw new Error(error.message === 'Choisis une URL HTTPS.'
+      ? error.message
+      : 'Saisis une URL HTTPS valide.');
+  }
+  const value = url.href;
+  const isImage = /\.(?:gif|png|jpe?g|webp|avif)(?:$|[?#])/i.test(value);
+  const image = $('bgImage'), video = $('bg');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  image.removeAttribute('src');
+  if (isImage) {
+    image.onload = () => { image.style.display = 'block'; };
+    image.onerror = () => {
+      image.style.display = 'none';
+      $('backgroundStatus').textContent = 'Impossible de charger cette image ou ce GIF. Vérifie que l’URL est accessible.';
+    };
+    image.src = value;
+    video.style.display = 'none';
+  } else {
+    image.style.display = 'none';
+    video.onerror = () => { $('backgroundStatus').textContent = 'Impossible de lire cette vidéo. Utilise une URL directe MP4/WebM ou un GIF.'; };
+    video.src = value;
+    video.style.display = 'block';
+    video.play().catch(() => {
+      $('backgroundStatus').textContent = 'La vidéo ne peut pas être lue automatiquement. Vérifie le format et l’URL directe.';
+    });
+  }
+  adminControls.setBackground(value);
+  $('backgroundUrl').value = value;
+  $('backgroundStatus').textContent = 'Fond animé appliqué en boucle.';
+  return value;
+}
+async function persistBackgroundUrl(source) {
+  const backgroundUrl = setBackgroundUrl(source);
+  $('backgroundStatus').textContent = 'Enregistrement du fond animé…';
+  const response = await fetch('/api/machina-background', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ backgroundUrl })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.message || 'Impossible d’enregistrer le fond animé.');
+  $('backgroundStatus').textContent = 'Fond animé enregistré et appliqué en boucle sur le jeu.';
+}
+async function applyBackgroundUrl() {
+  try {
+    await persistBackgroundUrl($('backgroundUrl').value);
+  } catch (error) {
+    $('backgroundStatus').textContent = error.message;
+  }
+}
 $('bgFile').addEventListener('change', e => {
-  const f = e.target.files[0]; if (!f) return;
-  const url = URL.createObjectURL(f); adminControls.setBackground(f.name);
-  const v = $('bg'); v.src = url; v.style.display = 'block';
+  const file = e.target.files[0];
+  if (!file) return;
+  if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+  backgroundObjectUrl = URL.createObjectURL(file);
+  const image = $('bgImage'), video = $('bg');
+  if (file.type.startsWith('image/')) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    image.onload = () => { image.style.display = 'block'; };
+    image.onerror = () => {
+      image.style.display = 'none';
+      $('backgroundStatus').textContent = 'Impossible de charger ce fichier image.';
+    };
+    image.src = backgroundObjectUrl;
+    video.style.display = 'none';
+  } else if (file.type.startsWith('video/')) {
+    image.removeAttribute('src');
+    image.style.display = 'none';
+    video.src = backgroundObjectUrl;
+    video.style.display = 'block';
+    video.play().catch(() => { $('backgroundStatus').textContent = 'Impossible de lancer cette vidéo.'; });
+  } else {
+    $('backgroundStatus').textContent = 'Choisis un fichier image, GIF ou vidéo.';
+    return;
+  }
+  $('backgroundStatus').textContent = 'Fichier appliqué en boucle sur cet appareil jusqu’au rechargement.';
 });
 function toggleSound() {
   const on = adminControls.toggleSound();
@@ -832,6 +984,36 @@ async function grantManualReward() {
     button.disabled = false;
   }
 }
+async function grantExclusiveGift(giftId, button) {
+  const gift = exclusiveGifts.find(item => item.id === Number(giftId));
+  const username = $('exclusiveGiftUser').value.trim().replace(/^@/, '');
+  const status = $('adminGiftStatus');
+  if (!gift || !/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+    status.textContent = 'Saisis un pseudo TikTok valide de 1 à 32 caractères.';
+    return;
+  }
+  button.disabled = true;
+  status.textContent = `Attribution de « ${gift.name} » à @${username}…`;
+  try {
+    const response = await fetch('/api/admin/machina-gifts', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ giftId: gift.id, username })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.player) throw new Error(result.message || 'Impossible d’attribuer ce cadeau.');
+    const name = walletPlayer(result.player);
+    const displayName = String(result.player.username || result.player.uniqueId || username).replace(/^@/, '').trim() || name;
+    const awardedGift = { ...gift, manualOnly: true, manualReward: true, manualGift: true };
+    enqueueResults([awardedGift], displayName, `🎁 Cadeau exclusif « ${gift.name} » attribué à @${displayName}…`);
+    status.textContent = `✅ « ${gift.name} » (${gift.value.toLocaleString('fr-FR')} étoiles) attribué à @${displayName}.`;
+  } catch (error) {
+    status.textContent = `⚠ ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    button.disabled = false;
+  }
+}
 function addGift() {
   const f = $('newImg').files[0], name = $('newName').value.trim();
   if (!f || !name) return;
@@ -842,10 +1024,10 @@ function addGift() {
   };
   rd.readAsDataURL(f);
 }
-function removeGift(id) { adminControls.updateGifts(adminControls.gifts.filter(g => g.id !== id)); refreshPanel(); }
+function removeGift(id) { adminControls.updateGifts(adminControls.gifts.filter(g => g.id !== id || g.manualOnly)); refreshPanel(); }
 function exportSetup() {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify({ state: adminControls.exportState(), diamond: { durability: diamondDurability, repairDelay: diamondRepairDelay, breakReward: diamondBreakReward } })], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ state: adminControls.exportState(), diamond: { durability: diamondDurability, repairDelay: diamondRepairDelay, breakReward: diamondBreakReward }, backgroundUrl: adminControls.backgroundMedia || DEFAULT_BACKGROUND_URL })], { type: 'application/json' }));
   a.download = 'machine-cadeaux.json'; a.click();
 }
 // Enregistre cadeaux, probabilité, étoiles des spectateurs, file d'attente et son dans ce navigateur.
@@ -853,7 +1035,7 @@ const SAVE_KEY = 'mc_setup_v1';
 function saveAll() {
   const info = $('saveInfo');
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ state: adminControls.exportState(), diamond: { durability: diamondDurability, repairDelay: diamondRepairDelay, breakReward: diamondBreakReward }, sound: adminControls.isSoundEnabled, nextId, savedAt: Date.now() }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ state: adminControls.exportState(), diamond: { durability: diamondDurability, repairDelay: diamondRepairDelay, breakReward: diamondBreakReward }, backgroundUrl: adminControls.backgroundMedia || DEFAULT_BACKGROUND_URL, sound: adminControls.isSoundEnabled, nextId, savedAt: Date.now() }));
     info.textContent = `✅ Setup et étoiles enregistrés à ${new Date().toLocaleTimeString('fr-FR')}.`;
   } catch (e) {
     info.textContent = '⚠ Enregistrement impossible (images trop lourdes) : utilise Exporter.';
@@ -864,6 +1046,7 @@ function loadSaved() {
     loadDiamondSettings(JSON.parse(localStorage.getItem('mc_diamond_settings') || 'null'));
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     if (!s || !s.state || !adminControls.importState(s.state).success) return;
+    ensureExclusiveGifts();
     if (s.diamond) loadDiamondSettings(s.diamond);
     adminControls.isSoundEnabled = s.sound !== false;
     nextId = Math.max(nextId, Number(s.nextId) || 0);
@@ -877,9 +1060,14 @@ $('importFile').addEventListener('change', async e => {
   let imported;
   try { imported = JSON.parse(await f.text()); } catch (error) { hud('Fichier JSON invalide.'); return; }
   const r = adminControls.importState(imported.state || imported);
+  if (r.success) ensureExclusiveGifts();
   if (r.success && imported.diamond) {
     loadDiamondSettings(imported.diamond);
     saveDiamondSettings();
+  }
+  if (r.success && imported.backgroundUrl) {
+    try { await persistBackgroundUrl(imported.backgroundUrl); }
+    catch (error) { hud(error.message); }
   }
   hud(r.message); $('rtp').value = adminControls.rtp * 100; $('rtp').dispatchEvent(new Event('input')); refreshPanel();
 });
@@ -887,7 +1075,7 @@ $('chatMsg').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(
 
 function refreshPanel() {
   $('giftList').innerHTML = adminControls.gifts.map(g =>
-    `<div><img src="${g.img}" alt=""><span>${g.value}</span><button onclick="removeGift(${g.id})">✕</button></div>`).join('');
+    `<div><img src="${g.img}" alt=""><span>${g.manualOnly ? 'Manuel' : g.value}</span>${g.manualOnly ? '' : `<button onclick="removeGift(${g.id})">✕</button>`}</div>`).join('');
   $('board').innerHTML = adminControls.getLeaderboard().slice(0, 10).map(v => `<div><span>${v.pseudo}</span><b>${v.stars}</b></div>`).join('');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <span style="margin-left:auto"><button onclick="queueWidth(-30)" title="Rétrécir la largeur">◀</button><button onclick="queueWidth(30)" title="Élargir la largeur">▶</button><button onclick="queueZoom(-.2)" title="Réduire">➖</button><button onclick="queueZoom(.2)" title="Agrandir">➕</button><button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></span></h4>` + (adminControls.queue.map((q, i) => {
@@ -896,15 +1084,49 @@ function refreshPanel() {
     return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span class="qname">${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}<button class="qx" data-id="${esc(q.viewerId)}" onclick="removeFromQueue(this.dataset.id)" title="Retirer de la file">✕</button></div>`;
   }).join('') || '<div>— personne —</div>');
   const sel = $('bigGift'), keep = sel.value;
-  sel.innerHTML = adminControls.gifts.filter(g => g.value > 100 && !adminControls.initialGiftIds.has(g.id))
+  sel.innerHTML = adminControls.gifts.filter(g => !g.manualOnly && g.value > 100 && !adminControls.initialGiftIds.has(g.id))
     .map(g => `<option value="${g.id}">${g.name} (${g.value})</option>`).join('');
   if (keep) sel.value = keep;
+}
+
+function initializeAdminGiftControls() {
+  setBackgroundUrl(DEFAULT_BACKGROUND_URL);
+  fetch('/api/machina-background', { credentials: 'same-origin', cache: 'no-store' })
+    .then(async response => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || `Chargement du fond impossible (${response.status}).`);
+      setBackgroundUrl(result.backgroundUrl);
+    })
+    .catch(error => {
+      console.error('Chargement du fond animé partagé impossible.', error);
+    });
+  fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
+    .then(response => {
+      if (!response.ok) throw new Error(`Vérification du compte impossible (${response.status}).`);
+      return response.json();
+    })
+    .then(session => {
+      if (!session.isAdmin) return;
+      const panel = $('adminGiftPanel');
+      panel.hidden = false;
+      $('exclusiveGiftButtons').innerHTML = exclusiveGifts.map(gift =>
+        `<button type="button" data-gift-id="${gift.id}"><img src="${gift.img}" alt=""><span>${gift.name}</span></button>`
+      ).join('');
+      $('exclusiveGiftButtons').addEventListener('click', event => {
+        const button = event.target.closest('button[data-gift-id]');
+        if (button) grantExclusiveGift(button.dataset.giftId, button);
+      });
+    })
+    .catch(error => {
+      console.error('Vérification des commandes réservées au créateur impossible.', error);
+    });
 }
 
 loadSaved();
 updateDiamondStatus();
 reels.forEach((_, i) => startSpin(i));
 refreshPanel();
+initializeAdminGiftControls();
 </script>
 </body>
 </html>

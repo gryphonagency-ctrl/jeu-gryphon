@@ -28,6 +28,8 @@ if (typeof store.getWalletBalance !== 'function') {
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MACHINA_BACKGROUND_URL = 'https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3Y3VyZzNwdHdrMDVkM2RnemJxNWFkYWl0cXFpaWUxeWtuZDZ0N3JjcCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xFHhDYm05cAOknxco6/giphy.gif';
+const machinaBackgroundFile = path.join(store.getDataDirectory(), 'machina-background.json');
 const adminDashboardWidgetIds = [
     'creators',
     'partner-access',
@@ -1475,6 +1477,64 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ player: getPublicTikTokPlayer(player, access.usernameForRequest(req)) }));
         return;
     }
+    if (pathname === '/api/admin/machina-gifts' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Seul le compte administrateur peut attribuer ces cadeaux.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const gifts = new Map([
+                    [3001, { name: 'Couple puissant', amount: 2000 }],
+                    [3002, { name: "Je t'offre une rose !", amount: 2000 }],
+                    [3003, { name: 'Drift en voiture', amount: 3000 }],
+                    [3004, { name: 'Pluie de météorites', amount: 3000 }],
+                    [3005, { name: 'Fusil à Diamants', amount: 5000 }],
+                    [3006, { name: "Elise l'éléphante", amount: 5000 }]
+                ]);
+                const gift = gifts.get(Number(body.giftId));
+                const username = typeof body.username === 'string'
+                    ? body.username.trim().replace(/^@/, '')
+                    : '';
+                if (!gift || !/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                    res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Cadeau ou pseudo TikTok invalide.' }));
+                    return;
+                }
+                const owner = access.usernameForRequest(req).toLowerCase();
+                const credit = store.creditBrowserStars({
+                    username,
+                    amount: gift.amount,
+                    gameId: '/machina-cadeau-circulaire.html',
+                    transactionId: `machina-gift:${gift.id || Number(body.giftId)}:${crypto.randomUUID()}`,
+                    owner
+                });
+                const player = store.resolveTikTokPlayer(username);
+                if (credit.skipped || !player || (!credit.applied && !credit.duplicate)) {
+                    res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: 'Pseudo TikTok introuvable dans le portefeuille.' }));
+                    return;
+                }
+                const publicPlayer = getPublicTikTokPlayer(player, owner);
+                for (const session of sessions.values()) {
+                    const ownedByAccount = [...session.clients].some(client =>
+                        authenticatedClientUsernames.get(client)?.toLowerCase() === owner);
+                    if (ownedByAccount) broadcastSessionMessage(session, {
+                        type: 'WALLET_BALANCE',
+                        player: publicPlayer
+                    });
+                }
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, gift: gift.name, player: publicPlayer }));
+            } catch (error) {
+                console.error('Échec de l’attribution d’un cadeau exclusif de Machina :', error);
+                res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Impossible d’attribuer ce cadeau. Vérifie le portefeuille et réessaie.' }));
+            }
+        }, 16 * 1024);
+        return;
+    }
     if (pathname === '/api/tiktok-stars' && req.method === 'POST') {
         if (!access.canAccessGames(req)) {
             res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -1562,6 +1622,71 @@ const server = http.createServer((req, res) => {
                 player: publicPlayer
             }));
         });
+        return;
+    }
+    if (pathname === '/api/machina-background' && req.method === 'GET') {
+        try {
+            let backgroundUrl = DEFAULT_MACHINA_BACKGROUND_URL;
+            if (fs.existsSync(machinaBackgroundFile)) {
+                const settings = JSON.parse(fs.readFileSync(machinaBackgroundFile, 'utf8'));
+                let parsedBackground;
+                try {
+                    parsedBackground = new URL(settings.backgroundUrl);
+                } catch {
+                    throw new Error('Stored Machina background URL is invalid.');
+                }
+                if (parsedBackground.protocol !== 'https:' || parsedBackground.username || parsedBackground.password) {
+                    throw new Error('Stored Machina background URL is invalid.');
+                }
+                backgroundUrl = parsedBackground.href;
+            }
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ backgroundUrl }));
+        } catch (error) {
+            console.error('Échec de lecture du fond animé de Machina :', error);
+            res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Impossible de charger le réglage du fond animé.' }));
+        }
+        return;
+    }
+    if (pathname === '/api/machina-background' && req.method === 'POST') {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Seul le compte administrateur peut modifier le fond animé.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                if (typeof body.backgroundUrl !== 'string' || body.backgroundUrl.length > 2048) {
+                    throw invalidAdminInput('URL de fond animé invalide.');
+                }
+                let backgroundUrl;
+                try {
+                    const parsed = new URL(body.backgroundUrl);
+                    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+                        throw new Error('Use an HTTPS URL without embedded credentials.');
+                    }
+                    backgroundUrl = parsed.href;
+                } catch {
+                    throw invalidAdminInput('Saisis une URL HTTPS valide pour le fond animé.');
+                }
+                fs.mkdirSync(path.dirname(machinaBackgroundFile), { recursive: true });
+                const temporaryFile = `${machinaBackgroundFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+                fs.writeFileSync(temporaryFile, JSON.stringify({ backgroundUrl }), { flag: 'wx', mode: 0o600 });
+                fs.renameSync(temporaryFile, machinaBackgroundFile);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true, backgroundUrl }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de sauvegarde du fond animé de Machina :', error);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible d’enregistrer le fond animé dans le stockage persistant.'
+                        : error.message
+                }));
+            }
+        }, 8 * 1024);
         return;
     }
     if (pathname === '/api/session' && req.method === 'GET') {
