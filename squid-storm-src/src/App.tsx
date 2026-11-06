@@ -5,8 +5,22 @@ import { CHARACTER_REWARD_DISTRIBUTION, CoinPusherEngine, TOTAL_PRIZE_CHARACTERS
 
 type FeedItem = { id: number; text: string; points: number };
 type LiveGift = { gift: string; user: string; repeatCount: number; coinCount: number };
-type BigGift = { gift: string; user: string; coinCount: number };
+type BigGift = { gift: string; user: string; coinCount: number; simulated?: boolean };
 type WheelRound = BigGift & { result: number; rotation: number; settled: boolean; resolution?: string };
+type WalletRunDetail = {
+  player?: { id?: string; username?: string; uniqueId?: string; nickname?: string };
+  spent?: number;
+};
+type ArcadeStarsClient = {
+  award(input: { playerId?: string; username: string; amount: number; transactionId: string }): Promise<unknown>;
+};
+
+declare global {
+  interface Window {
+    ArcadeStars?: ArcadeStarsClient;
+  }
+}
+
 const WHEEL_OUTCOMES = ['+10 ÉTOILES', 'LE POUSSOIR FAIT TOMBER TOUS LES PERSONNAGES', 'PERDU'] as const;
 
 function App() {
@@ -36,6 +50,20 @@ function App() {
   const [wallSpeed, setWallSpeed] = useState(1);
   const [wheel, setWheel] = useState<WheelRound | null>(null);
 
+  const creditStars = useCallback(async (username: string, amount: number, transactionId: string, playerId?: string) => {
+    if (!window.ArcadeStars) {
+      throw new Error('Le portefeuille global d’étoiles est indisponible.');
+    }
+    await window.ArcadeStars.award({ playerId, username, amount, transactionId });
+  }, []);
+
+  const reportAwardFailure = useCallback((username: string, amount: number, purpose: string, error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    const message = `Impossible d’enregistrer ${amount} étoile${amount > 1 ? 's' : ''} ${purpose} pour @${username} : ${reason}`;
+    console.error(message, error);
+    setGameError(message);
+  }, []);
+
   const startWheel = useCallback((gift: BigGift) => {
     wheelBusyRef.current = true;
     const result = Math.floor(Math.random() * WHEEL_OUTCOMES.length);
@@ -46,21 +74,38 @@ function App() {
       setWheel((current) => current ? { ...current, rotation } : current);
     });
     wheelTimerRef.current = window.setTimeout(() => {
-      const engine = engineRef.current;
-      let resolution: string = WHEEL_OUTCOMES[result];
-      if (result === 0) {
-        if (engine?.awardWheelBonusStars(10)) setScore(engine.getEarnedStars());
-        else resolution = 'BONUS NON ENREGISTRÉ';
-      }
-      if (result === 1) engine?.pushAllCharacters();
-      setFeed((items) => [{
-        id: feedIdRef.current++,
-        text: `${gift.user} · roue : ${resolution}`,
-        points: result === 0 && resolution === WHEEL_OUTCOMES[0] ? 10 : 0,
-      }, ...items].slice(0, 6));
-      setWheel((current) => current ? { ...current, settled: true, resolution } : current);
+      void (async () => {
+        const engine = engineRef.current;
+        let resolution: string = WHEEL_OUTCOMES[result];
+        let points = 0;
+        if (result === 0) {
+          if (engine?.awardWheelBonusStars(10)) {
+            setScore(engine.getEarnedStars());
+            if (gift.simulated) {
+              points = 10;
+            } else {
+              try {
+                await creditStars(gift.user, 10, `squid-storm:wheel:${crypto.randomUUID()}`);
+                points = 10;
+              } catch (error) {
+                reportAwardFailure(gift.user, 10, 'gagnées à la roue', error);
+                resolution = 'BONUS NON ENREGISTRÉ';
+              }
+            }
+          } else {
+            resolution = 'BONUS NON ENREGISTRÉ';
+          }
+        }
+        if (result === 1) engine?.pushAllCharacters();
+        setFeed((items) => [{
+          id: feedIdRef.current++,
+          text: `${gift.user} · roue : ${resolution}`,
+          points,
+        }, ...items].slice(0, 6));
+        setWheel((current) => current ? { ...current, settled: true, resolution } : current);
+      })();
     }, 4800);
-  }, []);
+  }, [creditStars, reportAwardFailure]);
 
   const closeWheel = () => {
     setWheel(null);
@@ -79,11 +124,28 @@ function App() {
         setScore((s) => engineRef.current?.getEarnedStars() ?? s + character.rewardStars);
         setWonTotal((w) => engineRef.current?.getWonCount() ?? w + 1);
         const rewardText = character.rewardStars === 1 ? '1 étoile' : `${character.rewardStars} étoiles`;
-        setFeed((f) => [{
-          id: feedIdRef.current++,
-          text: character.rewardStars > 0 ? `Personnage gagné · ${rewardText}` : 'Personnage gagné · aucune étoile',
-          points: character.rewardStars,
-        }, ...f].slice(0, 6));
+        const feedId = feedIdRef.current++;
+        const username = character.ownerUsername;
+        const rewardMessage = character.rewardStars > 0
+          ? `${username ? `@${username} · ` : ''}personnage gagné · ${rewardText}${username ? ' · crédit en cours' : ''}`
+          : `${username ? `@${username} · ` : ''}personnage gagné · aucune étoile`;
+        setFeed((items) => [{ id: feedId, text: rewardMessage, points: 0 }, ...items].slice(0, 6));
+        if (username && character.rewardStars > 0) {
+          void creditStars(
+            username,
+            character.rewardStars,
+            `squid-storm:character:${character.rewardTransactionId}`,
+          ).then(() => {
+            setFeed((items) => items.map((item) => item.id === feedId
+              ? { ...item, text: `@${username} · personnage gagné · ${rewardText} créditées`, points: character.rewardStars }
+              : item));
+          }).catch((error: unknown) => {
+            reportAwardFailure(username, character.rewardStars, 'gagnées par un personnage', error);
+            setFeed((items) => items.map((item) => item.id === feedId
+              ? { ...item, text: `@${username} · crédit de ${rewardText} impossible` }
+              : item));
+          });
+        }
       },
       onCharacterSpawn: () => {
         setCharactersOnDeck(engine.getCharacterCount());
@@ -101,12 +163,12 @@ function App() {
       if (wheelTimerRef.current !== null) window.clearTimeout(wheelTimerRef.current);
       engine.dispose();
     };
-  }, []);
+  }, [creditStars, reportAwardFailure]);
 
   useEffect(() => {
     const handleGift = (gift: LiveGift) => {
       const count = Number.isSafeInteger(gift.repeatCount) && gift.repeatCount > 0 ? gift.repeatCount : 1;
-      engineRef.current?.spawnCharacters('gold', count);
+      engineRef.current?.spawnCharacters('gold', count, gift.user);
       setCharactersOnDeck(engineRef.current?.getCharacterCount() ?? count);
       const coinCount = Number.isSafeInteger(gift.coinCount) && gift.coinCount > 0 ? gift.coinCount : 0;
       const multiplier = count > 1 ? ` ×${count}` : '';
@@ -182,6 +244,46 @@ function App() {
     });
     return () => { socket.close(); socketRef.current = null; };
   }, [startWheel]);
+
+  useEffect(() => {
+    const handleWalletRun = (event: Event) => {
+      const { player, spent } = (event as CustomEvent<WalletRunDetail>).detail ?? {};
+      const username = player?.username || player?.uniqueId || player?.nickname;
+      const amount = Number(spent);
+      if (!username || !Number.isSafeInteger(amount) || amount < 1) return;
+
+      const engine = engineRef.current;
+      const charactersToPlay = Math.min(amount, engine?.getRemainingCharacterCount() ?? 0);
+      if (engine && charactersToPlay > 0) {
+        engine.spawnCharacters('gold', charactersToPlay, username);
+        setCharactersOnDeck(engine.getCharacterCount());
+      }
+
+      const refund = amount - charactersToPlay;
+      const feedId = feedIdRef.current++;
+      const runMessage = refund > 0
+        ? charactersToPlay > 0
+          ? `@${username} · RUN : ${charactersToPlay} personnage${charactersToPlay > 1 ? 's' : ''} joué${charactersToPlay > 1 ? 's' : ''}, remboursement de ${refund} étoile${refund > 1 ? 's' : ''} en cours`
+          : `@${username} · RUN impossible, remboursement de ${refund} étoile${refund > 1 ? 's' : ''} en cours`
+        : `@${username} rejoue ${charactersToPlay} étoile${charactersToPlay > 1 ? 's' : ''} · ${charactersToPlay} personnage${charactersToPlay > 1 ? 's' : ''}`;
+      setFeed((items) => [{ id: feedId, text: runMessage, points: 0 }, ...items].slice(0, 6));
+      if (refund > 0) {
+        void creditStars(username, refund, `squid-storm:run-refund:${crypto.randomUUID()}`, player?.id).then(() => {
+          setFeed((items) => items.map((item) => item.id === feedId
+            ? { ...item, text: `@${username} · ${refund} étoile${refund > 1 ? 's' : ''} remboursée${refund > 1 ? 's' : ''}` }
+            : item));
+        }).catch((error: unknown) => {
+          reportAwardFailure(username, refund, 'remboursées après le RUN', error);
+          setFeed((items) => items.map((item) => item.id === feedId
+            ? { ...item, text: `@${username} · remboursement de ${refund} étoile${refund > 1 ? 's' : ''} impossible` }
+            : item));
+        });
+      }
+    };
+
+    window.addEventListener('arcade:wallet-run', handleWalletRun);
+    return () => window.removeEventListener('arcade:wallet-run', handleWalletRun);
+  }, [creditStars, reportAwardFailure]);
 
   const dropCharacter = useCallback((color: string, count = 1) => {
     engineRef.current?.spawnCharacters(color, count);
@@ -339,7 +441,7 @@ function App() {
           </button>
           <button className="drop-all-btn" onClick={() => dropCharacter('gold')}><Zap size={16} /> ENVOYER 1 PERSONNAGE</button>
           <button className="drop-all-btn" onClick={() => engineRef.current?.spawnCharacters('gold', 5)}><Zap size={16} /> ENVOYER 5 PERSONNAGES</button>
-          <button className="drop-all-btn" onClick={() => startWheel({ gift: 'test', user: 'Simulation', coinCount: 100 })}><Sparkles size={16} /> TESTER LA ROUE</button>
+          <button className="drop-all-btn" onClick={() => startWheel({ gift: 'test', user: 'Simulation', coinCount: 100, simulated: true })}><Sparkles size={16} /> TESTER LA ROUE</button>
         </section>
 
         <section className="control-section">

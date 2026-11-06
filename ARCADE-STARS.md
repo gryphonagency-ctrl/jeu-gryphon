@@ -15,6 +15,8 @@ N’appelez pas cette méthode pour des points, des dégâts, des pièces ou des
 
 Le solde peut être lu depuis un jeu avec `await window.ArcadeStars.getBalance(username)`. Les erreurs de lecture et d’attribution sont rejetées par les méthodes; les jeux doivent les signaler plutôt que présenter un crédit réussi.
 
+Dans SQUID STORM, les étoiles d’un personnage tombé sont créditées au joueur associé au cadeau ou au `RUN` qui l’a lancé. Une étoile dépensée avec `RUN` lance un personnage; si la réserve ne permet pas de tous les jouer, les étoiles inutilisées sont remboursées. Les simulations ne créditent jamais le portefeuille.
+
 Sur Render, configurez un disque persistant monté sur `/var/data` pour conserver les profils, les étoiles et les photos après un redémarrage ou un nouveau déploiement.
 
 Les comptes Arcade créés manuellement par l’administrateur enregistrent également leur durée d’accès et leur date d’expiration dans ce stockage. Le serveur refuse l’accès dès l’échéance, puis supprime le compte et ses droits lors de son nettoyage automatique périodique ou au prochain démarrage. Les anciens comptes manuels sans date d’expiration restent inchangés. Les profils TikTok et leurs scores en étoiles restent des données globales du portefeuille, indépendantes du compte Arcade utilisé pour administrer les jeux.

@@ -5,6 +5,9 @@ export type FallingCharacter = {
   body: CANNON.Body;
   color: string;
   rewardStars: number;
+  rewardTransactionId: string;
+  ownerUsername: string | null;
+  grounded: boolean;
   createdAt: number;
   won: boolean;
   wonAt: number;
@@ -38,6 +41,7 @@ const PUSHER_W = 12.8;
 const PUSHER_H = 4.8;
 const WALL_H = PUSHER_H;
 const PUSHER_D = 0.35;
+const SIDE_WALL_THICKNESS = 0.12;
 const CHARACTER_COLLISION_HALF_WIDTH = 0.25;
 const CHARACTER_COLLISION_HALF_HEIGHT = 0.4;
 const CHARACTER_COLLISION_HALF_DEPTH = 0.18;
@@ -59,7 +63,7 @@ const HANGING_PIG_GIF_PATH = `${import.meta.env.BASE_URL}images/squid-storm-hang
 const WHEEL_BONUS_STARS_KEY = 'squid-storm-wheel-bonus-stars-v1';
 const CHARACTER_GIF_CREDIT_URL = 'https://giphy.com/stickers/Pildyk-transparent-etJwkfG5JFf23pPVZQ';
 
-type CharacterSpawnRequest = { color: string; count: number };
+type CharacterSpawnRequest = { color: string; count: number; ownerUsername?: string };
 type CharacterAnimationFrame = { bitmap: ImageBitmap; duration: number };
 type FallingHammer = { body: CANNON.Body; mesh: THREE.Group; createdAt: number };
 type DecodedGifImage = CanvasImageSource & {
@@ -249,6 +253,7 @@ export class CoinPusherEngine {
   private hammers: FallingHammer[] = [];
 
   private coinMat!: CANNON.Material;
+  private characterMat!: CANNON.Material;
   private deckMat!: CANNON.Material;
   private pusherPMat!: CANNON.Material;
   private wallPMat!: CANNON.Material;
@@ -452,6 +457,7 @@ export class CoinPusherEngine {
 
   private setupMaterials() {
     this.coinMat = new CANNON.Material({ friction: 0.14, restitution: 0.35 });
+    this.characterMat = new CANNON.Material({ friction: 0.02, restitution: 0 });
     this.deckMat = new CANNON.Material({ friction: 0.06, restitution: 0.12 });
     this.pusherPMat = new CANNON.Material({ friction: 0.03, restitution: 0.15 });
     this.wallPMat = new CANNON.Material({ friction: 0.1, restitution: 0.3 });
@@ -460,6 +466,10 @@ export class CoinPusherEngine {
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMat, this.coinMat, { friction: 0.2, restitution: 0.04 }));
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMat, this.pusherPMat, { friction: 0.1, restitution: 0.04 }));
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMat, this.wallPMat, { friction: 0.08, restitution: 0.35 }));
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.characterMat, this.characterMat, { friction: 0.01, restitution: 0 }));
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.characterMat, this.deckMat, { friction: 0.02, restitution: 0 }));
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.characterMat, this.pusherPMat, { friction: 0.02, restitution: 0 }));
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.characterMat, this.wallPMat, { friction: 0.02, restitution: 0 }));
   }
 
   private setupEnvironment() {
@@ -606,9 +616,10 @@ export class CoinPusherEngine {
     }
 
     // ===== Glass side walls =====
-    const wallGeo = new THREE.BoxGeometry(0.12, WALL_H, DECK_D);
-    this.addStaticBox(wallGeo, glassMaterial, -DECK_W / 2, WALL_H / 2, 0, 0.06, WALL_H / 2, DECK_D / 2, this.wallPMat);
-    this.addStaticBox(wallGeo, glassMaterial, DECK_W / 2, WALL_H / 2, 0, 0.06, WALL_H / 2, DECK_D / 2, this.wallPMat);
+    const wallGeo = new THREE.BoxGeometry(SIDE_WALL_THICKNESS, WALL_H, DECK_D);
+    const wallHalfThickness = SIDE_WALL_THICKNESS / 2;
+    this.addStaticBox(wallGeo, glassMaterial, -DECK_W / 2, WALL_H / 2, 0, wallHalfThickness, WALL_H / 2, DECK_D / 2, this.wallPMat);
+    this.addStaticBox(wallGeo, glassMaterial, DECK_W / 2, WALL_H / 2, 0, wallHalfThickness, WALL_H / 2, DECK_D / 2, this.wallPMat);
 
     // Front lip (raised edge — coins fall over this)
     this.addVisual(new THREE.BoxGeometry(DECK_W, 0.06, 0.1), goldTrimMat, 0, 0.03, FRONT_EDGE_Z - 0.05);
@@ -881,7 +892,7 @@ export class CoinPusherEngine {
     }
   }
 
-  private spawnCharacterAt(x: number, y: number, z: number, colorName: string) {
+  private spawnCharacterAt(x: number, y: number, z: number, colorName: string, ownerUsername?: string) {
     if (this.characters.length >= MAX_ACTIVE_CHARACTERS) this.trimCharacterCount();
     const instanceId = this.freeCharacterSlots.pop();
     if (instanceId === undefined) {
@@ -905,7 +916,7 @@ export class CoinPusherEngine {
         CHARACTER_COLLISION_HALF_DEPTH,
       )),
       position: new CANNON.Vec3(x, y, z),
-      material: this.coinMat,
+      material: this.characterMat,
     });
     body.fixedRotation = true;
     body.updateMassProperties();
@@ -924,13 +935,24 @@ export class CoinPusherEngine {
     transform.updateMatrix();
     this.characterMesh.setMatrixAt(instanceId, transform.matrix);
     this.characterMesh.instanceMatrix.needsUpdate = true;
-    this.characters.push({ body, color: colorName, rewardStars, createdAt: performance.now(), won: false, wonAt: 0, instanceId });
+    this.characters.push({
+      body,
+      color: colorName,
+      rewardStars,
+      rewardTransactionId: crypto.randomUUID(),
+      ownerUsername: ownerUsername ?? null,
+      grounded: y <= DECK_Y + CHARACTER_COLLISION_HALF_HEIGHT + 0.03,
+      createdAt: performance.now(),
+      won: false,
+      wonAt: 0,
+      instanceId,
+    });
     this.hammerCharacterCount++;
     if (this.hammerCharacterCount % 100 === 0) this.dropGiantHammers();
     this.options.onPrizePoolChange?.(this.getRemainingCharacterCount());
   }
 
-  spawnCharacters(colorName = 'gold', count = 1): void {
+  spawnCharacters(colorName = 'gold', count = 1, ownerUsername?: string): void {
     if (!Number.isSafeInteger(count) || count < 0) {
       throw new RangeError('Le nombre de personnages à créer doit être un entier positif.');
     }
@@ -942,10 +964,11 @@ export class CoinPusherEngine {
     }
     if (acceptedCount > 0) {
       const lastRequest = this.pendingCharacterSpawns[this.pendingCharacterSpawns.length - 1];
-      if (lastRequest?.color === colorName) {
+      const owner = ownerUsername?.trim().replace(/^@/, '') || undefined;
+      if (lastRequest?.color === colorName && lastRequest.ownerUsername === owner) {
         lastRequest.count += acceptedCount;
       } else {
-        this.pendingCharacterSpawns.push({ color: colorName, count: acceptedCount });
+        this.pendingCharacterSpawns.push({ color: colorName, count: acceptedCount, ownerUsername: owner });
       }
       this.pendingCharacterCount += acceptedCount;
       this.options.onCharacterSpawn?.();
@@ -1007,7 +1030,7 @@ export class CoinPusherEngine {
       const z = minZ + Math.random() * Math.max(0, COIN_DROP_MAX_Z - minZ);
       request.count--;
       this.pendingCharacterCount--;
-      this.spawnCharacterAt(x, 2.2, z, request.color);
+      this.spawnCharacterAt(x, 2.2, z, request.color, request.ownerUsername);
       remaining--;
       if (request.count === 0) this.pendingCharacterSpawns.shift();
     }
@@ -1157,6 +1180,42 @@ export class CoinPusherEngine {
     }
   }
 
+  private constrainCharactersToDeck(now: number) {
+    const groundY = DECK_Y + CHARACTER_COLLISION_HALF_HEIGHT;
+    const minX = -DECK_W / 2 + SIDE_WALL_THICKNESS / 2 + CHARACTER_COLLISION_HALF_WIDTH;
+    const maxX = DECK_W / 2 - SIDE_WALL_THICKNESS / 2 - CHARACTER_COLLISION_HALF_WIDTH;
+    const frontEdge = FRONT_EDGE_Z - CHARACTER_COLLISION_HALF_DEPTH;
+
+    for (const character of this.characters) {
+      const { body } = character;
+      const clampedX = Math.max(minX, Math.min(maxX, body.position.x));
+      if (clampedX !== body.position.x) {
+        body.position.x = clampedX;
+        if ((clampedX === minX && body.velocity.x < 0) || (clampedX === maxX && body.velocity.x > 0)) {
+          body.velocity.x = 0;
+        }
+        body.aabbNeedsUpdate = true;
+      }
+
+      if (body.position.z >= frontEdge) {
+        character.grounded = false;
+        continue;
+      }
+      if (!character.grounded && (
+        body.position.y <= groundY + 0.03 ||
+        now - character.createdAt >= 800
+      )) {
+        character.grounded = true;
+      }
+      if (character.grounded) {
+        body.position.y = groundY;
+        body.velocity.y = 0;
+        body.force.y = 0;
+        body.aabbNeedsUpdate = true;
+      }
+    }
+  }
+
   private updatePusher(deltaTime: number) {
     this.pusherPhase += this.pusherOmega * deltaTime;
     const pz = this.pusherCenterZ + this.pusherAmplitude * Math.sin(this.pusherPhase);
@@ -1202,6 +1261,7 @@ export class CoinPusherEngine {
 
     this.world.step(1 / 60, dt, 3);
     const now = performance.now();
+    this.constrainCharactersToDeck(now);
     this.handleCharacterWins(now);
     this.syncHammers(now);
     this.syncCharacters();
