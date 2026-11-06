@@ -3333,9 +3333,17 @@ function processTikTokWalletCommand(session, messageData, player) {
             messageId: commentData.messageId || ''
         });
     }
-    const runMatch = /^!?\s*run(?:\s+(\d+))?$/iu.exec(comment);
+    const runMatch = /^!?\s*run(?:\s+((?:\d{1,3}(?:[ .,\u00a0\u202f]\d{3})+)|\d+))?$/iu.exec(comment);
     if (!runMatch) return;
-    const requested = runMatch[1] ? Number(runMatch[1]) : 0;
+    const requested = runMatch[1] ? Number(runMatch[1].replace(/[ .,\u00a0\u202f]/g, '')) : 0;
+    if (!Number.isSafeInteger(requested)) {
+        broadcastSessionMessage(session, {
+            type: 'WALLET_RUN_REJECTED',
+            player: getPublicTikTokPlayer(player, walletOwner),
+            message: `@${player.username}, le nombre d’étoiles demandé est invalide.`
+        });
+        return;
+    }
     const balance = store.getWalletBalance(player, walletOwner);
     const amount = requested > 0 ? Math.min(Math.max(requested, MIN_RUN_STARS), balance) : balance;
     if (amount < MIN_RUN_STARS) {
