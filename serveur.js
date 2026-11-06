@@ -280,6 +280,10 @@ const staticGameIds = [
     '/coffres',
     '/inedexd.html'
 ];
+const fixedGameImageIds = new Set([
+    '/qui-veut-gagner-des-etoiles.html',
+    '/quartier-des-veilleurs.html'
+]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
@@ -958,6 +962,9 @@ async function saveAdminGame(body) {
     }
     if (body.action === 'image') {
         const gameId = typeof body.gameId === 'string' ? body.gameId : '';
+        if (fixedGameImageIds.has(gameId)) {
+            throw invalidAdminInput('L’image de ce jeu est fixe et ne peut pas être personnalisée.');
+        }
         if (gameId === '/petits-chevaux-tiktok.html') {
             throw invalidAdminInput('L’image de Petit Trot est fixe et ne peut pas être personnalisée.');
         }
