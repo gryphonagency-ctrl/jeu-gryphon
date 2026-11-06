@@ -427,6 +427,11 @@
             const coinRadius = .44;
             const dropLanes = [-3.15, -2.25, -1.35, -.45, .45, 1.35, 2.25, 3.15];
             const dropPointZ = pusherStart + pusherTravel * 3 * 1.35 + pusherLipOffset + pusherLipHalfDepth + coinRadius - .38;
+            const coinDropLanes = [-2.7, -.9, .9, 2.7];
+            const coinDropPoints = [
+                ...coinDropLanes.map(lane => ({ lane, z: dropPointZ })),
+                ...coinDropLanes.map(lane => ({ lane, z: dropPointZ - .85 }))
+            ];
             const dropStartY = 7.8;
             const pusherBackstopTopY = dropStartY + .4;
             const plateTopY = 1.42;
@@ -562,6 +567,10 @@
             rug.rotation.x = -Math.PI / 2;
             rug.position.set(0, -2.82, supportFootZ - .65);
             playfield.add(rug);
+
+            function randomDropPoint() {
+                return coinDropPoints[Math.floor(Math.random() * coinDropPoints.length)];
+            }
 
             function randomDropLane() {
                 return dropLanes[Math.floor(Math.random() * dropLanes.length)];
@@ -1138,7 +1147,7 @@
                 coins.push(coin);
             }
 
-            function launchCoin(owner, { sound = true, refreshHud = true, lane = null } = {}) {
+            function launchCoin(owner, { sound = true, refreshHud = true, dropPoint = null } = {}) {
                 if (!owner || typeof owner.username !== 'string') owner = currentDropPlayer;
                 if (coinBalance <= 0) {
                     status.hidden = false;
@@ -1159,15 +1168,15 @@
                     const rewardPlayer = owner || currentDropPlayer;
                     if (rewardPlayer && rewardDeck.cards.length) awardNextCard(rewardPlayer, refreshHud);
                 }
-                const dropLane = lane ?? randomDropLane();
+                const point = dropPoint ?? randomDropPoint();
                 if (tokensUsed % 100 === 0) {
-                    const firstLaneIndex = dropLanes.indexOf(dropLane);
+                    const firstPointIndex = coinDropPoints.indexOf(point);
                     for (let index = 0; index < 3; index++) {
-                        const hammerLane = dropLanes[(firstLaneIndex + index * 2) % dropLanes.length];
+                        const hammerPoint = coinDropPoints[(firstPointIndex + index * 2) % coinDropPoints.length];
                         createCoin(
-                            hammerLane * tableWidthScale,
+                            hammerPoint.lane * tableWidthScale,
                             dropStartY,
-                            dropPointZ + index * .12,
+                            hammerPoint.z + index * .12,
                             { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
                             null,
                             true
@@ -1175,9 +1184,9 @@
                     }
                 } else {
                     createCoin(
-                        dropLane * tableWidthScale,
+                        point.lane * tableWidthScale,
                         dropStartY,
-                        dropPointZ,
+                        point.z,
                         { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
                         owner
                     );
@@ -1199,15 +1208,15 @@
                 const dropCount = Math.min(requestedCount, coinBalance);
                 if (dropCount <= 0) return 0;
                 const run = ++gradualDropRun;
-                const firstLaneIndex = Math.floor(Math.random() * dropLanes.length);
+                const firstPointIndex = Math.floor(Math.random() * coinDropPoints.length);
                 let launched = 0;
                 dropHundredButton.disabled = true;
 
                 const launchNextCoin = () => {
                     gradualDropTimer = 0;
                     if (run !== gradualDropRun) return;
-                    const lane = dropLanes[(firstLaneIndex + launched) % dropLanes.length];
-                    if (!dropCoin(owner, { sound: false, refreshHud: false, lane })) {
+                    const point = coinDropPoints[(firstPointIndex + launched) % coinDropPoints.length];
+                    if (!dropCoin(owner, { sound: false, refreshHud: false, dropPoint: point })) {
                         dropHundredButton.disabled = false;
                         return;
                     }
