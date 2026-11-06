@@ -181,6 +181,7 @@ const protectedRoutes = new Set([
     '/squid-storm.html',
     '/tower-up.html',
     '/tir-a-la-corde.html',
+    '/pont-de-verre.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
@@ -273,6 +274,7 @@ const staticGameIds = [
     '/squid-storm.html',
     '/tower-up.html',
     '/tir-a-la-corde.html',
+    '/pont-de-verre.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -310,6 +312,7 @@ store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/squid-storm.html');
 store.grantGameAccessToExistingCreators('/tower-up.html');
 store.grantGameAccessToExistingCreators('/tir-a-la-corde.html');
+store.grantGameAccessToExistingCreators('/pont-de-verre.html');
 store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
@@ -371,6 +374,7 @@ const staticGameTitles = {
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
+    '/pont-de-verre.html': 'Pont de verre — Griffon Arcade',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -425,6 +429,7 @@ const gameRouteIds = new Map([
     ['/squid-storm.html', '/squid-storm.html'],
     ['/tower-up.html', '/tower-up.html'],
     ['/tir-a-la-corde.html', '/tir-a-la-corde.html'],
+    ['/pont-de-verre.html', '/pont-de-verre.html'],
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -2874,6 +2879,7 @@ const server = http.createServer((req, res) => {
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/tir-a-la-corde.html', [path.join(__dirname, 'tir-a-la-corde.html'), 'text/html; charset=utf-8']],
+        ['/pont-de-verre.html', [path.join(__dirname, 'pont-de-verre.html'), 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -2922,6 +2928,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/pont-de-verre.svg', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],

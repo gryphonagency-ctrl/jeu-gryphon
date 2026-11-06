@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pont de verre — Griffon Arcade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: radial-gradient(circle at center, #11071f 0%, #030106 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            user-select: none;
+        }
+        .neon-glow {
+            box-shadow: 0 0 35px rgba(255, 0, 127, 0.25);
+        }
+        .neon-text {
+            text-shadow: 0 0 10px rgba(255, 0, 127, 0.7), 0 0 20px rgba(255, 0, 127, 0.4);
+        }
+        #live-settings-button {
+            position: fixed;
+            z-index: 80;
+            top: 12px;
+            right: 12px;
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(255, 0, 127, .7);
+            border-radius: 50%;
+            color: white;
+            background: rgba(3, 1, 6, .9);
+            font-size: 19px;
+            cursor: pointer;
+        }
+        #live-controls {
+            position: fixed;
+            z-index: 75;
+            top: 60px;
+            right: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            width: min(460px, calc(100vw - 24px));
+            max-height: 75vh;
+            overflow: auto;
+            padding: 12px;
+            border: 1px solid rgba(255, 0, 127, .7);
+            border-radius: 12px;
+            color: white;
+            background: rgba(3, 1, 6, .97);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .7);
+            font: 12px Arial, sans-serif;
+        }
+        #live-controls[hidden], #live-roster[hidden], #live-ranking[hidden] { display: none; }
+        #live-controls button, #live-controls label, #live-controls input[type="text"] {
+            min-height: 34px;
+            padding: 7px 10px;
+            border: 1px solid #554455;
+            border-radius: 7px;
+            color: white;
+            background: #211722;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        #live-controls button { cursor: pointer; }
+        #live-controls input[type="text"] { width: 160px; }
+        #live-controls label { display: flex; align-items: center; gap: 6px; cursor: default; }
+        #live-controls input[type="range"] { width: 75px; accent-color: #ff007f; }
+        #live-status { flex-basis: 100%; color: #f3d9e8; text-align: center; }
+        #live-roster, #live-ranking {
+            position: fixed;
+            z-index: 70;
+            left: 12px;
+            width: 220px;
+            max-height: 38vh;
+            overflow: auto;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, .25);
+            border-radius: 10px;
+            color: white;
+            background: rgba(5, 3, 9, .95);
+            font: 12px Arial, sans-serif;
+        }
+        #live-roster { top: 12px; }
+        #live-ranking { top: calc(12px + min(38vh, 220px) + 10px); }
+        #live-roster-title, #live-ranking-title {
+            margin: -2px -2px 8px;
+            padding: 6px;
+            background: #211722;
+            cursor: move;
+            font-weight: 900;
+        }
+        #live-roster-list, #live-ranking-list { display: grid; gap: 4px; }
+        .rank-row { display: flex; justify-content: space-between; gap: 8px; }
+        @media (max-width: 640px) {
+            body { padding: 8px; }
+            header { flex-wrap: wrap; justify-content: center; gap: 8px; }
+            header > div:last-child { flex-wrap: wrap; justify-content: center; }
+            #live-settings-button { top: 8px; right: 8px; }
+            #live-controls { top: 54px; right: 8px; width: min(420px, calc(100vw - 16px)); }
+            #live-roster, #live-ranking { left: 8px; width: min(190px, 42vw); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col items-center justify-between p-2 sm:p-3 text-white">
+
+    <!-- TOP HEADER / STATS -->
+    <header class="w-full max-w-4xl flex items-center justify-between bg-neutral-950/80 border border-pink-500/30 rounded-xl px-4 py-2 backdrop-blur-md shadow-lg shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-pink-500 animate-pulse"></div>
+            <h1 class="text-sm sm:text-lg font-black tracking-widest text-pink-500 neon-text uppercase m-0">Pont de verre</h1>
+        </div>
+        <div class="flex items-center space-x-4 text-xs sm:text-sm font-semibold">
+            <div class="bg-black/60 px-3 py-1 rounded-lg border border-neutral-800">
+                Joueur : <span id="current-player" class="text-pink-400 font-bold">014</span>
+            </div>
+            <div class="bg-black/60 px-3 py-1 rounded-lg border border-neutral-800">
+                Étape : <span id="current-step" class="text-cyan-400 font-bold">1</span> / 6
+            </div>
+            <div class="bg-black/60 px-3 py-1 rounded-lg border border-neutral-800">
+                Restants : <span id="players-alive" class="text-emerald-400 font-bold">3 / 3</span>
+            </div>
+            <div class="bg-black/60 px-3 py-1 rounded-lg border border-neutral-800">
+                LIVE : <span id="game-status" class="text-emerald-400 font-bold">En cours</span>
+            </div>
+        </div>
+    </header>
+
+    <button id="live-settings-button" type="button" aria-label="Afficher ou masquer les commandes LIVE" title="Commandes LIVE">⚙</button>
+    <section id="live-controls" aria-label="Commandes du LIVE" hidden>
+        <input id="tiktok-username" type="text" maxlength="24" placeholder="@nom_utilisateur" aria-label="Pseudo TikTok Live">
+        <button id="connect-live" type="button">CONNECTER LIVE</button>
+        <button id="toggle-roster" type="button">FILE DU LIVE</button>
+        <button id="toggle-ranking" type="button">CLASSEMENT</button>
+        <label for="gift-speed">Vitesse <input id="gift-speed" type="range" min="0.5" max="3" step="0.5" value="1"><span id="gift-speed-value">1×</span></label>
+        <button id="sim-left" type="button">TEST GAUCHE</button>
+        <button id="sim-right" type="button">TEST DROITE</button>
+        <button id="sim-gift-left" type="button">CADEAU GAUCHE</button>
+        <button id="sim-gift-right" type="button">CADEAU DROITE</button>
+        <button id="sim-big-gift" type="button">GROS CADEAU</button>
+        <button id="sim-share" type="button">TEST PARTAGE</button>
+        <label for="sound-enabled">Sons <input id="sound-enabled" type="checkbox" checked></label>
+        <label for="sound-volume">Volume <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <span id="live-status" role="status">HORS LIGNE · Commente 014, 027 ou 063 pour choisir un joueur, puis envoie un cadeau.</span>
+        <button id="sim-player-014" type="button">CHOISIR 014</button>
+        <button id="sim-player-027" type="button">CHOISIR 027</button>
+        <button id="sim-player-063" type="button">CHOISIR 063</button>
+        <div data-save-key="pont-de-verre-save"></div>
+    </section>
+    <aside id="live-roster" hidden aria-label="File des joueurs LIVE">
+        <div id="live-roster-title">JOUEURS LIVE · DÉPLACER</div>
+        <div id="live-roster-list">En attente du chat…</div>
+    </aside>
+    <aside id="live-ranking" hidden aria-label="Classement des joueurs LIVE">
+        <div id="live-ranking-title">CLASSEMENT · DÉPLACER</div>
+        <div id="live-ranking-list">Aucun déplacement pour le moment.</div>
+    </aside>
+    <!-- MAIN GAME VIEWPORT -->
+    <main class="w-full max-w-4xl flex-1 my-2 relative flex items-center justify-center bg-black/80 rounded-2xl border-2 border-pink-500/40 neon-glow overflow-hidden">
+
+        <!-- SVG VECTOR GRAPHICS MATCHING REFERENCE -->
+        <svg id="game-svg" viewBox="0 0 1000 700" class="w-full h-full object-contain">
+            <defs>
+                <linearGradient id="abyssGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#0a0512"/>
+                    <stop offset="50%" stop-color="#030105"/>
+                    <stop offset="100%" stop-color="#000000"/>
+                </linearGradient>
+                <linearGradient id="cliffGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#17131f"/>
+                    <stop offset="50%" stop-color="#0f0b14"/>
+                    <stop offset="100%" stop-color="#09060d"/>
+                </linearGradient>
+                <linearGradient id="pillarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#3d180c"/>
+                    <stop offset="50%" stop-color="#6e2d17"/>
+                    <stop offset="100%" stop-color="#2a1007"/>
+                </linearGradient>
+            </defs>
+
+            <!-- Abyss Background covering the entire viewport sides -->
+            <rect width="1000" height="700" fill="url(#abyssGrad)"/>
+
+            <!-- LARGE GREEN CARPET / AREA BENEATH THE STARTING/PILLAR AREA -->
+            <path d="M 0,420 L 1000,420 L 1000,700 L 0,700 Z" fill="#0b533e" stroke="#063224" stroke-width="4"/>
+
+            <!-- TALL BROWN PILLARS EXTENDING FROM TOP TO BOTTOM (FRAMING THE ENTIRE SCENE) -->
+            <rect x="220" y="0" width="70" height="700" fill="url(#pillarGrad)"/>
+            <rect x="710" y="0" width="70" height="700" fill="url(#pillarGrad)"/>
+
+            <!-- Realistic Cliff Walls / Canyon Slopes Underneath and on Sides -->
+            <!-- Left Cliff Wall -->
+            <path d="M 0,0 L 320,330 L 200,700 L 0,700 Z" fill="url(#cliffGrad)" stroke="#1f182c" stroke-width="2"/>
+            <path d="M 120,330 L 160,420 L 110,520 L 140,650" fill="none" stroke="#2a2238" stroke-width="4" opacity="0.6"/>
+
+            <!-- Right Cliff Wall -->
+            <path d="M 1000,0 L 680,330 L 800,700 L 1000,700 Z" fill="url(#cliffGrad)" stroke="#1f182c" stroke-width="2"/>
+            <path d="M 880,330 L 840,420 L 890,520 L 860,650" fill="none" stroke="#2a2238" stroke-width="4" opacity="0.6"/>
+
+            <!-- Center Abyss Void Under Bridge -->
+            <polygon points="320,330 680,330 800,700 200,700" fill="#010002"/>
+
+            <!-- GLASS BRIDGE TILES GROUP (6 ROWS) EXTENDING ALL THE WAY UP TO THE STAIRCASE -->
+            <g id="bridge-group"></g>
+
+            <!-- END GATE, STAIRCASE, PLATFORM & PILLARS WITH REALISTIC RED GUARDS -->
+            <g id="bg-end-structure">
+                <!-- Grand Arched Gateway Frame -->
+                <rect x="410" y="80" width="180" height="180" fill="#141820" stroke="#262f3f" stroke-width="3"/>
+                <!-- Dark Arched Door Opening -->
+                <path d="M 440,260 L 440,150 Q 500,100 560,150 L 560,260 Z" fill="#040609" stroke="#1e293b" stroke-width="3"/>
+
+                <!-- Staircase Steps leading up to the door from the bridge top -->
+                <polygon points="410,260 590,260 596,274 404,274" fill="#334155" stroke="#1e293b" stroke-width="1"/>
+                <polygon points="404,274 596,274 602,288 398,288" fill="#475569" stroke="#1e293b" stroke-width="1"/>
+                <polygon points="398,288 602,288 608,302 392,302" fill="#334155" stroke="#1e293b" stroke-width="1"/>
+                <polygon points="392,302 608,302 614,316 386,316" fill="#475569" stroke="#1e293b" stroke-width="1"/>
+                <polygon points="386,316 614,316 620,330 380,330" fill="#334155" stroke="#1e293b" stroke-width="1"/>
+
+                <!-- Top Platform in front of stairs -->
+                <polygon points="380,330 620,330 630,345 370,345" fill="#b91c1c"/>
+
+                <!-- Équipe d'accueil du pont -->
+                <g transform="translate(435, 175) scale(0.65)">
+                    <rect x="12" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <rect x="25" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <ellipse cx="18" cy="160" rx="9" ry="5" fill="#111"/>
+                    <ellipse cx="32" cy="160" rx="9" ry="5" fill="#111"/>
+                    <rect x="6" y="55" width="38" height="65" rx="10" fill="#b91c3c"/>
+                    <rect x="8" y="90" width="34" height="14" fill="#000"/>
+                    <path d="M 6, 60 L -6, 95 L -10, 110" fill="none" stroke="#b91c3c" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="-11" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <path d="M 44, 60 L 56, 95 L 60, 110" fill="none" stroke="#b91c3c" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="61" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <circle cx="25" cy="32" r="22" fill="#e9b995" stroke="#8e5c47" stroke-width="2"/>
+                    <path d="M5 30Q7 8 25 10Q44 10 46 30Q37 19 25 20Q13 19 5 30Z" fill="#18202c"/>
+                    <path d="M7 25Q25 17 43 25L40 40Q25 49 10 40Z" fill="#8f1730" stroke="#4a101d" stroke-width="2"/>
+                    <path d="M13 35L22 27L20 35L31 28L24 40L36 33" fill="none" stroke="#ffe8d6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+
+                <!-- Guide du pont -->
+                <g transform="translate(475, 160) scale(0.65)">
+                    <rect x="12" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <rect x="25" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <ellipse cx="18" cy="160" rx="9" ry="5" fill="#111"/>
+                    <ellipse cx="32" cy="160" rx="9" ry="5" fill="#111"/>
+                    <rect x="6" y="55" width="38" height="65" rx="10" fill="#dc274b"/>
+                    <rect x="8" y="90" width="34" height="14" fill="#000"/>
+                    <path d="M 6, 60 L -6, 95 L -10, 110" fill="none" stroke="#dc274b" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="-11" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <path d="M 44, 60 L 56, 95 L 60, 110" fill="none" stroke="#dc274b" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="61" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <circle cx="25" cy="32" r="22" fill="#c98e6d" stroke="#754b39" stroke-width="2"/>
+                    <path d="M5 29Q5 9 25 9Q45 9 45 29L39 24H11Z" fill="#3c3028"/>
+                    <path d="M7 25Q25 17 43 25L40 40Q25 49 10 40Z" fill="#a51935" stroke="#4a101d" stroke-width="2"/>
+                    <path d="M16 29Q12 34 16 39M25 27Q21 34 25 41M34 29Q30 34 34 39" fill="none" stroke="#ffe8d6" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
+
+                <!-- Gardienne du pont -->
+                <g transform="translate(515, 175) scale(0.65)">
+                    <rect x="12" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <rect x="25" y="115" width="13" height="45" rx="5" fill="#641322"/>
+                    <ellipse cx="18" cy="160" rx="9" ry="5" fill="#111"/>
+                    <ellipse cx="32" cy="160" rx="9" ry="5" fill="#111"/>
+                    <rect x="6" y="55" width="38" height="65" rx="10" fill="#b91c3c"/>
+                    <rect x="8" y="90" width="34" height="14" fill="#000"/>
+                    <path d="M 6, 60 L -6, 95 L -10, 110" fill="none" stroke="#b91c3c" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="-11" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <path d="M 44, 60 L 56, 95 L 60, 110" fill="none" stroke="#b91c3c" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="61" cy="113" r="5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    <circle cx="25" cy="32" r="22" fill="#efc7a8" stroke="#9e7055" stroke-width="2"/>
+                    <path d="M5 30Q8 8 25 10Q42 8 45 30L39 22Q25 27 11 22Z" fill="#392f43"/>
+                    <path d="M7 25Q25 17 43 25L40 40Q25 49 10 40Z" fill="#951630" stroke="#4a101d" stroke-width="2"/>
+                    <path d="M12 34Q18 27 24 34T36 34M14 39Q20 33 26 39T38 39" fill="none" stroke="#ffe8d6" stroke-width="2.2" stroke-linecap="round"/>
+                </g>
+            </g>
+
+            <!-- START PLATFORM (RED CARPET + DARK GREEN BASE) -->
+            <path d="M 40,510 L 960,510 L 1080,700 L -80,700 Z" fill="#073d2c" stroke="#04261b" stroke-width="4"/>
+            <!-- Red Carpet Strip on Start Platform -->
+            <polygon points="420,510 580,510 660,700 340,700" fill="#b91c1c"/>
+
+            <!-- STYLIZED METALLIC SEPARATION BARRIER & LEDGE AT START -->
+            <g id="start-barrier">
+                <!-- Metallic ledge bar -->
+                <rect x="365" y="500" width="270" height="14" rx="3" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+                <line x1="375" y1="507" x2="625" y2="507" stroke="#94a3b8" stroke-width="2"/>
+
+                <!-- Left & Right Barrier Posts -->
+                <rect x="357" y="483" width="16" height="32" rx="3" fill="#334155" stroke="#cbd5e1" stroke-width="1.5"/>
+            </g>
+
+            <!-- ACTIVE PLAYER RENDERED ON BRIDGE / WAITING PLAYERS ON SIDE PLATFORM -->
+            <g id="active-player-group" transform="translate(500, 370)">
+                <!-- Group replaced dynamically via JS based on active player -->
+            </g>
+
+            <!-- WAITING / BENCH PLAYERS ON START PLATFORM (LEFT & RIGHT) -->
+            <g id="bench-players-group">
+                <!-- Bench player left -->
+                <g id="bench-left" transform="translate(290, 420) scale(0.7)">
+                    <circle cx="0" cy="-35" r="26" fill="#352a2a" stroke="#171313" stroke-width="2"/>
+                    <path d="M-23 -43Q-20 -64 0 -63Q21 -62 24 -42L18 -48H-18Z" fill="#151112"/>
+                    <rect x="-22" y="-10" width="44" height="65" rx="10" fill="#0b533e"/>
+                    <rect x="-18" y="15" width="36" height="22" rx="4" fill="#073b2c"/>
+                    <text x="0" y="32" font-size="14" fill="white" font-weight="900" text-anchor="middle" id="bench-text-left">027</text>
+                    <path d="M -22, -5 L -42, 25 L -46, 42" fill="none" stroke="#0b533e" stroke-width="11" stroke-linecap="round"/>
+                    <circle cx="-47" cy="46" r="6" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                    <path d="M 22, -5 L 42, 25 L 46, 42" fill="none" stroke="#0b533e" stroke-width="11" stroke-linecap="round"/>
+                    <circle cx="47" cy="46" r="6" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                    <rect x="-16" y="55" width="13" height="65" rx="5" fill="#0b533e"/>
+                    <rect x="3" y="55" width="13" height="65" rx="5" fill="#0b533e"/>
+                    <ellipse cx="-10" cy="120" rx="9" ry="5" fill="#ffffff"/>
+                    <ellipse cx="10" cy="120" rx="9" ry="5" fill="#ffffff"/>
+                </g>
+
+                <!-- Bench player right -->
+                <g id="bench-right" transform="translate(710, 420) scale(0.7)">
+                    <circle cx="0" cy="-35" r="26" fill="#352a2a" stroke="#171313" stroke-width="2"/>
+                    <path d="M-23 -43Q-20 -64 0 -63Q21 -62 24 -42L18 -48H-18Z" fill="#151112"/>
+                    <rect x="-22" y="-10" width="44" height="65" rx="10" fill="#0b533e"/>
+                    <rect x="-18" y="15" width="36" height="22" rx="4" fill="#073b2c"/>
+                    <text x="0" y="32" font-size="14" fill="white" font-weight="900" text-anchor="middle" id="bench-text-right">063</text>
+                    <path d="M -22, -5 L -42, 25 L -46, 42" fill="none" stroke="#0b533e" stroke-width="11" stroke-linecap="round"/>
+                    <circle cx="-47" cy="46" r="6" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                    <path d="M 22, -5 L 42, 25 L 46, 42" fill="none" stroke="#0b533e" stroke-width="11" stroke-linecap="round"/>
+                    <circle cx="47" cy="46" r="6" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                    <rect x="-16" y="55" width="13" height="65" rx="5" fill="#0b533e"/>
+                    <rect x="3" y="55" width="13" height="65" rx="5" fill="#0b533e"/>
+                    <ellipse cx="-10" cy="120" rx="9" ry="5" fill="#ffffff"/>
+                    <ellipse cx="10" cy="120" rx="9" ry="5" fill="#ffffff"/>
+                </g>
+            </g>
+        </svg>
+
+        <!-- FLOATING STATUS NOTIFICATION BANNER -->
+        <div id="feedback-banner" class="absolute top-4 inset-x-0 mx-auto w-max px-6 py-2 rounded-xl bg-black/90 border border-pink-500 text-pink-400 font-bold text-sm tracking-wide shadow-2xl transition-opacity duration-300 opacity-0 pointer-events-none">
+            Notification
+        </div>
+    </main>
+
+    <!-- GAMEPLAY LOGIC -->
+    <script>
+        const allPlayers = ["014", "027", "063"];
+        let alivePlayers = [...allPlayers];
+        let currentPlayerIndex = 0;
+        let currentRow = 0;
+        const playerProgress = new Map(allPlayers.map(player => [player, 0]));
+        let gameActive = true;
+        let glassMap = [];
+        const totalRows = 6;
+        const selectedPlayers = new Map();
+        const selectedSides = new Map();
+        const livePlayers = new Map();
+        const liveStatus = document.getElementById('live-status');
+        const giftMoves = [];
+        const seenGiftIds = new Set();
+        let socket = null;
+        let giftSpeed = 1;
+        let moveTimer = null;
+
+        function renderBridge() {
+            const bridgeGroup = document.getElementById('bridge-group');
+            bridgeGroup.innerHTML = '';
+            glassMap = [];
+
+            const startY = 500;
+            const endY = 345;
+            const totalHeight = startY - endY;
+            const rowHeight = totalHeight / totalRows;
+
+            const tileWidth = 120;
+            const tileGap = 8;
+
+            for (let i = 0; i < totalRows; i++) {
+                const yTop = startY - ((i + 1) * rowHeight);
+                const yBot = startY - (i * rowHeight);
+
+                const fragileSide = Math.random() < 0.5 ? 'left' : 'right';
+                glassMap.push(fragileSide);
+
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+                const leftPoly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                leftPoly.setAttribute("points", `${500 - tileGap - tileWidth},${yTop} ${500 - tileGap},${yTop} ${500 - tileGap},${yBot} ${500 - tileGap - tileWidth},${yBot}`);
+                leftPoly.setAttribute("fill", "rgba(180, 230, 255, 0.45)");
+                leftPoly.setAttribute("stroke", "#ffffff");
+                leftPoly.setAttribute("stroke-width", "2");
+                leftPoly.setAttribute("id", `tile-${i}-left`);
+                g.appendChild(leftPoly);
+
+                const rightPoly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                rightPoly.setAttribute("points", `${500 + tileGap},${yTop} ${500 + tileGap + tileWidth},${yTop} ${500 + tileGap + tileWidth},${yBot} ${500 + tileGap},${yBot}`);
+                rightPoly.setAttribute("fill", "rgba(180, 230, 255, 0.45)");
+                rightPoly.setAttribute("stroke", "#ffffff");
+                rightPoly.setAttribute("stroke-width", "2");
+                rightPoly.setAttribute("id", `tile-${i}-right`);
+                g.appendChild(rightPoly);
+
+                const carpet = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                carpet.setAttribute("points", `${500 - tileGap},${yTop} ${500 + tileGap},${yTop} ${500 + tileGap},${yBot} ${500 - tileGap},${yBot}`);
+                carpet.setAttribute("fill", "#cc0033");
+                g.appendChild(carpet);
+
+                const bulbL = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                bulbL.setAttribute("cx", 500 - tileGap - tileWidth - 5);
+                bulbL.setAttribute("cy", (yTop + yBot) / 2);
+                bulbL.setAttribute("r", "4");
+                bulbL.setAttribute("fill", i % 2 === 0 ? "#00ffff" : "#ff007f");
+                g.appendChild(bulbL);
+
+                const bulbR = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                bulbR.setAttribute("cx", 500 + tileGap + tileWidth + 5);
+                bulbR.setAttribute("cy", (yTop + yBot) / 2);
+                bulbR.setAttribute("r", "4");
+                bulbR.setAttribute("fill", i % 2 === 0 ? "#ffcc00" : "#00ff99");
+                g.appendChild(bulbR);
+
+                bridgeGroup.appendChild(g);
+            }
+        }
+
+        function updateUI() {
+            const activePlayer = alivePlayers[currentPlayerIndex];
+            document.getElementById('current-player').innerText = activePlayer || '—';
+            document.getElementById('current-step').innerText = Math.min(currentRow + 1, totalRows);
+            document.getElementById('players-alive').innerText = `${alivePlayers.length} / 3`;
+        }
+
+        function setGameStatus(message, color) {
+            const status = document.getElementById('game-status');
+            status.textContent = message;
+            status.className = `${color} font-bold`;
+        }
+
+        function showBanner(text, color = "text-pink-400") {
+            const banner = document.getElementById('feedback-banner');
+            banner.innerText = text;
+            banner.className = `absolute top-4 inset-x-0 mx-auto w-max px-6 py-2 rounded-xl bg-black/90 border border-pink-500 ${color} font-bold text-sm tracking-wide shadow-2xl transition-opacity duration-300 opacity-100 pointer-events-none`;
+            setTimeout(() => {
+                banner.classList.remove('opacity-100');
+                banner.classList.add('opacity-0');
+            }, 1800);
+        }
+
+        function renderActivePlayer(posX, posY, scale) {
+            const activeGroup = document.getElementById('active-player-group');
+            const num = alivePlayers[currentPlayerIndex];
+            activeGroup.setAttribute("transform", `translate(${posX}, ${posY}) scale(${scale})`);
+            activeGroup.innerHTML = `
+                <circle cx="0" cy="-35" r="30" fill="#352a2a" stroke="#171313" stroke-width="2"/>
+                <path d="M-27 -43Q-24 -66 0 -65Q25 -64 28 -42L22 -48H-22Z" fill="#151112"/>
+                <rect x="-26" y="-10" width="52" height="72" rx="12" fill="#0b533e"/>
+                <path d="M-14 -7H14L9 1H-9Z" fill="#073b2c"/>
+                <text x="0" y="34" font-size="16" fill="white" font-weight="900" text-anchor="middle">${num}</text>
+                <path d="M -26, -5 L -48, 30 L -53, 50" fill="none" stroke="#0b533e" stroke-width="13" stroke-linecap="round"/>
+                <circle cx="-54" cy="55" r="7" fill="#bb8161" stroke="#754c3b" stroke-width="1.5"/>
+                <path d="M 26, -5 L 48, 30 L 53, 50" fill="none" stroke="#0b533e" stroke-width="13" stroke-linecap="round"/>
+                <circle cx="54" cy="55" r="7" fill="#bb8161" stroke="#754c3b" stroke-width="1.5"/>
+                <rect x="-18" y="60" width="15" height="75" rx="5" fill="#0b533e"/>
+                <rect x="3" y="60" width="15" height="75" rx="5" fill="#0b533e"/>
+                <ellipse cx="-11" cy="136" rx="10" ry="5.5" fill="#ffffff"/>
+                <ellipse cx="11" cy="136" rx="10" ry="5.5" fill="#ffffff"/>
+            `;
+        }
+
+        function updateBenchPlayers() {
+            const activePlayer = alivePlayers[currentPlayerIndex];
+            const waitingPlayers = alivePlayers.filter((_, idx) => idx !== currentPlayerIndex);
+
+            if (waitingPlayers.length >= 1) {
+                document.getElementById('bench-left').style.display = 'block';
+                document.getElementById('bench-text-left').textContent = waitingPlayers[0];
+            } else {
+                document.getElementById('bench-left').style.display = 'none';
+            }
+            if (waitingPlayers.length >= 2) {
+                document.getElementById('bench-right').style.display = 'block';
+                document.getElementById('bench-text-right').textContent = waitingPlayers[1];
+            } else {
+                document.getElementById('bench-right').style.display = 'none';
+            }
+        }
+
+        function updatePlayerPosition() {
+            const startY = 500;
+            const endY = 345;
+            const rowHeight = (startY - endY) / totalRows;
+
+            if (currentRow === 0) {
+                renderActivePlayer(500, 420, 0.7);
+            } else if (currentRow <= totalRows) {
+                const targetY = currentRow === totalRows ? 335 : (startY - (currentRow * rowHeight) - (rowHeight / 2));
+                const scaleFactor = Math.max(0.45, 0.75 - (currentRow * 0.04));
+                renderActivePlayer(500, targetY, scaleFactor);
+            }
+            updateBenchPlayers();
+        }
+
+        function switchToPlayer(player) {
+            const playerIndex = alivePlayers.indexOf(player);
+            if (playerIndex < 0 || !gameActive) return false;
+            currentPlayerIndex = playerIndex;
+            currentRow = playerProgress.get(player) || 0;
+            updatePlayerPosition();
+            updateUI();
+            return true;
+        }
+
+        function resetGame(fullReset = false) {
+            gameActive = true;
+            if (fullReset) {
+                alivePlayers = [...allPlayers];
+                currentPlayerIndex = 0;
+                for (const player of allPlayers) playerProgress.set(player, 0);
+                renderBridge();
+            }
+            currentRow = playerProgress.get(alivePlayers[currentPlayerIndex]) || 0;
+            setGameStatus("En cours", "text-emerald-400");
+            updatePlayerPosition();
+            updateUI();
+            processGiftMoves();
+        }
+
+        function nextPlayerTurn() {
+            const deadPlayer = alivePlayers.splice(currentPlayerIndex, 1)[0];
+            playerProgress.delete(deadPlayer);
+
+            if (alivePlayers.length === 0) {
+                setGameStatus("Fin de partie", "text-rose-500");
+                showBanner("💀 Tous les joueurs sont morts... Recommencement.", "text-rose-400");
+                setTimeout(() => resetGame(true), 2500);
+            } else {
+                if (currentPlayerIndex >= alivePlayers.length) {
+                    currentPlayerIndex = 0;
+                }
+                showBanner(`⚠️ Joueur ${deadPlayer} éliminé ! Tour du Joueur ${alivePlayers[currentPlayerIndex]}`, "text-amber-400");
+                setTimeout(() => {
+                    currentRow = playerProgress.get(alivePlayers[currentPlayerIndex]) || 0;
+                    gameActive = true;
+                    updatePlayerPosition();
+                    updateUI();
+                    setGameStatus("En cours", "text-emerald-400");
+                    processGiftMoves();
+                }, 1500);
+            }
+        }
+
+        function chooseTile(side, fromGift = false, username = '') {
+            if (!gameActive || currentRow >= totalRows) return;
+
+            const fragile = glassMap[currentRow];
+            const tile = document.getElementById(`tile-${currentRow}-${side}`);
+            if (!tile) return;
+            const player = alivePlayers[currentPlayerIndex];
+
+            if (side === fragile) {
+                gameActive = false;
+                tile.setAttribute("fill", "rgba(0,0,0,0.9)");
+                tile.setAttribute("stroke", "#ff0000");
+
+                setGameStatus("Chute", "text-rose-500");
+                showBanner(`❌ Joueur ${player} : La vitre s'est brisée !`, "text-rose-400");
+
+                const startY = 500;
+                const rowHeight = (startY - 345) / totalRows;
+                let posY = currentRow === 0 ? 420 : (startY - (currentRow * rowHeight) - (rowHeight / 2));
+                let dropInterval = setInterval(() => {
+                    posY += 16;
+                    renderActivePlayer(500, posY, Math.max(0.1, 0.7 - (posY/300)));
+                    if (posY > 680) {
+                        clearInterval(dropInterval);
+                        nextPlayerTurn();
+                    }
+                }, 25);
+            } else {
+                tile.setAttribute("fill", "rgba(0, 255, 170, 0.6)");
+                currentRow++;
+                playerProgress.set(player, currentRow);
+                updatePlayerPosition();
+                updateUI();
+
+                if (currentRow >= totalRows) {
+                    gameActive = false;
+                    setGameStatus("Victoire", "text-cyan-400");
+                    showBanner(`🏆 Victoire du Joueur ${player} !`, "text-cyan-300");
+                    setTimeout(() => resetGame(true), 2500);
+                } else {
+                    showBanner("✨ Bon choix ! Continuez...", "text-emerald-400");
+                    processGiftMoves();
+                }
+            }
+        }
+
+        function normalizeName(value) {
+            return String(value || '').trim().replace(/^@/, '').slice(0, 40);
+        }
+
+        function normalizeComment(value) {
+            return String(value || '').trim().toLocaleLowerCase('fr-FR').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+        }
+
+        function renderLiveRoster() {
+            const list = document.getElementById('live-roster-list');
+            if (!livePlayers.size) {
+                list.textContent = 'En attente du chat…';
+                return;
+            }
+            list.replaceChildren();
+            for (const [name, choice] of livePlayers) {
+                const row = document.createElement('div');
+                const side = choice.side ? ` · ${choice.side === 'left' ? 'gauche' : 'droite'}` : '';
+                row.textContent = `Joueur ${choice.player} · @${name}${side}`;
+                list.appendChild(row);
+            }
+        }
+
+        function renderLiveRanking() {
+            const list = document.getElementById('live-ranking-list');
+            const ranked = [...livePlayers.keys()]
+                .map(name => ({ name, moves: liveRanking.get(name) || 0 }))
+                .sort((a, b) => b.moves - a.moves || a.name.localeCompare(b.name, 'fr'));
+            if (!ranked.length) {
+                list.textContent = 'Aucun déplacement pour le moment.';
+                return;
+            }
+            list.replaceChildren();
+            ranked.forEach((player, index) => {
+                const row = document.createElement('div');
+                row.className = 'rank-row';
+                row.textContent = `${index + 1}. @${player.name}`;
+                const moves = document.createElement('strong');
+                moves.textContent = `${player.moves} cadeau${player.moves > 1 ? 'x' : ''}`;
+                row.appendChild(moves);
+                list.appendChild(row);
+            });
+        }
+
+        function updateLivePlayer(name) {
+            livePlayers.set(name, {
+                player: selectedPlayers.get(name),
+                side: selectedSides.get(name)
+            });
+            renderLiveRoster();
+        }
+
+        function setCharacterChoice(username, player) {
+            const name = normalizeName(username);
+            if (!name || !allPlayers.includes(player)) return;
+            const key = name.toLocaleLowerCase('fr-FR');
+            selectedPlayers.set(key, player);
+            updateLivePlayer(key);
+            renderLiveRanking();
+            liveStatus.textContent = `@${name} choisit le joueur ${player}. Envoie un cadeau pour le faire avancer.`;
+            if (gameActive) switchToPlayer(player);
+        }
+
+        function setSideChoice(username, side) {
+            const name = normalizeName(username);
+            if (!name || !side) return;
+            const key = name.toLocaleLowerCase('fr-FR');
+            selectedSides.set(key, side);
+            if (selectedPlayers.has(key)) updateLivePlayer(key);
+            liveStatus.textContent = `@${name} choisit la vitre ${side === 'left' ? 'gauche' : 'droite'}.`;
+        }
+
+        function onTikTokComment(username, text) {
+            const comment = normalizeComment(text);
+            const playerMatch = comment.match(/^(?:joueur|personnage)?\s*(014|027|063)$/);
+            if (playerMatch) {
+                setCharacterChoice(username, playerMatch[1]);
+            } else if (/^(?:!\s*)?(?:gauche|vitre\s+gauche|left|1)$/.test(comment)) {
+                setSideChoice(username, 'left');
+            } else if (/^(?:!\s*)?(?:droite|vitre\s+droite|right|2)$/.test(comment)) {
+                setSideChoice(username, 'right');
+            }
+        }
+
+        function processGiftMoves() {
+            if (moveTimer || !gameActive || !giftMoves.length) return;
+            moveTimer = setTimeout(() => {
+                moveTimer = null;
+                if (!gameActive || !giftMoves.length) return;
+                const move = giftMoves.shift();
+                if (!switchToPlayer(move.player)) {
+                    liveStatus.textContent = `Le joueur ${move.player} n'est plus dans la partie. Commente un autre numéro.`;
+                    processGiftMoves();
+                    return;
+                }
+                chooseTile(move.side, true, move.username);
+                processGiftMoves();
+            }, 350 / giftSpeed);
+        }
+
+        function onGift(gift, simulated = false, forcedSide = '', forcedPlayer = '') {
+            const username = normalizeName(gift.uniqueId || gift.username || gift.nickname || gift.user) || 'visiteur';
+            const key = username.toLocaleLowerCase('fr-FR');
+            const player = forcedPlayer || selectedPlayers.get(key);
+            if (!allPlayers.includes(player)) {
+                liveStatus.textContent = `@${username}, commente 014, 027 ou 063 avant d'envoyer un cadeau.`;
+                return;
+            }
+            if (!alivePlayers.includes(player)) {
+                liveStatus.textContent = `Le joueur ${player} est éliminé. Commente un autre numéro.`;
+                return;
+            }
+            const messageId = String(gift.messageId || gift.msgId || '');
+            const repetitions = Math.max(1, Number(gift.repeatCount) || 1);
+            if (gift.repeatEnd !== undefined && ![true, 1, '1'].includes(gift.repeatEnd)) return;
+            if (messageId) {
+                if (seenGiftIds.has(messageId)) return;
+                seenGiftIds.add(messageId);
+                if (seenGiftIds.size > 1200) seenGiftIds.delete(seenGiftIds.values().next().value);
+            }
+            const coins = Math.max(1, Number(gift.coinCount) || ((Number(gift.coinValue) || Number(gift.diamondCount) || Number(gift.diamonds) || 1) * repetitions));
+            const side = forcedSide || selectedSides.get(key) || (Math.random() < 0.5 ? 'left' : 'right');
+            selectedSides.delete(key);
+            updateLivePlayer(key);
+            liveRanking.set(key, (liveRanking.get(key) || 0) + 1);
+            renderLiveRanking();
+            liveStatus.textContent = `🎁 @${username} fait avancer le joueur ${player} côté ${side === 'left' ? 'gauche' : 'droit'} · ${coins} pièce${coins > 1 ? 's' : ''}.`;
+            if (giftMoves.length >= 100) {
+                liveStatus.textContent = 'La file de cadeaux est pleine; attends quelques instants avant de renvoyer un cadeau.';
+                return;
+            }
+            giftMoves.push({ username, side, player });
+            processGiftMoves();
+            if (simulated && coins >= 100 && window.ArcadeEffects) {
+                window.ArcadeEffects.simulateBigGift(username, coins);
+            }
+        }
+
+        function handleLiveMessage(message) {
+            if (!message || typeof message !== 'object') return;
+            const data = message.data && typeof message.data === 'object' ? message.data : message;
+            const type = String(message.type || message.event || data.type || '').toLowerCase();
+            if (type === 'gift' || type === 'tiktok-gift') {
+                onGift(data.gift || data);
+            } else if (type === 'comment' || type === 'chat' || type === 'tiktok-comment') {
+                const comment = data.commentData || data;
+                onTikTokComment(comment.uniqueId || comment.username || comment.nickname, comment.comment || comment.text || comment.message);
+            } else if (type === 'status') {
+                liveStatus.textContent = String(data.message || 'État du LIVE mis à jour.');
+            }
+        }
+
+        function connectLive() {
+            if (socket) {
+                socket.close();
+                socket = null;
+                liveStatus.textContent = 'HORS LIGNE';
+                document.getElementById('connect-live').textContent = 'CONNECTER LIVE';
+                return;
+            }
+            const username = normalizeName(document.getElementById('tiktok-username').value);
+            if (!/^[\w.]{1,24}$/.test(username)) {
+                liveStatus.textContent = 'Saisis un pseudo TikTok valide (1 à 24 caractères).';
+                return;
+            }
+            if (!['http:', 'https:'].includes(window.location.protocol)) {
+                liveStatus.textContent = 'Ouvre le jeu depuis Griffon Arcade pour connecter TikTok.';
+                return;
+            }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const currentSocket = new WebSocket(`${protocol}//${window.location.host}`);
+            socket = currentSocket;
+            liveStatus.textContent = `Connexion au LIVE @${username}…`;
+            currentSocket.addEventListener('open', () => {
+                currentSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                document.getElementById('connect-live').textContent = 'DÉCONNECTER';
+            });
+            currentSocket.addEventListener('message', event => {
+                try {
+                    handleLiveMessage(JSON.parse(String(event.data)));
+                } catch (error) {
+                    console.error('Message TikTok illisible :', error);
+                    liveStatus.textContent = 'Un message LIVE illisible a été ignoré.';
+                }
+            });
+            currentSocket.addEventListener('error', () => {
+                liveStatus.textContent = 'Connexion au serveur TikTok impossible.';
+            });
+            currentSocket.addEventListener('close', () => {
+                if (socket === currentSocket) socket = null;
+                document.getElementById('connect-live').textContent = 'CONNECTER LIVE';
+                liveStatus.textContent = 'HORS LIGNE';
+            });
+        }
+
+        const liveRanking = new Map();
+        document.getElementById('live-settings-button').addEventListener('click', () => {
+            const controls = document.getElementById('live-controls');
+            controls.hidden = !controls.hidden;
+        });
+        document.getElementById('connect-live').addEventListener('click', connectLive);
+        document.getElementById('toggle-roster').addEventListener('click', () => {
+            document.getElementById('live-roster').hidden = !document.getElementById('live-roster').hidden;
+        });
+        document.getElementById('toggle-ranking').addEventListener('click', () => {
+            document.getElementById('live-ranking').hidden = !document.getElementById('live-ranking').hidden;
+        });
+        document.getElementById('gift-speed').addEventListener('input', event => {
+            giftSpeed = Number(event.target.value);
+            document.getElementById('gift-speed-value').textContent = `${giftSpeed}×`;
+        });
+        document.getElementById('sound-enabled').addEventListener('change', updateEffectSound);
+        document.getElementById('sound-volume').addEventListener('input', updateEffectSound);
+        function updateEffectSound() {
+            if (window.ArcadeEffects) {
+                window.ArcadeEffects.setSound(
+                    document.getElementById('sound-enabled').checked,
+                    Number(document.getElementById('sound-volume').value)
+                );
+            }
+        }
+        updateEffectSound();
+        document.getElementById('sim-left').addEventListener('click', () => setSideChoice('Simulation', 'left'));
+        document.getElementById('sim-right').addEventListener('click', () => setSideChoice('Simulation', 'right'));
+        for (const player of allPlayers) {
+            document.getElementById(`sim-player-${player}`).addEventListener('click', () => setCharacterChoice('Simulation', player));
+        }
+        document.getElementById('sim-gift-left').addEventListener('click', () => {
+            onGift({ uniqueId: 'Simulation', coinCount: 1, messageId: `sim-left-${Date.now()}` }, true, 'left', selectedPlayers.get('simulation'));
+        });
+        document.getElementById('sim-gift-right').addEventListener('click', () => {
+            onGift({ uniqueId: 'Simulation', coinCount: 1, messageId: `sim-right-${Date.now()}` }, true, 'right', selectedPlayers.get('simulation'));
+        });
+        document.getElementById('sim-big-gift').addEventListener('click', () => {
+            const side = selectedSides.get('simulation') || (Math.random() < 0.5 ? 'left' : 'right');
+            onGift({ uniqueId: 'Simulation', coinCount: 100, messageId: `sim-big-${Date.now()}` }, true, side, selectedPlayers.get('simulation'));
+        });
+        document.getElementById('sim-share').addEventListener('click', () => {
+            if (window.ArcadeEffects) window.ArcadeEffects.simulateShare();
+        });
+        function makeDraggable(panel, title) {
+            document.getElementById(title).addEventListener('pointerdown', event => {
+                const bounds = panel.getBoundingClientRect();
+                const offsetX = event.clientX - bounds.left, offsetY = event.clientY - bounds.top;
+                function move(moveEvent) {
+                    panel.style.left = `${Math.max(0, moveEvent.clientX - offsetX)}px`;
+                    panel.style.top = `${Math.max(0, moveEvent.clientY - offsetY)}px`;
+                    panel.style.right = 'auto';
+                }
+                function stop() {
+                    document.removeEventListener('pointermove', move);
+                    document.removeEventListener('pointerup', stop);
+                }
+                document.addEventListener('pointermove', move);
+                document.addEventListener('pointerup', stop);
+            });
+        }
+        makeDraggable(document.getElementById('live-roster'), 'live-roster-title');
+        makeDraggable(document.getElementById('live-ranking'), 'live-ranking-title');
+
+        window.onload = () => {
+            renderBridge();
+            resetGame(false);
+        };
+    </script>
+</body>
+</html>
