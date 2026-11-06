@@ -534,13 +534,20 @@ async function drain() {
   if (busy) return; busy = true;
   while (jobs.length) {
     const j = activeJob = nextJob();
-    if (!j.repeats || j.repeats === 1 || j.repeats % 100 === 0) refreshPanel();
-    await playResult(j.res, j.who, j.label, j.simulated);
+    refreshPanel();
+    try {
+      await playResult(j.res, j.who, j.label, j.simulated);
+    } catch (error) {
+      console.error(`Échec du tour de ${j.who} :`, error);
+      hud(`⚠ Le tour de ${j.who} a rencontré une erreur. La file continue.`);
+      $('diamond').classList.remove('spin', 'win');
+      reels.forEach((_, i) => startSpin(i));
+    }
     if (j.repeats > 1) { j.repeats--; jobs.push(j); }
     activeJob = null;
     // Le spectateur sort de la file quand tous ses tours sont joués
     if (!jobs.some(x => x.who === j.who)) { const id = viewerId(j.who); adminControls.queue = adminControls.queue.filter(q => q.viewerId !== id); }
-    if (!j.repeats || j.repeats === 1 || j.repeats % 100 === 0) refreshPanel();
+    refreshPanel();
   }
   busy = false; hud('');
   curPlayer = null; streak = 0; adminControls.queue = []; refreshPanel();
@@ -550,11 +557,23 @@ function enqueueResults(list, who, label, simulated = false) {
   list.forEach(res => jobs.push({ res, who, label, simulated })); drain(); refreshPanel();
 }
 function enqueueRuns(spins, who, label, simulated = false) {
-  if (!Number.isSafeInteger(spins) || spins < 1) return;
-  adminControls.addToQueue(viewerId(who));
+  if (!Number.isSafeInteger(spins) || spins < 1) {
+    console.error(`Nombre de tours RUN invalide pour ${who} :`, spins);
+    hud(`⚠ Nombre de tours RUN invalide pour ${who}.`);
+    return false;
+  }
+  const id = ensureViewer(who);
+  adminControls.addToQueue(id);
+  if (!adminControls.queue.some(q => q.viewerId === id)) {
+    console.error(`Impossible d’ajouter ${who} à la file des tours.`);
+    hud(`⚠ Impossible d’ajouter ${who} à la file des tours.`);
+    return false;
+  }
   // Le RUN reste compact en mémoire et son tour revient en fin de file après chaque résultat.
   jobs.push({ res: { lazy: true }, who, label, repeats: spins, simulated });
-  drain(); refreshPanel();
+  refreshPanel();
+  drain();
+  return true;
 }
 
 // Cadeau reçu : le personnage pulse, les étoiles sont créditées, puis une partie est lancée
@@ -764,14 +783,15 @@ const handledWalletRunIds = new Set();
 function handleWalletRun(data) {
   const p = data && data.player, spent = Math.floor(Number(data && data.spent));
   if (!p || !(spent >= 1)) return;
+  const name = walletPlayer(p);
   const messageId = String(data.messageId || '');
-  if (messageId && handledWalletRunIds.has(messageId)) return;
-  if (messageId) {
-    handledWalletRunIds.add(messageId);
+  const dedupeId = messageId ? `${String(p.username || p.uniqueId || name).toLowerCase()}:${messageId}` : '';
+  if (dedupeId && handledWalletRunIds.has(dedupeId)) return;
+  const queued = enqueueRuns(spent, name, `⭐ ${name} rejoue ${spent} étoile${spent > 1 ? 's' : ''} !`);
+  if (queued && dedupeId) {
+    handledWalletRunIds.add(dedupeId);
     if (handledWalletRunIds.size > 1000) handledWalletRunIds.delete(handledWalletRunIds.values().next().value);
   }
-  const name = walletPlayer(p);
-  enqueueRuns(spent, name, `⭐ ${name} rejoue ${spent} étoile${spent > 1 ? 's' : ''} !`);
 }
 window.addEventListener('arcade:wallet', e => {
   const p = e.detail && e.detail.player; if (!p) return;
@@ -1129,9 +1149,11 @@ function refreshPanel() {
   $('board').innerHTML = adminControls.getLeaderboard().slice(0, 10).map(v => `<div><span>${v.pseudo}</span><b>${v.stars}</b></div>`).join('');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   $('queueBox').innerHTML = `<h4>🎟 FILE D'ATTENTE <span style="margin-left:auto"><button onclick="queueWidth(-30)" title="Rétrécir la largeur">◀</button><button onclick="queueWidth(30)" title="Élargir la largeur">▶</button><button onclick="queueZoom(-.2)" title="Réduire">➖</button><button onclick="queueZoom(.2)" title="Agrandir">➕</button><button onclick="togglePin()" title="Épingler / déplacer">${queuePinned ? '📌' : '🔓'}</button></span></h4>` + (adminControls.queue.map((q, i) => {
-    const n = jobs.reduce((total, j) => total + (viewerId(j.who) === q.viewerId ? j.repeats || 1 : 0), 0);
+    const n = jobs.reduce((total, j) => total + (viewerId(j.who) === q.viewerId ? j.repeats || 1 : 0), 0)
+      + (activeJob && viewerId(activeJob.who) === q.viewerId ? activeJob.repeats || 1 : 0);
+    const playing = busy && activeJob && viewerId(activeJob.who) === q.viewerId;
     const v = adminControls.viewers.get(q.viewerId);
-    return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span class="qname">${esc(q.pseudo)}</span>${n ? `<em>×${n}</em>` : ''}<button class="qx" data-id="${esc(q.viewerId)}" onclick="removeFromQueue(this.dataset.id)" title="Retirer de la file">✕</button></div>`;
+    return `<div><b>${i + 1}</b><img src="${(v && v.profilePicture) || AVATAR_FALLBACK}" alt=""><span class="qname">${esc(q.pseudo)}</span>${n ? `<em>${playing ? '▶ ' : ''}×${n}</em>` : ''}<button class="qx" data-id="${esc(q.viewerId)}" onclick="removeFromQueue(this.dataset.id)" title="Retirer de la file">✕</button></div>`;
   }).join('') || '<div>— personne —</div>');
   const sel = $('bigGift'), keep = sel.value;
   sel.innerHTML = adminControls.gifts.filter(g => !g.manualOnly && g.value > 100 && !adminControls.initialGiftIds.has(g.id))
