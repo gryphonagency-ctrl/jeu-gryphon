@@ -10,6 +10,8 @@
         * { box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; margin: 0; }
         body { background: #000; }
+        #background-gif { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        #background-gif[hidden] { display: none; }
         #background-video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
         #background-video[hidden] { display: none; }
         #canvas-container { position: fixed; inset: 0; }
@@ -22,6 +24,7 @@
         .brand-copy span { display: block; color: #73f7ff; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
         .brand-copy strong { display: block; margin-top: 3px; color: #fff; font-size: 14px; font-weight: 900; }
         .scores { display: flex; gap: 8px; }
+        #stats-panel[hidden] { display: none; }
         .score-panel { min-width: 112px; padding: 8px 12px; border: 1px solid rgba(0,243,255,.55); border-radius: 10px; background: rgba(7,3,20,.82); box-shadow: inset 0 0 14px rgba(0,243,255,.08), 0 0 18px rgba(0,243,255,.13); backdrop-filter: blur(8px); }
         .score-panel span { display: block; color: #ff65b5; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
         .score-panel strong { display: block; margin-top: 2px; color: #fff08c; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgba(255,234,0,.45); }
@@ -143,13 +146,14 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 <body>
+    <img id="background-gif" src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExeGhhNzUyZzV6Yjd5dGd5amxmbGhqYTZhZjN6MTFmbnB5cjRyYTl1NyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xvRPIAtMwKQ2SlxKtx/giphy.gif" alt="" aria-hidden="true">
     <video id="background-video" hidden muted loop playsinline autoplay></video>
     <div id="canvas-container" aria-label="Machine Coin Pusher"></div>
     <div style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:#9ff;font:700 13px Segoe UI,sans-serif;z-index:5;pointer-events:none">Maintiens ESPACE : poussoir turbo 🚀</div>
     <main class="ui-overlay">
         <header class="topbar">
         </header>
-        <aside id="stats-panel" class="scores stats-panel operator-panel" aria-label="Statistiques du jeu" aria-live="polite">
+        <aside id="stats-panel" class="scores stats-panel operator-panel" aria-label="Statistiques du jeu" aria-live="polite" hidden>
             <header id="stats-panel-handle" class="operator-panel-handle"><span>Statistiques</span><span class="panel-grip" aria-hidden="true">↕</span></header>
             <div class="score-panel"><span>Jetons restants</span><strong id="coin-count">50</strong></div>
             <div class="score-panel"><span>Gains</span><strong id="score-count">0</strong></div>
@@ -284,13 +288,13 @@
             const coinMaterial = new CANNON.Material('coin');
             const cardMaterial = new CANNON.Material('card');
             const tableMaterial = new CANNON.Material('table');
-            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, tableMaterial, { friction: .3, restitution: 0 }));
-            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, coinMaterial, { friction: .1, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, tableMaterial, { friction: .42, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, coinMaterial, { friction: .2, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
             world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, tableMaterial, { friction: .08, restitution: 0 }));
             world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, cardMaterial, { friction: .12, restitution: 0 }));
             world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, cardMaterial, { friction: .22, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
             // Vitesse de chute plafonnée : les pièces se posent sans rebondir sur le tas
-            const maxFallSpeed = 7;
+            const maxFallSpeed = 20;
             // Les pièces empilées en hauteur glissent vers l'avant et s'étalent en un tapis qui pousse les autres
             const spreadHeightY = 2.0;
             const spreadForce = 5;
@@ -332,7 +336,6 @@
                 steelDark: new THREE.MeshStandardMaterial({ color: '#160a30', metalness: .4, roughness: .45, envMapIntensity: .35 }),
                 glass: new THREE.MeshPhysicalMaterial({ color: '#73ecff', metalness: .08, roughness: .12, transparent: true, opacity: .13, transmission: .32 }),
                 legBlack: new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 }),
-                floorRed: new THREE.MeshStandardMaterial({ color: '#050505', metalness: .05, roughness: .85 }),
                 neonPink: new THREE.MeshBasicMaterial({ color: '#b04dff' }),
                 neonCyan: new THREE.MeshBasicMaterial({ color: '#3d7bff' })
             };
@@ -356,109 +359,35 @@
                 return texture;
             }
 
-            const galaxyTexture = canvasTexture(768, 768, (ctx, width, height) => {
-                const glow = ctx.createRadialGradient(width * .48, height * .48, 20, width * .48, height * .48, width * .7);
-                glow.addColorStop(0, '#a04bca');
-                glow.addColorStop(.4, '#542878');
-                glow.addColorStop(.76, '#20163f');
-                glow.addColorStop(1, '#080a18');
-                ctx.fillStyle = glow;
-                ctx.fillRect(0, 0, width, height);
-                ctx.save();
-                ctx.translate(width * .5, height * .5);
-                ctx.rotate(-.48);
-                const nebula = ctx.createRadialGradient(-35, 0, 10, 0, 0, 260);
-                nebula.addColorStop(0, 'rgba(255,129,222,.82)');
-                nebula.addColorStop(.28, 'rgba(126,139,255,.68)');
-                nebula.addColorStop(.62, 'rgba(61,207,255,.3)');
-                nebula.addColorStop(1, 'rgba(25,13,50,0)');
-                ctx.fillStyle = nebula;
-                ctx.scale(1.55, .42);
-                ctx.beginPath();
-                ctx.arc(0, 0, 250, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
-                for (let i = 0; i < 1400; i++) {
-                    const x = Math.random() * width;
-                    const y = Math.random() * height;
-                    const radius = Math.random() * 2 + .55;
-                    ctx.fillStyle = `rgba(255,255,255,${Math.random() * .75 + .25})`;
-                    ctx.beginPath();
-                    ctx.arc(x, y, radius, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            });
-            const galaxyBase = galaxyTexture.image;
-            const galaxyCanvas = document.createElement('canvas');
-            galaxyCanvas.width = galaxyBase.width;
-            galaxyCanvas.height = galaxyBase.height;
-            const galaxyAnimTexture = new THREE.CanvasTexture(galaxyCanvas);
-            galaxyAnimTexture.colorSpace = THREE.SRGBColorSpace;
-            const galaxyCoins = Array.from({ length: 26 }, () => ({
-                x: 30 + Math.random() * (galaxyBase.width - 60),
-                offset: Math.random(),
-                speed: .12 + Math.random() * .12,
-                r: 26 + Math.random() * 16,
-                spin: Math.random() * 6
-            }));
-            function drawGalaxy(time) {
-                const ctx = galaxyCanvas.getContext('2d');
-                const height = galaxyCanvas.height;
-                ctx.drawImage(galaxyBase, 0, 0);
-                for (const coin of galaxyCoins) {
-                    const y = -coin.r + (((time * coin.speed + coin.offset) % 1) * (height + coin.r * 2));
-                    const w = coin.r * (.25 + .75 * Math.abs(Math.cos(time * 2 + coin.spin)));
-                    ctx.fillStyle = '#c98a2b';
-                    ctx.beginPath();
-                    ctx.ellipse(coin.x, y, w, coin.r, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.fillStyle = '#ffd36a';
-                    ctx.beginPath();
-                    ctx.ellipse(coin.x, y, w * .7, coin.r * .7, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                galaxyAnimTexture.needsUpdate = true;
-            }
-            drawGalaxy(0);
-            const galaxy = new THREE.Mesh(new THREE.PlaneGeometry(8, 8.7), new THREE.MeshBasicMaterial({ map: galaxyAnimTexture, side: THREE.DoubleSide }));
-            galaxy.position.set(0, 5.6, -4.25);
-            scene.add(galaxy);
-
             const machine = new THREE.Group();
             scene.add(machine);
-            box(machine, [8.8, .6, 6.1], [0, .3, -.15], mats.dark);
-            box(machine, [8.45, .3, 6.5], [0, 1.02, -.35], mats.steelDark);
-            const deckBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85, .025, 3.93)));
-            deckBody.position.set(0, 1.395, .07);
-            world.addBody(deckBody);
+            const tableWidthScale = 2;
+            const tableForwardScale = 1.3;
             const rearEdgeZ = -3.86;
+            const flatPlateEndZ = rearEdgeZ + (4 - rearEdgeZ) * tableForwardScale;
+            const supportFootZ = flatPlateEndZ + 1.4;
+            const playfield = new THREE.Group();
+            playfield.scale.x = tableWidthScale;
+            machine.add(playfield);
+            box(playfield, [8.8, .6, 6.1], [0, .3, -.15], mats.dark);
+            box(playfield, [8.45, .3, 6.5], [0, 1.02, -.35], mats.steelDark);
+            const deckBody = new CANNON.Body({ mass: 0, material: tableMaterial });
+            const flatPlateLength = flatPlateEndZ - rearEdgeZ;
+            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .025, flatPlateLength / 2)));
+            deckBody.position.set(0, 1.395, (flatPlateEndZ + rearEdgeZ) / 2);
+            world.addBody(deckBody);
             const rearRimBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            rearRimBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85, .17, .09)));
+            rearRimBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .17, .09)));
             rearRimBody.position.set(0, 1.59, rearEdgeZ + .04);
             world.addBody(rearRimBody);
-            box(machine, [7.7, .34, .18], [0, 1.59, rearEdgeZ + .04], mats.steel);
+            box(playfield, [7.7, .34, .18], [0, 1.59, rearEdgeZ + .04], mats.steel);
 
-            const pillarSteel = new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 });
             for (const side of [-1, 1]) {
-                const pillarPoints = [
-                    [4.45, 9.3, .3], [4.45, 6.5, .3], [4.5, 4.2, .55], [4.8, 2.2, 1.4], [5.2, .5, 2.6], [5.3, -2.6, 3.2]
-                ].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz));
-                const pillarCurve = new THREE.CatmullRomCurve3(pillarPoints);
-                const pillar = new THREE.Mesh(new THREE.TubeGeometry(pillarCurve, 60, .24, 12, false), pillarSteel);
-                pillar.castShadow = true;
-                machine.add(pillar);
-                // Pied noir sous le tapis rouge
-                const legCurve = new THREE.CatmullRomCurve3([[5.2, .5, 2.6], [5.25, -1, 2.9], [5.3, -2.83, 3.2]].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz)));
+                const legCurve = new THREE.CatmullRomCurve3([[7.2, 1.7, flatPlateEndZ - .65], [7.5, -1, supportFootZ - .9], [7.8, -2.83, supportFootZ]].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz)));
                 const leg = new THREE.Mesh(new THREE.TubeGeometry(legCurve, 30, .27, 12, false), mats.legBlack);
                 leg.castShadow = true;
                 machine.add(leg);
-                const innerPoints = pillarPoints.map(point => new THREE.Vector3(point.x - side * .2, point.y, point.z + .05));
-                machine.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(innerPoints), 60, .07, 8, false), mats.neonCyan));
             }
-            box(machine, [8.9, .22, .3], [0, 8.2, -4.2], mats.steelDark);
-            box(machine, [.2, 7.8, .2], [-4.45, 4.3, -4.25], mats.steelDark);
-            box(machine, [.2, 7.8, .2], [4.45, 4.3, -4.25], mats.steelDark);
 
             const videoScreens = {};
             const videoUrls = {};
@@ -479,106 +408,29 @@
                 video.play().catch(() => {});
                 const texture = new THREE.VideoTexture(video);
                 texture.colorSpace = THREE.SRGBColorSpace;
-                if (key === 'banner') {
-                    // Recadre la vidéo pour remplir la zone sans la déformer
-                    video.addEventListener('loadedmetadata', () => {
-                        const zoneRatio = bannerZone.width / bannerZone.height;
-                        const videoRatio = video.videoWidth / video.videoHeight;
-                        if (videoRatio > zoneRatio) {
-                            texture.repeat.set(zoneRatio / videoRatio, 1);
-                            texture.offset.set((1 - zoneRatio / videoRatio) / 2, 0);
-                        } else {
-                            texture.repeat.set(1, videoRatio / zoneRatio);
-                            texture.offset.set(0, (1 - videoRatio / zoneRatio) / 2);
-                        }
-                    });
-                }
                 screen.material.needsUpdate = true;
                 screen.visible = true;
             }
-            function makeVideoScreen(key, geometry, position, rotation) {
+            function makeVideoScreen(key, geometry, position, rotation, parent = machine) {
                 const screen = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
                 screen.position.set(...position);
                 screen.rotation.set(...rotation);
                 screen.visible = false;
                 screen.castShadow = false;
-                machine.add(screen);
+                (parent || machine).add(screen);
                 videoScreens[key] = screen;
             }
-            const bannerZone = { width: 8.6, height: 8.6 * 9 / 16 };
-            makeVideoScreen('banner', new THREE.PlaneGeometry(bannerZone.width, bannerZone.height), [0, 8.3 - bannerZone.height / 2, -4.1], [0, 0, 0]);
-
             const pusherStart = -2.1;
             const pusherTravel = 1.25;
             const pusherLipOffset = .63;
             const pusherLipHalfDepth = .06;
             const coinRadius = .44;
-            const dropLanes = [-2.4, 0, 2.4];
-            const dropPointZ = pusherStart + pusherTravel + pusherLipOffset + pusherLipHalfDepth + coinRadius + .12;
-            const header = new THREE.Group();
-            header.position.set(0, 9.55, dropPointZ);
-            machine.add(header);
-            box(header, [8.8, 2.5, .68], [0, 0, 0], mats.dark);
-            const headerCanvas = document.createElement('canvas');
-            headerCanvas.width = 1400;
-            headerCanvas.height = 358;
-            const headerTexture = new THREE.CanvasTexture(headerCanvas);
-            headerTexture.colorSpace = THREE.SRGBColorSpace;
-            function drawHeader() {
-                const ctx = headerCanvas.getContext('2d');
-                const width = headerCanvas.width;
-                const height = headerCanvas.height;
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = '#0a0a22';
-                ctx.fillRect(0, 0, width, height);
-                ctx.strokeStyle = '#ff2fd0';
-                ctx.lineWidth = 11;
-                ctx.shadowColor = '#ff2fd0';
-                ctx.shadowBlur = 25;
-                ctx.beginPath();
-                ctx.roundRect(15, 15, width - 30, height - 30, 28);
-                ctx.stroke();
-                ctx.shadowBlur = 0;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = '700 150px "Courier New", monospace';
-                ctx.fillStyle = '#9fd8ff';
-                ctx.shadowColor = '#4fb4ff';
-                ctx.shadowBlur = 18;
-                ctx.fillText('ASTRA-PUSH', width / 2, height * .36);
-                ctx.font = '600 100px "Courier New", monospace';
-                ctx.fillText('COIN PUSHER', width / 2, height * .72);
-                const drawStar = (cx, cy, outer, inner) => {
-                    ctx.beginPath();
-                    for (let i = 0; i < 10; i++) {
-                        const r = i % 2 === 0 ? outer : inner;
-                        const a = -Math.PI / 2 + i * Math.PI / 5;
-                        ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                };
-                ctx.fillStyle = '#ffd23c';
-                ctx.shadowColor = '#ffb800';
-                ctx.shadowBlur = 25;
-                drawStar(105, height / 2, 80, 34);
-                drawStar(width - 105, height / 2, 80, 34);
-                ctx.shadowBlur = 0;
-                headerTexture.needsUpdate = true;
-            }
-            drawHeader(0);
-            const headerFace = new THREE.Mesh(new THREE.PlaneGeometry(8.2, 2.1), new THREE.MeshBasicMaterial({ map: headerTexture }));
-            headerFace.position.z = .36;
-            header.add(headerFace);
-            box(header, [8.88, .08, .76], [0, 1.3, 0], mats.steel, { castShadow: false });
-            box(header, [8.88, .08, .76], [0, -1.3, 0], mats.steel, { castShadow: false });
-            for (const barX of [-2.9, 2.9]) {
-                box(header, [2.5, .12, .5], [barX, -1.4, .05], mats.neonCyan, { castShadow: false });
-            }
-
+            const dropLanes = [-3.15, -2.25, -1.35, -.45, .45, 1.35, 2.25, 3.15];
+            const dropPointZ = pusherStart + pusherTravel * 3 * 1.35 + pusherLipOffset + pusherLipHalfDepth + coinRadius - .38;
+            const dropStartY = 7.8;
+            const pusherBackstopTopY = dropStartY + .4;
             const plateTopY = 1.42;
-            const plateStartZ = -3.86;
-            const flatPlateEndZ = 4;
+            const plateStartZ = rearEdgeZ;
             const plateThickness = .28;
             const rampScale = .1;
             const rampHorizontalLength = (7.3 - flatPlateEndZ) * rampScale;
@@ -588,11 +440,10 @@
             const rampEndY = plateTopY - rampVerticalDrop;
             const rampAngle = Math.atan2(rampVerticalDrop, rampHorizontalLength);
             const rampLength = Math.hypot(rampHorizontalLength, rampVerticalDrop);
-            const flatPlateLength = flatPlateEndZ - plateStartZ;
             const rampOrientation = new CANNON.Quaternion();
             rampOrientation.setFromEuler(rampAngle, 0, 0);
             deckBody.addShape(
-                new CANNON.Box(new CANNON.Vec3(3.85, plateThickness / 2, rampLength / 2)),
+                new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, plateThickness / 2, rampLength / 2)),
                 new CANNON.Vec3(
                     0,
                     (plateTopY + rampEndY) / 2 - Math.cos(rampAngle) * plateThickness / 2 - deckBody.position.y,
@@ -613,10 +464,10 @@
             const plateMesh = new THREE.Mesh(plateGeometry, mats.steel);
             plateMesh.rotation.y = -Math.PI / 2;
             plateMesh.position.set(3.85, 0, plateStartZ);
-            machine.add(plateMesh);
-            makeVideoScreen('table', new THREE.PlaneGeometry(7.7, flatPlateLength), [0, plateTopY + .006, (plateStartZ + flatPlateEndZ) / 2], [-Math.PI / 2, 0, 0]);
+            playfield.add(plateMesh);
+            makeVideoScreen('table', new THREE.PlaneGeometry(7.7, flatPlateLength), [0, plateTopY + .006, (plateStartZ + flatPlateEndZ) / 2], [-Math.PI / 2, 0, 0], playfield);
 
-            const circuitTexture = canvasTexture(1024, 900, (ctx, width, height) => {
+            const circuitTexture = canvasTexture(2048, 900, (ctx, width, height) => {
                 ctx.fillStyle = '#070b17';
                 ctx.fillRect(0, 0, width, height);
                 ctx.lineCap = 'round';
@@ -637,40 +488,34 @@
                     ctx.arc(x, y, 5, 0, Math.PI * 2);
                     ctx.fill();
                 }
+                ctx.save();
+                ctx.translate(width / 2, height * .88);
+                ctx.rotate(-.035);
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.font = 'italic 900 210px Arial, sans-serif';
-                ctx.shadowColor = '#ff22d8';
-                ctx.shadowBlur = 40;
-                ctx.strokeStyle = '#ff6af0';
-                ctx.lineWidth = 9;
-                ctx.strokeText('Gryphon', width / 2, height * .52);
+                ctx.font = 'italic 900 116px Impact, "Arial Black", sans-serif';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 34;
+                ctx.strokeStyle = '#090817';
+                ctx.shadowColor = '#ff36c8';
+                ctx.shadowBlur = 28;
+                ctx.strokeText('GRYPHON AGENCY', 0, 0);
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(70,10,110,.55)';
-                ctx.fillText('Gryphon', width / 2, height * .52);
+                ctx.lineWidth = 9;
+                ctx.strokeStyle = '#fff1bc';
+                ctx.strokeText('GRYPHON AGENCY', 0, 0);
+                const graffitiGradient = ctx.createLinearGradient(-650, -70, 650, 70);
+                graffitiGradient.addColorStop(0, '#ff56b7');
+                graffitiGradient.addColorStop(.48, '#ffd85e');
+                graffitiGradient.addColorStop(1, '#66f4ff');
+                ctx.fillStyle = graffitiGradient;
+                ctx.fillText('GRYPHON AGENCY', 0, 0);
+                ctx.restore();
             });
             const circuitFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({ map: circuitTexture }));
             circuitFloor.rotation.x = -Math.PI / 2;
             circuitFloor.position.set(0, plateTopY + .003, (plateStartZ + flatPlateEndZ) / 2);
-            machine.add(circuitFloor);
-
-            const gryphonText = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({
-                map: canvasTexture(1024, 900, (ctx, width, height) => {
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.font = 'italic 900 210px Arial, sans-serif';
-                    ctx.shadowColor = '#ff22d8';
-                    ctx.shadowBlur = 40;
-                    ctx.strokeStyle = '#ff6af0';
-                    ctx.lineWidth = 9;
-                    ctx.strokeText('Gryphon', width / 2, height * .52);
-                }),
-                transparent: true,
-                depthWrite: false
-            }));
-            gryphonText.rotation.x = -Math.PI / 2;
-            gryphonText.position.set(0, plateTopY + .01, (plateStartZ + flatPlateEndZ) / 2);
-            machine.add(gryphonText);
+            playfield.add(circuitFloor);
             for (const side of [-1, 1]) {
                 const railProfile = new THREE.Shape();
                 railProfile.moveTo(plateStartZ, plateTopY);
@@ -681,123 +526,48 @@
                 railProfile.closePath();
                 const rail = new THREE.Mesh(new THREE.ExtrudeGeometry(railProfile, { depth: .5, bevelEnabled: false }), mats.steel);
                 rail.rotation.y = -Math.PI / 2;
-                rail.position.set(side > 0 ? 4.35 : -3.85, 0, 0);
+                rail.position.set(side * 3.95, 0, 0);
                 rail.castShadow = true;
-                machine.add(rail);
-                box(machine, [.06, .06, 6.6], [side * 4.1, plateTopY + 1.0, -.2], mats.neonCyan, { castShadow: false });
+                playfield.add(rail);
+                box(playfield, [.06, .06, 6.6], [side * 3.95, 2.55, -.2], mats.neonCyan, { castShadow: false });
             }
-            box(machine, [10, .14, 12], [0, -2.9, 4], mats.floorRed, { castShadow: false });
-            const rugCanvas = document.createElement('canvas');
-            rugCanvas.width = 1024;
-            rugCanvas.height = 512;
-            const rugCtx = rugCanvas.getContext('2d');
-            rugCtx.textAlign = 'center';
-            rugCtx.textBaseline = 'middle';
-            rugCtx.lineJoin = 'round';
-            const rugStar = (cx, cy, outer, rot) => {
-                rugCtx.beginPath();
-                for (let i = 0; i < 10; i++) {
-                    const r = i % 2 === 0 ? outer : outer * .42;
-                    const a = rot - Math.PI / 2 + i * Math.PI / 5;
-                    rugCtx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-                }
-                rugCtx.closePath();
-                rugCtx.fillStyle = '#ffd23c';
-                rugCtx.shadowColor = '#ffb800';
-                rugCtx.shadowBlur = 16;
-                rugCtx.lineWidth = 6;
-                rugCtx.strokeStyle = '#000';
-                rugCtx.stroke();
-                rugCtx.fill();
-            };
-            const rugBolt = (cx, cy, size, rot) => {
-                rugCtx.save();
-                rugCtx.translate(cx, cy);
-                rugCtx.rotate(rot);
-                rugCtx.scale(size, size);
-                rugCtx.beginPath();
-                [[.1, -1], [-.55, .1], [-.05, .1], [-.3, 1], [.55, -.25], [.05, -.25], [.4, -1]].forEach(([x, y]) => rugCtx.lineTo(x, y));
-                rugCtx.closePath();
-                rugCtx.restore();
-                rugCtx.fillStyle = '#fff04a';
-                rugCtx.shadowColor = '#00e5ff';
-                rugCtx.shadowBlur = 18;
-                rugCtx.lineWidth = 6;
-                rugCtx.strokeStyle = '#000';
-                rugCtx.stroke();
-                rugCtx.fill();
-            };
-            [[90, 70, 46, .2], [940, 90, 40, -.3], [60, 430, 42, .4], [960, 440, 50, -.2], [330, 60, 30, .1], [720, 450, 34, .3], [200, 465, 28, 0], [850, 50, 28, .5], [500, 470, 30, -.3]].forEach(s => rugStar(...s));
-            [[150, 200, 70, -.2], [880, 300, 75, .25], [880, 160, 55, .3], [150, 330, 58, .2]].forEach(b => rugBolt(...b));
-            rugCtx.save();
-            rugCtx.translate(512, 256);
-            rugCtx.rotate(-.06);
-            rugCtx.font = 'italic 900 120px "Impact", "Marker Felt", "Comic Sans MS", fantasy';
-            rugCtx.lineWidth = 20;
-            rugCtx.strokeStyle = '#000';
-            rugCtx.strokeText('Gryphon Agency', 0, 0);
-            rugCtx.shadowColor = '#ffb800';
-            rugCtx.shadowBlur = 22;
-            rugCtx.fillStyle = '#ffd23c';
-            rugCtx.fillText('Gryphon Agency', 0, 0);
-            rugCtx.shadowBlur = 0;
-            rugCtx.lineWidth = 3;
-            rugCtx.strokeStyle = '#fff2a8';
-            rugCtx.strokeText('Gryphon Agency', -3, -4);
-            rugCtx.restore();
-            const rugTexture = new THREE.CanvasTexture(rugCanvas);
-            rugTexture.colorSpace = THREE.SRGBColorSpace;
-            const rugText = new THREE.Mesh(            new THREE.PlaneGeometry(8, 4), new THREE.MeshBasicMaterial({ map: rugTexture, transparent: true }));
-            rugText.rotation.x = -Math.PI / 2;
-                        rugText.position.set(0, -2.82, 3.2);
-            machine.add(rugText);
             const groundBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            groundBody.addShape(new CANNON.Box(new CANNON.Vec3(5, .07, 6)));
+            groundBody.addShape(new CANNON.Box(new CANNON.Vec3(5 * tableWidthScale, .07, 6)));
             groundBody.position.set(0, -2.9, 4);
             world.addBody(groundBody);
-
-            const chute = new THREE.Group();
-            chute.position.set(0, 7.8, dropPointZ);
-            const chuteWidth = 6.6;
-            const chuteHeight = 1;
-            const outletWidth = 1.5;
-            const outletGap = (chuteWidth - dropLanes.length * outletWidth) / (dropLanes.length + 1);
-            box(chute, [chuteWidth, chuteHeight, .1], [0, 0, .55], mats.steel);
-            box(chute, [chuteWidth, chuteHeight, .1], [0, 0, -.55], mats.steelDark);
-            box(chute, [.1, chuteHeight, 1.2], [-chuteWidth / 2, 0, 0], mats.steel);
-            box(chute, [.1, chuteHeight, 1.2], [chuteWidth / 2, 0, 0], mats.steel);
-            box(chute, [chuteWidth, .1, 1.2], [0, chuteHeight / 2, 0], mats.steel);
-            // Le fond est fermé entre les sorties, qui restent ouvertes
-            let gapStart = -chuteWidth / 2;
-            for (const lane of dropLanes) {
-                const outletStart = lane - outletWidth / 2;
-                if (outletStart > gapStart + .01) box(chute, [outletStart - gapStart, .1, 1.2], [(gapStart + outletStart) / 2, -chuteHeight / 2, 0], mats.steelDark);
-                gapStart = lane + outletWidth / 2;
-            }
-            if (chuteWidth / 2 > gapStart + .01) box(chute, [chuteWidth / 2 - gapStart, .1, 1.2],             [(gapStart + chuteWidth / 2) / 2, -chuteHeight / 2, 0], mats.steelDark);
-                        for (const lane of dropLanes) box(chute, [outletWidth, .06, .06], [lane, -chuteHeight / 2 - .05, .6], mats.neonCyan, { castShadow: false });
-            const chuteLabel = new THREE.Mesh(new THREE.PlaneGeometry(chuteWidth - .3, chuteHeight - .2), new THREE.MeshBasicMaterial({ map: canvasTexture(1320, 200, (ctx, width, height) => {
-                ctx.fillStyle = '#0a0a22';
+            const rugTexture = canvasTexture(1200, 420, (ctx, width, height) => {
+                ctx.fillStyle = '#100a22';
                 ctx.fillRect(0, 0, width, height);
-                ctx.strokeStyle = '#ff2fd0';
-                ctx.lineWidth = 8;
-                ctx.strokeRect(8, 8, width - 16, height - 16);
+                ctx.strokeStyle = '#b04dff';
+                ctx.lineWidth = 22;
+                ctx.shadowColor = '#b04dff';
+                ctx.shadowBlur = 28;
+                ctx.strokeRect(18, 18, width - 36, height - 36);
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#3d7bff';
+                ctx.lineWidth = 6;
+                ctx.strokeRect(42, 42, width - 84, height - 84);
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.font = '700 110px "Courier New", monospace';
+                ctx.font = '900 170px "Trebuchet MS", "Segoe UI", sans-serif';
                 ctx.fillStyle = '#9fd8ff';
                 ctx.shadowColor = '#4fb4ff';
-                ctx.shadowBlur = 16;
-                ctx.fillText('GRYPHON AGENCY', width / 2, height / 2 + 4);
-            }) }));
-            chuteLabel.position.set(0, 0, .606);
-            chute.add(chuteLabel);
-            machine.add(chute);
+                ctx.shadowBlur = 22;
+                ctx.fillText('ASTRA-PUSH', width / 2, height / 2);
+            });
+            const rug = new THREE.Mesh(
+                new THREE.PlaneGeometry(7.7, 3.5),
+                new THREE.MeshBasicMaterial({ map: rugTexture })
+            );
+            rug.rotation.x = -Math.PI / 2;
+            rug.position.set(0, -2.82, supportFootZ - .65);
+            playfield.add(rug);
+
             function randomDropLane() {
                 return dropLanes[Math.floor(Math.random() * dropLanes.length)];
             }
 
-            const pusherMesh = box(machine, [7.62, .5, 1.15], [0, 1.68, pusherStart + pusherTravel], mats.steel);
+            const pusherMesh = box(playfield, [7.62, .5, 1.15], [0, 1.68, pusherStart + pusherTravel], mats.steel);
             box(pusherMesh, [7.3, .12, .12], [0, .08, .57], mats.neonCyan, { castShadow: false });
             const lipTopY = 1.66;
             const lipHeight = lipTopY + .25;
@@ -830,39 +600,53 @@
                 pusherMesh.add(hinge);
             }
             const pusherBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, material: tableMaterial });
-            pusherBody.addShape(new CANNON.Box(new CANNON.Vec3(3.81, .25, .575)));
+            const pusherCenterY = 1.68;
+            pusherBody.addShape(new CANNON.Box(new CANNON.Vec3(3.81 * tableWidthScale, .25, .575)));
             pusherBody.addShape(
-                new CANNON.Box(new CANNON.Vec3(3.75, lipHeight / 2, pusherLipHalfDepth)),
+                new CANNON.Box(new CANNON.Vec3(3.75 * tableWidthScale, lipHeight / 2, pusherLipHalfDepth)),
                 new CANNON.Vec3(0, lipCenterY, pusherLipOffset)
+            );
+            pusherBody.addShape(
+                new CANNON.Box(new CANNON.Vec3(
+                    3.75 * tableWidthScale,
+                    (pusherBackstopTopY - plateTopY) / 2,
+                    .08
+                )),
+                new CANNON.Vec3(
+                    0,
+                    (plateTopY + pusherBackstopTopY) / 2 - pusherCenterY,
+                    pusherLipOffset - .25
+                )
             );
             const pushBlockSize = [7.5, .6, .6];
             const pushBlockPosition = [0, -.25 + pushBlockSize[1] / 2, pusherLipOffset + pusherLipHalfDepth + pushBlockSize[2] / 2];
+            const coinPusherClearance = pushBlockPosition[2] + pushBlockSize[2] / 2 + coinRadius + .05;
             box(pusherMesh, pushBlockSize, pushBlockPosition, mats.steel);
             pusherBody.addShape(
-                new CANNON.Box(new CANNON.Vec3(pushBlockSize[0] / 2 - .05, pushBlockSize[1] / 2, pushBlockSize[2] / 2)),
+                new CANNON.Box(new CANNON.Vec3(pushBlockSize[0] / 2 * tableWidthScale - .05, pushBlockSize[1] / 2, pushBlockSize[2] / 2)),
                 new CANNON.Vec3(...pushBlockPosition)
             );
-            pusherBody.position.set(0, 1.68, pusherStart + pusherTravel);
+            pusherBody.position.set(0, pusherCenterY, pusherStart + pusherTravel);
             world.addBody(pusherBody);
 
             const rearStopBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            rearStopBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85, .45, .1)));
+            rearStopBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .45, .1)));
             rearStopBody.position.set(0, 2.83, -2.9);
             world.addBody(rearStopBody);
-            box(machine, [7.8, .9, .2], [0, 2.83, -2.9], mats.steelDark, { castShadow: false });
-            box(machine, [7.72, .08, .12], [0, 3.3, -2.9], mats.neonPink, { castShadow: false });
+            box(playfield, [7.8, .9, .2], [0, 2.83, -2.9], mats.steelDark, { castShadow: false });
+            box(playfield, [7.72, .08, .12], [0, 3.3, -2.9], mats.neonPink, { castShadow: false });
 
-            const sideWallTopY = 1.95;
+            const sideWallTopY = 2.35;
             const sideWallBottomY = plateTopY;
             const sideWallStartZ = plateStartZ;
             const sideWallEndZ = flatPlateEndZ + .1;
-            for (const x of [-3.93, 3.93]) {
+            for (const x of [-3.95, 3.95]) {
                 const sideRail = new CANNON.Body({ mass: 0, material: tableMaterial });
-                sideRail.addShape(new CANNON.Box(new CANNON.Vec3(.12, (sideWallTopY - sideWallBottomY) / 2, (sideWallEndZ - sideWallStartZ) / 2)));
-                sideRail.position.set(x, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2);
+                sideRail.addShape(new CANNON.Box(new CANNON.Vec3(.12 * tableWidthScale, (sideWallTopY - sideWallBottomY) / 2, (sideWallEndZ - sideWallStartZ) / 2)));
+                sideRail.position.set(x * tableWidthScale, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2);
                 world.addBody(sideRail);
-                box(machine, [.23, sideWallTopY - sideWallBottomY, sideWallEndZ - sideWallStartZ], [x, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2], mats.steel, { castShadow: false });
-                box(machine, [.25, .05, sideWallEndZ - sideWallStartZ], [x, sideWallTopY + .02, (sideWallEndZ + sideWallStartZ) / 2], mats.neonCyan, { castShadow: false });
+                box(playfield, [.23, sideWallTopY - sideWallBottomY, sideWallEndZ - sideWallStartZ], [x, (sideWallTopY + sideWallBottomY) / 2, (sideWallEndZ + sideWallStartZ) / 2], mats.steel, { castShadow: false });
+                box(playfield, [.25, .05, sideWallEndZ - sideWallStartZ], [x, sideWallTopY + .02, (sideWallEndZ + sideWallStartZ) / 2], mats.neonCyan, { castShadow: false });
             }
             const coinTexture = canvasTexture(256, 256, (ctx, width, height) => {
                 const gradient = ctx.createRadialGradient(82, 72, 8, 128, 128, 124);
@@ -1034,7 +818,6 @@
             const coinGeometry = new THREE.CylinderGeometry(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 32, 1);
             const coinShape = new CANNON.Cylinder(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 20);
             const coinShapeOrientation = new CANNON.Quaternion();
-            coinShapeOrientation.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
             const TOTAL_GAME_TOKENS = 10000;
             const TOTAL_REWARD_CARDS = 1000;
             function createRewardDeck() {
@@ -1077,6 +860,7 @@
                 return true;
             }
             const coins = [];
+            let totalCoinsSpawned = 0;
             const fallingRewardCards = [];
             const pushableBodies = new WeakSet();
             const lastPairPushAt = new WeakMap();
@@ -1088,7 +872,7 @@
             let autoDropInterval = 0;
             let soundEnabled = true;
             let soundContext = null;
-            const gradualDropDelay = 250;
+            const gradualDropDelay = 120;
             const dropHundredButton = document.getElementById('drop-hundred-button');
             let gradualDropTimer = 0;
             let gradualDropRun = 0;
@@ -1103,6 +887,10 @@
 
             function removeCoinMesh(mesh) {
                 scene.remove(mesh);
+                if (mesh.isGroup) {
+                    mesh.traverse(child => child.geometry?.dispose());
+                    return;
+                }
                 const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
                 materials.forEach(material => material.dispose());
             }
@@ -1152,6 +940,10 @@
             function collectCoin(coin) {
                 if (coin.collected) return;
                 coin.collected = true;
+                if (coin.isBonusHammer) {
+                    updateHud();
+                    return;
+                }
                 score += 1;
                 updateHud();
                 playTone(540, 1080, .42, 'sine', .14);
@@ -1261,7 +1053,7 @@
             }
 
             function updateCoinAvatar(coin) {
-                if (!coin.owner || !coin.mesh.material[1]) return;
+                if (!coin.owner || coin.isBonusHammer || !Array.isArray(coin.mesh.material) || !coin.mesh.material[1]) return;
                 const texture = createCoinTextureWithAvatar(coin.owner);
                 for (const faceMaterial of coin.mesh.material.slice(1)) {
                     faceMaterial.map = texture;
@@ -1269,8 +1061,36 @@
                 }
             }
 
-            function createCoin(x, y, z, velocity = null, owner = null) {
-                const material = owner ? [
+            const hammerMaterials = {
+                steel: new THREE.MeshStandardMaterial({ color: '#d8e6f4', metalness: .82, roughness: .24 }),
+                gold: new THREE.MeshStandardMaterial({ color: '#ffd45c', metalness: .72, roughness: .28 }),
+                handle: new THREE.MeshStandardMaterial({ color: '#e53275', metalness: .22, roughness: .36 }),
+                grip: new THREE.MeshStandardMaterial({ color: '#512273', metalness: .28, roughness: .4 })
+            };
+            function createBonusHammerMesh() {
+                const hammer = new THREE.Group();
+                const addPart = (geometry, material, position, rotation = [0, 0, 0]) => {
+                    const part = new THREE.Mesh(geometry, material);
+                    part.position.set(...position);
+                    part.rotation.set(...rotation);
+                    part.castShadow = true;
+                    part.receiveShadow = true;
+                    hammer.add(part);
+                    return part;
+                };
+                addPart(new THREE.CylinderGeometry(.1, .13, .92, 14), hammerMaterials.handle, [0, -.17, 0], [0, 0, -.06]);
+                addPart(new THREE.CylinderGeometry(.14, .12, .28, 14), hammerMaterials.grip, [0, -.58, 0], [0, 0, -.06]);
+                addPart(new THREE.BoxGeometry(1.08, .36, .48), hammerMaterials.steel, [0, .39, 0]);
+                addPart(new THREE.BoxGeometry(.18, .4, .5), hammerMaterials.gold, [0, .39, 0]);
+                for (const x of [-.48, .48]) {
+                    addPart(new THREE.BoxGeometry(.12, .4, .5), hammerMaterials.gold, [x, .39, 0]);
+                }
+                hammer.scale.set(1.18, 1.45, 1.18);
+                return hammer;
+            }
+
+            function createCoin(x, y, z, velocity = null, owner = null, isBonusHammer = false) {
+                const material = isBonusHammer ? null : owner ? [
                     new THREE.MeshStandardMaterial({ color: '#442354', metalness: .28, roughness: .46 }),
                     ...Array.from({ length: 2 }, () => new THREE.MeshStandardMaterial({
                         map: createCoinTextureWithAvatar(owner),
@@ -1280,17 +1100,26 @@
                         side: THREE.DoubleSide
                     }))
                 ] : coinMaterialThree.clone();
-                const mesh = new THREE.Mesh(coinGeometry, material);
+                const mesh = isBonusHammer ? createBonusHammerMesh() : new THREE.Mesh(coinGeometry, material);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 mesh.position.set(x, y, z);
                 scene.add(mesh);
-                const body = new CANNON.Body({ mass: .72, material: coinMaterial, linearDamping: .08, angularDamping: .25, allowSleep: true, sleepSpeedLimit: .08, sleepTimeLimit: 1.4 });
-                body.addShape(coinShape, new CANNON.Vec3(), coinShapeOrientation);
+                const layFlat = isBonusHammer || totalCoinsSpawned++ % 10 !== 9;
+                const body = new CANNON.Body({ mass: isBonusHammer ? 3.5 : .72, material: coinMaterial, linearDamping: .12, angularDamping: .85, allowSleep: true, sleepSpeedLimit: .08, sleepTimeLimit: 1.4 });
+                if (isBonusHammer) {
+                    body.addShape(new CANNON.Box(new CANNON.Vec3(.64, .22, .3)), new CANNON.Vec3(0, .57, 0));
+                    body.addShape(new CANNON.Box(new CANNON.Vec3(.14, .65, .14)), new CANNON.Vec3(0, -.25, 0));
+                }
+                else body.addShape(coinShape, new CANNON.Vec3(), coinShapeOrientation);
                 body.position.set(x, y, z);
                 if (velocity) {
                     body.velocity.set(velocity.x, velocity.y, velocity.z);
-                    body.angularVelocity.set((Math.random() - .5) * 4, (Math.random() - .5) * 5, (Math.random() - .5) * 4);
+                    body.angularVelocity.set(
+                        layFlat ? 0 : (Math.random() - .5) * .8,
+                        (Math.random() - .5) * 2,
+                        layFlat ? 0 : (Math.random() - .5) * .8
+                    );
                 }
                 registerPushableBody(body);
                 world.addBody(body);
@@ -1302,14 +1131,14 @@
                         playTone(1100 + Math.random() * 600, 520, .045, 'triangle', .045);
                     }
                 });
-                const coin = { mesh, body, collected: false, owner };
+                const coin = { mesh, body, collected: false, owner, layFlat, isBonusHammer };
                 body.addEventListener('collide', event => {
                     if (event.body === groundBody) collectCoin(coin);
                 });
                 coins.push(coin);
             }
 
-            function dropCoin(owner = currentDropPlayer, { sound = true, refreshHud = true, lane = null } = {}) {
+            function launchCoin(owner, { sound = true, refreshHud = true, lane = null } = {}) {
                 if (!owner || typeof owner.username !== 'string') owner = currentDropPlayer;
                 if (coinBalance <= 0) {
                     status.hidden = false;
@@ -1330,34 +1159,40 @@
                     const rewardPlayer = owner || currentDropPlayer;
                     if (rewardPlayer && rewardDeck.cards.length) awardNextCard(rewardPlayer, refreshHud);
                 }
-                createCoin(
-                    lane ?? randomDropLane(),
-                    7.8,
-                    dropPointZ,
-                    { x: (Math.random() - .5) * .16, y: -1.5, z: .8 },
-                    owner
-                );
+                const dropLane = lane ?? randomDropLane();
+                if (tokensUsed % 100 === 0) {
+                    const firstLaneIndex = dropLanes.indexOf(dropLane);
+                    for (let index = 0; index < 3; index++) {
+                        const hammerLane = dropLanes[(firstLaneIndex + index * 2) % dropLanes.length];
+                        createCoin(
+                            hammerLane * tableWidthScale,
+                            dropStartY,
+                            dropPointZ + index * .12,
+                            { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
+                            null,
+                            true
+                        );
+                    }
+                } else {
+                    createCoin(
+                        dropLane * tableWidthScale,
+                        dropStartY,
+                        dropPointZ,
+                        { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
+                        owner
+                    );
+                }
                 if (refreshHud) updateHud();
                 return true;
             }
 
+            function dropCoin(owner = currentDropPlayer, options = {}) {
+                if (!owner || typeof owner.username !== 'string') owner = currentDropPlayer;
+                return launchCoin(owner, options);
+            }
+
             function dropGiftCoins(owner, requestedCount) {
-                const dropCount = Math.min(requestedCount, coinBalance);
-                if (dropCount <= 0) return 0;
-                const firstLaneIndex = Math.floor(Math.random() * dropLanes.length);
-                for (let index = 0; index < dropCount; index++) {
-                    const lane = dropLanes[(firstLaneIndex + index) % dropLanes.length];
-                    if (!dropCoin(owner, { sound: false, refreshHud: false, lane })) break;
-                }
-                updateHud();
-                playTone(1320, 440, .12, 'sine', .16);
-                if (coinBalance <= 0 && autoDropActive) {
-                    autoDropActive = false;
-                    autoButton.setAttribute('aria-pressed', 'false');
-                    autoButton.textContent = 'Auto-drop : OFF';
-                    window.clearInterval(autoDropInterval);
-                }
-                return dropCount;
+                return dropGiftCoinsGradually(owner, requestedCount);
             }
 
             function dropGiftCoinsGradually(owner, requestedCount) {
@@ -1557,11 +1392,11 @@
                 if (!player || !card) return;
                 const texture = createRewardCardTexture(player, card);
                 const material = new THREE.MeshStandardMaterial({ map: texture, emissive: '#220d30', emissiveIntensity: .4, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, .06), material);
-                mesh.position.set(randomDropLane(), 7.8, dropPointZ);
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.4, .12), material);
+                mesh.position.set(randomDropLane() * tableWidthScale, dropStartY, dropPointZ);
                 scene.add(mesh);
                 const body = new CANNON.Body({ mass: .7, material: cardMaterial, linearDamping: .05, angularDamping: .16 });
-                body.addShape(new CANNON.Box(new CANNON.Vec3(.6, .85, .03)));
+                body.addShape(new CANNON.Box(new CANNON.Vec3(1.2, 1.7, .06)));
                 body.position.copy(mesh.position);
                 body.velocity.set(0, -3.6, .8);
                 body.angularVelocity.set((Math.random() - .5) * 2, 0, 0);
@@ -1702,6 +1537,7 @@
                 const video = document.getElementById('background-video');
                 video.src = backgroundVideoUrl;
                 video.hidden = false;
+                document.getElementById('background-gif').hidden = true;
                 video.play().catch(() => {});
             });
             document.querySelectorAll('[data-video-screen]').forEach(input => {
@@ -1808,7 +1644,6 @@
                 handle.addEventListener('pointercancel', endDrag);
                 window.addEventListener('resize', clampPanel);
             }
-            makePanelDraggable(document.getElementById('stats-panel'), document.getElementById('stats-panel-handle'), 'astra-push-stats-position');
             makePanelDraggable(document.getElementById('control-panel'), document.getElementById('control-panel-handle'), 'astra-push-control-position');
             let cardManagerDrag = null;
             cardManagerHandle.addEventListener('pointerdown', event => {
@@ -1879,14 +1714,12 @@
             function seedTable() {
                 const tints = ['#d28a5a', '#e2e6ee', '#d28a5a', '#c9ced8'];
                 let count = 0;
-                for (let layer = 0; layer < 3; layer++) {
-                    for (let row = 0; row < 3; row++) {
-                        for (let col = 0; col < 7; col++) {
-                            const x = -3 + col + (layer % 2) * .35 + (Math.random() - .5) * .1;
-                            const z = .75 + row * .95 + (layer % 2) * .3;
-                            createCoin(x, 1.62 + layer * .2, z);
-                            coins[coins.length - 1].mesh.material.color.set(tints[count++ % tints.length]);
-                        }
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 7; col++) {
+                        const x = (-3 + col + (Math.random() - .5) * .1) * tableWidthScale;
+                        const z = .75 + row * .95;
+                        createCoin(x, plateTopY + .13, z);
+                        coins[coins.length - 1].mesh.material.color.set(tints[count++ % tints.length]);
                     }
                 }
             }
@@ -1939,13 +1772,30 @@
                 }
                 for (let index = coins.length - 1; index >= 0; index--) {
                     const coin = coins[index];
+                    if (coin.layFlat) {
+                        const yaw = Math.atan2(
+                            2 * (coin.body.quaternion.w * coin.body.quaternion.y + coin.body.quaternion.x * coin.body.quaternion.z),
+                            1 - 2 * (coin.body.quaternion.y ** 2 + coin.body.quaternion.x ** 2)
+                        );
+                        coin.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw);
+                        coin.body.angularVelocity.x = 0;
+                        coin.body.angularVelocity.z = 0;
+                    }
+                    if (coin.body.position.y <= plateTopY + 1) {
+                        const minimumCoinZ = pusherBody.position.z + coinPusherClearance;
+                        if (coin.body.position.z < minimumCoinZ) {
+                            coin.body.position.z = minimumCoinZ;
+                            coin.body.velocity.z = Math.max(coin.body.velocity.z, Math.max(0, pusherBody.velocity.z));
+                            coin.body.wakeUp();
+                        }
+                    }
                     coin.mesh.position.copy(coin.body.position);
                     coin.mesh.quaternion.copy(coin.body.quaternion);
                     if (coin.collected) {
                         world.removeBody(coin.body);
                         removeCoinMesh(coin.mesh);
                         coins.splice(index, 1);
-                    } else if (coin.body.position.y < -4 || Math.abs(coin.body.position.x) > 4.1 || coin.body.position.z < rearEdgeZ - .3) {
+                    } else if (coin.body.position.y < -4 || Math.abs(coin.body.position.x) > 4.1 * tableWidthScale || coin.body.position.z < rearEdgeZ - .3) {
                         removeCoinMesh(coin.mesh);
                         world.removeBody(coin.body);
                         coins.splice(index, 1);
@@ -1970,7 +1820,7 @@
                         world.removeBody(rewardCard.body);
                         removeRewardCardMesh(rewardCard.mesh);
                         fallingRewardCards.splice(index, 1);
-                    } else if (rewardCard.body.position.y < -4 || Math.abs(rewardCard.body.position.x) > 4.1 || rewardCard.body.position.z < rearEdgeZ - .3) {
+                    } else if (rewardCard.body.position.y < -4 || Math.abs(rewardCard.body.position.x) > 4.1 * tableWidthScale || rewardCard.body.position.z < rearEdgeZ - .3) {
                         returnUncollectedCard(rewardCard);
                         removeRewardCardMesh(rewardCard.mesh);
                         world.removeBody(rewardCard.body);
