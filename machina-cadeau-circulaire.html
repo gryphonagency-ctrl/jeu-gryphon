@@ -724,6 +724,7 @@ function connectToLiveServer() {
       const cd = m.commentData, av = cd.avatarDataUri || cd.avatarUrls?.[0];
       if (av) { const id = ensureViewer(String(cd.username || cd.nickname || 'Spectateur').replace(/^@/, '')); adminControls.viewers.get(id).profilePicture = av; }
     }
+    if (m.type === 'WALLET_RUN') handleWalletRun(m);
     // « étoile » et « run » sont gérés par le serveur (portefeuille global) : voir les évènements arcade:wallet plus bas
     if (m.type === 'comment' && m.commentData) { /* aucun traitement local du chat en direct */ }
     if (m.type === 'viewer' && m.viewer) {
@@ -759,6 +760,19 @@ function walletPlayer(p) {
   adminControls.viewers.get(id).stars = Number(p.stars) || 0;
   return name;
 }
+const handledWalletRunIds = new Set();
+function handleWalletRun(data) {
+  const p = data && data.player, spent = Math.floor(Number(data && data.spent));
+  if (!p || !(spent >= 1)) return;
+  const messageId = String(data.messageId || '');
+  if (messageId && handledWalletRunIds.has(messageId)) return;
+  if (messageId) {
+    handledWalletRunIds.add(messageId);
+    if (handledWalletRunIds.size > 1000) handledWalletRunIds.delete(handledWalletRunIds.values().next().value);
+  }
+  const name = walletPlayer(p);
+  enqueueRuns(spent, name, `⭐ ${name} rejoue ${spent} étoile${spent > 1 ? 's' : ''} !`);
+}
 window.addEventListener('arcade:wallet', e => {
   const p = e.detail && e.detail.player; if (!p) return;
   const name = walletPlayer(p);
@@ -767,12 +781,7 @@ window.addEventListener('arcade:wallet', e => {
   refreshPanel();
 });
 // « run » : le serveur débite tout le solde global, la machine tourne autant de fois que d'étoiles dépensées
-window.addEventListener('arcade:wallet-run', e => {
-  const p = e.detail && e.detail.player, spent = Math.floor(Number(e.detail && e.detail.spent));
-  if (!p || !(spent >= 1)) return;
-  const name = walletPlayer(p);
-  enqueueRuns(spent, name, `⭐ ${name} rejoue ${spent} étoile${spent > 1 ? 's' : ''} !`);
-});
+window.addEventListener('arcade:wallet-run', e => handleWalletRun(e.detail));
 window.addEventListener('arcade:wallet-run-rejected', e => {
   const m = e.detail && e.detail.message; if (m) hud(m);
 });
