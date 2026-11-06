@@ -161,7 +161,7 @@
           </div>
         </div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
-        <div class="tip" id="stage-tip">Le bloc bouge de gauche à droite · appuie sur POSER au bon moment · un déséquilibre fait perdre la partie</div>
+        <div class="tip" id="stage-tip">Chaque cadeau déclenche la chute d’un bloc · un déséquilibre fait perdre la partie</div>
       </section>
       <aside class="side-column">
         <section class="side-card">
@@ -513,7 +513,8 @@
         }
         const top = topBlock();
         const width = TOWER_BLOCK_WIDTH;
-        const left = width / 2 + 28;
+        const autoDrop = item.source === 'cadeau';
+        const left = autoDrop ? top.x : width / 2 + 28;
         state.active = {
           username: item.username,
           simulated: item.simulated,
@@ -525,7 +526,7 @@
           color: colorFor(item.username, state.height + 1),
           elapsed: 0,
           y: ACTIVE_BLOCK_SKY_Y,
-          dropping: false,
+          dropping: autoDrop,
           dropVelocity: 0,
           locked: false
         };
@@ -640,6 +641,28 @@
         if (state.active.dropping) return;
         state.active.dropping = true;
         state.active.dropVelocity = 0;
+      }
+
+      function dropForGift(username, simulated) {
+        const name = normalizedName(username) || (simulated ? 'Simulation' : 'visiteur');
+        if (state.gameOver) {
+          report(`Cadeau de @${name} reçu, mais la partie est terminée.`);
+          return;
+        }
+        if (state.active && !state.active.dropping) {
+          state.active.username = name;
+          state.active.simulated = simulated;
+          state.active.source = 'cadeau';
+          state.active.playerId = undefined;
+          state.active.color = colorFor(name, state.height + 1);
+          state.active.dropping = true;
+          state.active.dropVelocity = 0;
+          refreshStats();
+        } else {
+          enqueue(name, 1, simulated, 'cadeau');
+        }
+        addActivity(`🎁 @${name} déclenche la chute d’un bloc`);
+        showToast(`🎁 Cadeau de @${name} · le bloc tombe !`);
       }
 
       function drawBackground() {
@@ -914,12 +937,9 @@
 
       function handleGift(gift, simulated = false) {
         const username = normalizedName(gift.uniqueId || gift.username || gift.nickname || gift.user) || (simulated ? 'Simulation' : 'visiteur');
-        const coins = Math.max(1, Number(gift.coinCount) || 1);
-        const repeats = Math.max(1, Number(gift.repeatCount) || 1);
-        const floors = Math.max(repeats, Math.ceil(coins / 25) * repeats);
         const name = String(gift.giftName || gift.gift || 'Cadeau');
-        enqueue(username, floors, simulated, 'cadeau');
-        showToast(`🎁 @${username} · ${name} · ${floors} étage${floors === 1 ? '' : 's'}`);
+        dropForGift(username, simulated);
+        showToast(`🎁 @${username} · ${name} · le bloc tombe !`);
         if (!simulated) report(`Cadeau reçu de @${username} : ${name}.`);
       }
 
