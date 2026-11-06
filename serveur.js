@@ -374,7 +374,7 @@ const staticGameTitles = {
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
-    '/pont-de-verre.html': 'Pont de verre — Griffon Arcade',
+    '/pont-de-verre.html': 'Le Pont Squide — Griffon Arcade',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
