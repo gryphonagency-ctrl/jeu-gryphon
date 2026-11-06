@@ -104,6 +104,7 @@ const circusWheelGameFile = path.join(__dirname, 'roue-du-cirque.html');
 const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.html');
 const mayaIslandDirectory = path.join(__dirname, 'maya-island');
 const mayaIslandFile = path.join(mayaIslandDirectory, 'index.html');
+const squidStormDirectory = path.join(__dirname, 'squid-storm');
 const mayaIslandScriptFile = path.join(mayaIslandDirectory, 'assets', 'index-D2suOsh3.js');
 const mayaIslandStylesheetFile = path.join(mayaIslandDirectory, 'assets', 'index-B0kkXLGt.css');
 const mayaIslandMapFile = path.join(mayaIslandDirectory, 'images', 'maya-island-clean.jpg');
@@ -176,6 +177,7 @@ const protectedRoutes = new Set([
     '/lancer-de-cerceaux.html',
     '/lion-temple-maya.html',
     '/mots-associes.html',
+    '/squid-storm.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
@@ -265,6 +267,7 @@ const staticGameIds = [
     '/course-de-billes.html',
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
+    '/squid-storm.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -299,6 +302,7 @@ store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
+store.grantGameAccessToExistingCreators('/squid-storm.html');
 store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
@@ -357,6 +361,7 @@ const staticGameTitles = {
     '/course-de-billes.html': 'Course de Billes',
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
+    '/squid-storm.html': 'SQUID STORM',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -408,6 +413,7 @@ const gameRouteIds = new Map([
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
+    ['/squid-storm.html', '/squid-storm.html'],
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -2854,6 +2860,7 @@ const server = http.createServer((req, res) => {
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
+        ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -2899,12 +2906,37 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
+        ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
     ]);
     let route = routes.get(pathname);
+    if (!route && pathname.startsWith('/squid-storm/')) {
+        const relativeFile = pathname.slice('/squid-storm/'.length);
+        const resolvedFile = path.resolve(squidStormDirectory, relativeFile);
+        const allowedExtensions = new Map([
+            ['.css', 'text/css; charset=utf-8'],
+            ['.gif', 'image/gif'],
+            ['.js', 'text/javascript; charset=utf-8'],
+            ['.jpg', 'image/jpeg'],
+            ['.png', 'image/png'],
+            ['.svg', 'image/svg+xml'],
+            ['.webp', 'image/webp'],
+            ['.woff2', 'font/woff2']
+        ]);
+        const contentType = allowedExtensions.get(path.extname(resolvedFile).toLowerCase());
+        if (!/^(?:assets|images)\/[a-zA-Z0-9._/-]+$/.test(relativeFile) ||
+            relativeFile.split('/').includes('..') ||
+            !resolvedFile.startsWith(`${squidStormDirectory}${path.sep}`) ||
+            !contentType) {
+            res.writeHead(404);
+            res.end('Ressource SQUID STORM introuvable.');
+            return;
+        }
+        route = [resolvedFile, contentType];
+    }
     if (!route && /^\/sequences\/[\w-]+\.(png|json)$/.test(pathname)) {
         route = [path.join(__dirname, pathname), pathname.endsWith('.json') ? 'application/json; charset=utf-8' : 'image/png'];
     }
