@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tir à la corde — Griffon Arcade</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #010203;
+            font-family: 'Arial Black', Arial, sans-serif;
+            color: white;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            user-select: none;
+        }
+
+        #top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 1000px;
+            max-width: 95vw;
+            margin-bottom: 12px;
+            z-index: 60;
+        }
+        #live-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 7px;
+            width: 1000px;
+            max-width: 95vw;
+            margin: -4px 0 10px;
+            z-index: 60;
+            font-family: Arial, sans-serif;
+        }
+        #live-controls input[type="text"] {
+            width: 150px;
+            height: 34px;
+            padding: 6px 9px;
+            color: #fff;
+            background: #151a22;
+            border: 1px solid #536071;
+            border-radius: 6px;
+        }
+        #live-controls button, #live-controls label {
+            min-height: 34px;
+            padding: 7px 10px;
+            color: #fff;
+            background: #202a35;
+            border: 1px solid #526172;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        #live-controls label { display: flex; align-items: center; gap: 6px; cursor: default; }
+        #live-controls input[type="range"] { width: 75px; accent-color: #ffd000; }
+        #live-status { color: #c4d0dc; font: 11px Arial, sans-serif; }
+        #team-roster {
+            position: fixed;
+            z-index: 110;
+            top: 12px;
+            left: 12px;
+            width: 220px;
+            max-height: 42vh;
+            overflow: auto;
+            padding: 10px;
+            color: #fff;
+            background: rgba(5, 9, 14, .94);
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 8px;
+            font: 12px Arial, sans-serif;
+        }
+        #team-roster[hidden] { display: none; }
+        #roster-title { margin: -2px -2px 8px; padding: 5px; background: #171e28; cursor: move; font-weight: 900; }
+        .roster-green { color: #00ffaa; }
+        .roster-pink { color: #ff78b6; }
+        #score-a[hidden], #score-b[hidden] { display: none; }
+        #live-controls[hidden] { display: none; }
+
+        .action-btn {
+            width: 170px;
+            height: 48px;
+            font-size: 15px;
+            font-weight: 900;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            transition: transform 0.05s ease;
+            text-transform: uppercase;
+        }
+        .action-btn:active { transform: scale(0.95); }
+        #btn-a { background: #00875a; border: 2px solid #00ffaa; box-shadow: 0 0 12px rgba(0,255,170,0.5); }
+        #btn-b { background: #b00050; border: 2px solid #ff78b6; box-shadow: 0 0 12px rgba(255,0,127,0.5); }
+
+        #game-title {
+            color: #f4f6ff;
+            margin: 0;
+            font-size: 26px;
+            letter-spacing: 4px;
+            text-shadow: 0 0 12px #9d8aff;
+        }
+
+        #viewport {
+            width: min(1000px, 95vw);
+            aspect-ratio: 1000 / 562;
+            position: relative;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+            border: 2px solid #9d8aff;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1366px;
+            height: 768px;
+            transform-origin: 0 0;
+            background: #020406;
+        }
+
+        .bg-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .score-card {
+            position: absolute;
+            top: 25px;
+            font-size: 22px;
+            font-weight: 900;
+            text-transform: uppercase;
+            z-index: 20;
+            background: rgba(0,0,0,0.8);
+            padding: 8px 18px;
+            border-radius: 8px;
+        }
+        #score-a { left: 40px; color: #00ffaa; border: 2px solid #00ffaa; box-shadow: 0 0 10px rgba(0,255,170,0.3); }
+        #score-b { right: 40px; color: #ff78b6; border: 2px solid #ff78b6; box-shadow: 0 0 10px rgba(255,120,182,0.3); }
+
+        #ui-meter {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px;
+            font-weight: 900;
+            color: #f4f6ff;
+            z-index: 20;
+            background: rgba(0,0,0,0.85);
+            padding: 4px 22px;
+            border-radius: 20px;
+            border: 2px solid #9d8aff;
+        }
+
+        #rope-svg-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1366px;
+            height: 768px;
+            z-index: 14;
+            pointer-events: none;
+        }
+
+        .rope-path {
+            fill: none;
+            stroke: #d8a05c;
+            stroke-width: 10;
+            stroke-linecap: round;
+            filter: drop-shadow(0px 5px 6px rgba(0,0,0,0.9));
+        }
+
+        #signal-beacon {
+            transition: transform 0.15s ease-in;
+        }
+
+        /* Conteneurs d'équipe positionnés à Y=180px pour que la corde (Y=45px dans le conteneur) tombe exactement à 225px global */
+        .team {
+            position: absolute;
+            top: 180px;
+            width: 330px;
+            height: 120px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            z-index: 15;
+            transition: left 0.05s ease-out;
+        }
+        #team-a { left: 50px; }
+        #team-b { left: 980px; }
+
+        .char {
+            width: 90px;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            transform-origin: bottom center;
+            transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), top 0.5s ease;
+        }
+
+        .svg-char { width: 100%; height: 100%; overflow: visible; }
+
+        .char.pulling #team-a .svg-char { transform: skewX(15deg) translateY(-2px); }
+        .char.pulling #team-b .svg-char { transform: skewX(-15deg) translateY(-2px); }
+
+        .leg { transform-origin: top center; }
+        @keyframes walk { 0%, 100% { transform: rotate(20deg); } 50% { transform: rotate(-20deg); } }
+        .char.walking .leg-l { animation: walk 0.1s linear infinite; }
+        .char.walking .leg-r { animation: walk 0.1s linear infinite reverse; }
+
+        @keyframes flail {
+            0% { transform: rotate(35deg) scaleY(0.9); }
+            25% { transform: rotate(-40deg) scaleY(1.1); }
+            50% { transform: rotate(45deg) scaleY(0.8); }
+            75% { transform: rotate(-30deg) scaleY(1.05); }
+            100% { transform: rotate(35deg) scaleY(0.9); }
+        }
+        .char.falling .leg {
+            animation: flail 0.15s ease-in-out infinite !important;
+        }
+
+        .char.falling .face-normal { display: none; }
+        .char.falling .face-scared { display: block !important; }
+        .face-scared { display: none; }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            backdrop-filter: blur(6px);
+        }
+        .btn-main {
+            background: #00875a;
+            color: white;
+            border: none;
+            padding: 16px 45px;
+            font-size: 22px;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 900;
+            box-shadow: 0 0 20px #00ffaa;
+            text-transform: uppercase;
+            margin-top: 15px;
+        }
+        @media (max-width: 700px) {
+            body { height: auto; min-height: 100vh; overflow: auto; justify-content: flex-start; padding: 12px 0; }
+            #top-bar { width: 95vw; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 8px; }
+            #game-title { order: -1; width: 100%; text-align: center; font-size: clamp(16px, 5vw, 26px); }
+            .action-btn { width: calc(50% - 5px); height: 40px; font-size: 11px; }
+            #live-controls { width: 95vw; gap: 5px; }
+            #live-controls input[type="text"] { width: 100%; }
+            #viewport { width: 95vw; }
+        }
+    </style>
+</head>
+<body>
+    <div id="top-bar">
+        <button id="btn-a" class="action-btn" onclick="pullA()">TIRER VERT ◄</button>
+        <h2 id="game-title">TIR À LA CORDE</h2>
+        <div style="display:flex;gap:7px;align-items:center">
+            <button id="btn-b" class="action-btn" onclick="pullB()">► TIRER ROSE</button>
+            <button id="toggle-controls" type="button" aria-label="Afficher ou masquer les contrôles" title="Contrôles" style="height:40px;padding:0 12px;color:#fff;background:#202a35;border:1px solid #526172;border-radius:8px;font-weight:900;cursor:pointer">⚙</button>
+        </div>
+    </div>
+
+    <div id="live-controls" aria-label="Commandes du LIVE">
+        <input id="tiktok-username" type="text" maxlength="24" placeholder="@nom_utilisateur" aria-label="Pseudo TikTok Live">
+        <button id="connect-live" type="button">CONNECTER LIVE</button>
+        <span id="live-status" role="status">HORS LIGNE</span>
+        <button id="toggle-roster" type="button">ÉQUIPES</button>
+        <button id="toggle-score" type="button">MASQUER SCORE</button>
+        <label for="pull-speed">Vitesse <input id="pull-speed" type="range" min="0.5" max="2.5" step="0.1" value="1"><span id="speed-value">1,0×</span></label>
+        <button id="sim-vert" type="button">TEST VERT</button>
+        <button id="sim-rose" type="button">TEST ROSE</button>
+        <button id="sim-gift-vert" type="button">CADEAU VERT</button>
+        <button id="sim-gift-rose" type="button">CADEAU ROSE</button>
+        <button id="sim-big-vert" type="button">GROS CADEAU VERT</button>
+        <button id="sim-big-rose" type="button">GROS CADEAU ROSE</button>
+        <label for="sound-enabled">Sons <input id="sound-enabled" type="checkbox" checked></label>
+        <label for="sound-volume">Volume <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <div data-save-key="tir-a-la-corde-save"></div>
+    </div>
+
+    <aside id="team-roster" hidden aria-label="File des équipes">
+        <div id="roster-title">JOUEURS · GLISSER POUR DÉPLACER</div>
+        <div id="roster-list">En attente des choix dans le chat.</div>
+    </aside>
+
+    <div id="viewport">
+        <div id="game-container">
+            <!-- DÉCOR DE LA SCÈNE -->
+            <svg class="bg-svg" viewBox="0 0 1366 768" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="arenaSky" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#18263d"/>
+                        <stop offset=".58" stop-color="#26334b"/>
+                        <stop offset="1" stop-color="#101522"/>
+                    </linearGradient>
+                    <linearGradient id="greenDeck" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#42ebae"/>
+                        <stop offset="1" stop-color="#13785e"/>
+                    </linearGradient>
+                    <linearGradient id="roseDeck" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#ff84bd"/>
+                        <stop offset="1" stop-color="#913c78"/>
+                    </linearGradient>
+                    <pattern id="arenaGrid" width="64" height="48" patternUnits="userSpaceOnUse">
+                        <path d="M0 0H64M0 0V48" fill="none" stroke="#92a8ce" stroke-opacity=".14" stroke-width="2"/>
+                    </pattern>
+                    <radialGradient id="centerGlow">
+                        <stop offset="0" stop-color="#fff5c7" stop-opacity=".85"/>
+                        <stop offset="1" stop-color="#9d8aff" stop-opacity="0"/>
+                    </radialGradient>
+                </defs>
+                <rect width="1366" height="768" fill="url(#arenaSky)"/>
+                <path d="M0 90 Q180 10 360 90 T720 90 T1080 90 T1440 90" fill="none" stroke="#71819c" stroke-opacity=".28" stroke-width="3"/>
+                <path d="M0 120 Q180 40 360 120 T720 120 T1080 120 T1440 120" fill="none" stroke="#71819c" stroke-opacity=".18" stroke-width="3"/>
+                <ellipse cx="683" cy="225" rx="480" ry="260" fill="url(#centerGlow)" opacity=".34"/>
+                <path d="M0 768V326L400 276V768Z" fill="#1e3447"/>
+                <path d="M0 326L400 276V768H0Z" fill="url(#arenaGrid)"/>
+                <path d="M966 276L1366 326V768H966Z" fill="#3c2946"/>
+                <path d="M966 276L1366 326V768H966Z" fill="url(#arenaGrid)"/>
+                <path d="M0 326L400 276M966 276L1366 326" fill="none" stroke="#a9b7d1" stroke-opacity=".45" stroke-width="5"/>
+                <path d="M0 768L400 300M1366 768L966 300" fill="none" stroke="#92a8ce" stroke-opacity=".25" stroke-width="4"/>
+                <path d="M80 768L400 300M1286 768L966 300" fill="none" stroke="#92a8ce" stroke-opacity=".18" stroke-width="3"/>
+
+                <g opacity=".9">
+                    <path d="M80 70H280L340 248H150Z" fill="#51e9bb" opacity=".07"/>
+                    <path d="M1086 70H1286L1216 248H1026Z" fill="#ff75b5" opacity=".07"/>
+                    <path d="M80 70H280M1086 70H1286" stroke="#8394b2" stroke-width="8" stroke-linecap="round"/>
+                    <circle cx="180" cy="70" r="11" fill="#51e9bb"/>
+                    <circle cx="1186" cy="70" r="11" fill="#ff75b5"/>
+                </g>
+
+                <g>
+                    <rect x="0" y="275" width="400" height="27" rx="5" fill="url(#greenDeck)"/>
+                    <rect x="0" y="302" width="400" height="12" fill="#0f604f"/>
+                    <path d="M20 275V260M200 275V260M380 275V260M0 260H400" stroke="#a9f7d8" stroke-opacity=".7" stroke-width="4"/>
+                    <path d="M30 287H370" stroke="#0f604f" stroke-opacity=".7" stroke-width="3" stroke-dasharray="20 14"/>
+                </g>
+                <g>
+                    <rect x="966" y="275" width="400" height="27" rx="5" fill="url(#roseDeck)"/>
+                    <rect x="966" y="302" width="400" height="12" fill="#71325f"/>
+                    <path d="M986 275V260M1166 275V260M1346 275V260M966 260H1366" stroke="#ffd3e8" stroke-opacity=".72" stroke-width="4"/>
+                    <path d="M996 287H1336" stroke="#71325f" stroke-opacity=".8" stroke-width="3" stroke-dasharray="20 14"/>
+                </g>
+                        <g id="signal-beacon">
+                            <rect x="659" y="173" width="48" height="62" rx="18" fill="#202c43" stroke="#c5cee0" stroke-width="3"/>
+                            <circle cx="683" cy="198" r="12" fill="#9d8aff"/>
+                    <path d="M675 222H691" stroke="#c5cee0" stroke-width="4" stroke-linecap="round"/>
+                </g>
+                <path d="M420 580H946V598H420Z" fill="#3a4760"/>
+                <path d="M480 500H886V580H480Z" fill="#1b2538" stroke="#61718c" stroke-width="2"/>
+                <g fill="#7786a1">
+                    <circle cx="550" cy="550" r="5"/><circle cx="590" cy="550" r="5"/>
+                    <circle cx="630" cy="550" r="5"/><circle cx="683" cy="550" r="5"/>
+                    <circle cx="736" cy="550" r="5"/><circle cx="776" cy="550" r="5"/>
+                    <circle cx="816" cy="550" r="5"/>
+                </g>
+            </svg>
+
+            <div id="score-a" class="score-card">Vert : <span id="fa">0</span></div>
+            <div id="ui-meter">0</div>
+            <div id="score-b" class="score-card">Rose : <span id="fb">0</span></div>
+
+            <!-- CORDE FIXÉE EXACTEMENT À Y=225px (HAUTEUR DES MAINS) -->
+            <svg id="rope-svg-container" viewBox="0 0 1366 768">
+                <line id="rope-path-left" class="rope-path" x1="120" y1="225" x2="683" y2="225" />
+                <line id="rope-path-right" class="rope-path" x1="683" y1="225" x2="1246" y2="225" />
+                <circle id="rope-marker-svg" cx="683" cy="225" r="7" fill="#ff0000" stroke="#ffffff" stroke-width="2"/>
+            </svg>
+
+            <!-- ÉQUIPE A (VERTS) - LES MAINS SONT À Y=45 DANS LE SVG POUR TOMBER PILE SUR LA CORDE (Y=225) -->
+            <div id="team-a" class="team">
+                <div class="char" id="a-3">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="22" r="13" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                        <path d="M 32 20 Q 45 8 58 20 Q 51 13 45 13 Q 39 13 32 20 Z" fill="#111"/>
+                        <g class="face-normal">
+                            <path d="M 39 18 L 43 20" stroke="#442211" stroke-width="2"/>
+                            <path d="M 51 18 L 47 20" stroke="#442211" stroke-width="2"/>
+                            <circle cx="41" cy="22" r="1.2" fill="#111"/><circle cx="49" cy="22" r="1.2" fill="#111"/>
+                            <path d="M 41 27 Q 45 25 49 27" fill="none" stroke="#663311" stroke-width="2"/>
+                        </g>
+                        <g class="face-scared">
+                            <circle cx="40" cy="20" r="2.2" fill="#fff"/><circle cx="40" cy="20" r="0.7" fill="#000"/>
+                            <circle cx="50" cy="20" r="2.2" fill="#fff"/><circle cx="50" cy="20" r="0.7" fill="#000"/>
+                            <ellipse cx="45" cy="27" rx="3" ry="4.5" fill="#440000" stroke="#000" stroke-width="1"/>
+                        </g>
+                        <rect x="31" y="35" width="28" height="42" rx="5" fill="#0c573f" stroke="#063828" stroke-width="2"/>
+                        <line x1="45" y1="35" x2="45" y2="77" stroke="#ffffff" stroke-width="2"/>
+                        <text x="45" y="60" font-size="8.5" fill="white" font-weight="900" text-anchor="middle">V1</text>
+                        <!-- Pieds posés sur la route grise -->
+                        <g class="leg leg-l"><rect x="34" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="28" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="46" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+
+                        <!-- Bras et mains fixés à Y=45 -->
+                        <path d="M 38 42 L 58 45 L 90 45" fill="none" stroke="#0c573f" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="61" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                        <circle cx="87" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    </svg>
+                </div>
+                <div class="char" id="a-2">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="22" r="13" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                        <path d="M 32 16 Q 45 10 58 16" stroke="#888" stroke-width="2" fill="none"/>
+                        <g class="face-normal">
+                            <circle cx="41" cy="22" r="1.2" fill="#111"/><circle cx="49" cy="22" r="1.2" fill="#111"/>
+                            <path d="M 41 27 Q 45 30 49 27" fill="none" stroke="#663311" stroke-width="2"/>
+                        </g>
+                        <g class="face-scared">
+                            <circle cx="40" cy="20" r="2.2" fill="#fff"/><circle cx="50" cy="20" r="2.2" fill="#fff"/>
+                            <ellipse cx="45" cy="27" rx="3" ry="4.5" fill="#440000" stroke="#000" stroke-width="1"/>
+                        </g>
+                        <rect x="31" y="35" width="28" height="42" rx="5" fill="#0c573f" stroke="#063828" stroke-width="2"/>
+                        <line x1="45" y1="35" x2="45" y2="77" stroke="#ffffff" stroke-width="2"/>
+                        <text x="45" y="60" font-size="8.5" fill="white" font-weight="900" text-anchor="middle">V2</text>
+                        <g class="leg leg-l"><rect x="34" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="28" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="46" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+
+                        <path d="M 38 42 L 58 45 L 90 45" fill="none" stroke="#0c573f" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="61" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                        <circle cx="87" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    </svg>
+                </div>
+                <div class="char" id="a-1">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="22" r="13" fill="#ffdbac" stroke="#b87b4c" stroke-width="1.5"/>
+                        <rect x="38" y="19" width="6" height="4" rx="1" fill="none" stroke="#111" stroke-width="1.5"/>
+                        <rect x="46" y="19" width="6" height="4" rx="1" fill="none" stroke="#111" stroke-width="1.5"/>
+                        <g class="face-normal"><path d="M 41 27 L 49 27" stroke="#663311" stroke-width="2"/></g>
+                        <g class="face-scared"><ellipse cx="45" cy="27" rx="3" ry="4.5" fill="#440000" stroke="#000" stroke-width="1"/></g>
+                        <rect x="31" y="35" width="28" height="42" rx="5" fill="#0c573f" stroke="#063828" stroke-width="2"/>
+                        <line x1="45" y1="35" x2="45" y2="77" stroke="#ffffff" stroke-width="2"/>
+                        <text x="45" y="60" font-size="8.5" fill="white" font-weight="900" text-anchor="middle">V3</text>
+                        <g class="leg leg-l"><rect x="34" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="28" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="77" width="9" height="38" rx="3" fill="#0c573f"/><rect x="46" y="115" width="15" height="3" fill="#111" rx="1"/></g>
+
+                        <path d="M 38 42 L 58 45 L 90 45" fill="none" stroke="#0c573f" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="61" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                        <circle cx="87" cy="45" r="4.5" fill="#ffdbac" stroke="#b87b4c" stroke-width="1"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- ÉQUIPE ROSE - LES MAINS SONT À Y=45 DANS LE SVG POUR TOMBER PILE SUR LA CORDE -->
+            <div id="team-b" class="team">
+                <div class="char" id="b-1">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="23" r="16" fill="#ffdbac" stroke="#b87b4c" stroke-width="2"/>
+                        <path d="M29 22 Q31 5 45 7 Q59 7 61 22 Q54 15 45 15 Q36 15 29 22Z" fill="#27242a"/>
+                        <circle cx="40" cy="23" r="1.5" fill="#111"/><circle cx="50" cy="23" r="1.5" fill="#111"/>
+                        <path d="M40 29 Q45 32 50 29" fill="none" stroke="#663311" stroke-width="1.5"/>
+                        <rect x="31" y="39" width="28" height="42" rx="8" fill="#ff78b6" stroke="#a34283" stroke-width="2"/>
+                        <line x1="45" y1="39" x2="45" y2="75" stroke="#ffe0ef" stroke-width="2"/>
+                        <rect x="31" y="70" width="28" height="4" fill="#a34283"/>
+                        <g class="leg leg-l"><rect x="34" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="27" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="46" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+
+                        <!-- Bras et mains fixés à Y=45 -->
+                        <path d="M 52 42 L 32 45 L 0 45" fill="none" stroke="#ff78b6" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="29" cy="45" r="4.5" fill="#ffdbac"/>
+                        <circle cx="3" cy="45" r="4.5" fill="#ffdbac"/>
+                    </svg>
+                </div>
+                <div class="char" id="b-2">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="23" r="16" fill="#ffdbac" stroke="#b87b4c" stroke-width="2"/>
+                        <path d="M29 19 Q33 7 46 7 Q59 9 61 19 L55 16 50 18 44 14 37 18Z" fill="#6d4833"/>
+                        <circle cx="40" cy="23" r="1.5" fill="#111"/><circle cx="50" cy="23" r="1.5" fill="#111"/>
+                        <path d="M40 29 Q45 27 50 29" fill="none" stroke="#663311" stroke-width="1.5"/>
+                        <rect x="31" y="39" width="28" height="42" rx="8" fill="#ff78b6" stroke="#a34283" stroke-width="2"/>
+                        <line x1="45" y1="39" x2="45" y2="75" stroke="#ffe0ef" stroke-width="2"/>
+                        <rect x="31" y="70" width="28" height="4" fill="#a34283"/>
+                        <g class="leg leg-l"><rect x="34" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="27" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="46" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+
+                        <path d="M 52 42 L 32 45 L 0 45" fill="none" stroke="#ff78b6" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="29" cy="45" r="4.5" fill="#ffdbac"/>
+                        <circle cx="3" cy="45" r="4.5" fill="#ffdbac"/>
+                    </svg>
+                </div>
+                <div class="char" id="b-3">
+                    <svg class="svg-char" viewBox="0 0 90 120">
+                        <circle cx="45" cy="23" r="16" fill="#ffdbac" stroke="#b87b4c" stroke-width="2"/>
+                        <path d="M29 21 Q33 7 45 7 Q57 7 61 21 Q55 14 48 15 L42 12 35 17Z" fill="#342e26"/>
+                        <circle cx="40" cy="23" r="1.5" fill="#111"/><circle cx="50" cy="23" r="1.5" fill="#111"/>
+                        <path d="M40 29 Q45 31 50 29" fill="none" stroke="#663311" stroke-width="1.5"/>
+                        <rect x="31" y="39" width="28" height="42" rx="8" fill="#ff78b6" stroke="#a34283" stroke-width="2"/>
+                        <line x1="45" y1="39" x2="45" y2="75" stroke="#ffe0ef" stroke-width="2"/>
+                        <rect x="31" y="70" width="28" height="4" fill="#a34283"/>
+                        <g class="leg leg-l"><rect x="34" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="27" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+                        <g class="leg leg-r"><rect x="47" y="81" width="9" height="34" rx="3" fill="#ff78b6"/><rect x="46" y="115" width="15" height="3.5" fill="#293149" rx="1"/></g>
+
+                        <path d="M 52 42 L 32 45 L 0 45" fill="none" stroke="#ff78b6" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="29" cy="45" r="4.5" fill="#ffdbac"/>
+                        <circle cx="3" cy="45" r="4.5" fill="#ffdbac"/>
+                    </svg>
+                </div>
+            </div>
+
+            <div id="overlay">
+                <h2 id="win-txt" style="font-size: 36px; color: #f4f6ff; margin-bottom: 15px; text-shadow: 0 0 10px #9d8aff;">TIR À LA CORDE</h2>
+                <button class="btn-main" onclick="startGame()">Lancer la partie</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pos = 0, active = false, ca = 0, cb = 0, tA, tB, speed = 1, socket = null;
+        const limit = 220;
+        const teams = new Map();
+        let seenGiftIds = new Set();
+        const tA_el = document.getElementById('team-a'), tB_el = document.getElementById('team-b');
+        const rLeft = document.getElementById('rope-path-left'), rRight = document.getElementById('rope-path-right'), rMarker = document.getElementById('rope-marker-svg');
+        const signalBeacon = document.getElementById('signal-beacon');
+        const liveStatus = document.getElementById('live-status');
+        const roster = document.getElementById('team-roster');
+        const rosterList = document.getElementById('roster-list');
+
+        function resizeViewport() {
+            const vp = document.getElementById('viewport');
+            const gc = document.getElementById('game-container');
+            const scale = vp.clientWidth / 1366;
+            gc.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', resizeViewport);
+        resizeViewport();
+
+        function resetChars() {
+            document.querySelectorAll('.char').forEach(c => {
+                c.classList.remove('falling');
+                c.style.top = "0px";
+                c.style.transform = "rotate(0deg)";
+            });
+            signalBeacon.style.transform = "translateY(0px)";
+
+            rLeft.setAttribute('x1', 120 + pos);
+            rLeft.setAttribute('x2', 683 + pos);
+            rLeft.setAttribute('y1', 225);
+            rLeft.setAttribute('y2', 225);
+
+            rRight.setAttribute('x1', 683 + pos);
+            rRight.setAttribute('x2', 1246 + pos);
+            rRight.setAttribute('y1', 225);
+            rRight.setAttribute('y2', 225);
+        }
+
+        function startGame() {
+            pos = 0; ca = 0; cb = 0; active = true;
+            document.getElementById('overlay').style.display = 'none';
+            resetChars();
+            tA_el.style.left = "50px"; tB_el.style.left = "980px";
+            tA_el.style.top = "180px"; tB_el.style.top = "180px";
+            update();
+        }
+
+        function update() {
+            tA_el.style.left = (50 + pos) + "px";
+            tB_el.style.left = (980 + pos) + "px";
+
+            const centerPos = 683 + pos;
+
+            if (active) {
+                rLeft.setAttribute('x1', 120 + pos);
+                rLeft.setAttribute('x2', centerPos);
+
+                rRight.setAttribute('x1', centerPos);
+                rRight.setAttribute('x2', 1246 + pos);
+            }
+
+            rMarker.setAttribute('cx', centerPos);
+
+            document.getElementById('ui-meter').innerText = Math.abs(Math.round(pos / 5));
+            document.getElementById('ui-meter').style.color = pos < 0 ? "#00ffaa" : (pos > 0 ? "#ff78b6" : "#f4f6ff");
+            document.getElementById('fa').innerText = ca;
+            document.getElementById('fb').innerText = cb;
+        }
+
+        function fx(id, t) {
+            const list = document.querySelectorAll(`#${id} .char`);
+            list.forEach(c => c.classList.add('pulling', 'walking'));
+            setTimeout(() => list.forEach(c => c.classList.remove('pulling')), 90);
+            clearTimeout(t);
+            return setTimeout(() => list.forEach(c => c.classList.remove('walking')), 220);
+        }
+
+        function pullA(force = 10) {
+            if (!active) return; pos -= force * speed; ca++; update();
+            tA = fx('team-a', tA); check();
+        }
+
+        function pullB(force = 10) {
+            if (!active) return; pos += force * speed; cb++; update();
+            tB = fx('team-b', tB); check();
+        }
+
+        function triggerChainFall(losingTeam) {
+            const isTeamA = losingTeam === 'a';
+            const chars = isTeamA ? ['a-1', 'a-2', 'a-3'] : ['b-1', 'b-2', 'b-3'];
+
+            signalBeacon.style.transform = "translateY(24px)";
+
+            setTimeout(() => {
+                if (isTeamA) {
+                    rLeft.setAttribute('x2', 450);
+                    rLeft.setAttribute('y2', 500);
+                } else {
+                    rRight.setAttribute('x1', 916);
+                    rRight.setAttribute('y1', 500);
+                }
+
+                const c1 = document.getElementById(chars[0]);
+                c1.classList.add('falling');
+                c1.style.transform = isTeamA ? "rotate(75deg)" : "rotate(-75deg)";
+                c1.style.top = "180px";
+            }, 150);
+
+            setTimeout(() => {
+                const c2 = document.getElementById(chars[1]);
+                c2.classList.add('falling');
+                c2.style.transform = isTeamA ? "rotate(65deg)" : "rotate(-65deg)";
+                c2.style.top = "240px";
+                document.getElementById(chars[0]).style.top = "360px";
+            }, 400);
+
+            setTimeout(() => {
+                const c3 = document.getElementById(chars[2]);
+                c3.classList.add('falling');
+                c3.style.transform = isTeamA ? "rotate(55deg)" : "rotate(-55deg)";
+                c3.style.top = "300px";
+                document.getElementById(chars[1]).style.top = "420px";
+                document.getElementById(chars[0]).style.top = "540px";
+            }, 650);
+        }
+
+        function check() {
+            if (pos >= limit) {
+                end("L'ÉQUIPE ROSE GAGNE !");
+                triggerChainFall('a');
+            } else if (pos <= -limit) {
+                end("L'ÉQUIPE VERTE GAGNE !");
+                triggerChainFall('b');
+            }
+        }
+
+        function end(txt) {
+            active = false;
+            document.getElementById('win-txt').innerText = txt;
+            setTimeout(() => {
+                document.getElementById('overlay').style.display = 'flex';
+                document.querySelector('.btn-main').innerText = "Rejouer";
+            }, 2200);
+        }
+
+        function normalizeName(value) {
+            return String(value || '').trim().replace(/^@/, '').slice(0, 40);
+        }
+
+        function normalizeComment(value) {
+            return String(value || '').trim().toLocaleLowerCase('fr-FR').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+        }
+
+        function renderRoster() {
+            if (!teams.size) {
+                rosterList.textContent = 'En attente des choix dans le chat.';
+                return;
+            }
+            rosterList.replaceChildren();
+            for (const [name, team] of teams) {
+                const player = document.createElement('div');
+                player.className = team === 'vert' ? 'roster-green' : 'roster-pink';
+                player.textContent = `${team === 'vert' ? '● VERT' : '● ROSE'} · @${name}`;
+                rosterList.appendChild(player);
+            }
+        }
+
+        function chooseTeam(username, team) {
+            const name = normalizeName(username);
+            if (!name || !team) return false;
+            const key = name.toLocaleLowerCase('fr-FR');
+            teams.set(key, team);
+            renderRoster();
+            liveStatus.textContent = `@${name} rejoint l'équipe ${team.toUpperCase()}.`;
+            return true;
+        }
+
+        function onTikTokComment(username, text) {
+            const comment = normalizeComment(text);
+            if (/^(?:!\s*)?(?:vert|verte|equipe\s+verte|green|1)$/.test(comment)) {
+                chooseTeam(username, 'vert');
+            } else if (/^(?:!\s*)?(?:rose|equipe\s+rose|pink|2)$/.test(comment)) {
+                chooseTeam(username, 'rose');
+            }
+        }
+
+        function teamFor(username) {
+            const name = normalizeName(username) || 'visiteur';
+            const key = name.toLocaleLowerCase('fr-FR');
+            if (teams.has(key)) return teams.get(key);
+            const greenCount = [...teams.values()].filter(team => team === 'vert').length;
+            const pinkCount = teams.size - greenCount;
+            const team = greenCount <= pinkCount ? 'vert' : 'rose';
+            chooseTeam(name, team);
+            return team;
+        }
+
+        function onGift(gift, simulated = false) {
+            const username = normalizeName(gift.uniqueId || gift.username || gift.nickname || gift.user) || 'visiteur';
+            const messageId = String(gift.messageId || gift.msgId || '');
+            const repetitions = Math.max(1, Number(gift.repeatCount) || 1);
+            if (gift.repeatEnd !== undefined && ![true, 1, '1'].includes(gift.repeatEnd)) return;
+            if (messageId) {
+                if (seenGiftIds.has(messageId)) return;
+                seenGiftIds.add(messageId);
+                if (seenGiftIds.size > 1200) seenGiftIds.delete(seenGiftIds.values().next().value);
+            }
+            const coins = Math.max(1, Number(gift.coinCount) || ((Number(gift.coinValue) || Number(gift.diamondCount) || Number(gift.diamonds) || 1) * repetitions));
+            const force = 10 * Math.min(5, 1 + Math.log2(coins) / 2);
+            const team = teamFor(username);
+            if (team === 'vert') pullA(force);
+            else pullB(force);
+            liveStatus.textContent = `🎁 @${username} tire pour l'équipe ${team.toUpperCase()} · ${coins} pièce${coins > 1 ? 's' : ''}.`;
+            if (simulated && coins >= 100 && window.ArcadeEffects) {
+                window.ArcadeEffects.simulateBigGift(username, coins);
+            }
+        }
+
+        function handleLiveMessage(message) {
+            if (!message || typeof message !== 'object') return;
+            const data = message.data && typeof message.data === 'object' ? message.data : message;
+            const type = String(message.type || message.event || data.type || '').toLowerCase();
+            if (type === 'gift' || type === 'tiktok-gift') {
+                onGift(data.gift || data);
+            } else if (type === 'comment' || type === 'chat' || type === 'tiktok-comment') {
+                const comment = data.commentData || data;
+                onTikTokComment(comment.uniqueId || comment.username || comment.nickname, comment.comment || comment.text || comment.message);
+            } else if (type === 'status') {
+                liveStatus.textContent = String(data.message || 'État du LIVE mis à jour.');
+            }
+        }
+
+        function connectLive() {
+            if (socket) {
+                socket.close();
+                socket = null;
+                liveStatus.textContent = 'HORS LIGNE';
+                document.getElementById('connect-live').textContent = 'CONNECTER LIVE';
+                return;
+            }
+            const username = normalizeName(document.getElementById('tiktok-username').value);
+            if (!/^[\w.]{2,24}$/.test(username)) {
+                liveStatus.textContent = 'Saisis un pseudo TikTok valide (2 à 24 caractères).';
+                return;
+            }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const currentSocket = new WebSocket(`${protocol}//${window.location.host}`);
+            socket = currentSocket;
+            liveStatus.textContent = `Connexion au LIVE @${username}…`;
+            currentSocket.addEventListener('open', () => {
+                currentSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                document.getElementById('connect-live').textContent = 'DÉCONNECTER';
+            });
+            currentSocket.addEventListener('message', event => {
+                try {
+                    handleLiveMessage(JSON.parse(String(event.data)));
+                } catch (error) {
+                    console.error('Message TikTok illisible :', error);
+                    liveStatus.textContent = 'Un message LIVE illisible a été ignoré.';
+                }
+            });
+            currentSocket.addEventListener('error', () => {
+                liveStatus.textContent = 'Connexion au serveur TikTok impossible.';
+            });
+            currentSocket.addEventListener('close', () => {
+                if (socket === currentSocket) socket = null;
+                document.getElementById('connect-live').textContent = 'CONNECTER LIVE';
+                liveStatus.textContent = 'HORS LIGNE';
+            });
+        }
+
+        document.getElementById('connect-live').addEventListener('click', connectLive);
+        document.getElementById('pull-speed').addEventListener('input', event => {
+            speed = Number(event.target.value);
+            document.getElementById('speed-value').textContent = speed.toFixed(1).replace('.', ',') + '×';
+        });
+        document.getElementById('toggle-score').addEventListener('click', event => {
+            const hide = !document.getElementById('score-a').hidden;
+            document.getElementById('score-a').hidden = hide;
+            document.getElementById('score-b').hidden = hide;
+            event.currentTarget.textContent = hide ? 'AFFICHER SCORE' : 'MASQUER SCORE';
+        });
+        document.getElementById('toggle-roster').addEventListener('click', () => {
+            roster.hidden = !roster.hidden;
+        });
+        document.getElementById('toggle-controls').addEventListener('click', () => {
+            const controls = document.getElementById('live-controls');
+            controls.hidden = !controls.hidden;
+        });
+        function updateEffectSound() {
+            if (window.ArcadeEffects) {
+                window.ArcadeEffects.setSound(
+                    document.getElementById('sound-enabled').checked,
+                    Number(document.getElementById('sound-volume').value)
+                );
+            }
+        }
+        document.getElementById('sound-enabled').addEventListener('change', updateEffectSound);
+        document.getElementById('sound-volume').addEventListener('input', updateEffectSound);
+        updateEffectSound();
+        document.getElementById('sim-vert').addEventListener('click', () => onTikTokComment('Simulation verte', 'vert'));
+        document.getElementById('sim-rose').addEventListener('click', () => onTikTokComment('Simulation rose', 'rose'));
+        document.getElementById('sim-gift-vert').addEventListener('click', () => {
+            onTikTokComment('Simulation verte', 'vert');
+            onGift({ uniqueId: 'Simulation verte', coinCount: 1, messageId: `sim-green-${Date.now()}` }, true);
+        });
+        document.getElementById('sim-gift-rose').addEventListener('click', () => {
+            onTikTokComment('Simulation rose', 'rose');
+            onGift({ uniqueId: 'Simulation rose', coinCount: 1, messageId: `sim-pink-${Date.now()}` }, true);
+        });
+        document.getElementById('sim-big-vert').addEventListener('click', () => {
+            onTikTokComment('Simulation verte', 'vert');
+            onGift({ uniqueId: 'Simulation verte', coinCount: 100, messageId: `sim-big-green-${Date.now()}` }, true);
+        });
+        document.getElementById('sim-big-rose').addEventListener('click', () => {
+            onTikTokComment('Simulation rose', 'rose');
+            onGift({ uniqueId: 'Simulation rose', coinCount: 100, messageId: `sim-big-pink-${Date.now()}` }, true);
+        });
+        document.getElementById('roster-title').addEventListener('pointerdown', event => {
+            const bounds = roster.getBoundingClientRect();
+            const offsetX = event.clientX - bounds.left, offsetY = event.clientY - bounds.top;
+            function move(moveEvent) {
+                roster.style.left = `${Math.max(0, moveEvent.clientX - offsetX)}px`;
+                roster.style.top = `${Math.max(0, moveEvent.clientY - offsetY)}px`;
+                roster.style.right = 'auto';
+            }
+            function stop() {
+                document.removeEventListener('pointermove', move);
+                document.removeEventListener('pointerup', stop);
+            }
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', stop);
+        });
+        window.addEventListener('beforeunload', () => socket?.close());
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'a' || e.key === 'A' || e.key === 'q' || e.key === 'Q' || e.key === 'ArrowLeft') pullA();
+            if (e.key === 'l' || e.key === 'L' || e.key === 'p' || e.key === 'P' || e.key === 'ArrowRight') pullB();
+        });
+    </script>
+</body>
+</html>
