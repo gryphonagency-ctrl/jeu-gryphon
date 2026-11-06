@@ -105,6 +105,7 @@ const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.ht
 const mayaIslandDirectory = path.join(__dirname, 'maya-island');
 const mayaIslandFile = path.join(mayaIslandDirectory, 'index.html');
 const squidStormDirectory = path.join(__dirname, 'squid-storm');
+const towerUpFile = path.join(__dirname, 'tower-up.html');
 const mayaIslandScriptFile = path.join(mayaIslandDirectory, 'assets', 'index-D2suOsh3.js');
 const mayaIslandStylesheetFile = path.join(mayaIslandDirectory, 'assets', 'index-B0kkXLGt.css');
 const mayaIslandMapFile = path.join(mayaIslandDirectory, 'images', 'maya-island-clean.jpg');
@@ -178,6 +179,7 @@ const protectedRoutes = new Set([
     '/lion-temple-maya.html',
     '/mots-associes.html',
     '/squid-storm.html',
+    '/tower-up.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
@@ -268,6 +270,7 @@ const staticGameIds = [
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
     '/squid-storm.html',
+    '/tower-up.html',
     '/coffres',
     '/inedexd.html'
 ];
@@ -303,6 +306,7 @@ store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/squid-storm.html');
+store.grantGameAccessToExistingCreators('/tower-up.html');
 store.grantGameAccessToExistingCreators('/arene-combattants.html');
 store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
@@ -362,6 +366,7 @@ const staticGameTitles = {
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/squid-storm.html': 'SQUID STORM',
+    '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/coffres': 'Les Coffres',
     '/inedexd.html': 'Six Boîtes'
 };
@@ -414,6 +419,7 @@ const gameRouteIds = new Map([
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
     ['/squid-storm.html', '/squid-storm.html'],
+    ['/tower-up.html', '/tower-up.html'],
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -2861,6 +2867,7 @@ const server = http.createServer((req, res) => {
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
+        ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
@@ -2907,6 +2914,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
+        ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],

@@ -17,6 +17,8 @@ Le solde peut être lu depuis un jeu avec `await window.ArcadeStars.getBalance(u
 
 Dans SQUID STORM, les étoiles d’un personnage tombé sont créditées au joueur associé au cadeau ou au `RUN` qui l’a lancé. Une étoile dépensée avec `RUN` lance un personnage; si la réserve ne permet pas de tous les jouer, les étoiles inutilisées sont remboursées. Les simulations ne créditent jamais le portefeuille. Le jeu ne présente une récompense comme créditée qu’après confirmation du serveur; les erreurs sont signalées dans le panneau de contrôle.
 
+Dans Tower Up, un bonus d’une étoile est attribué au bâtisseur LIVE après chaque cinquième étage posé. Les actions simulées n’attribuent aucune étoile; `RUN` ajoute des étages à la file de construction et les éventuelles actions refusées sont remboursées.
+
 Sur Render, configurez un disque persistant monté sur `/var/data` pour conserver les profils, les étoiles et les photos après un redémarrage ou un nouveau déploiement.
 
 Les comptes Arcade créés manuellement par l’administrateur enregistrent également leur durée d’accès et leur date d’expiration dans ce stockage. Le serveur refuse l’accès dès l’échéance, puis supprime le compte et ses droits lors de son nettoyage automatique périodique ou au prochain démarrage. Les anciens comptes manuels sans date d’expiration restent inchangés. Les profils TikTok et leurs scores en étoiles restent des données globales du portefeuille, indépendantes du compte Arcade utilisé pour administrer les jeux.
