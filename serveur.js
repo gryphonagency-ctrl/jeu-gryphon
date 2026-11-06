@@ -162,6 +162,7 @@ const protectedRoutes = new Set([
     '/coin-pusher-tiktok-2d-ancien.html',
     '/jeu-foot-tiktok-v2.html',
     '/aquarium-tiktok-live.html',
+    '/quartier-des-veilleurs.html',
     '/peche-en-mer.html',
     '/ile-au-tresor.html',
     '/course-karts.html',
@@ -240,6 +241,7 @@ const staticGameIds = [
     '/pendu.html',
     '/plinko.html',
     '/aquarium-tiktok-live.html',
+    '/quartier-des-veilleurs.html',
     '/coin-pusher-tiktok.html',
     '/coin-pusher-3d-preview.html',
     '/coin-pusher-canard.html',
@@ -322,6 +324,7 @@ store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
 store.grantGameAccessToExistingCreators('/dessiner-cest-gagne.html');
+store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -336,6 +339,7 @@ const staticGameTitles = {
     '/pendu.html': 'Le Pendu',
     '/plinko.html': 'Gryphon Plinko',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
+    '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
     '/coin-pusher-3d-preview.html': 'Astra Push 3D',
     '/coin-pusher-canard.html': 'Queen Pusher Canard',
@@ -393,6 +397,7 @@ const gameRouteIds = new Map([
     ['/pendu.html', '/pendu.html'],
     ['/plinko.html', '/plinko.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
+    ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
     ['/coin-pusher-3d-preview.html', '/coin-pusher-3d-preview.html'],
     ['/coin-pusher-canard.html', '/coin-pusher-canard.html'],
@@ -2830,6 +2835,7 @@ const server = http.createServer((req, res) => {
         ['/coin-pusher-tiktok-2d-ancien.html', [coinPusher2dOldFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok-v2.html', [footballV2File, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
+        ['/quartier-des-veilleurs.html', [path.join(__dirname, 'quartier-des-veilleurs.html'), 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
@@ -2893,6 +2899,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/pendu.png', [path.join(__dirname, 'images-vitrine', 'pendu.png'), 'image/png']],
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
+        ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
