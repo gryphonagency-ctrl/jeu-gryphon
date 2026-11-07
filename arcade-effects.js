@@ -252,6 +252,7 @@
             count.style.top = y;
         }
         treasureStage.classList.toggle('ae-treasure-edit', treasureEditIsRequested());
+        treasureStage.style.visibility = treasureChestVisible ? '' : 'hidden';
         renderTreasureGifts();
     }
 
@@ -482,18 +483,22 @@
         renderTreasureGifts();
         const items = treasureStage && treasureStage.querySelector('.ae-treasure-gifts');
         const bounds = treasureChestBounds();
-        const animatedCount = Math.min(safeCount, 24);
+        const animatedCount = Math.min(safeCount, retainedCount);
         for (let i = 0; i < animatedCount; i++) {
             const index = treasureGiftCount - animatedCount + i;
-            const retainedCount = treasureGiftItems.reduce((total, giftItem) => total + giftItem.count, 0);
             const firstVisible = Math.max(0, treasureGiftCount - retainedCount);
             const giftElement = items && items.children[index - firstVisible];
             if (!giftElement || typeof giftElement.animate !== 'function') continue;
             const target = treasurePosition(index, bounds);
+            const startDistance = target.y + 64;
             giftElement.animate([
-                { transform: `translate(0, -${window.innerHeight * 0.62}px) scale(.55)`, opacity: 0 },
+                { transform: `translateY(-${startDistance}px) scale(.65)`, opacity: 0 },
                 { transform: 'translate(0, 0) scale(1)', opacity: 1 }
-            ], { duration: 650 + Math.random() * 450, delay: i * 35, easing: 'cubic-bezier(.2,.8,.3,1)' });
+            ], {
+                duration: 700 + Math.random() * 300,
+                delay: Math.min(i * 24, 650),
+                easing: 'cubic-bezier(.2,.8,.3,1)'
+            });
         }
     }
 
