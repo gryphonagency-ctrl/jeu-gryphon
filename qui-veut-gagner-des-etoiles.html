@@ -49,6 +49,17 @@
         .broadcast-overlay[data-tension="gold"] { --stage-accent: #fbbf24; background: radial-gradient(ellipse at 50% 0%, rgba(180, 83, 9, 0.58), rgba(2, 3, 8, 0.97) 72%); }
         .broadcast-overlay[data-tension="red"] { --stage-accent: #fb7185; background: radial-gradient(ellipse at 50% 0%, rgba(190, 18, 60, 0.62), rgba(2, 3, 8, 0.98) 72%); }
         .broadcast-panel { display: grid; gap: 22px; width: min(100%, 1180px); max-height: 100%; overflow-y: auto; padding: 28px; border: 2px solid var(--stage-accent); border-radius: 20px; background: rgba(3, 7, 18, 0.88); box-shadow: 0 0 44px color-mix(in srgb, var(--stage-accent) 38%, transparent), inset 0 0 30px rgba(255, 255, 255, 0.04); }
+        .broadcast-panel.adjustable,
+        .progress-celebration-panel.adjustable { position: absolute; inset: auto; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); margin: 0; }
+        .broadcast-panel.is-hidden,
+        .progress-celebration-panel.is-hidden { visibility: hidden; pointer-events: none; }
+        .preview-panel-tools { position: absolute; z-index: 2; display: flex; gap: 5px; pointer-events: auto; }
+        .preview-panel-tools button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(148,163,184,.7); border-radius: 9px; background: rgba(3,7,18,.94); color: #e2e8f0; box-shadow: 0 4px 14px rgba(0,0,0,.4); cursor: pointer; touch-action: none; }
+        .preview-panel-tools button:hover,
+        .preview-panel-tools button:focus-visible { border-color: #67e8f9; color: #67e8f9; outline: none; }
+        .preview-panel-tools .preview-panel-drag { cursor: move; }
+        .preview-panel-tools .preview-panel-resize { cursor: nwse-resize; }
+        .preview-panel-tools button[aria-pressed="true"] { border-color: #fbbf24; color: #fde68a; }
         .broadcast-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--stage-accent); font-size: 20px; font-weight: 900; text-transform: uppercase; }
         .broadcast-countdown { min-width: 120px; color: #fff; font-size: 76px; font-weight: 900; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
         .broadcast-countdown.urgent { color: #fb7185; animation: countdown-pulse 500ms ease-in-out infinite alternate; }
@@ -205,6 +216,11 @@
             <p id="broadcastSurvivors" class="broadcast-survivors">Le plateau est prêt.</p>
             <p id="broadcastVipBadge" class="hidden rounded-full border border-amber-300 px-4 py-2 text-sm font-black text-amber-200">CHALLENGER VIP · 100 PIÈCES VALIDÉES</p>
         </section>
+        <div id="broadcastPanelTools" class="preview-panel-tools" role="group" aria-label="Réglages de l’aperçu question">
+            <button class="preview-panel-drag" type="button" aria-label="Déplacer la bannière question" title="Déplacer"><i class="fa-solid fa-arrows-up-down-left-right" aria-hidden="true"></i></button>
+            <button class="preview-panel-eye" type="button" aria-label="Masquer la bannière question" title="Masquer"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+            <button class="preview-panel-resize" type="button" aria-label="Redimensionner la bannière question" title="Tirer pour redimensionner"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i></button>
+        </div>
     </div>
     <div id="progressCelebration" class="progress-celebration" aria-hidden="true" aria-live="polite">
         <section class="progress-celebration-panel" aria-label="Progression dans la pyramide des étoiles">
@@ -212,6 +228,11 @@
             <p id="progressCelebrationSubtitle" class="progress-celebration-subtitle"></p>
             <div id="progressLadderList" class="progress-ladder-list"></div>
         </section>
+        <div id="progressPanelTools" class="preview-panel-tools" role="group" aria-label="Réglages de l’aperçu de la pyramide">
+            <button class="preview-panel-drag" type="button" aria-label="Déplacer la pyramide des gains" title="Déplacer"><i class="fa-solid fa-arrows-up-down-left-right" aria-hidden="true"></i></button>
+            <button class="preview-panel-eye" type="button" aria-label="Masquer la pyramide des gains" title="Masquer"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+            <button class="preview-panel-resize" type="button" aria-label="Redimensionner la pyramide des gains" title="Tirer pour redimensionner"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i></button>
+        </div>
     </div>
     <header class="game-topbar max-w-7xl mx-auto w-full mb-4">
         <div class="game-brand">
@@ -535,6 +556,8 @@
         const VOTE_PANEL_HIDDEN_KEY = 'qui-veut-gagner-etoiles-vote-panel-hidden-v1';
         const LADDER_PANEL_STORAGE_KEY = 'qui-veut-gagner-etoiles-ladder-panel-v1';
         const LADDER_PANEL_HIDDEN_KEY = 'qui-veut-gagner-etoiles-ladder-panel-hidden-v1';
+        const BROADCAST_PREVIEW_KEY = 'qui-veut-gagner-etoiles-broadcast-preview-v1';
+        const PROGRESS_PREVIEW_KEY = 'qui-veut-gagner-etoiles-progress-preview-v1';
         let votePanelDrag = null, votePanelPinned = false;
         let ladderPanelDrag = null, ladderPinnedSide = '', ladderFlashTimer = 0;
         let usedQuestionIds = loadUsedQuestionIds();
@@ -546,6 +569,8 @@
             renderLadder();
             setupVotePanel();
             setupLadderPanel();
+            setupPreviewPanel('broadcastOverlay', '.broadcast-panel', 'broadcastPanelTools', BROADCAST_PREVIEW_KEY);
+            setupPreviewPanel('progressCelebration', '.progress-celebration-panel', 'progressPanelTools', PROGRESS_PREVIEW_KEY);
             const tiktokUsernameInput = document.getElementById('tiktokUsername');
             try {
                 const savedUsername = localStorage.getItem(TIKTOK_USERNAME_STORAGE_KEY);
@@ -590,6 +615,173 @@
             const minHeight = Math.min(160, maxHeight);
             panel.style.width = `${Math.max(minWidth, Math.min(maxWidth, width))}px`;
             panel.style.height = `${Math.max(minHeight, Math.min(maxHeight, height))}px`;
+        }
+
+        function positionPreviewTools(panel, tools) {
+            const bounds = panel.getBoundingClientRect();
+            const margin = 8;
+            tools.style.left = `${Math.max(margin, Math.min(window.innerWidth - tools.offsetWidth - margin, bounds.right - tools.offsetWidth))}px`;
+            tools.style.top = `${Math.max(margin, Math.min(window.innerHeight - tools.offsetHeight - margin, bounds.top - tools.offsetHeight))}px`;
+        }
+
+        function refreshPreviewTools() {
+            [
+                ['broadcastOverlay', '.broadcast-panel', 'broadcastPanelTools'],
+                ['progressCelebration', '.progress-celebration-panel', 'progressPanelTools']
+            ].forEach(([overlayId, panelSelector, toolsId]) => {
+                const overlay = document.getElementById(overlayId);
+                positionPreviewTools(overlay.querySelector(panelSelector), document.getElementById(toolsId));
+            });
+        }
+
+        function setupPreviewPanel(overlayId, panelSelector, toolsId, storageKey) {
+            const overlay = document.getElementById(overlayId);
+            const panel = overlay.querySelector(panelSelector);
+            const tools = document.getElementById(toolsId);
+            const [dragButton, eyeButton, resizeButton] = tools.querySelectorAll('button');
+            let drag = null;
+            let resize = null;
+
+            const getPanelGeometry = () => {
+                const bounds = panel.getBoundingClientRect();
+                const readStyle = (property, fallback) => {
+                    const value = Number.parseFloat(panel.style[property]);
+                    return Number.isFinite(value) ? value : fallback;
+                };
+                return {
+                    left: readStyle('left', bounds.left),
+                    top: readStyle('top', bounds.top),
+                    width: readStyle('width', bounds.width),
+                    height: readStyle('height', bounds.height)
+                };
+            };
+            const clampPanel = () => {
+                if (!panel.classList.contains('adjustable')) return;
+                const geometry = getPanelGeometry();
+                const width = Math.min(Math.max(240, geometry.width), Math.max(240, window.innerWidth - 16));
+                const height = Math.min(Math.max(180, geometry.height), Math.max(180, window.innerHeight - 16));
+                panel.style.width = `${width}px`;
+                panel.style.height = `${height}px`;
+                panel.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, geometry.left))}px`;
+                panel.style.top = `${Math.max(8, Math.min(window.innerHeight - height - 8, geometry.top))}px`;
+            };
+            const updateTools = () => positionPreviewTools(panel, tools);
+            const save = () => {
+                const geometry = getPanelGeometry();
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify({
+                        left: geometry.left,
+                        top: geometry.top,
+                        width: geometry.width,
+                        height: geometry.height,
+                        hidden: panel.classList.contains('is-hidden')
+                    }));
+                } catch (error) {
+                    console.warn(`Impossible de mémoriser la disposition de ${panelSelector} :`, error);
+                }
+            };
+            const setPositionAndSize = (left, top, width, height) => {
+                panel.classList.add('adjustable');
+                const safeWidth = Math.max(240, Math.min(window.innerWidth - 16, width));
+                const safeHeight = Math.max(180, Math.min(window.innerHeight - 16, height));
+                panel.style.width = `${safeWidth}px`;
+                panel.style.height = `${safeHeight}px`;
+                panel.style.left = `${Math.max(8, Math.min(window.innerWidth - safeWidth - 8, left))}px`;
+                panel.style.top = `${Math.max(8, Math.min(window.innerHeight - safeHeight - 8, top))}px`;
+                updateTools();
+            };
+
+            try {
+                const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+                if (saved && [saved.left, saved.top, saved.width, saved.height].every(Number.isFinite)) {
+                    setPositionAndSize(saved.left, saved.top, saved.width, saved.height);
+                    panel.classList.toggle('is-hidden', saved.hidden === true);
+                }
+            } catch (error) {
+                console.warn(`Impossible de restaurer la disposition de ${panelSelector} :`, error);
+            }
+            const updateEyeButton = () => {
+                const hidden = panel.classList.contains('is-hidden');
+                eyeButton.setAttribute('aria-pressed', String(hidden));
+                eyeButton.setAttribute('aria-label', `${hidden ? 'Afficher' : 'Masquer'} ${panelSelector === '.broadcast-panel' ? 'la bannière question' : 'la pyramide des gains'}`);
+                eyeButton.title = hidden ? 'Afficher' : 'Masquer';
+                eyeButton.innerHTML = `<i class="fa-solid fa-eye${hidden ? '-slash' : ''}" aria-hidden="true"></i>`;
+                panel.setAttribute('aria-hidden', String(hidden));
+            };
+            updateEyeButton();
+            updateTools();
+
+            dragButton.addEventListener('pointerdown', event => {
+                if (event.button !== 0) return;
+                const bounds = panel.getBoundingClientRect();
+                if (!panel.classList.contains('adjustable')) {
+                    setPositionAndSize(bounds.left, bounds.top, bounds.width, bounds.height);
+                }
+                drag = {
+                    pointerId: event.pointerId,
+                    offsetX: event.clientX - bounds.left,
+                    offsetY: event.clientY - bounds.top
+                };
+                dragButton.setPointerCapture(event.pointerId);
+                event.preventDefault();
+            });
+            dragButton.addEventListener('pointermove', event => {
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                const geometry = getPanelGeometry();
+                setPositionAndSize(event.clientX - drag.offsetX, event.clientY - drag.offsetY, geometry.width, geometry.height);
+            });
+            const endDrag = event => {
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                drag = null;
+                save();
+            };
+            dragButton.addEventListener('pointerup', endDrag);
+            dragButton.addEventListener('pointercancel', endDrag);
+
+            resizeButton.addEventListener('pointerdown', event => {
+                if (event.button !== 0) return;
+                const bounds = panel.getBoundingClientRect();
+                if (!panel.classList.contains('adjustable')) {
+                    setPositionAndSize(bounds.left, bounds.top, bounds.width, bounds.height);
+                }
+                resize = {
+                    pointerId: event.pointerId,
+                    left: panel.offsetLeft,
+                    top: panel.offsetTop,
+                    width: panel.offsetWidth,
+                    height: panel.offsetHeight,
+                    x: event.clientX,
+                    y: event.clientY
+                };
+                resizeButton.setPointerCapture(event.pointerId);
+                event.preventDefault();
+            });
+            resizeButton.addEventListener('pointermove', event => {
+                if (!resize || resize.pointerId !== event.pointerId) return;
+                const deltaX = event.clientX - resize.x;
+                const deltaY = event.clientY - resize.y;
+                const height = Math.max(180, resize.height - deltaY);
+                setPositionAndSize(resize.left, resize.top + resize.height - height,
+                    resize.width + deltaX, height);
+            });
+            const endResize = event => {
+                if (!resize || resize.pointerId !== event.pointerId) return;
+                resize = null;
+                save();
+            };
+            resizeButton.addEventListener('pointerup', endResize);
+            resizeButton.addEventListener('pointercancel', endResize);
+            eyeButton.addEventListener('click', () => {
+                panel.classList.toggle('is-hidden');
+                updateEyeButton();
+                save();
+            });
+            window.addEventListener('resize', () => {
+                clampPanel();
+                updateTools();
+                if (panel.classList.contains('adjustable')) save();
+            });
+            return updateTools;
         }
 
         function setupPanelResize(panel, handle, onResize, onResizeEnd, onResizeStart) {
@@ -1296,6 +1488,7 @@
             playIntroSound();
             document.getElementById('welcomeScreen').hidden = true;
             document.getElementById('gameApp').hidden = false;
+            refreshPreviewTools();
             if (votePanelPinned) positionVotePanel(document.getElementById('votePanel').offsetLeft, document.getElementById('votePanel').offsetTop);
             if (ladderPinnedSide) positionLadderPanel(document.getElementById('ladderPanel').offsetLeft, document.getElementById('ladderPanel').offsetTop, ladderPinnedSide);
             loadQuestion();
@@ -1393,6 +1586,7 @@
             const broadcastOverlay = document.getElementById('broadcastOverlay');
             broadcastOverlay.classList.add('visible');
             broadcastOverlay.setAttribute('aria-hidden', 'false');
+            refreshPreviewTools();
             broadcastOverlay.dataset.tension = currentLevelIndex >= 17 ? 'red' : currentLevelIndex >= 12 ? 'gold' : 'calm';
             document.getElementById('broadcastQuestionNumber').textContent = `${currentLevelIndex + 1} / ${QUESTIONS_PER_GAME}`;
             document.getElementById('broadcastCountdown').textContent = ANSWER_REVEAL_DELAY_SECONDS;
@@ -1484,6 +1678,7 @@
             document.body.style.overflow = 'hidden';
             overlay.classList.add('visible');
             overlay.setAttribute('aria-hidden', 'false');
+            refreshPreviewTools();
         }
 
         function hideProgressCelebration() {
