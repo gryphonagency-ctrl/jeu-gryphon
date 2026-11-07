@@ -23,11 +23,16 @@
         .ladder-value { font-size: 1.25rem; line-height: 1; font-weight: 900; }
         .vote-panel-handle { cursor: grab; touch-action: none; user-select: none; }
         .vote-panel.dragging .vote-panel-handle { cursor: grabbing; }
-        .vote-panel.floating { position: fixed; z-index: 80; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; margin: 0; }
+        .vote-panel.floating { position: fixed; z-index: 80; width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; margin: 0; }
         .vote-panel-pin[aria-pressed="true"] { border-color: #fbbf24; background: #713f12; color: #fde68a; }
         .ladder-panel-handle { cursor: grab; touch-action: none; user-select: none; }
         .ladder-panel.dragging .ladder-panel-handle { cursor: grabbing; }
-        .ladder-panel.floating { position: fixed; z-index: 80; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: hidden; margin: 0; }
+        .ladder-panel.floating { position: fixed; z-index: 80; width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: hidden; margin: 0; }
+        .vote-panel.floating #votePanelHandle,
+        .ladder-panel.floating #ladderPanelHandle { padding-right: 8px; }
+        .ladder-panel.floating #starLadder { max-height: calc(100% - 48px); }
+        .panel-resize-handle { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border: 1px solid rgba(148,163,184,.45); border-radius: 8px; background: rgba(15,23,42,.9); color: #cbd5e1; cursor: nwse-resize; touch-action: none; }
+        .panel-resize-handle:hover { border-color: #fbbf24; color: #fde68a; }
         .ladder-panel-pin[aria-pressed="true"] { border-color: #fbbf24; background: #713f12; color: #fde68a; }
         .ladder-panel.level-advance { z-index: 100; border-color: #fbbf24; box-shadow: 0 0 0 3px rgba(251,191,36,.2), 0 0 35px rgba(251,191,36,.75); animation: ladder-level-pop 1s ease-out; }
         @keyframes ladder-level-pop { 0% { transform: scale(.96); } 35% { transform: scale(1.04); } 100% { transform: scale(1); } }
@@ -284,6 +289,7 @@
                 <div id="ladderPanelHandle" class="ladder-panel-handle mb-3 flex items-center justify-between gap-2">
                     <h3 class="text-xs font-black uppercase text-slate-200">Pyramide des Étoiles</h3>
                     <div class="flex gap-1">
+                        <button id="ladderPanelResize" class="panel-resize-handle" type="button" aria-label="Redimensionner la pyramide des étoiles" title="Tirer pour redimensionner"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i></button>
                         <button id="ladderPinLeft" class="ladder-panel-pin rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-cyan-200" type="button" aria-label="Épingler la pyramide à gauche" title="Épingler à gauche" aria-pressed="false"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
                         <button id="ladderPinRight" class="ladder-panel-pin rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-cyan-200" type="button" aria-label="Épingler la pyramide à droite" title="Épingler à droite" aria-pressed="false"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
                         <button id="hideLadderPanelButton" class="ladder-panel-pin rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-cyan-200" type="button" aria-label="Masquer la pyramide" title="Masquer la pyramide"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i></button>
@@ -309,6 +315,7 @@
                 <div id="votePanelHandle" class="vote-panel-handle mb-3 flex items-center justify-between gap-3">
                     <h3 class="text-sm font-black text-slate-100 uppercase">Vote Chat TikTok</h3>
                     <div class="flex gap-1">
+                        <button id="votePanelResize" class="panel-resize-handle" type="button" aria-label="Redimensionner la bannière de vote" title="Tirer pour redimensionner"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i></button>
                         <button id="votePanelPin" class="vote-panel-pin rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-amber-200" type="button" aria-label="Épingler le panneau de vote" title="Épingler le panneau de vote" aria-pressed="false"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i></button>
                         <button id="hideVotePanelButton" class="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-cyan-200" type="button" aria-label="Masquer le vote Chat TikTok" title="Masquer le panneau"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i></button>
                     </div>
@@ -576,6 +583,62 @@
             panel.style.right = 'auto';
         }
 
+        function setPanelSize(panel, width, height) {
+            const maxWidth = Math.max(160, window.innerWidth - 16);
+            const maxHeight = Math.max(120, window.innerHeight - 16);
+            const minWidth = Math.min(220, maxWidth);
+            const minHeight = Math.min(160, maxHeight);
+            panel.style.width = `${Math.max(minWidth, Math.min(maxWidth, width))}px`;
+            panel.style.height = `${Math.max(minHeight, Math.min(maxHeight, height))}px`;
+        }
+
+        function setupPanelResize(panel, handle, onResize, onResizeEnd, onResizeStart) {
+            let resize = null;
+            handle.addEventListener('pointerdown', event => {
+                if (event.button !== 0) return;
+                let bounds = panel.getBoundingClientRect();
+                if (!panel.classList.contains('floating')) {
+                    panel.classList.add('floating');
+                    panel.style.width = `${bounds.width}px`;
+                    panel.style.height = `${bounds.height}px`;
+                    panel.style.left = `${bounds.left}px`;
+                    panel.style.top = `${bounds.top}px`;
+                    panel.style.right = 'auto';
+                    onResize();
+                    bounds = panel.getBoundingClientRect();
+                }
+                resize = {
+                    pointerId: event.pointerId,
+                    width: bounds.width,
+                    height: bounds.height,
+                    x: event.clientX,
+                    y: event.clientY
+                };
+                onResizeStart();
+                handle.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                event.stopPropagation();
+            });
+            handle.addEventListener('pointermove', event => {
+                if (!resize || resize.pointerId !== event.pointerId) return;
+                setPanelSize(panel, resize.width + event.clientX - resize.x, resize.height + event.clientY - resize.y);
+                onResize();
+            });
+            const endResize = event => {
+                if (!resize || resize.pointerId !== event.pointerId) return;
+                resize = null;
+                onResizeEnd();
+            };
+            handle.addEventListener('pointerup', endResize);
+            handle.addEventListener('pointercancel', endResize);
+            return () => {
+                if (panel.classList.contains('floating')) {
+                    setPanelSize(panel, panel.offsetWidth, panel.offsetHeight);
+                    onResize();
+                }
+            };
+        }
+
         function updateVotePanelPinButton() {
             const button = document.getElementById('votePanelPin');
             const label = votePanelPinned ? 'Désépingler le panneau de vote' : 'Épingler le panneau de vote';
@@ -605,7 +668,9 @@
                 localStorage.setItem(VOTE_PANEL_STORAGE_KEY, JSON.stringify({
                     pinned: true,
                     x: panel.offsetLeft,
-                    y: panel.offsetTop
+                    y: panel.offsetTop,
+                    width: panel.offsetWidth,
+                    height: panel.offsetHeight
                 }));
             } catch (error) {
                 console.warn('Impossible de mémoriser la position du panneau de vote :', error);
@@ -622,6 +687,9 @@
                 if (saved?.pinned && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
                     votePanelPinned = true;
                     panel.classList.add('floating');
+                    if (Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+                        setPanelSize(panel, saved.width, saved.height);
+                    }
                     positionVotePanel(saved.x, saved.y);
                 }
                 panel.hidden = localStorage.getItem(VOTE_PANEL_HIDDEN_KEY) === 'true';
@@ -633,6 +701,15 @@
             updateVotePanelPinButton();
             document.getElementById('hideVotePanelButton').addEventListener('click', () => setVotePanelHidden(true));
             showButton.addEventListener('click', () => setVotePanelHidden(false));
+            const clampVotePanel = () => {
+                if (!panel.classList.contains('floating')) return;
+                setPanelSize(panel, panel.offsetWidth, panel.offsetHeight);
+                positionVotePanel(panel.offsetLeft, panel.offsetTop);
+            };
+            setupPanelResize(panel, document.getElementById('votePanelResize'), clampVotePanel, saveVotePanelPosition, () => {
+                votePanelPinned = true;
+                updateVotePanelPinButton();
+            });
 
             pinButton.addEventListener('click', () => {
                 if (!panel.classList.contains('floating')) {
@@ -657,6 +734,8 @@
                     offsetX: event.clientX - bounds.left,
                     offsetY: event.clientY - bounds.top
                 };
+                votePanelPinned = true;
+                updateVotePanelPinButton();
                 panel.classList.add('dragging');
                 handle.setPointerCapture(event.pointerId);
                 event.preventDefault();
@@ -676,7 +755,7 @@
             handle.addEventListener('pointerup', endVotePanelDrag);
             handle.addEventListener('pointercancel', endVotePanelDrag);
             window.addEventListener('resize', () => {
-                if (votePanelPinned) positionVotePanel(panel.offsetLeft, panel.offsetTop);
+                if (votePanelPinned) clampVotePanel();
             });
         }
 
@@ -704,7 +783,9 @@
                     pinned: true,
                     side: ladderPinnedSide,
                     x: panel.offsetLeft,
-                    y: panel.offsetTop
+                    y: panel.offsetTop,
+                    width: panel.offsetWidth,
+                    height: panel.offsetHeight
                 }));
             } catch (error) {
                 console.warn('Impossible de mémoriser la position de la pyramide :', error);
@@ -749,6 +830,9 @@
                     Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
                     ladderPinnedSide = saved.side;
                     panel.classList.add('floating');
+                    if (Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+                        setPanelSize(panel, saved.width, saved.height);
+                    }
                     positionLadderPanel(saved.x, saved.y, saved.side);
                 }
                 panel.hidden = localStorage.getItem(LADDER_PANEL_HIDDEN_KEY) === 'true';
@@ -763,6 +847,14 @@
             document.getElementById('ladderPinRight').addEventListener('click', () => setLadderPinnedSide('right'));
             document.getElementById('hideLadderPanelButton').addEventListener('click', () => setLadderPanelHidden(true));
             showButton.addEventListener('click', () => setLadderPanelHidden(false));
+            const clampLadderPanel = () => {
+                if (!panel.classList.contains('floating')) return;
+                setPanelSize(panel, panel.offsetWidth, panel.offsetHeight);
+                positionLadderPanel(panel.offsetLeft, panel.offsetTop, ladderPinnedSide || 'free');
+            };
+            setupPanelResize(panel, document.getElementById('ladderPanelResize'), clampLadderPanel, saveLadderPanelPosition, () => {
+                if (!ladderPinnedSide) ladderPinnedSide = 'free';
+            });
 
             handle.addEventListener('pointerdown', event => {
                 if (event.target.closest('button') || event.button !== 0) return;
@@ -796,7 +888,7 @@
             handle.addEventListener('pointerup', endLadderPanelDrag);
             handle.addEventListener('pointercancel', endLadderPanelDrag);
             window.addEventListener('resize', () => {
-                if (ladderPinnedSide) positionLadderPanel(panel.offsetLeft, panel.offsetTop, ladderPinnedSide);
+                if (ladderPinnedSide) clampLadderPanel();
             });
         }
 
