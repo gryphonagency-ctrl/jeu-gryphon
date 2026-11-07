@@ -27,8 +27,11 @@
     let treasureLayout = { x: 50, y: 82, width: 38 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
+    let overlaySettingsRefreshInFlight = false;
 
     async function refreshOverlaySettings() {
+        if (overlaySettingsRefreshInFlight || document.hidden) return;
+        overlaySettingsRefreshInFlight = true;
         try {
             if (location.pathname === '/arcade-treasure-overlay.html') {
                 const token = new URLSearchParams(location.search).get('token');
@@ -75,11 +78,18 @@
             }
         } catch (error) {
             console.warn('Préférences des overlays Griffon Arcade indisponibles :', error.message);
+        } finally {
+            overlaySettingsRefreshInFlight = false;
         }
     }
 
-    refreshOverlaySettings();
-    setInterval(refreshOverlaySettings, 3000);
+    void refreshOverlaySettings();
+    window.setInterval(() => {
+        void refreshOverlaySettings();
+    }, 15000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) void refreshOverlaySettings();
+    });
 
     function injectStyle() {
         if (document.getElementById('arcade-effects-style')) return;

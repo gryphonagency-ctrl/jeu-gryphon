@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>1, 2, 3 Soleil LIVE — Griffon Arcade</title>
+  <script src="/arcade-effects.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      background: #10131d;
+      color: #fff;
+    }
+
+    * { box-sizing: border-box; }
+    body { display: flex; flex-direction: column; width: 100%; height: 100vh; height: 100dvh; margin: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 0, #354254, #11151e 62%); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .topbar { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 8px 18px; }
+    h1 { margin: 0; font-size: clamp(18px, 3vw, 28px); }
+    .top-actions, .panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .button { border: 1px solid #536278; border-radius: 9px; padding: 8px 12px; background: #263248; color: white; font-weight: 700; }
+    .button:hover { background: #35445e; }
+    .button.primary { border-color: #db4360; background: #a92947; }
+    .button:disabled { opacity: .5; cursor: not-allowed; }
+    .layout { flex: 1 1 auto; min-height: 0; padding: 0 10px 10px; }
+    .game-column { width: 100%; height: 100%; min-width: 0; }
+    #terrain { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; border: 3px solid #917556; border-bottom: 12px solid #b33a3a; border-radius: 14px; background: #7e94a3; box-shadow: 0 16px 40px #0008; }
+    #terrain::before { content: ""; position: absolute; inset: 23% 0 0; background: #80603d url("/images-vitrine/123-soleil-terre.svg") center / cover no-repeat; }
+    .back-wall { position: absolute; z-index: 1; inset: 0 0 auto; height: 23%; overflow: hidden; border-bottom: 7px solid #5c5145; background-color: #9c9b91; background-image: linear-gradient(180deg, #ffffff30, #00000014), repeating-linear-gradient(0deg, transparent 0 38px, #514c4438 39px 41px), repeating-linear-gradient(90deg, transparent 0 114px, #514c4438 115px 118px); box-shadow: inset 0 -12px 18px #241b1633; }
+    .wall-brand { position: absolute; top: 50%; max-width: 38%; transform: translateY(-50%); color: #242a30; font-size: clamp(12px, 3.1vw, 38px); font-weight: 1000; letter-spacing: .13em; line-height: 1; text-shadow: 0 1px #fff8, 0 3px 4px #0005; white-space: nowrap; }
+    .wall-brand-left { left: 31%; }
+    .wall-brand-right { right: 31%; }
+    #finish-line { position: absolute; z-index: 1; top: 28%; left: 0; width: 100%; height: 7px; background: repeating-linear-gradient(90deg, #fff 0 24px, #d33b48 24px 48px); box-shadow: 0 0 10px #fff9; }
+    #start-line { position: absolute; z-index: 1; bottom: 4%; left: 0; width: 100%; border-top: 3px dashed #fff; }
+    .doll-zone { position: absolute; z-index: 3; top: 1%; left: 50%; width: clamp(90px, 16vw, 170px); transform: translateX(-50%); perspective: 900px; text-align: center; }
+    #doll { position: relative; display: block; width: 100%; height: clamp(110px, 23vh, 195px); transform-style: preserve-3d; transform-origin: center; transition: transform .65s cubic-bezier(.2,.7,.25,1); filter: drop-shadow(0 5px 5px #0008); }
+    #doll[data-state="green"] { transform: rotateY(0deg); }
+    #doll[data-state="red"] { transform: rotateY(180deg); }
+    .doll-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; backface-visibility: hidden; }
+    .doll-face-front { transform: rotateY(180deg); }
+    #light-state { display: inline-block; margin-top: 2px; padding: 6px 10px; border-radius: 99px; background: #14532d; color: #c9ffd8; font-size: clamp(10px, 1.7vw, 14px); font-weight: 900; box-shadow: 0 2px 12px #0008; }
+    #light-state.red { background: #8d1c2a; color: #ffe0e4; }
+    #race-message { position: absolute; z-index: 5; top: 38%; left: 50%; width: min(90%, 520px); transform: translateX(-50%); text-align: center; pointer-events: none; }
+    #race-message.phase-message { opacity: 0; transition: opacity .15s ease; }
+    #race-message.phase-message.visible { opacity: 1; }
+    #race-message strong { display: inline-block; padding: 10px 18px; border: 1px solid #fff5; border-radius: 12px; background: #111c; font-size: clamp(18px, 4vw, 32px); text-shadow: 0 2px 4px #000; }
+    .player { position: absolute; z-index: 2; bottom: calc(4% + var(--progress, 0) * .69%); width: clamp(54px, 7vw, 82px); transform: translateX(-50%); text-align: center; transition: bottom .35s cubic-bezier(.2,.8,.25,1), opacity .3s, filter .3s; }
+    .player img { display: block; width: clamp(34px, 5.5vw, 48px); height: clamp(34px, 5.5vw, 48px); margin: 0 auto; border: 3px solid #f5cd44; border-radius: 50%; background: #293345; object-fit: cover; }
+    .player .number { display: inline-block; margin-top: -6px; padding: 2px 6px; position: relative; z-index: 2; border-radius: 4px; background: #7136a0; font-size: 11px; font-weight: 900; }
+    .player .name { display: block; overflow: hidden; color: white; font-size: 11px; font-weight: 800; text-overflow: ellipsis; text-shadow: 0 2px 3px black; white-space: nowrap; }
+    .player.eliminated { opacity: .28; filter: grayscale(1); transform: translateX(-50%) rotate(90deg) scale(.9); }
+    .player.winner img { border-color: #3cffad; box-shadow: 0 0 18px #3cffad; }
+    .side-panel { min-width: 0; padding: 13px; border: 1px solid #ffffff24; border-radius: 14px; background: #111827e8; }
+    .side-panel h2 { margin: 0 0 10px; font-size: 16px; }
+    #players-panel { max-height: min(76vh, 760px); overflow: auto; }
+    #player-list { display: grid; gap: 7px; }
+    .player-row { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 7px; border: 1px solid #ffffff16; border-radius: 9px; background: #ffffff08; font-size: 12px; }
+    .player-row .rank { color: #f5cd44; font-weight: 900; }
+    .player-row .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .player-row .row-progress { color: #a5f3fc; font-weight: 800; }
+    #ranking-panel { position: fixed; z-index: 12; top: 70px; right: 14px; width: min(270px, calc(100vw - 24px)); max-height: calc(100dvh - 84px); overflow: auto; box-shadow: 0 12px 35px #0009; }
+    #control-panel { position: fixed; z-index: 20; top: 70px; left: 14px; display: grid; width: min(470px, calc(100vw - 28px)); max-height: calc(100dvh - 84px); gap: 10px; overflow: auto; padding: 12px; border: 1px solid #ffffff35; border-radius: 12px; background: #101827f2; box-shadow: 0 12px 35px #0009; }
+    #control-panel[hidden] { display: none; }
+    .control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .control-row label { font-size: 12px; font-weight: 700; }
+    input[type="text"] { min-width: 150px; flex: 1; padding: 8px 10px; border: 1px solid #59687f; border-radius: 8px; background: #0c1220; color: white; }
+    input[type="range"] { width: min(210px, 55vw); accent-color: #fa5571; }
+    #connection-status { min-height: 18px; color: #cbd5e1; font-size: 12px; }
+    #queue-panel { position: fixed; z-index: 14; right: 14px; bottom: 14px; width: min(300px, calc(100vw - 24px)); max-height: 35vh; overflow: auto; box-shadow: 0 12px 35px #0009; }
+    #queue-panel.detached { z-index: 30; top: 70px; bottom: auto; max-height: 70vh; box-shadow: 0 18px 55px #000b; }
+    #queue-panel[hidden], #ranking-panel[hidden] { display: none !important; }
+    .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .queue-head h2 { margin: 0; }
+    .queue-actions { display: flex; gap: 6px; }
+    .eye-button { display: inline-grid; width: 38px; min-width: 38px; height: 38px; padding: 8px; place-items: center; }
+    .eye-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    #queue-list { display: grid; gap: 5px; max-height: 260px; overflow: auto; color: #dbe3ee; font-size: 12px; }
+    #queue-list p { margin: 0; padding: 6px 0; border-bottom: 1px solid #fff2; }
+    .round-pot { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #f5cd4466; border-radius: 999px; background: #171d2b; color: #ffe28a; font-size: 12px; font-weight: 900; white-space: nowrap; }
+    #wallet-banner { position: fixed; z-index: 35; right: 50%; bottom: 14px; display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100vw - 24px); transform: translateX(50%); padding: 10px 16px; border: 2px solid #f5d36b; border-radius: 16px; background: #211439f5; box-shadow: 0 10px 35px #000b, 0 0 18px #f5d36b66; }
+    #wallet-banner[hidden], #winner-banner[hidden] { display: none; }
+    #wallet-banner img, #winner-banner img { width: 48px; height: 48px; flex: 0 0 auto; border: 2px solid #f5d36b; border-radius: 50%; object-fit: cover; background: #263248; }
+    .wallet-copy, .winner-copy { display: grid; gap: 3px; }
+    .wallet-copy strong, .winner-copy strong { font-size: 14px; }
+    .wallet-copy span, .winner-copy span { color: #ffe28a; font-size: 13px; font-weight: 800; }
+    #winner-banner { position: fixed; z-index: 40; top: 50%; left: 50%; display: flex; align-items: center; gap: 18px; width: min(640px, calc(100vw - 28px)); transform: translate(-50%, -50%); padding: clamp(18px, 4vw, 34px); border: 4px solid #ffe27a; border-radius: 24px; background: linear-gradient(135deg, #432076f5, #17162ff5); box-shadow: 0 0 45px #f5d36b99, 0 18px 50px #000c; }
+    #winner-banner img { width: clamp(70px, 12vw, 110px); height: clamp(70px, 12vw, 110px); border-width: 4px; }
+    .vip-label { color: #ffe27a; font-size: clamp(13px, 2vw, 18px); font-weight: 1000; letter-spacing: .12em; }
+    .winner-copy strong { font-size: clamp(20px, 4vw, 36px); }
+    .winner-copy span { font-size: clamp(16px, 2.5vw, 22px); }
+    #winner-status { color: #e2d6f7; font-size: 13px; }
+    .game-footer { display: none; }
+    @media (max-width: 820px) {
+      .topbar { min-height: 52px; padding: 6px 10px; }
+      .layout { flex: 1 0 auto; min-height: 68vh; padding: 0 8px 8px; }
+      #terrain { height: 100%; min-height: 68vh; }
+      #control-panel { top: 58px; left: 8px; max-height: 52dvh; }
+      #ranking-panel { top: 58px; right: 8px; max-height: 40dvh; }
+      #queue-panel { right: 8px; bottom: 8px; max-height: 25dvh; }
+      #queue-panel.detached { top: 58px; max-height: 65dvh; }
+      .wall-brand { font-size: clamp(11px, 2.7vw, 20px); }
+      .wall-brand-left { left: 2%; }
+      .wall-brand-right { right: 2%; }
+      .round-pot { font-size: 10px; }
+      #winner-banner { gap: 12px; }
+    }
+    @media (max-width: 480px) {
+      body { height: auto; min-height: 100dvh; overflow: auto; }
+      .topbar { align-items: flex-start; flex-wrap: wrap; }
+      .topbar h1 { width: 100%; }
+      .top-actions { gap: 5px; }
+      .layout { min-height: 65vh; }
+      #terrain { min-height: 65vh; }
+      #player-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      #ranking-panel { width: min(220px, calc(100vw - 16px)); }
+      #control-panel { top: 96px; left: 8px; width: min(400px, calc(100vw - 16px)); }
+      #queue-panel { width: min(280px, calc(100vw - 16px)); }
+      .button { padding: 7px 9px; font-size: 12px; }
+      .round-pot { max-width: 100%; white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>1, 2, 3 Soleil <span style="color:#ff637c">LIVE</span></h1>
+    <div class="top-actions">
+      <span class="round-pot" id="round-pot">🎁 0 pièces · gagnant : 0 ⭐</span>
+      <button class="button" id="toggle-controls" type="button" aria-expanded="true">Masquer le panneau</button>
+      <button class="button" id="toggle-queue" type="button" aria-pressed="false">Détacher la file</button>
+      <button class="button" id="toggle-ranking" type="button" aria-pressed="true">Masquer le classement</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="game-column" aria-label="Terrain de jeu">
+      <div id="terrain">
+        <div class="doll-zone">
+          <div id="doll" data-state="green" role="img" aria-label="La poupée est tournée vers le mur">
+            <img class="doll-face doll-face-back" src="/images-vitrine/123-soleil-poupee-dos.png" alt="">
+            <img class="doll-face doll-face-front" src="/images-vitrine/123-soleil-poupee-face.png" alt="">
+          </div>
+          <div id="light-state" role="status" aria-live="polite">☀️ FEU VERT — BOUGEZ !</div>
+        </div>
+        <div class="back-wall" aria-hidden="true">
+          <span class="wall-brand wall-brand-left">GRYPHON</span>
+          <span class="wall-brand wall-brand-right">.AGENCY</span>
+        </div>
+        <div id="finish-line" aria-label="Ligne d'arrivée"></div>
+        <div id="start-line" aria-label="Ligne de départ"></div>
+        <div id="race-message"><strong id="race-message-text">Écris une lettre ou un nombre de 1 à 100 pour jouer !</strong></div>
+      </div>
+
+      <section id="control-panel" aria-label="Panneau de contrôle">
+        <div class="control-row">
+          <label for="tiktok-username">Pseudo du compte en direct</label>
+          <input id="tiktok-username" type="text" maxlength="33" placeholder="pseudo_tiktok" autocomplete="off">
+          <button class="button primary" id="connect-live" type="button">Connecter au LIVE</button>
+          <button class="button" id="disconnect-live" type="button" disabled>Déconnecter</button>
+        </div>
+        <div id="connection-status" role="status" aria-live="polite">Connecte le compte TikTok de ton direct pour recevoir les inscriptions et les cadeaux.</div>
+        <div class="control-row">
+          <span>Chat : une lettre ou un nombre de 1 à 100 pour entrer · <strong>RUN</strong> dépense les étoiles du portefeuille, puis chaque étoile jouée fait un pas.</span>
+        </div>
+        <div class="control-row">
+          <label for="speed-control">Vitesse du cycle</label>
+          <input id="speed-control" type="range" min="0.5" max="2" step="0.25" value="1">
+          <span id="speed-value">1×</span>
+          <button class="button" id="simulate-join" type="button">Simuler une inscription</button>
+          <button class="button" id="simulate-gift" type="button">Simuler un cadeau</button>
+          <button class="button" id="simulate-red" type="button">Tester le feu rouge</button>
+          <button class="button" id="simulate-big-gift" type="button">Tester les effets cadeau</button>
+          <button class="button" id="simulate-share" type="button">Tester le partage</button>
+          <button class="button" id="reset-game" type="button">Nouvelle partie</button>
+        </div>
+        <div data-save-key="123-soleil-live-save"></div>
+      </section>
+    </section>
+
+    <aside id="ranking-panel" class="side-panel" aria-label="Classement des joueurs">
+      <h2>🏁 Classement</h2>
+      <div id="player-list"></div>
+    </aside>
+  </main>
+
+  <aside id="queue-panel" class="side-panel" aria-label="File des joueurs">
+    <div class="queue-head">
+      <h2>👥 Joueurs inscrits</h2>
+      <div class="queue-actions">
+        <button class="button eye-button" id="hide-queue" type="button" aria-label="Masquer les joueurs inscrits" title="Masquer les joueurs inscrits">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="button" id="close-queue" type="button">Rattacher</button>
+      </div>
+    </div>
+    <div id="queue-list"><p>Les inscriptions apparaîtront ici.</p></div>
+  </aside>
+
+  <aside id="wallet-banner" aria-live="polite" hidden>
+    <img alt="" hidden>
+    <div class="wallet-copy"><strong></strong><span></span></div>
+  </aside>
+
+  <aside id="winner-banner" aria-live="assertive" hidden>
+    <img alt="">
+    <div class="winner-copy">
+      <span class="vip-label">🏆 JOUEUR VIP</span>
+      <strong></strong>
+      <span></span>
+      <small id="winner-status"></small>
+    </div>
+  </aside>
+
+  <footer class="game-footer">Inscription par une lettre ou un nombre de 1 à 100 · Tous les cadeaux font avancer · 20 % des pièces de la partie sont attribuées au gagnant en étoiles.</footer>
+
+  <script>
+    (() => {
+      const $ = id => document.getElementById(id);
+      const terrain = $('terrain');
+      const stateLabel = $('light-state');
+      const playerList = $('player-list');
+      const queueList = $('queue-list');
+      const connectionStatus = $('connection-status');
+      const players = new Map();
+      const seenEvents = new Set();
+      let lightState = 'green';
+      let cycleTimer = 0;
+      let phaseMessageTimer = 0;
+      let liveSocket = null;
+      let gameSpeed = 1;
+      let gameStarted = false;
+      let raceFinished = false;
+      let roundGiftCoins = 0;
+      let roundId = crypto.randomUUID();
+      let walletBannerTimer = 0;
+      let nextRoundTimer = 0;
+
+      const formatNumber = value => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('fr-FR');
+
+      function cleanName(value) {
+        return String(value || 'Spectateur').replace(/[\u0000-\u001f\u007f]/g, '').trim().replace(/^@/, '').slice(0, 32) || 'Spectateur';
+      }
+
+      function playerKey(value) {
+        return cleanName(value).toLocaleLowerCase('fr-FR');
+      }
+
+      function safeAvatar(value) {
+        if (typeof value !== 'string' || value.length > 700000) return '';
+        if (/^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i.test(value)) return value;
+        try {
+          const url = new URL(value, location.href);
+          return url.protocol === 'https:' || url.origin === location.origin ? url.href : '';
+        } catch (error) {
+          console.warn('URL d’avatar TikTok ignorée :', error.message);
+          return '';
+        }
+      }
+
+      function resolveAvatar(user) {
+        const dataUri = safeAvatar(user.avatarDataUri);
+        if (dataUri) return dataUri;
+        const directUrl = safeAvatar(user.avatarUrl || user.profilePictureUrl);
+        if (directUrl) return directUrl;
+        const urls = Array.isArray(user.avatarUrls) ? user.avatarUrls : [];
+        return safeAvatar(urls[0]);
+      }
+
+      function createAvatar(player) {
+        const image = document.createElement('img');
+        image.alt = `Avatar de ${player.username}`;
+        image.referrerPolicy = 'no-referrer';
+        image.src = player.avatarUrl || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(player.username)}`;
+        image.addEventListener('error', () => {
+          image.src = `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(player.username)}`;
+        }, { once: true });
+        return image;
+      }
+
+      function updatePlayerAvatar(player, avatarUrl) {
+        const safeUrl = safeAvatar(avatarUrl);
+        if (!safeUrl || player.avatarUrl === safeUrl) return;
+        player.avatarUrl = safeUrl;
+        const avatar = player.element.querySelector('img');
+        if (avatar) avatar.src = safeUrl;
+      }
+
+      function renderPlayer(player) {
+        const row = document.createElement('div');
+        row.className = 'player';
+        row.style.left = `${player.lane}%`;
+        row.style.setProperty('--progress', player.progress);
+        row.id = `player-${player.id}`;
+        row.appendChild(createAvatar(player));
+
+        const number = document.createElement('span');
+        number.className = 'number';
+        number.textContent = player.entry;
+        row.appendChild(number);
+
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = player.username;
+        row.appendChild(name);
+        terrain.appendChild(row);
+        player.element = row;
+      }
+
+      function renderLists() {
+        const ordered = [...players.values()].sort((a, b) => b.progress - a.progress || a.username.localeCompare(b.username, 'fr'));
+        playerList.replaceChildren();
+        queueList.replaceChildren();
+
+        if (!ordered.length) {
+          const empty = document.createElement('p');
+          empty.textContent = 'Les inscriptions apparaîtront ici.';
+          queueList.appendChild(empty);
+          const rankingEmpty = document.createElement('p');
+          rankingEmpty.textContent = 'Aucun joueur inscrit.';
+          playerList.appendChild(rankingEmpty);
+          return;
+        }
+
+        ordered.forEach((player, index) => {
+          const row = document.createElement('div');
+          row.className = 'player-row';
+          const rank = document.createElement('span');
+          rank.className = 'rank';
+          rank.textContent = `${index + 1}.`;
+          const name = document.createElement('span');
+          name.className = 'row-name';
+          name.textContent = `${player.username}${player.eliminated ? ' · Éliminé' : player.winner ? ' · Gagnant' : ''}`;
+          const progress = document.createElement('span');
+          progress.className = 'row-progress';
+          progress.textContent = `${player.progress}%`;
+          row.append(rank, name, progress);
+          playerList.appendChild(row);
+
+          const queueEntry = document.createElement('p');
+          queueEntry.textContent = `${player.entry} · ${player.username}${player.eliminated ? ' — éliminé' : player.winner ? ' — arrivé' : ''}`;
+          queueList.appendChild(queueEntry);
+        });
+      }
+
+      function registerPlayer(user, entry) {
+        const identity = user.uniqueId || user.username || user.nickname || user.name;
+        if (!identity || raceFinished) return null;
+        const username = cleanName(identity);
+        const key = playerKey(identity);
+        if (players.has(key)) return players.get(key);
+        if (players.size >= 100) return null;
+
+        const cleanEntry = String(entry || '').trim();
+        if (!/^(?:[1-9]\d?|100|[a-z])$/i.test(cleanEntry)) return;
+        const player = {
+          id: players.size + 1,
+          key,
+          username,
+          entry: cleanEntry.toLocaleUpperCase('fr-FR'),
+          avatarUrl: resolveAvatar(user),
+          lane: 5 + ((players.size * 37) % 90),
+          progress: 0,
+          eliminated: false,
+          winner: false,
+          element: null
+        };
+        players.set(key, player);
+        renderPlayer(player);
+        renderLists();
+        if (!gameStarted) {
+          gameStarted = true;
+          setLight(lightState);
+        }
+        return player;
+      }
+
+      function updateRoundPot() {
+        const prize = Math.floor(roundGiftCoins * 0.2);
+        $('round-pot').textContent = `🎁 ${formatNumber(roundGiftCoins)} pièces · gagnant : ${formatNumber(prize)} ⭐`;
+      }
+
+      function applyViewerAvatar(viewer) {
+        const key = playerKey(viewer.uniqueId || viewer.username || viewer.nickname);
+        const player = players.get(key);
+        if (player) updatePlayerAvatar(player, viewer.avatarDataUri || resolveAvatar(viewer));
+      }
+
+      function showPhaseMessage(text, red) {
+        if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
+        const message = $('race-message');
+        const textElement = $('race-message-text');
+        textElement.textContent = text;
+        textElement.style.background = red ? '#8d1c2a' : '#14532d';
+        message.classList.add('phase-message', 'visible');
+        phaseMessageTimer = window.setTimeout(() => {
+          message.classList.remove('visible');
+          if (!raceFinished) textElement.textContent = '';
+          phaseMessageTimer = 0;
+        }, 1000);
+      }
+
+      function setLight(nextState, announce = true) {
+        lightState = nextState;
+        const red = nextState === 'red';
+        stateLabel.classList.toggle('red', red);
+        stateLabel.textContent = red ? '🛑 FEU ROUGE — IMMOBILES !' : '☀️ FEU VERT — BOUGEZ !';
+        $('doll').dataset.state = nextState;
+        $('doll').setAttribute('aria-label', red ? 'La poupée regarde les joueurs' : 'La poupée est tournée vers le mur');
+        if (cycleTimer) clearTimeout(cycleTimer);
+        if (!gameStarted || raceFinished) return;
+        if (announce) showPhaseMessage(red ? 'BOUGEZ PAS' : 'GO', red);
+        cycleTimer = window.setTimeout(
+          () => setLight(red ? 'green' : 'red'),
+          (red ? 3000 : 3000 + Math.random() * 3000) / gameSpeed
+        );
+      }
+
+      function eliminate(player) {
+        if (player.eliminated || player.winner) return;
+        player.eliminated = true;
+        player.element.classList.add('eliminated');
+        renderLists();
+      }
+
+      function showWalletBanner(player, title, detail) {
+        if (!player) return;
+        const banner = $('wallet-banner');
+        const image = banner.querySelector('img');
+        const avatar = safeAvatar(player.avatarUrl || player.avatarDataUri);
+        image.alt = `Photo de profil de ${cleanName(player.username || player.uniqueId)}`;
+        image.src = avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(player.username || player.uniqueId || 'LIVE')}`;
+        image.hidden = false;
+        banner.querySelector('strong').textContent = title;
+        banner.querySelector('span').textContent = detail;
+        banner.hidden = false;
+        window.clearTimeout(walletBannerTimer);
+        walletBannerTimer = window.setTimeout(() => { banner.hidden = true; }, 9000);
+      }
+
+      async function awardWinner(player, simulated) {
+        const prize = Math.floor(roundGiftCoins * 0.2);
+        const payoutRoundId = roundId;
+        const banner = $('winner-banner');
+        const image = banner.querySelector('img');
+        const avatar = safeAvatar(player.avatarUrl);
+        image.alt = `Photo de profil de ${player.username}`;
+        image.src = avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(player.username)}`;
+        banner.querySelector('.winner-copy strong').textContent = `@${player.username}`;
+        banner.querySelector('.winner-copy span').textContent = `⭐ ${formatNumber(prize)} étoile${prize === 1 ? '' : 's'} gagnée${prize === 1 ? '' : 's'}`;
+        $('winner-status').textContent = simulated
+          ? 'Simulation : aucune étoile réelle n’a été attribuée.'
+          : 'Enregistrement des étoiles du gain…';
+        banner.hidden = false;
+        if (simulated || prize < 1) {
+          if (!simulated) $('winner-status').textContent = 'Part des cadeaux : 20 %, arrondie à l’étoile inférieure.';
+          return;
+        }
+        if (!window.ArcadeStars?.award) {
+          $('winner-status').textContent = 'Erreur : portefeuille d’étoiles indisponible, récompense non enregistrée.';
+          return;
+        }
+
+        let remaining = prize;
+        let credited = 0;
+        let part = 0;
+        try {
+          while (remaining > 0) {
+            const amount = Math.min(remaining, 250000);
+            await window.ArcadeStars.award({
+              username: player.username,
+              amount,
+              transactionId: `123-soleil:${payoutRoundId}:${player.key}:${part}`
+            });
+            remaining -= amount;
+            credited += amount;
+            part++;
+          }
+          $('winner-status').textContent = `${formatNumber(credited)} étoiles ajoutées au portefeuille RUN · 20 % des cadeaux de la partie.`;
+        } catch (error) {
+          console.error('Récompense du gagnant non confirmée :', error);
+          $('winner-status').textContent = credited
+            ? `Crédit partiel confirmé : ${formatNumber(credited)} / ${formatNumber(prize)} étoiles.`
+            : `Erreur : étoiles non attribuées (${error.message}).`;
+        }
+      }
+
+      function movePlayer(username, stepCount = 1, simulated = false) {
+        if (raceFinished) return;
+        const player = players.get(playerKey(username));
+        if (!player || player.eliminated || player.winner) return;
+        if (lightState === 'red') {
+          eliminate(player);
+          return;
+        }
+
+        const advances = Math.min(100, Math.max(1, Math.floor(Number(stepCount) || 1)));
+        for (let i = 0; i < advances && !raceFinished; i++) {
+          player.progress = Math.min(100, player.progress + 10);
+          player.element.style.setProperty('--progress', player.progress);
+          if (player.progress >= 100) {
+            player.winner = true;
+            player.element.classList.add('winner');
+            raceFinished = true;
+            if (cycleTimer) clearTimeout(cycleTimer);
+            if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
+            $('race-message').classList.remove('phase-message', 'visible');
+            $('race-message-text').textContent = `🏆 ${player.username} franchit la ligne d’arrivée !`;
+            void awardWinner(player, simulated);
+            nextRoundTimer = window.setTimeout(resetGame, 15000);
+          }
+        }
+        renderLists();
+      }
+
+      function handleComment(message) {
+        const comment = message.commentData || message;
+        const entry = String(comment.comment || comment.content || '').trim();
+        if (!/^(?:[1-9]\d?|100|[a-z])$/i.test(entry)) return;
+        if (raceFinished) resetGame();
+        registerPlayer({
+          uniqueId: comment.uniqueId,
+          username: comment.username,
+          nickname: comment.nickname,
+          avatarDataUri: comment.avatarDataUri,
+          avatarUrls: comment.avatarUrls
+        }, entry);
+      }
+
+      function handleGift(message) {
+        const gift = message.gift || message.giftData || message;
+        const value = Number(gift.coinCount ?? gift.coinValue ?? gift.diamonds ?? gift.diamondCount);
+        if (!Number.isSafeInteger(value) || value < 1) return;
+        if (raceFinished) resetGame();
+        roundGiftCoins = Math.min(Number.MAX_SAFE_INTEGER, roundGiftCoins + value);
+        updateRoundPot();
+        const username = gift.uniqueId || gift.username || gift.nickname;
+        const repeats = Math.max(1, Math.min(100, Math.floor(Number(gift.repeatCount) || 1)));
+        movePlayer(username, repeats);
+      }
+
+      function handleWalletRun(event) {
+        const data = event.detail || {};
+        const viewer = data.player || {};
+        const username = viewer.uniqueId || viewer.username || viewer.nickname;
+        const spent = Math.max(0, Math.floor(Number(data.spent) || 0));
+        if (raceFinished) resetGame();
+        showWalletBanner(viewer, `@${cleanName(viewer.username || username)} · RUN`, `${formatNumber(spent)} étoiles rejouées · solde restant : ${formatNumber(viewer.stars)} ⭐`);
+        if (!username || spent < 1) return;
+
+        let player = players.get(playerKey(username));
+        if (!player) {
+          const entry = String(1 + Math.floor(Math.random() * 100));
+          player = registerPlayer(viewer, entry);
+        }
+        if (player) movePlayer(username, spent);
+      }
+
+      function handleWalletRunRejected(event) {
+        const data = event.detail || {};
+        if (!data.player) return;
+        showWalletBanner(
+          data.player,
+          `@${cleanName(data.player.username || data.player.uniqueId)} · RUN refusé`,
+          `${String(data.message || 'Étoiles non dépensées.')} · solde : ${formatNumber(data.player.stars)} ⭐`
+        );
+      }
+
+      window.addEventListener('arcade:wallet', event => {
+        const data = event.detail || {};
+        if (!data.player) return;
+        const message = String(data.message || '');
+        showWalletBanner(
+          data.player,
+          `@${cleanName(data.player.username || data.player.uniqueId)} · Portefeuille`,
+          `${formatNumber(data.player.stars)} étoiles disponibles${message ? ` · ${message}` : ''}`
+        );
+      });
+      window.addEventListener('arcade:wallet-run', handleWalletRun);
+      window.addEventListener('arcade:wallet-run-rejected', handleWalletRunRejected);
+
+      function handleLiveMessage(message) {
+        if (!message || typeof message !== 'object') return;
+        const type = String(message.type || message.event || '').toLowerCase();
+        if (type === 'status') {
+          connectionStatus.textContent = String(message.message || 'État du direct mis à jour.');
+        } else if (type === 'comment' || type === 'tiktok-comment') {
+          handleComment(message);
+        } else if (type === 'gift' || type === 'tiktok-gift') {
+          handleGift(message);
+        } else if (type === 'viewer' && message.viewer) {
+          applyViewerAvatar(message.viewer);
+        }
+      }
+
+      function connectLive() {
+        const username = $('tiktok-username').value.trim().replace(/^@/, '');
+        if (!/^[A-Za-z0-9._]{1,32}$/.test(username)) {
+          connectionStatus.textContent = 'Saisis un pseudo TikTok valide (1 à 32 caractères, sans espaces).';
+          $('tiktok-username').focus();
+          return;
+        }
+        disconnectLive(false);
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let socket;
+        try {
+          socket = new WebSocket(`${protocol}//${location.host}`);
+        } catch (error) {
+          connectionStatus.textContent = `Connexion impossible : ${error.message}`;
+          return;
+        }
+        liveSocket = socket;
+        $('connect-live').disabled = true;
+        $('disconnect-live').disabled = false;
+        connectionStatus.textContent = `Connexion au relais pour @${username}…`;
+        socket.addEventListener('open', () => {
+          if (socket !== liveSocket) return;
+          socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+          connectionStatus.textContent = `Demande envoyée pour @${username} · attente du direct…`;
+        });
+        socket.addEventListener('message', event => {
+          if (socket !== liveSocket) return;
+          try {
+            const message = JSON.parse(event.data);
+            const id = String(message.gift?.messageId || message.commentData?.messageId || '');
+            if (id && seenEvents.has(id)) return;
+            if (id) {
+              seenEvents.add(id);
+              if (seenEvents.size > 2000) seenEvents.delete(seenEvents.values().next().value);
+            }
+            handleLiveMessage(message);
+          } catch (error) {
+            console.error('Événement du relais illisible.', error);
+            connectionStatus.textContent = 'Le relais a envoyé un événement illisible.';
+          }
+        });
+        socket.addEventListener('error', () => {
+          if (socket === liveSocket) connectionStatus.textContent = 'Relais inaccessible ou session non autorisée.';
+        });
+        socket.addEventListener('close', () => {
+          if (socket !== liveSocket) return;
+          liveSocket = null;
+          $('connect-live').disabled = false;
+          $('disconnect-live').disabled = true;
+          connectionStatus.textContent = 'Connexion au relais fermée.';
+        });
+      }
+
+      function disconnectLive(updateStatus = true) {
+        const socket = liveSocket;
+        liveSocket = null;
+        if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+        $('connect-live').disabled = false;
+        $('disconnect-live').disabled = true;
+        if (updateStatus) connectionStatus.textContent = 'Déconnecté du LIVE.';
+      }
+
+      function resetGame() {
+        if (cycleTimer) clearTimeout(cycleTimer);
+        if (nextRoundTimer) clearTimeout(nextRoundTimer);
+        players.clear();
+        terrain.querySelectorAll('.player').forEach(player => player.remove());
+        gameStarted = false;
+        raceFinished = false;
+        if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
+        $('race-message').classList.remove('phase-message', 'visible');
+        roundGiftCoins = 0;
+        roundId = crypto.randomUUID();
+        $('round-pot').textContent = '🎁 0 pièces · gagnant : 0 ⭐';
+        $('winner-banner').hidden = true;
+        renderLists();
+        $('race-message-text').style.background = '';
+        $('race-message-text').textContent = 'Écris une lettre ou un nombre de 1 à 100 pour jouer !';
+        setLight('green', false);
+      }
+
+      $('connect-live').addEventListener('click', connectLive);
+      $('disconnect-live').addEventListener('click', () => disconnectLive());
+      $('tiktok-username').addEventListener('keydown', event => {
+        if (event.key === 'Enter') connectLive();
+      });
+      $('speed-control').addEventListener('input', event => {
+        gameSpeed = Number(event.target.value);
+        $('speed-value').textContent = `${gameSpeed}×`;
+        setLight(lightState, false);
+      });
+      $('simulate-join').addEventListener('click', () => {
+        const username = `Joueur_${Math.floor(100 + Math.random() * 900)}`;
+        registerPlayer({ username }, String(Math.floor(1 + Math.random() * 100)));
+      });
+      $('simulate-gift').addEventListener('click', () => {
+        const active = [...players.values()].filter(player => !player.eliminated && !player.winner);
+        if (!active.length) {
+          connectionStatus.textContent = 'Inscris d’abord un joueur avec le simulateur ou le chat.';
+          return;
+        }
+        const player = active[Math.floor(Math.random() * active.length)];
+        movePlayer(player.username, 1, true);
+      });
+      $('simulate-red').addEventListener('click', () => setLight('red'));
+      $('simulate-big-gift').addEventListener('click', () => {
+        if (window.ArcadeEffects?.simulateBigGift) {
+          window.ArcadeEffects.simulateBigGift('Spectateur test', 100);
+        } else {
+          connectionStatus.textContent = 'Les effets Arcade ne sont pas disponibles sur cette page.';
+        }
+      });
+      $('simulate-share').addEventListener('click', () => {
+        if (window.ArcadeEffects?.simulateShare) {
+          window.ArcadeEffects.simulateShare();
+        } else {
+          connectionStatus.textContent = 'Les effets Arcade ne sont pas disponibles sur cette page.';
+        }
+      });
+      $('reset-game').addEventListener('click', resetGame);
+      $('toggle-controls').addEventListener('click', event => {
+        const panel = $('control-panel');
+        panel.hidden = !panel.hidden;
+        event.currentTarget.textContent = panel.hidden ? 'Afficher le panneau' : 'Masquer le panneau';
+        event.currentTarget.setAttribute('aria-expanded', String(!panel.hidden));
+      });
+      const queuePanel = $('queue-panel');
+      function toggleQueue(detach) {
+        queuePanel.hidden = false;
+        queuePanel.classList.toggle('detached', detach);
+        $('toggle-queue').setAttribute('aria-pressed', String(detach));
+        $('toggle-queue').setAttribute('aria-expanded', 'true');
+        $('toggle-queue').textContent = detach ? 'Rattacher la file' : 'Détacher la file';
+        $('close-queue').hidden = !detach;
+      }
+      $('hide-queue').addEventListener('click', () => {
+        queuePanel.hidden = true;
+        $('toggle-queue').textContent = 'Attacher les inscrits';
+        $('toggle-queue').setAttribute('aria-expanded', 'false');
+      });
+      $('toggle-queue').addEventListener('click', () => {
+        if (queuePanel.hidden) {
+          toggleQueue(false);
+          return;
+        }
+        toggleQueue(!queuePanel.classList.contains('detached'));
+      });
+      $('close-queue').addEventListener('click', () => toggleQueue(false));
+      $('toggle-ranking').addEventListener('click', event => {
+        const panel = $('ranking-panel');
+        panel.hidden = !panel.hidden;
+        event.currentTarget.textContent = panel.hidden ? 'Afficher le classement' : 'Masquer le classement';
+        event.currentTarget.setAttribute('aria-pressed', String(!panel.hidden));
+      });
+      toggleQueue(false);
+      renderLists();
+      setLight('green', false);
+    })();
+  </script>
+</body>
+</html>

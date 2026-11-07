@@ -143,6 +143,7 @@ const protectedRoutes = new Set([
     '/super-mario-live.html',
     '/bingo-gryphon.html',
     '/puissance-4-tiktok.html',
+    '/123-soleil-live.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -238,6 +239,7 @@ const staticGameIds = [
     '/super-mario-live.html',
     '/bingo-gryphon.html',
     '/puissance-4-tiktok.html',
+    '/123-soleil-live.html',
     '/course-anneaux.html',
     '/combat-retro.html',
     '/arene-combattants.html',
@@ -332,6 +334,7 @@ store.grantGameAccessToExistingCreators('/combat-retro.html');
 store.grantGameAccessToExistingCreators('/course-anneaux.html');
 store.grantGameAccessToExistingCreators('/bingo-gryphon.html');
 store.grantGameAccessToExistingCreators('/puissance-4-tiktok.html');
+store.grantGameAccessToExistingCreators('/123-soleil-live.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
@@ -344,6 +347,7 @@ const staticGameTitles = {
     '/super-mario-live.html': 'Mario',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/puissance-4-tiktok.html': 'Puissance 4 · TikTok Live',
+    '/123-soleil-live.html': '1, 2, 3 Soleil LIVE',
     '/course-anneaux.html': 'Nouvelle version de Sonic',
     '/combat-retro.html': 'Combat Rétro Arcade',
     '/arene-combattants.html': 'L’Arène des Combattants TikTok',
@@ -403,6 +407,7 @@ const gameRouteIds = new Map([
     ['/super-mario-live.html', '/super-mario-live.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
     ['/puissance-4-tiktok.html', '/puissance-4-tiktok.html'],
+    ['/123-soleil-live.html', '/123-soleil-live.html'],
     ['/course-anneaux.html', '/course-anneaux.html'],
     ['/combat-retro.html', '/combat-retro.html'],
     ['/arene-combattants.html', '/arene-combattants.html'],
@@ -2922,7 +2927,12 @@ const server = http.createServer((req, res) => {
         ['/combat-retro.html', [retroFightFile, 'text/html; charset=utf-8']],
         ['/bingo-gryphon.html', [path.join(__dirname, 'bingo-gryphon.html'), 'text/html; charset=utf-8']],
         ['/puissance-4-tiktok.html', [path.join(__dirname, 'puissance-4-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/123-soleil-live.html', [path.join(__dirname, '123-soleil-live.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/puissance-4-apercu.svg', [path.join(__dirname, 'images-vitrine', 'puissance-4-apercu.svg'), 'image/svg+xml']],
+        ['/images-vitrine/123-soleil-live.svg', [path.join(__dirname, 'images-vitrine', '123-soleil-live.svg'), 'image/svg+xml']],
+        ['/images-vitrine/123-soleil-terre.svg', [path.join(__dirname, 'images-vitrine', '123-soleil-terre.svg'), 'image/svg+xml']],
+        ['/images-vitrine/123-soleil-poupee-dos.png', [path.join(__dirname, 'images-vitrine', '123-soleil-poupee-dos.png'), 'image/png']],
+        ['/images-vitrine/123-soleil-poupee-face.png', [path.join(__dirname, 'images-vitrine', '123-soleil-poupee-face.png'), 'image/png']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
         ['/images-vitrine/bingo-gryphon.png', [path.join(__dirname, 'images-vitrine', 'bingo-gryphon.png'), 'image/png']],
         ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
