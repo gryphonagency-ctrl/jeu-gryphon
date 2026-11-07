@@ -2325,7 +2325,8 @@
             status: document.getElementById('creator-overlay-status'),
             path: null,
             owner: null,
-            account: null
+            account: null,
+            treasureEditing: false
         };
 
         function renderOverlayUrl() {
@@ -2365,6 +2366,7 @@
             if (!session) {
                 overlayCard.owner = null;
                 overlayCard.account = null;
+                overlayCard.treasureEditing = false;
                 overlayCard.path = null;
                 overlayCard.treasureEffect.checked = false;
                 overlayCard.treasureStatus.textContent = '';
@@ -2388,8 +2390,10 @@
             overlayCard.treasureLayoutEdit.hidden = false;
             try {
                 const edit = JSON.parse(localStorage.getItem('ga-arcade-treasure-layout-edit') || 'null');
-                const editing = edit?.enabled === true &&
-                    String(edit.username || '').toLowerCase() === String(session.username || '').toLowerCase();
+                const editing = session.arcadeTreasureLayoutEditing === true ||
+                    (edit?.enabled === true &&
+                        String(edit.username || '').toLowerCase() === String(session.username || '').toLowerCase());
+                overlayCard.treasureEditing = editing;
                 overlayCard.treasureLayoutEdit.textContent = editing
                     ? 'Terminer la modification du coffre'
                     : 'Modifier la position et la taille du coffre';
@@ -2503,17 +2507,24 @@
                 overlayCard.treasureLinkStatus.textContent = 'Copie le lien sélectionné (Ctrl+C).';
             }
         });
-        overlayCard.treasureLayoutEdit.addEventListener('click', () => {
+        overlayCard.treasureLayoutEdit.addEventListener('click', async () => {
+            overlayCard.treasureLayoutEdit.disabled = true;
             try {
-                const current = JSON.parse(localStorage.getItem('ga-arcade-treasure-layout-edit') || 'null');
-                const isEditing = current?.enabled === true &&
-                    String(current.username || '').toLowerCase() === String(overlayCard.account || '').toLowerCase();
-                const enabled = !isEditing;
+                const enabled = !overlayCard.treasureEditing;
+                const response = await fetch('/api/arcade-effects-settings', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ arcadeTreasureLayoutEditing: enabled })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible de modifier le coffre.');
                 localStorage.setItem('ga-arcade-treasure-layout-edit', JSON.stringify({
                     username: overlayCard.account,
-                    enabled,
+                    enabled: result.arcadeTreasureLayoutEditing,
                     updatedAt: Date.now()
                 }));
+                overlayCard.treasureEditing = result.arcadeTreasureLayoutEditing;
                 overlayCard.treasureLayoutEdit.textContent = enabled
                     ? 'Terminer la modification du coffre'
                     : 'Modifier la position et la taille du coffre';
@@ -2525,6 +2536,8 @@
             } catch (error) {
                 overlayCard.treasureLayoutStatus.className = 'checkout-status error';
                 overlayCard.treasureLayoutStatus.textContent = error.message || 'Impossible d’activer le mode édition.';
+            } finally {
+                overlayCard.treasureLayoutEdit.disabled = false;
             }
         });
         overlayCard.generate.addEventListener('click', async () => {

@@ -152,6 +152,8 @@ function readStore() {
                     typeof settings.arcadeBigGiftOverlayEnabled !== 'boolean') ||
                 (settings.arcadeTreasureChestEnabled !== undefined &&
                     typeof settings.arcadeTreasureChestEnabled !== 'boolean') ||
+                (settings.arcadeTreasureLayoutEditing !== undefined &&
+                    typeof settings.arcadeTreasureLayoutEditing !== 'boolean') ||
                 (settings.arcadeTreasureTikTokUsername !== undefined &&
                     (typeof settings.arcadeTreasureTikTokUsername !== 'string' ||
                         !/^[a-zA-Z0-9._]{1,32}$/.test(settings.arcadeTreasureTikTokUsername))) ||
@@ -811,6 +813,16 @@ function setCreatorArcadeTreasureChestEnabled(username, enabled) {
     });
 }
 
+function setCreatorTreasureLayoutEditing(username, enabled) {
+    if (typeof enabled !== 'boolean') throw new TypeError('Treasure layout editing setting must be a boolean.');
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        settings.arcadeTreasureLayoutEditing = enabled;
+        store.creatorSettings[key] = settings;
+    });
+}
+
 function setCreatorTreasureOverlaySettings(username, tiktokUsername, token) {
     if (typeof tiktokUsername !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(tiktokUsername)) {
         throw new TypeError('Treasure overlay TikTok username is invalid.');
@@ -1242,6 +1254,7 @@ module.exports = {
     setCreatorSettingsLocked,
     setCreatorArcadeBigGiftOverlayEnabled,
     setCreatorArcadeTreasureChestEnabled,
+    setCreatorTreasureLayoutEditing,
     setCreatorTreasureOverlaySettings,
     getCreatorTreasureOverlayOwner,
     setCreatorTreasureLayout,

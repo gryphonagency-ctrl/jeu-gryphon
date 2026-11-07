@@ -1836,6 +1836,9 @@ const server = http.createServer((req, res) => {
             arcadeTreasureChestEnabled: username
                 ? creatorSettings.arcadeTreasureChestEnabled === true
                 : false,
+            arcadeTreasureLayoutEditing: username
+                ? creatorSettings.arcadeTreasureLayoutEditing === true
+                : false,
             arcadeTreasureTikTokUsername: username
                 ? creatorSettings.arcadeTreasureTikTokUsername || creatorSettings.tiktokUsername || ''
                 : '',
@@ -1859,9 +1862,11 @@ const server = http.createServer((req, res) => {
         readJsonBody(req, res, body => {
             const hasBigGiftSetting = Object.prototype.hasOwnProperty.call(body, 'arcadeBigGiftOverlayEnabled');
             const hasTreasureSetting = Object.prototype.hasOwnProperty.call(body, 'arcadeTreasureChestEnabled');
-            if ((!hasBigGiftSetting && !hasTreasureSetting) ||
+            const hasTreasureLayoutEditingSetting = Object.prototype.hasOwnProperty.call(body, 'arcadeTreasureLayoutEditing');
+            if ((!hasBigGiftSetting && !hasTreasureSetting && !hasTreasureLayoutEditingSetting) ||
                 (hasBigGiftSetting && typeof body.arcadeBigGiftOverlayEnabled !== 'boolean') ||
-                (hasTreasureSetting && typeof body.arcadeTreasureChestEnabled !== 'boolean')) {
+                (hasTreasureSetting && typeof body.arcadeTreasureChestEnabled !== 'boolean') ||
+                (hasTreasureLayoutEditingSetting && typeof body.arcadeTreasureLayoutEditing !== 'boolean')) {
                 res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ message: 'Le réglage des overlays est invalide.' }));
                 return;
@@ -1879,10 +1884,14 @@ const server = http.createServer((req, res) => {
                 store.setCreatorArcadeTreasureChestEnabled(username, body.arcadeTreasureChestEnabled);
                 if (!body.arcadeTreasureChestEnabled) closeTreasureOverlaySockets(username);
             }
+            if (hasTreasureLayoutEditingSetting) {
+                store.setCreatorTreasureLayoutEditing(username, body.arcadeTreasureLayoutEditing);
+            }
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             const result = {};
             if (hasBigGiftSetting) result.arcadeBigGiftOverlayEnabled = body.arcadeBigGiftOverlayEnabled;
             if (hasTreasureSetting) result.arcadeTreasureChestEnabled = body.arcadeTreasureChestEnabled;
+            if (hasTreasureLayoutEditingSetting) result.arcadeTreasureLayoutEditing = body.arcadeTreasureLayoutEditing;
             res.end(JSON.stringify(result));
         });
         return;

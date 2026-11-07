@@ -19,6 +19,9 @@
     let treasureChestEnabled = false;
     let treasureOwner = '';
     let treasureCanEdit = false;
+    let treasureEditingEnabled = false;
+    let treasureDragActive = false;
+    let treasureLayoutSaving = false;
     let treasureGiftCount = 0;
     let treasureGiftItems = [];
     let treasureLayout = { x: 50, y: 82, width: 38 };
@@ -36,7 +39,7 @@
                 );
                 if (!response.ok) throw new Error(`Overlay coffre HTTP ${response.status}`);
                 const settings = await response.json();
-                setTreasureLayout(settings.layout);
+                if (!treasureDragActive && !treasureLayoutSaving) setTreasureLayout(settings.layout);
                 const sessionResponse = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
                 if (!sessionResponse.ok) throw new Error(`Session HTTP ${sessionResponse.status}`);
                 const session = await sessionResponse.json();
@@ -44,9 +47,12 @@
                     session.authenticated === true &&
                     String(session.username || '').toLowerCase() === String(settings.owner || '').toLowerCase()
                 );
+                treasureEditingEnabled = session.authenticated === true &&
+                    session.arcadeTreasureLayoutEditing === true;
                 bigGiftOverlayEnabled = false;
                 bigGiftFireworksEnabled = false;
                 setTreasureChestEnabled(settings.enabled === true, settings.owner || '');
+                applyTreasureLayout();
                 return;
             }
             const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
@@ -61,14 +67,19 @@
                 session.username || ''
             );
             setTreasureEditPermission(session.authenticated === true);
-            setTreasureLayout(session.arcadeTreasureLayout);
+            treasureEditingEnabled = session.authenticated === true &&
+                session.arcadeTreasureLayoutEditing === true;
+            applyTreasureLayout();
+            if (!treasureDragActive && !treasureLayoutSaving) {
+                setTreasureLayout(session.arcadeTreasureLayout);
+            }
         } catch (error) {
             console.warn('Préférences des overlays Griffon Arcade indisponibles :', error.message);
         }
     }
 
     refreshOverlaySettings();
-    setInterval(refreshOverlaySettings, 15000);
+    setInterval(refreshOverlaySettings, 3000);
 
     function injectStyle() {
         if (document.getElementById('arcade-effects-style')) return;
@@ -99,7 +110,7 @@
  background:rgba(30,18,4,.78);color:#fff3b1;font:800 13px/1.2 Arial,sans-serif;text-shadow:0 1px 2px #000;white-space:nowrap}
 .ae-treasure-handle{position:absolute;z-index:4;display:none;pointer-events:auto;touch-action:none;border:2px solid #fff3b1;border-radius:10px;
  background:rgba(24,18,10,.88);color:white;box-shadow:0 2px 10px rgba(0,0,0,.55);font:800 18px/1 Arial,sans-serif}
-.ae-treasure-edit .ae-treasure-chest{outline:2px dashed #ffe27a;outline-offset:-10px}
+.ae-treasure-edit .ae-treasure-chest{outline:2px dashed #ffe27a;outline-offset:-10px;pointer-events:auto;cursor:move}
 .ae-treasure-edit .ae-treasure-handle{display:grid;place-items:center}
 .ae-treasure-move{width:42px;height:42px;cursor:move}
 .ae-treasure-resize{width:38px;height:38px;cursor:nwse-resize}
@@ -183,6 +194,7 @@
 
     function treasureEditIsRequested() {
         if (!treasureOwner || !treasureCanEdit) return false;
+        if (treasureEditingEnabled) return true;
         try {
             const setting = JSON.parse(localStorage.getItem(TREASURE_EDIT_STORAGE_KEY) || 'null');
             return setting?.enabled === true &&
@@ -204,6 +216,7 @@
         chest.className = 'ae-treasure-chest';
         chest.src = '/images-vitrine/overlay-coffre-tresor.png';
         chest.alt = '';
+        chest.title = 'Glisser pour déplacer le coffre';
         chest.draggable = false;
         chest.addEventListener('load', applyTreasureLayout);
         const count = document.createElement('div');
@@ -221,6 +234,7 @@
         resizeHandle.setAttribute('aria-label', 'Redimensionner le coffre');
         treasureStage.append(gifts, chest, count, moveHandle, resizeHandle);
         layer.appendChild(treasureStage);
+        bindTreasureDrag(chest, 'move');
         bindTreasureDrag(moveHandle, 'move');
         bindTreasureDrag(resizeHandle, 'resize');
         applyTreasureLayout();
@@ -252,7 +266,6 @@
             count.style.top = y;
         }
         treasureStage.classList.toggle('ae-treasure-edit', treasureEditIsRequested());
-        treasureStage.style.visibility = treasureChestVisible ? '' : 'hidden';
         renderTreasureGifts();
     }
 
@@ -390,6 +403,7 @@
 
     function saveTreasureLayout() {
         const layout = { ...treasureLayout };
+        treasureLayoutSaving = true;
         fetch('/api/arcade-treasure-layout', {
             method: 'POST',
             credentials: 'same-origin',
@@ -406,6 +420,8 @@
             }));
         }).catch(error => {
             console.warn('La position du coffre n’a pas pu être enregistrée :', error.message);
+        }).finally(() => {
+            treasureLayoutSaving = false;
         });
     }
 
@@ -415,6 +431,7 @@
             event.preventDefault();
             event.stopPropagation();
             handle.setPointerCapture(event.pointerId);
+            treasureDragActive = true;
             const start = {
                 x: event.clientX,
                 y: event.clientY,
@@ -441,6 +458,7 @@
                 handle.removeEventListener('pointermove', onMove);
                 handle.removeEventListener('pointerup', onEnd);
                 handle.removeEventListener('pointercancel', onEnd);
+                treasureDragActive = false;
                 saveTreasureLayout();
             };
             handle.addEventListener('pointermove', onMove);
