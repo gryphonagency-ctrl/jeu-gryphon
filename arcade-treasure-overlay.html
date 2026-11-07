@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Overlay coffre au trésor · Griffon Arcade</title>
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    </style>
+    <script src="/arcade-effects.js"></script>
+</head>
+<body>
+    <script>
+        (() => {
+            const token = new URLSearchParams(location.search).get('token');
+            if (!token) return;
+            let retryTimer = 0;
+            let socket = null;
+            async function connect() {
+                let settings;
+                try {
+                    const response = await fetch(
+                        `/api/arcade-treasure-overlay-status?token=${encodeURIComponent(token)}`,
+                        { cache: 'no-store' }
+                    );
+                    if (!response.ok) throw new Error(`Overlay coffre HTTP ${response.status}`);
+                    settings = await response.json();
+                    window.ArcadeEffects.setTreasureChestEnabled(settings.enabled === true, settings.owner || '');
+                } catch (error) {
+                    console.warn('Impossible de vérifier le lien du coffre :', error.message);
+                    retryTimer = setTimeout(connect, 15000);
+                    return;
+                }
+                if (!settings.enabled || !settings.username) {
+                    retryTimer = setTimeout(connect, 15000);
+                    return;
+                }
+                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                socket = new WebSocket(`${protocol}//${location.host}/arcade-treasure-overlay-relay?token=${encodeURIComponent(token)}`);
+                socket.addEventListener('open', () => {
+                    socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK' }));
+                });
+                socket.addEventListener('close', () => {
+                    clearTimeout(retryTimer);
+                    retryTimer = setTimeout(connect, 10000);
+                });
+                socket.addEventListener('error', () => socket.close());
+            }
+            connect();
+        })();
+    </script>
+</body>
+</html>

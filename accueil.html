@@ -358,6 +358,10 @@
         .creator-voice-actions .button { width: 100%; }
         .creator-stars-card { grid-column: 1 / -1; min-width: 0; align-self: start; }
         .creator-overlay-panel { align-self: start; border-color: rgba(124,140,255,.4); background: linear-gradient(155deg,rgba(124,140,255,.14),rgba(0,0,0,.16)); }
+        .creator-overlay-treasure { margin: 12px 0; padding: 12px; border: 1px solid rgba(255,199,77,.38); border-radius: 11px; background: rgba(255,178,38,.07); }
+        .creator-overlay-treasure > strong { display: block; margin-bottom: 6px; color: #ffe09a; }
+        .creator-overlay-treasure > p { margin: 0 0 9px; color: #b9c8e6; font-size: 12px; line-height: 1.55; }
+        .creator-overlay-treasure .checkout-status { margin-top: 8px; }
         .creator-overlay-panel > strong { display: block; margin-bottom: 8px; font-size: 18px; }
         .creator-overlay-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 10px 0; }
         .creator-overlay-options label { display: inline-flex; align-items: center; gap: 7px; color: #c9d6f2; font-size: 12px; font-weight: 700; }
@@ -722,6 +726,26 @@
                     <p class="kicker">Overlay de live</p>
                     <strong id="creator-overlay-heading">Configurer mon overlay</strong>
                     <p>Compte : <strong id="creator-overlay-username"></strong></p>
+                    <section class="creator-overlay-treasure">
+                        <strong>🪙 Coffre au trésor</strong>
+                        <p>Chaque cadeau TikTok reçu (avec son visuel, par exemple un cœur dans les mains) entre dans le coffre, puis déborde autour. Disponible pour tous les comptes connectés.</p>
+                        <div class="creator-overlay-options">
+                            <label><input id="creator-treasure-overlay" type="checkbox"> Activer le coffre au trésor</label>
+                        </div>
+                        <button id="creator-treasure-overlay-save" class="button button-secondary" type="button">Enregistrer le coffre</button>
+                        <p id="creator-treasure-overlay-status" class="checkout-status" role="status" aria-live="polite"></p>
+                        <label for="creator-treasure-tiktok-username">Pseudo TikTok du live (sans @)</label>
+                        <input id="creator-treasure-tiktok-username" type="text" maxlength="32" autocomplete="off" placeholder="mon_pseudo">
+                        <button id="creator-treasure-overlay-link-create" class="button button-secondary" type="button">Créer le lien indépendant pour TikTok LIVE / Live Match</button>
+                        <div class="creator-url-panel">
+                            <input id="creator-treasure-overlay-url" type="url" readonly aria-label="Lien overlay du coffre au trésor" placeholder="Génère le lien pour l’afficher en live">
+                            <button id="creator-treasure-overlay-copy" class="button button-secondary" type="button" hidden>Copier</button>
+                        </div>
+                        <p id="creator-treasure-overlay-link-status" class="checkout-status" role="status" aria-live="polite"></p>
+                        <p>Ajoute ce lien comme source navigateur dans TikTok LIVE Studio ou OBS. Il fonctionne sans lancer de jeu et suit les cadeaux, y compris pendant un Live Match.</p>
+                        <button id="creator-treasure-layout-edit" class="button button-secondary" type="button">Activer le déplacement et le redimensionnement</button>
+                        <p id="creator-treasure-layout-status" class="checkout-status" role="status" aria-live="polite">Active ce mode puis déplace le coffre par sa poignée et redimensionne-le avec la poignée en bas à droite dans un jeu ouvert.</p>
+                    </section>
                     <p id="creator-overlay-locked" hidden>L’overlay et les médias personnalisés sont réservés aux abonnés et aux comptes autorisés par l’administrateur.</p>
                     <div id="creator-overlay-body">
                         <p>Un lien privé à ajouter comme source navigateur (OBS, TikTok LIVE Studio) : alertes, sons, vidéos et feux d’artifice, avec tous les jeux.</p>
@@ -730,6 +754,7 @@
                             <label><input id="creator-game-gift-overlay" type="checkbox" checked> Activer l’effet cadeau interactif dans les jeux</label>
                         </div>
                         <button id="creator-game-gift-overlay-save" class="button button-secondary" type="button">Enregistrer ce réglage</button>
+                        <p id="creator-game-gift-overlay-admin-note" hidden>Pour ce compte administrateur, la bulle reste disponible mais le feu d’artifice des cadeaux de 100 pièces et plus est masqué. Le réglage des autres comptes n’est pas modifié.</p>
                         <div class="creator-overlay-options">
                             <label><input id="creator-overlay-fire" type="checkbox" checked> Feu d’artifice</label>
                             <label>dès <input id="creator-overlay-threshold" type="number" min="1" max="100000" value="10"> pièces</label>
@@ -2286,9 +2311,21 @@
             threshold: document.getElementById('creator-overlay-threshold'),
             gameGiftEffect: document.getElementById('creator-game-gift-overlay'),
             gameGiftEffectSave: document.getElementById('creator-game-gift-overlay-save'),
+            treasureEffect: document.getElementById('creator-treasure-overlay'),
+            treasureEffectSave: document.getElementById('creator-treasure-overlay-save'),
+            treasureStatus: document.getElementById('creator-treasure-overlay-status'),
+            treasureTikTokUsername: document.getElementById('creator-treasure-tiktok-username'),
+            treasureLinkCreate: document.getElementById('creator-treasure-overlay-link-create'),
+            treasureUrl: document.getElementById('creator-treasure-overlay-url'),
+            treasureCopy: document.getElementById('creator-treasure-overlay-copy'),
+            treasureLinkStatus: document.getElementById('creator-treasure-overlay-link-status'),
+            treasureLayoutEdit: document.getElementById('creator-treasure-layout-edit'),
+            treasureLayoutStatus: document.getElementById('creator-treasure-layout-status'),
+            gameGiftAdminNote: document.getElementById('creator-game-gift-overlay-admin-note'),
             status: document.getElementById('creator-overlay-status'),
             path: null,
-            owner: null
+            owner: null,
+            account: null
         };
 
         function renderOverlayUrl() {
@@ -2327,15 +2364,42 @@
         async function setupOverlayCard(session) {
             if (!session) {
                 overlayCard.owner = null;
+                overlayCard.account = null;
                 overlayCard.path = null;
+                overlayCard.treasureEffect.checked = false;
+                overlayCard.treasureStatus.textContent = '';
+                overlayCard.treasureTikTokUsername.value = '';
+                overlayCard.treasureUrl.value = '';
+                overlayCard.treasureCopy.hidden = true;
+                overlayCard.treasureLinkStatus.textContent = '';
+                overlayCard.treasureLayoutEdit.hidden = true;
                 renderOverlayUrl();
                 overlayMessage('');
                 return;
             }
             overlayCard.username.textContent = session.username || '';
+            overlayCard.account = session.username || null;
+            overlayCard.treasureEffect.checked = session.arcadeTreasureChestEnabled === true;
+            overlayCard.treasureTikTokUsername.value = session.arcadeTreasureTikTokUsername || '';
+            overlayCard.treasureUrl.value = session.arcadeTreasureOverlayToken
+                ? `${location.origin}/arcade-treasure-overlay.html?token=${encodeURIComponent(session.arcadeTreasureOverlayToken)}`
+                : '';
+            overlayCard.treasureCopy.hidden = !overlayCard.treasureUrl.value;
+            overlayCard.treasureLayoutEdit.hidden = false;
+            try {
+                const edit = JSON.parse(localStorage.getItem('ga-arcade-treasure-layout-edit') || 'null');
+                const editing = edit?.enabled === true &&
+                    String(edit.username || '').toLowerCase() === String(session.username || '').toLowerCase();
+                overlayCard.treasureLayoutEdit.textContent = editing
+                    ? 'Terminer le déplacement et le redimensionnement'
+                    : 'Activer le déplacement et le redimensionnement';
+            } catch (error) {
+                console.warn('Impossible de lire le mode de déplacement du coffre.', error);
+            }
             overlayCard.locked.hidden = !!session.canUseTts;
             overlayCard.body.hidden = !session.canUseTts;
             overlayCard.gameGiftEffect.checked = session.arcadeBigGiftOverlayEnabled !== false;
+            overlayCard.gameGiftAdminNote.hidden = session.isAdmin !== true;
             if (!session.canUseTts || overlayCard.owner === session.username) return;
             overlayCard.owner = session.username;
             try {
@@ -2370,6 +2434,94 @@
                 overlayMessage(error.message || 'Impossible d’enregistrer ce réglage.', true);
             } finally {
                 overlayCard.gameGiftEffectSave.disabled = false;
+            }
+        });
+        overlayCard.treasureEffectSave.addEventListener('click', async () => {
+            overlayCard.treasureEffectSave.disabled = true;
+            overlayCard.treasureStatus.className = 'checkout-status';
+            try {
+                const enabled = overlayCard.treasureEffect.checked;
+                const response = await fetch('/api/arcade-effects-settings', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ arcadeTreasureChestEnabled: enabled })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible d’enregistrer le coffre au trésor.');
+                try {
+                    localStorage.setItem('ga-arcade-treasure-setting', JSON.stringify({
+                        username: overlayCard.account,
+                        enabled: result.arcadeTreasureChestEnabled,
+                        updatedAt: Date.now()
+                    }));
+                    overlayCard.treasureStatus.textContent = enabled
+                        ? 'Coffre activé dans les jeux. Il apparaît dès qu’un cadeau est reçu.'
+                        : 'Coffre désactivé dans les jeux.';
+                } catch (error) {
+                    console.warn('Le coffre est enregistré, mais la mise à jour des autres onglets a échoué.', error);
+                    overlayCard.treasureStatus.textContent = enabled
+                        ? 'Coffre enregistré. Recharge les jeux déjà ouverts pour l’afficher.'
+                        : 'Réglage enregistré. Recharge les jeux déjà ouverts pour le masquer.';
+                }
+            } catch (error) {
+                overlayCard.treasureStatus.className = 'checkout-status error';
+                overlayCard.treasureStatus.textContent = error.message || 'Impossible d’enregistrer le coffre au trésor.';
+            } finally {
+                overlayCard.treasureEffectSave.disabled = false;
+            }
+        });
+        overlayCard.treasureLinkCreate.addEventListener('click', async () => {
+            overlayCard.treasureLinkCreate.disabled = true;
+            overlayCard.treasureLinkStatus.className = 'checkout-status';
+            try {
+                const response = await fetch('/api/arcade-treasure-overlay-link', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tiktokUsername: overlayCard.treasureTikTokUsername.value })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible de créer le lien du coffre.');
+                overlayCard.treasureTikTokUsername.value = result.tiktokUsername;
+                overlayCard.treasureUrl.value = `${location.origin}${result.url}`;
+                overlayCard.treasureCopy.hidden = false;
+                overlayCard.treasureLinkStatus.textContent =
+                    'Lien prêt : ajoute-le comme source navigateur dans TikTok LIVE Studio ou OBS.';
+            } catch (error) {
+                overlayCard.treasureLinkStatus.className = 'checkout-status error';
+                overlayCard.treasureLinkStatus.textContent = error.message || 'Impossible de créer le lien du coffre.';
+            } finally {
+                overlayCard.treasureLinkCreate.disabled = false;
+            }
+        });
+        overlayCard.treasureCopy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(overlayCard.treasureUrl.value);
+                overlayCard.treasureLinkStatus.textContent = 'Lien du coffre copié.';
+            } catch {
+                overlayCard.treasureUrl.select();
+                overlayCard.treasureLinkStatus.textContent = 'Copie le lien sélectionné (Ctrl+C).';
+            }
+        });
+        overlayCard.treasureLayoutEdit.addEventListener('click', () => {
+            const enabled = overlayCard.treasureLayoutEdit.textContent.startsWith('Activer');
+            try {
+                localStorage.setItem('ga-arcade-treasure-layout-edit', JSON.stringify({
+                    username: overlayCard.account,
+                    enabled,
+                    updatedAt: Date.now()
+                }));
+                overlayCard.treasureLayoutEdit.textContent = enabled
+                    ? 'Terminer le déplacement et le redimensionnement'
+                    : 'Activer le déplacement et le redimensionnement';
+                overlayCard.treasureLayoutStatus.className = 'checkout-status';
+                overlayCard.treasureLayoutStatus.textContent = enabled
+                    ? 'Mode édition activé : sur un jeu ouvert, déplace le coffre par sa poignée et redimensionne-le avec la poignée en bas à droite.'
+                    : 'Mode édition terminé. La position et la taille sont enregistrées pour tes jeux et ton overlay LIVE.';
+            } catch (error) {
+                overlayCard.treasureLayoutStatus.className = 'checkout-status error';
+                overlayCard.treasureLayoutStatus.textContent = error.message || 'Impossible d’activer le mode édition.';
             }
         });
         overlayCard.generate.addEventListener('click', async () => {

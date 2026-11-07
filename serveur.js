@@ -28,6 +28,7 @@ if (typeof store.getWalletBalance !== 'function') {
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const DEFAULT_TREASURE_LAYOUT = Object.freeze({ x: 50, y: 82, width: 38 });
 const DEFAULT_MACHINA_BACKGROUND_URL = 'https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3Y3VyZzNwdHdrMDVkM2RnemJxNWFkYWl0cXFpaWUxeWtuZDZ0N3JjcCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xFHhDYm05cAOknxco6/giphy.gif';
 const machinaBackgroundFile = path.join(store.getDataDirectory(), 'machina-background.json');
 const adminDashboardWidgetIds = [
@@ -1737,11 +1738,86 @@ const server = http.createServer((req, res) => {
         }, 8 * 1024);
         return;
     }
+    if (pathname === '/api/arcade-treasure-overlay-status' && req.method === 'GET') {
+        const token = new URL(req.url, 'http://localhost').searchParams.get('token') || '';
+        const owner = store.getCreatorTreasureOverlayOwner(token);
+        if (!owner) {
+            res.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Lien overlay invalide.' }));
+            return;
+        }
+        const settings = store.getCreatorSettings(owner);
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+            owner,
+            username: settings.arcadeTreasureTikTokUsername || settings.tiktokUsername || '',
+            enabled: settings.arcadeTreasureChestEnabled === true,
+            layout: settings.arcadeTreasureLayout || DEFAULT_TREASURE_LAYOUT
+        }));
+        return;
+    }
+    if (pathname === '/api/arcade-treasure-layout' && req.method === 'POST') {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connecte-toi pour enregistrer la position du coffre.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const layout = body.layout;
+            if (!layout || typeof layout !== 'object' || Array.isArray(layout) ||
+                !Number.isFinite(layout.x) || layout.x < 0 || layout.x > 100 ||
+                !Number.isFinite(layout.y) || layout.y < 0 || layout.y > 100 ||
+                !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90) {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'La position ou la taille du coffre est invalide.' }));
+                return;
+            }
+            const normalizedLayout = {
+                x: Math.round(layout.x * 10) / 10,
+                y: Math.round(layout.y * 10) / 10,
+                width: Math.round(layout.width * 10) / 10
+            };
+            const owner = access.usernameForRequest(req);
+            store.setCreatorTreasureLayout(owner, normalizedLayout);
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ layout: normalizedLayout }));
+        });
+        return;
+    }
+    if (pathname === '/api/arcade-treasure-overlay-link' && req.method === 'POST') {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connecte-toi pour créer ton lien overlay.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            const tiktokUsername = String(body.tiktokUsername || '').trim().replace(/^@/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(tiktokUsername)) {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Saisis un pseudo TikTok valide (1 à 32 caractères).' }));
+                return;
+            }
+            const owner = access.usernameForRequest(req);
+            const currentSettings = store.getCreatorSettings(owner);
+            const token = currentSettings.arcadeTreasureOverlayToken || crypto.randomBytes(32).toString('hex');
+            const usernameChanged = currentSettings.arcadeTreasureTikTokUsername !== tiktokUsername;
+            store.setCreatorTreasureOverlaySettings(owner, tiktokUsername, token);
+            if (usernameChanged) closeTreasureOverlaySockets(owner);
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                url: `/arcade-treasure-overlay.html?token=${encodeURIComponent(token)}`,
+                tiktokUsername
+            }));
+        });
+        return;
+    }
     if (pathname === '/api/session' && req.method === 'GET') {
         const authenticated = access.isAuthenticated(req);
         const username = authenticated ? access.usernameForRequest(req) : '';
         const account = username ? store.getAccount(username) : null;
         const creatorTts = username ? store.getAccountLiveTts(username) : null;
+        const creatorSettings = username ? store.getCreatorSettings(username) : {};
+        const isAdmin = access.isAdmin(req);
         res.writeHead(200, {
             'Cache-Control': 'no-store',
             'Content-Type': 'application/json; charset=utf-8'
@@ -1749,14 +1825,24 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
             authenticated,
             configured: access.hasUsers,
-            isAdmin: access.isAdmin(req),
+            isAdmin,
             username,
             hasSubscription: access.hasActiveSubscription(account),
             canUseTts: canUseCreatorTts(username),
             canAccessGames: access.canAccessGames(req),
             arcadeBigGiftOverlayEnabled: username
-                ? store.getCreatorSettings(username).arcadeBigGiftOverlayEnabled !== false
+                ? creatorSettings.arcadeBigGiftOverlayEnabled !== false
                 : false,
+            arcadeTreasureChestEnabled: username
+                ? creatorSettings.arcadeTreasureChestEnabled === true
+                : false,
+            arcadeTreasureTikTokUsername: username
+                ? creatorSettings.arcadeTreasureTikTokUsername || creatorSettings.tiktokUsername || ''
+                : '',
+            arcadeTreasureOverlayToken: username
+                ? creatorSettings.arcadeTreasureOverlayToken || ''
+                : '',
+            arcadeTreasureLayout: creatorSettings.arcadeTreasureLayout || DEFAULT_TREASURE_LAYOUT,
             creatorTts: creatorTts
                 ? { active: true, username: creatorTts.username }
                 : { active: false, username: null },
@@ -1765,23 +1851,39 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (pathname === '/api/arcade-effects-settings' && req.method === 'POST') {
-        if (!access.isAuthenticated(req) || !access.canAccessGames(req)) {
+        if (!access.isAuthenticated(req)) {
             res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: 'Connexion à l’arcade requise.' }));
+            res.end(JSON.stringify({ message: 'Connecte-toi pour modifier les overlays Griffon Arcade.' }));
             return;
         }
         readJsonBody(req, res, body => {
-            if (typeof body.arcadeBigGiftOverlayEnabled !== 'boolean') {
+            const hasBigGiftSetting = Object.prototype.hasOwnProperty.call(body, 'arcadeBigGiftOverlayEnabled');
+            const hasTreasureSetting = Object.prototype.hasOwnProperty.call(body, 'arcadeTreasureChestEnabled');
+            if ((!hasBigGiftSetting && !hasTreasureSetting) ||
+                (hasBigGiftSetting && typeof body.arcadeBigGiftOverlayEnabled !== 'boolean') ||
+                (hasTreasureSetting && typeof body.arcadeTreasureChestEnabled !== 'boolean')) {
                 res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ message: 'Le réglage de l’effet cadeau est invalide.' }));
+                res.end(JSON.stringify({ message: 'Le réglage des overlays est invalide.' }));
+                return;
+            }
+            if (hasBigGiftSetting && !access.canAccessGames(req)) {
+                res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'L’effet cadeau interactif nécessite un accès aux jeux.' }));
                 return;
             }
             const username = access.usernameForRequest(req);
-            store.setCreatorArcadeBigGiftOverlayEnabled(username, body.arcadeBigGiftOverlayEnabled);
+            if (hasBigGiftSetting) {
+                store.setCreatorArcadeBigGiftOverlayEnabled(username, body.arcadeBigGiftOverlayEnabled);
+            }
+            if (hasTreasureSetting) {
+                store.setCreatorArcadeTreasureChestEnabled(username, body.arcadeTreasureChestEnabled);
+                if (!body.arcadeTreasureChestEnabled) closeTreasureOverlaySockets(username);
+            }
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({
-                arcadeBigGiftOverlayEnabled: body.arcadeBigGiftOverlayEnabled
-            }));
+            const result = {};
+            if (hasBigGiftSetting) result.arcadeBigGiftOverlayEnabled = body.arcadeBigGiftOverlayEnabled;
+            if (hasTreasureSetting) result.arcadeTreasureChestEnabled = body.arcadeTreasureChestEnabled;
+            res.end(JSON.stringify(result));
         });
         return;
     }
@@ -2793,9 +2895,11 @@ const server = http.createServer((req, res) => {
         ['/', [homepageFile, 'text/html; charset=utf-8']],
         ['/live-alerts.html', [path.join(__dirname, 'live-alerts.html'), 'text/html; charset=utf-8']],
         ['/live-alerts-sw.js', [path.join(__dirname, 'live-alerts-sw.js'), 'text/javascript; charset=utf-8']],
+        ['/arcade-treasure-overlay.html', [path.join(__dirname, 'arcade-treasure-overlay.html'), 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
-    ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
+        ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
+        ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-stars.js', [arcadeStarsFile, 'text/javascript; charset=utf-8']],
         ['/arene-combattants.html', [arenaGameFile, 'text/html; charset=utf-8']],
@@ -3168,6 +3272,7 @@ const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
 const overlaySockets = new Map();
+const treasureOverlaySocketOwners = new Map();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
 function closeLiveTtsSockets(username) {
@@ -3191,10 +3296,27 @@ function closeAuthenticatedSockets(username) {
     }
 }
 
+function closeTreasureOverlaySockets(username) {
+    const normalizedUsername = username.toLowerCase();
+    for (const [socket, owner] of treasureOverlaySocketOwners) {
+        if (owner.toLowerCase() === normalizedUsername) socket.terminate();
+    }
+}
+
 server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
     const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
+    const isTreasureOverlayRequest = requestUrl.pathname === '/arcade-treasure-overlay-relay';
+    const treasureOverlayOwner = isTreasureOverlayRequest
+        ? store.getCreatorTreasureOverlayOwner(requestUrl.searchParams.get('token') || '')
+        : '';
+    const treasureSettings = treasureOverlayOwner
+        ? store.getCreatorSettings(treasureOverlayOwner)
+        : null;
+    const canUseTreasureOverlay = Boolean(treasureSettings &&
+        treasureSettings.arcadeTreasureChestEnabled === true &&
+        treasureSettings.arcadeTreasureTikTokUsername);
     const isTtsControlRequest = requestUrl.pathname === '/live-tts-control';
     const overlayOwner = requestUrl.pathname === '/media-overlay-relay'
         ? handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'))
@@ -3207,7 +3329,9 @@ server.on('upgrade', (req, socket, head) => {
         canUseCreatorTts(accountUsername) &&
         Boolean(store.getAccountLiveTts(accountUsername));
     if ((isTtsControlRequest && !canControlTts) ||
-        ((!authenticated || !access.canAccessGames(req)) && !canControlTts && !ttsSource && !overlayOwner)) {
+        (isTreasureOverlayRequest && !canUseTreasureOverlay) ||
+        ((!authenticated || !access.canAccessGames(req)) &&
+            !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -3222,6 +3346,8 @@ server.on('upgrade', (req, socket, head) => {
                 liveTtsClientUsernames.set(webSocket, overlayUsername);
                 liveTtsSockets.add(webSocket);
             }
+        } else if (isTreasureOverlayRequest) {
+            treasureOverlaySocketOwners.set(webSocket, treasureOverlayOwner);
         }
         wss.emit('connection', webSocket, req);
     });
@@ -3230,6 +3356,11 @@ server.on('upgrade', (req, socket, head) => {
 setInterval(() => {
     for (const [socket, owner] of overlaySockets) {
         if (!canUseCreatorTts(owner)) socket.terminate();
+    }
+    for (const [socket, owner] of treasureOverlaySocketOwners) {
+        const settings = store.getCreatorSettings(owner);
+        if (settings.arcadeTreasureChestEnabled !== true ||
+            !settings.arcadeTreasureTikTokUsername) socket.terminate();
     }
     for (const [username, account] of store.listAccounts()) {
         if (!account.subscriptionId || access.hasActiveSubscription(account)) continue;
@@ -3434,6 +3565,7 @@ function detachClient(socket) {
     if (!session) return;
     removeBalloonGameClient(session, socket);
     session.clients.delete(socket);
+    session.walletCommandsEnabled = [...session.clients].some(client => !treasureOverlaySocketOwners.has(client));
     if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
         sessions.delete(sessionKey);
         void session.disconnect();
@@ -3475,16 +3607,18 @@ function startTikTokSession(session) {
 
 function deliverTikTokMessage(session, messageData) {
     if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
-    let player = null;
-    try {
-        player = updateSessionWalletProfile(session, messageData);
-    } catch (error) {
-        console.warn('Impossible d’enregistrer le profil TikTok pour le portefeuille :', error.message);
-    }
-    try {
-        processTikTokWalletCommand(session, messageData, player);
-    } catch (error) {
-        console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
+    if (session.walletCommandsEnabled) {
+        let player = null;
+        try {
+            player = updateSessionWalletProfile(session, messageData);
+        } catch (error) {
+            console.warn('Impossible d’enregistrer le profil TikTok pour le portefeuille :', error.message);
+        }
+        try {
+            processTikTokWalletCommand(session, messageData, player);
+        } catch (error) {
+            console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
+        }
     }
     const encoded = JSON.stringify(messageData);
     const overlayEncoded = messageData.type === 'gift'
@@ -3499,7 +3633,9 @@ function deliverTikTokMessage(session, messageData) {
             messageData.type !== 'STATUS' &&
             messageData.type !== 'viewer') continue;
         if (client.readyState === WebSocket.OPEN) {
-            client.send(overlaySockets.has(client) ? overlayEncoded : encoded);
+            client.send(overlaySockets.has(client) || treasureOverlaySocketOwners.has(client)
+                ? overlayEncoded
+                : encoded);
         }
     }
 }
@@ -3561,6 +3697,7 @@ function startCentralTikTokListener() {
 
 wss.on('connection', (socket, req) => {
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
+    const treasureOverlayOwner = treasureOverlaySocketOwners.get(socket) || '';
     const ttsControlAccount = new URL(req.url, 'http://localhost').pathname === '/live-tts-control'
         ? access.usernameForRequest(req)
         : '';
@@ -3570,6 +3707,14 @@ wss.on('connection', (socket, req) => {
     if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
     if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
+    } else if (treasureOverlayOwner) {
+        const settings = store.getCreatorSettings(treasureOverlayOwner);
+        socket.send(JSON.stringify({
+            type: 'STATUS',
+            message: settings.arcadeTreasureTikTokUsername
+                ? `Connexion à @${settings.arcadeTreasureTikTokUsername}`
+                : 'Pseudo TikTok manquant dans les réglages du coffre.'
+        }));
     } else if (overlaySockets.has(socket)) {
         socket.send(JSON.stringify({
             type: 'STATUS',
@@ -3653,7 +3798,21 @@ wss.on('connection', (socket, req) => {
         }
         if (request.action !== 'CONNECT_TIKTOK') return;
 
-        const requestedUsername = String(request.username || '').trim().replace(/^@/, '');
+        const treasureSettings = treasureOverlayOwner
+            ? store.getCreatorSettings(treasureOverlayOwner)
+            : null;
+        const requestedUsername = treasureOverlayOwner
+            ? treasureSettings?.arcadeTreasureTikTokUsername || ''
+            : String(request.username || '').trim().replace(/^@/, '');
+        if (treasureOverlayOwner &&
+            (treasureSettings?.arcadeTreasureChestEnabled !== true || !requestedUsername)) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Le coffre est désactivé ou son pseudo TikTok est manquant.'
+            }));
+            socket.terminate();
+            return;
+        }
         const creatorTtsSource = ttsControlAccount
             ? store.getAccountLiveTts(ttsControlAccount)
             : null;
@@ -3690,6 +3849,7 @@ wss.on('connection', (socket, req) => {
         const currentSessionKey = clientSessions.get(socket);
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
+            if (!treasureOverlayOwner) currentSession.walletCommandsEnabled = true;
             if (wantsBalloonGame && !currentSession.balloonClients.has(socket)) {
                 if (currentSession.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
                     socket.send(JSON.stringify({
@@ -3735,6 +3895,7 @@ wss.on('connection', (socket, req) => {
                 balloonLastState: null,
                 seenPlayerIds: new Set(),
                 walletProfiles: new Map(),
+                walletCommandsEnabled: false,
                 disconnect: null,
                 statusMessage: '',
                 roomId: null,
@@ -3743,6 +3904,7 @@ wss.on('connection', (socket, req) => {
             sessions.set(sessionKey, session);
             startTikTokSession(session);
         }
+        if (!treasureOverlayOwner) session.walletCommandsEnabled = true;
         if (wantsBalloonGame && !session.balloonClients.has(socket) &&
             session.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
             socket.send(JSON.stringify({
@@ -3773,6 +3935,7 @@ wss.on('connection', (socket, req) => {
     socket.on('close', () => {
         liveTtsSockets.delete(socket);
         overlaySockets.delete(socket);
+        treasureOverlaySocketOwners.delete(socket);
         authenticatedClientUsernames.delete(socket);
         authenticatedTtsClientUsernames.delete(socket);
         detachClient(socket);

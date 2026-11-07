@@ -150,6 +150,24 @@ function readStore() {
                         !/^[a-zA-Z0-9._]{1,32}$/.test(settings.tiktokUsername))) ||
                 (settings.arcadeBigGiftOverlayEnabled !== undefined &&
                     typeof settings.arcadeBigGiftOverlayEnabled !== 'boolean') ||
+                (settings.arcadeTreasureChestEnabled !== undefined &&
+                    typeof settings.arcadeTreasureChestEnabled !== 'boolean') ||
+                (settings.arcadeTreasureTikTokUsername !== undefined &&
+                    (typeof settings.arcadeTreasureTikTokUsername !== 'string' ||
+                        !/^[a-zA-Z0-9._]{1,32}$/.test(settings.arcadeTreasureTikTokUsername))) ||
+                (settings.arcadeTreasureOverlayToken !== undefined &&
+                    (typeof settings.arcadeTreasureOverlayToken !== 'string' ||
+                        !/^[a-f0-9]{64}$/.test(settings.arcadeTreasureOverlayToken))) ||
+                (settings.arcadeTreasureLayout !== undefined &&
+                    (!settings.arcadeTreasureLayout ||
+                        typeof settings.arcadeTreasureLayout !== 'object' ||
+                        Array.isArray(settings.arcadeTreasureLayout) ||
+                        !Number.isFinite(settings.arcadeTreasureLayout.x) ||
+                        settings.arcadeTreasureLayout.x < 0 || settings.arcadeTreasureLayout.x > 100 ||
+                        !Number.isFinite(settings.arcadeTreasureLayout.y) ||
+                        settings.arcadeTreasureLayout.y < 0 || settings.arcadeTreasureLayout.y > 100 ||
+                        !Number.isFinite(settings.arcadeTreasureLayout.width) ||
+                        settings.arcadeTreasureLayout.width < 12 || settings.arcadeTreasureLayout.width > 90)) ||
                 (settings.locked !== undefined && typeof settings.locked !== 'boolean')) ||
             Object.entries(parsed.dailyUsage).some(([date, users]) =>
                 !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -783,6 +801,57 @@ function setCreatorArcadeBigGiftOverlayEnabled(username, enabled) {
     });
 }
 
+function setCreatorArcadeTreasureChestEnabled(username, enabled) {
+    if (typeof enabled !== 'boolean') throw new TypeError('Arcade treasure chest overlay setting must be a boolean.');
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        settings.arcadeTreasureChestEnabled = enabled;
+        store.creatorSettings[key] = settings;
+    });
+}
+
+function setCreatorTreasureOverlaySettings(username, tiktokUsername, token) {
+    if (typeof tiktokUsername !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(tiktokUsername)) {
+        throw new TypeError('Treasure overlay TikTok username is invalid.');
+    }
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
+        throw new TypeError('Treasure overlay token is invalid.');
+    }
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        settings.arcadeTreasureTikTokUsername = tiktokUsername;
+        settings.arcadeTreasureOverlayToken = token;
+        store.creatorSettings[key] = settings;
+    });
+}
+
+function getCreatorTreasureOverlayOwner(token) {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return '';
+    const settings = readStore().creatorSettings;
+    return Object.entries(settings).find(([, value]) =>
+        value.arcadeTreasureOverlayToken === token)?.[0] || '';
+}
+
+function setCreatorTreasureLayout(username, layout) {
+    if (!layout || !Number.isFinite(layout.x) || layout.x < 0 || layout.x > 100 ||
+        !Number.isFinite(layout.y) || layout.y < 0 || layout.y > 100 ||
+        !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90) {
+        throw new TypeError('Treasure overlay layout is invalid.');
+    }
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        settings.arcadeTreasureLayout = {
+            x: layout.x,
+            y: layout.y,
+            width: layout.width
+        };
+        store.creatorSettings[key] = settings;
+    });
+}
+
 function getAdminDashboardLayout(username) {
     return readStore().adminDashboardLayouts[username.toLowerCase()] ||
         { order: [], pinned: [], hidden: [] };
@@ -1172,6 +1241,10 @@ module.exports = {
     setCreatorTiktokUsername,
     setCreatorSettingsLocked,
     setCreatorArcadeBigGiftOverlayEnabled,
+    setCreatorArcadeTreasureChestEnabled,
+    setCreatorTreasureOverlaySettings,
+    getCreatorTreasureOverlayOwner,
+    setCreatorTreasureLayout,
     markLiveAlertRoom,
     removeLiveAlertPushSubscription,
     setCreatorGameAccess,

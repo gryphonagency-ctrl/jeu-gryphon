@@ -1,7 +1,8 @@
 /*
  * Griffon Arcade — effets de live communs à tous les jeux.
  *  - partage du live      -> petit avion en papier discret
- *  - gros cadeau (>= 100) -> bulle et feu d'artifice, désactivables par compte dans les réglages
+ *  - gros cadeau (>= 100) -> bulle et feu d'artifice, réglables par compte
+ *  - cadeau reçu           -> son visuel réel est ajouté au coffre activable par compte
  * Le script écoute les WebSocket TikTok de la page : aucun jeu n'a besoin d'être modifié.
  */
 (function () {
@@ -10,22 +11,64 @@
 
     const config = { bigGiftCoins: 100, sound: true, volume: 0.5 };
     const seen = new Set();
+    const seenTreasureGifts = new Set();
     const avatars = new Map();
     const liveBubbles = new Map();
     let bigGiftOverlayEnabled = false;
+    let bigGiftFireworksEnabled = false;
+    let treasureChestEnabled = false;
+    let treasureOwner = '';
+    let treasureCanEdit = false;
+    let treasureGiftCount = 0;
+    let treasureGiftItems = [];
+    let treasureLayout = { x: 50, y: 82, width: 38 };
+    let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
 
-    fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
-        .then(response => {
+    async function refreshOverlaySettings() {
+        try {
+            if (location.pathname === '/arcade-treasure-overlay.html') {
+                const token = new URLSearchParams(location.search).get('token');
+                if (!token) throw new Error('Le lien du coffre au trésor ne contient pas de jeton.');
+                const response = await fetch(
+                    `/api/arcade-treasure-overlay-status?token=${encodeURIComponent(token)}`,
+                    { credentials: 'same-origin', cache: 'no-store' }
+                );
+                if (!response.ok) throw new Error(`Overlay coffre HTTP ${response.status}`);
+                const settings = await response.json();
+                setTreasureLayout(settings.layout);
+                const sessionResponse = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
+                if (!sessionResponse.ok) throw new Error(`Session HTTP ${sessionResponse.status}`);
+                const session = await sessionResponse.json();
+                setTreasureEditPermission(
+                    session.authenticated === true &&
+                    String(session.username || '').toLowerCase() === String(settings.owner || '').toLowerCase()
+                );
+                bigGiftOverlayEnabled = false;
+                bigGiftFireworksEnabled = false;
+                setTreasureChestEnabled(settings.enabled === true, settings.owner || '');
+                return;
+            }
+            const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
             if (!response.ok) throw new Error(`Session HTTP ${response.status}`);
-            return response.json();
-        })
-        .then(session => {
+            const session = await response.json();
+            bigGiftFireworksEnabled = session.isAdmin !== true;
             bigGiftOverlayEnabled = session.authenticated === true &&
                 session.canAccessGames === true &&
                 session.arcadeBigGiftOverlayEnabled === true;
-        })
-        .catch(error => console.warn('Préférence de l’effet cadeau indisponible :', error.message));
+            setTreasureChestEnabled(
+                session.authenticated === true && session.arcadeTreasureChestEnabled === true,
+                session.username || ''
+            );
+            setTreasureEditPermission(session.authenticated === true);
+            setTreasureLayout(session.arcadeTreasureLayout);
+        } catch (error) {
+            console.warn('Préférences des overlays Griffon Arcade indisponibles :', error.message);
+        }
+    }
+
+    refreshOverlaySettings();
+    setInterval(refreshOverlaySettings, 15000);
 
     function injectStyle() {
         if (document.getElementById('arcade-effects-style')) return;
@@ -44,6 +87,22 @@
 .ae-bubble .ae-orb .ae-initial{width:100%;height:100%;border-radius:50%}
 .ae-bubble .ae-initial{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff2e93,#ffb400);color:#fff;font:900 34px/1 Arial,sans-serif}
 .ae-bubble .ae-name{max-width:150px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:700 13px/1.4 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ae-treasure{position:absolute;inset:0;pointer-events:none}
+.ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none}
+.ae-treasure-gifts{position:absolute;inset:0;z-index:1}
+.ae-treasure-gift{position:absolute;width:clamp(24px,3.8vw,48px);height:clamp(24px,3.8vw,48px);display:flex;align-items:center;justify-content:center;
+ overflow:hidden;border:1px solid rgba(255,224,132,.78);border-radius:11px;background:rgba(37,23,9,.65);box-shadow:0 2px 7px rgba(0,0,0,.45);will-change:transform}
+.ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+.ae-treasure-gift-name{max-width:100%;padding:2px;color:#fff4cf;text-align:center;font:700 8px/1.1 Arial,sans-serif;overflow:hidden;overflow-wrap:anywhere}
+.ae-treasure-gift-count{position:absolute;right:-4px;top:-5px;padding:1px 4px;border-radius:8px;background:#a51234;color:#fff;font:800 9px/1.2 Arial,sans-serif}
+.ae-treasure-count{position:absolute;z-index:3;transform:translate(-50%,-50%);padding:4px 11px;border:1px solid #ffe27a;border-radius:99px;
+ background:rgba(30,18,4,.78);color:#fff3b1;font:800 13px/1.2 Arial,sans-serif;text-shadow:0 1px 2px #000;white-space:nowrap}
+.ae-treasure-handle{position:absolute;z-index:4;display:none;pointer-events:auto;touch-action:none;border:2px solid #fff3b1;border-radius:10px;
+ background:rgba(24,18,10,.88);color:white;box-shadow:0 2px 10px rgba(0,0,0,.55);font:800 18px/1 Arial,sans-serif}
+.ae-treasure-edit .ae-treasure-chest{outline:2px dashed #ffe27a;outline-offset:-10px}
+.ae-treasure-edit .ae-treasure-handle{display:grid;place-items:center}
+.ae-treasure-move{width:42px;height:42px;cursor:move}
+.ae-treasure-resize{width:38px;height:38px;cursor:nwse-resize}
 @media (prefers-reduced-motion:reduce){.ae-plane{opacity:.6}}`;
         document.head.appendChild(style);
     }
@@ -69,13 +128,395 @@
     }
 
     function resizeCanvas() {
-        if (!canvas) return;
-        const ratio = Math.min(2, window.devicePixelRatio || 1);
-        canvas.width = Math.round(window.innerWidth * ratio);
-        canvas.height = Math.round(window.innerHeight * ratio);
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        if (canvas) {
+            const ratio = Math.min(2, window.devicePixelRatio || 1);
+            canvas.width = Math.round(window.innerWidth * ratio);
+            canvas.height = Math.round(window.innerHeight * ratio);
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        }
+        applyTreasureLayout();
     }
     window.addEventListener('resize', resizeCanvas);
+
+    /* ---------- coffre au trésor ---------- */
+    const TREASURE_STORAGE_PREFIX = 'ga-arcade-treasure-gifts:';
+    const TREASURE_LAYOUT_STORAGE_KEY = 'ga-arcade-treasure-layout';
+    const TREASURE_EDIT_STORAGE_KEY = 'ga-arcade-treasure-layout-edit';
+    const TREASURE_CAPACITY = 36;
+    const TREASURE_VISIBLE_LIMIT = 600;
+    const DEFAULT_TREASURE_LAYOUT = { x: 50, y: 82, width: 38 };
+
+    function normalizeTreasureLayout(layout) {
+        if (!layout || !Number.isFinite(layout.x) || !Number.isFinite(layout.y) ||
+            !Number.isFinite(layout.width)) return { ...DEFAULT_TREASURE_LAYOUT };
+        return {
+            x: Math.max(0, Math.min(100, layout.x)),
+            y: Math.max(0, Math.min(100, layout.y)),
+            width: Math.max(12, Math.min(90, layout.width))
+        };
+    }
+
+    function treasureChestBounds() {
+        const chest = treasureStage && treasureStage.querySelector('.ae-treasure-chest');
+        return chest ? chest.getBoundingClientRect() : null;
+    }
+
+    function treasurePosition(index, bounds) {
+        const seed = index + 1;
+        if (!bounds || !bounds.width || !bounds.height) {
+            return { x: window.innerWidth / 2, y: window.innerHeight - 40 };
+        }
+        if (index < TREASURE_CAPACITY) {
+            return {
+                x: bounds.left + bounds.width * (0.28 + ((seed * 31) % 43) / 100),
+                y: bounds.top + bounds.height * (0.42 + ((seed * 17) % 17) / 100)
+            };
+        }
+        const overflowIndex = index - TREASURE_CAPACITY;
+        const side = overflowIndex % 2;
+        return {
+            x: Math.max(20, Math.min(window.innerWidth - 20,
+                side ? bounds.right + 8 + ((seed * 13) % 32) : bounds.left - 8 - ((seed * 13) % 32))),
+            y: window.innerHeight - 34 - ((seed * 11) % 5) * 8
+        };
+    }
+
+    function treasureEditIsRequested() {
+        if (!treasureOwner || !treasureCanEdit) return false;
+        try {
+            const setting = JSON.parse(localStorage.getItem(TREASURE_EDIT_STORAGE_KEY) || 'null');
+            return setting?.enabled === true &&
+                String(setting.username || '').toLowerCase() === treasureOwner.toLowerCase();
+        } catch (error) {
+            console.warn('Le mode de déplacement du coffre ne peut pas être lu :', error.message);
+            return false;
+        }
+    }
+
+    function ensureTreasureStage() {
+        if (treasureStage && treasureStage.isConnected) return;
+        ensureLayer();
+        treasureStage = document.createElement('div');
+        treasureStage.className = 'ae-treasure';
+        const gifts = document.createElement('div');
+        gifts.className = 'ae-treasure-gifts';
+        const chest = document.createElement('img');
+        chest.className = 'ae-treasure-chest';
+        chest.src = '/images-vitrine/overlay-coffre-tresor.png';
+        chest.alt = '';
+        chest.draggable = false;
+        chest.addEventListener('load', applyTreasureLayout);
+        const count = document.createElement('div');
+        count.className = 'ae-treasure-count';
+        count.setAttribute('aria-live', 'polite');
+        const moveHandle = document.createElement('button');
+        moveHandle.className = 'ae-treasure-handle ae-treasure-move';
+        moveHandle.type = 'button';
+        moveHandle.textContent = '↕';
+        moveHandle.setAttribute('aria-label', 'Déplacer le coffre');
+        const resizeHandle = document.createElement('button');
+        resizeHandle.className = 'ae-treasure-handle ae-treasure-resize';
+        resizeHandle.type = 'button';
+        resizeHandle.textContent = '↘';
+        resizeHandle.setAttribute('aria-label', 'Redimensionner le coffre');
+        treasureStage.append(gifts, chest, count, moveHandle, resizeHandle);
+        layer.appendChild(treasureStage);
+        bindTreasureDrag(moveHandle, 'move');
+        bindTreasureDrag(resizeHandle, 'resize');
+        applyTreasureLayout();
+        renderTreasureGifts();
+    }
+
+    function applyTreasureLayout() {
+        if (!treasureStage || !treasureStage.isConnected) return;
+        const chest = treasureStage.querySelector('.ae-treasure-chest');
+        const count = treasureStage.querySelector('.ae-treasure-count');
+        const moveHandle = treasureStage.querySelector('.ae-treasure-move');
+        const resizeHandle = treasureStage.querySelector('.ae-treasure-resize');
+        const x = `${treasureLayout.x}%`;
+        const y = `${treasureLayout.y}%`;
+        chest.style.left = x;
+        chest.style.top = y;
+        chest.style.width = `${treasureLayout.width}vw`;
+        chest.style.transform = 'translate(-50%, -50%)';
+        const chestBounds = treasureChestBounds();
+        if (chestBounds) {
+            count.style.left = `${chestBounds.left + chestBounds.width / 2}px`;
+            count.style.top = `${chestBounds.bottom - 20}px`;
+            moveHandle.style.left = `${chestBounds.left + 8}px`;
+            moveHandle.style.top = `${chestBounds.top + 8}px`;
+            resizeHandle.style.left = `${chestBounds.right - 46}px`;
+            resizeHandle.style.top = `${chestBounds.bottom - 46}px`;
+        } else {
+            count.style.left = x;
+            count.style.top = y;
+        }
+        treasureStage.classList.toggle('ae-treasure-edit', treasureEditIsRequested());
+        renderTreasureGifts();
+    }
+
+    function safeGiftImageUrl(value) {
+        if (typeof value !== 'string' || value.length > 2048) return '';
+        try {
+            const url = new URL(value, location.href);
+            return url.protocol === 'https:' ? url.href : '';
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function renderTreasureGifts() {
+        if (!treasureStage || !treasureStage.isConnected) return;
+        const container = treasureStage.querySelector('.ae-treasure-gifts');
+        const count = treasureStage.querySelector('.ae-treasure-count');
+        if (!container || !count) return;
+        const bounds = treasureChestBounds();
+        container.replaceChildren();
+        const retainedCount = treasureGiftItems.reduce((total, gift) => total + gift.count, 0);
+        const firstVisible = Math.max(0, treasureGiftCount - retainedCount);
+        let localIndex = 0;
+        for (const giftEntry of treasureGiftItems) {
+            for (let repeatIndex = 0; repeatIndex < giftEntry.count; repeatIndex++) {
+                const gift = { ...giftEntry, repeatIndex };
+                const totalIndex = firstVisible + localIndex++;
+                const item = document.createElement('span');
+                const position = treasurePosition(totalIndex, bounds);
+                item.className = `ae-treasure-gift${totalIndex >= TREASURE_CAPACITY ? ' ae-treasure-gift-overflow' : ''}`;
+                item.style.left = `${position.x}px`;
+                item.style.top = `${position.y}px`;
+                item.title = gift.name || 'Cadeau TikTok reçu';
+                if (gift.imageUrl) {
+                    const image = document.createElement('img');
+                    image.src = gift.imageUrl;
+                    image.alt = gift.name || 'Cadeau reçu';
+                    image.loading = 'lazy';
+                    image.referrerPolicy = 'no-referrer';
+                    image.onerror = () => {
+                        image.remove();
+                        const fallback = document.createElement('span');
+                        fallback.className = 'ae-treasure-gift-name';
+                        fallback.textContent = gift.name || 'Cadeau reçu';
+                        item.prepend(fallback);
+                    };
+                    item.appendChild(image);
+                } else {
+                    const fallback = document.createElement('span');
+                    fallback.className = 'ae-treasure-gift-name';
+                    fallback.textContent = gift.name || 'Cadeau reçu';
+                    item.appendChild(fallback);
+                }
+                if (gift.count > 1 && gift.repeatIndex === 0) {
+                    const repeatBadge = document.createElement('span');
+                    repeatBadge.className = 'ae-treasure-gift-count';
+                    repeatBadge.textContent = String(gift.count);
+                    item.appendChild(repeatBadge);
+                }
+                container.appendChild(item);
+            }
+        }
+        count.textContent = `Cadeaux reçus : ${treasureGiftCount.toLocaleString('fr-FR')}`;
+    }
+
+    function readTreasureGifts(owner) {
+        if (!owner) return;
+        try {
+            const stored = JSON.parse(localStorage.getItem(TREASURE_STORAGE_PREFIX + owner.toLowerCase()) || 'null');
+            if (!stored || !Array.isArray(stored.gifts)) return;
+            treasureGiftCount = Number.isSafeInteger(stored.total) && stored.total > 0 ? stored.total : 0;
+            const gifts = stored.gifts
+                .filter(gift => gift && typeof gift === 'object')
+                .map(gift => ({
+                    name: String(gift.name || '').slice(0, 80),
+                    imageUrl: safeGiftImageUrl(gift.imageUrl),
+                    count: Math.max(1, Math.min(TREASURE_VISIBLE_LIMIT, Math.floor(Number(gift.count) || 1)))
+                }));
+            let remaining = TREASURE_VISIBLE_LIMIT;
+            treasureGiftItems = [];
+            for (let index = gifts.length - 1; index >= 0 && remaining > 0; index--) {
+                const gift = gifts[index];
+                const retained = Math.min(gift.count, remaining);
+                treasureGiftItems.unshift({ ...gift, count: retained });
+                remaining -= retained;
+            }
+        } catch (error) {
+            console.warn('Les cadeaux du coffre local ne peuvent pas être lus :', error.message);
+            treasureGiftItems = [];
+            treasureGiftCount = 0;
+        }
+    }
+
+    function saveTreasureGifts() {
+        if (!treasureOwner) return;
+        try {
+            localStorage.setItem(TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase(), JSON.stringify({
+                total: treasureGiftCount,
+                gifts: treasureGiftItems.slice(-TREASURE_VISIBLE_LIMIT)
+            }));
+        } catch (error) {
+            console.warn('Les cadeaux du coffre ne peuvent pas être sauvegardés localement :', error.message);
+        }
+    }
+
+    function setTreasureChestEnabled(enabled, owner) {
+        const nextOwner = String(owner || '');
+        const ownerChanged = nextOwner.toLowerCase() !== treasureOwner.toLowerCase();
+        const nextEnabled = enabled === true && Boolean(nextOwner);
+        if (ownerChanged) {
+            treasureOwner = nextOwner;
+            treasureGiftItems = [];
+            treasureGiftCount = 0;
+            readTreasureGifts(nextOwner);
+        }
+        treasureChestEnabled = nextEnabled;
+        if (!treasureChestEnabled) {
+            if (treasureStage) treasureStage.remove();
+            treasureStage = null;
+            return;
+        }
+        if (!treasureStage || !treasureStage.isConnected) ensureTreasureStage();
+        applyTreasureLayout();
+    }
+
+    function setTreasureLayout(layout) {
+        treasureLayout = normalizeTreasureLayout(layout);
+        applyTreasureLayout();
+    }
+
+    function setTreasureEditPermission(canEdit) {
+        treasureCanEdit = canEdit === true;
+        applyTreasureLayout();
+    }
+
+    function saveTreasureLayout() {
+        const layout = { ...treasureLayout };
+        fetch('/api/arcade-treasure-layout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ layout })
+        }).then(async response => {
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.message || 'Impossible d’enregistrer la position du coffre.');
+            setTreasureLayout(result.layout);
+            localStorage.setItem(TREASURE_LAYOUT_STORAGE_KEY, JSON.stringify({
+                username: treasureOwner,
+                layout: result.layout,
+                updatedAt: Date.now()
+            }));
+        }).catch(error => {
+            console.warn('La position du coffre n’a pas pu être enregistrée :', error.message);
+        });
+    }
+
+    function bindTreasureDrag(handle, mode) {
+        handle.addEventListener('pointerdown', event => {
+            if (!treasureEditIsRequested()) return;
+            event.preventDefault();
+            event.stopPropagation();
+            handle.setPointerCapture(event.pointerId);
+            const start = {
+                x: event.clientX,
+                y: event.clientY,
+                layout: { ...treasureLayout }
+            };
+            const onMove = moveEvent => {
+                if (!handle.hasPointerCapture(moveEvent.pointerId)) return;
+                const deltaX = (moveEvent.clientX - start.x) / Math.max(1, window.innerWidth) * 100;
+                const deltaY = (moveEvent.clientY - start.y) / Math.max(1, window.innerHeight) * 100;
+                treasureLayout = mode === 'move'
+                    ? normalizeTreasureLayout({
+                        ...start.layout,
+                        x: start.layout.x + deltaX,
+                        y: start.layout.y + deltaY
+                    })
+                    : normalizeTreasureLayout({
+                        ...start.layout,
+                        width: start.layout.width + deltaX * 2
+                    });
+                applyTreasureLayout();
+            };
+            const onEnd = endEvent => {
+                if (handle.hasPointerCapture(endEvent.pointerId)) handle.releasePointerCapture(endEvent.pointerId);
+                handle.removeEventListener('pointermove', onMove);
+                handle.removeEventListener('pointerup', onEnd);
+                handle.removeEventListener('pointercancel', onEnd);
+                saveTreasureLayout();
+            };
+            handle.addEventListener('pointermove', onMove);
+            handle.addEventListener('pointerup', onEnd);
+            handle.addEventListener('pointercancel', onEnd);
+        });
+    }
+
+    function addTreasureGift(gift) {
+        if (!treasureChestEnabled) return;
+        const messageId = gift.messageId && `treasure:${gift.messageId}`;
+        if (messageId) {
+            if (seenTreasureGifts.has(messageId)) return;
+            seenTreasureGifts.add(messageId);
+            if (seenTreasureGifts.size > 500) seenTreasureGifts.delete(seenTreasureGifts.values().next().value);
+        }
+        const repeatCount = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
+        const safeCount = Math.min(repeatCount, Number.MAX_SAFE_INTEGER - treasureGiftCount);
+        if (!safeCount) return;
+        const item = {
+            name: String(gift.giftName || gift.name || '').slice(0, 80),
+            imageUrl: safeGiftImageUrl(gift.giftImageUrl || gift.giftImage || ''),
+            count: Math.min(safeCount, TREASURE_VISIBLE_LIMIT)
+        };
+        if (safeCount >= TREASURE_VISIBLE_LIMIT) treasureGiftItems = [item];
+        else treasureGiftItems.push(item);
+        treasureGiftCount += safeCount;
+        let retainedCount = treasureGiftItems.reduce((total, giftItem) => total + giftItem.count, 0);
+        while (retainedCount > TREASURE_VISIBLE_LIMIT) {
+            const excess = retainedCount - TREASURE_VISIBLE_LIMIT;
+            if (treasureGiftItems[0].count <= excess) {
+                retainedCount -= treasureGiftItems.shift().count;
+            } else {
+                treasureGiftItems[0].count -= excess;
+                retainedCount -= excess;
+            }
+        }
+        saveTreasureGifts();
+        ensureTreasureStage();
+        renderTreasureGifts();
+        const items = treasureStage && treasureStage.querySelector('.ae-treasure-gifts');
+        const bounds = treasureChestBounds();
+        const animatedCount = Math.min(safeCount, 24);
+        for (let i = 0; i < animatedCount; i++) {
+            const index = treasureGiftCount - animatedCount + i;
+            const retainedCount = treasureGiftItems.reduce((total, giftItem) => total + giftItem.count, 0);
+            const firstVisible = Math.max(0, treasureGiftCount - retainedCount);
+            const giftElement = items && items.children[index - firstVisible];
+            if (!giftElement || typeof giftElement.animate !== 'function') continue;
+            const target = treasurePosition(index, bounds);
+            giftElement.animate([
+                { transform: `translate(0, -${window.innerHeight * 0.62}px) scale(.55)`, opacity: 0 },
+                { transform: 'translate(0, 0) scale(1)', opacity: 1 }
+            ], { duration: 650 + Math.random() * 450, delay: i * 35, easing: 'cubic-bezier(.2,.8,.3,1)' });
+        }
+    }
+
+    window.addEventListener('storage', event => {
+        if (!event.newValue) return;
+        try {
+            if (event.key === 'ga-arcade-treasure-setting') {
+                const setting = JSON.parse(event.newValue);
+                if (setting.username && setting.username.toLowerCase() === treasureOwner.toLowerCase()) {
+                    setTreasureChestEnabled(setting.enabled, setting.username);
+                }
+            } else if (event.key === TREASURE_LAYOUT_STORAGE_KEY) {
+                const setting = JSON.parse(event.newValue);
+                if (setting.username?.toLowerCase() === treasureOwner.toLowerCase()) {
+                    setTreasureLayout(setting.layout);
+                }
+            } else if (event.key === TREASURE_EDIT_STORAGE_KEY) {
+                applyTreasureLayout();
+            }
+        } catch (error) {
+            console.warn('Mise à jour du coffre reçue dans un format invalide :', error.message);
+        }
+    });
 
     /* ---------- avion en papier ---------- */
     function paperPlane() {
@@ -241,7 +682,9 @@
             const rect = orb.getBoundingClientRect();
             bubble.remove();
             if (liveBubbles.get(key) === orb) liveBubbles.delete(key);
-            fireworks(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+            if (!options || options.fireworks !== false) {
+                fireworks(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+            }
         };
     }
 
@@ -335,11 +778,16 @@
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
         } else if (data.type === 'gift' && data.gift) {
             const gift = data.gift;
+            addTreasureGift(gift);
             const coins = Number(gift.coinCount) || (Number(gift.coinValue ?? gift.diamondCount ?? gift.diamonds) || 0) * (Number(gift.repeatCount) || 1);
             if (!bigGiftOverlayEnabled || coins < config.bigGiftCoins ||
                 !firstSeen(gift.messageId && 'gift:' + gift.messageId)) return;
             const name = gift.uniqueId || gift.username || gift.nickname || '';
-            giftBurst({ username: name, avatarUrl: gift.avatarDataUri || gift.avatarUrl || '' });
+            giftBurst({
+                username: name,
+                avatarUrl: gift.avatarDataUri || gift.avatarUrl || '',
+                fireworks: bigGiftFireworksEnabled
+            });
         } else if (data.type === 'viewer' && data.viewer) {
             const viewer = data.viewer;
             const url = viewer.avatarDataUri || '';
@@ -436,6 +884,7 @@
 
     window.ArcadeEffects = {
         config, paperPlane, giftBurst, fireworks, setSound, handleMessage: handle,
+        setTreasureChestEnabled,
         simulateShare: () => handle({ type: 'share', shareData: { messageId: '' } }),
         simulateBigGift: (username, coins) => handle({ type: 'gift', gift: { messageId: '', uniqueId: username || 'spectateur', coinCount: coins || config.bigGiftCoins } })
     };
