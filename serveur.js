@@ -2804,6 +2804,8 @@ const server = http.createServer((req, res) => {
         ['/course-anneaux.html', [ringRunFile, 'text/html; charset=utf-8']],
         ['/images-vitrine/course-anneaux.png', [path.join(__dirname, 'images-vitrine', 'course-anneaux.png'), 'image/png']],
         ['/sonic-accueil.png', [path.join(__dirname, 'sonic-accueil.png'), 'image/png']],
+        ['/course-anneaux-sonic.gif', [path.join(__dirname, 'course-anneaux-sonic.gif'), 'image/gif']],
+        ['/course-anneaux-sonic-sprites.png', [path.join(__dirname, 'course-anneaux-sonic-sprites.png'), 'image/png']],
         ['/images-vitrine/combat-retro.png', [path.join(__dirname, 'images-vitrine', 'combat-retro.png'), 'image/png']],
         ['/images-vitrine/arene-combattants.png', [path.join(__dirname, 'images-vitrine', 'arene-combattants.png'), 'image/png']],
         ['/images-vitrine/bataille-des-planetes.png', [path.join(__dirname, 'images-vitrine', 'bataille-des-planetes.png'), 'image/png']],

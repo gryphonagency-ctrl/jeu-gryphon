@@ -34,15 +34,15 @@
 <div id="stage">
   <canvas id="c" width="960" height="540"></canvas>
   <div id="intro">
-    <img src="sonic-accueil.png" alt="Aperçu">
+    <img src="/course-anneaux-sonic.gif" alt="Sonic en train de courir">
     <h1>NOUVELLE VERSION DE SONIC</h1>
-    <p>Vos cadeaux font sauter, foncer et transformer la mascotte !</p>
+    <p>Marche, saut, roulade et turbo : Sonic s'anime au rythme du jeu !</p>
     <button class="btn" id="go">LANCER LE JEU</button>
   </div>
 </div>
 
 <div id="bottom">
-<div id="rules"><span>⭐ 1 étoile = SAUT &nbsp;★&nbsp; ⭐ 5 étoiles = TURBO &nbsp;★&nbsp; ⭐ 10 étoiles = INVINCIBLE x3 &nbsp;★&nbsp; ⭐ 100 étoiles = SUPER PICO &nbsp;★&nbsp; ✈️ Partagez le live pour l'avion en papier &nbsp;★&nbsp; GRYPHON AGENCY</span></div>
+<div id="rules"><span>⭐ 1 étoile = SAUT &nbsp;★&nbsp; ⭐ 5 étoiles = TURBO &nbsp;★&nbsp; ⭐ 10 étoiles = INVINCIBLE x3 &nbsp;★&nbsp; ⭐ 100 étoiles = SUPER SONIC &nbsp;★&nbsp; ✈️ Partagez le live pour l'avion en papier &nbsp;★&nbsp; GRYPHON AGENCY</span></div>
 <div id="live">
   <input id="in-user" placeholder="@pseudo TikTok du live" size="22">
   <input id="in-url" type="hidden" value="wss://jeu6boite.onrender.com">
@@ -52,7 +52,7 @@
   <button id="k-jump" title="Touche Espace ou 1">⭐ Saut</button>
   <button id="k-turbo" title="Touche 5">🔥 Turbo</button>
   <button id="k-dash" title="Touche 2">⚡ 10 étoiles</button>
-  <button id="k-super" title="Touche 0">💎 Super Pico</button>
+  <button id="k-super" title="Touche 0">💎 Super Sonic</button>
 </div>
 </div>
 
@@ -60,6 +60,11 @@
 const BIG_GIFT = 100;
 const cv = document.getElementById('c'), g = cv.getContext('2d');
 const W = 960, H = 540, GROUND = 430;
+const runnerImage = new Image();
+runnerImage.src = '/course-anneaux-sonic-sprites.png';
+runnerImage.onerror = () => console.error('Impossible de charger les animations du personnage de course.');
+const runnerFrameDurations = [30, 40, 30, 30, 30];
+const runnerFrameDuration = runnerFrameDurations.reduce((total, duration) => total + duration, 0);
 
 /* ---- Sons ---- */
 let soundOn = localStorage.getItem('pico-sound') !== '0', actx = null;
@@ -85,7 +90,7 @@ function tone(f, d = 0.1, type = 'square', f2) {
 
 /* ---- État ---- */
 const S = { run: false, speed: 5, dist: 0, rings: 0, lives: 3, t: 0, over: 0, boost: 0, dash: 0, wheel: null, nextWheel: 100, superT: 0, inv: 0, level: 0, clear: 0, banner: 0, won: false };
-const P = { x: 220, y: GROUND, vy: 0, air: 0, ang: 0, fall: false };
+const P = { x: 220, y: GROUND, vy: 0, air: 0, ang: 0, roll: 0, fall: false };
 let obstacles = [], rings = [], loops = [], bridges = [], pits = [], clouds = [], toasts = [], donors = {}, spawnIn = 60, shake = 0;
 for (let i = 0; i < 6; i++) clouds.push({ x: i * 190, y: 40 + (i * 53) % 110, s: .6 + (i % 3) * .3 });
 
@@ -106,7 +111,7 @@ function startLevel(i) {
   levelDonors = {}; S.vip = null;
   S.level = i; S.dist = 0; S.lives = 3; S.loop = null; S.clear = 0; S.banner = 190; S.boost = 0; S.dash = 0;
   obstacles = []; rings = []; loops = []; bridges = []; pits = []; spawnIn = 60;
-  Object.assign(P, { y: GROUND, vy: 0, air: 0, fall: false });
+  Object.assign(P, { y: GROUND, vy: 0, air: 0, ang: 0, roll: 0, fall: false });
   S.inv = Math.max(S.inv, 60);
 }
 function reset() {
@@ -124,12 +129,19 @@ function loseLife(msg) {
 /* ---- Actions déclenchées par les cadeaux ---- */
 function jump() {
   if (!S.run || S.over || S.loop || P.fall || S.clear || S.wheel) return;
-  if (P.y >= GROUND) { P.vy = -15; P.air = 1; tone(520, .15, 'square', 900); }
+  if (P.y >= GROUND) { P.vy = -15; P.air = 1; P.ang = 0; tone(520, .15, 'square', 900); }
   else if (P.air < 2) { P.vy = -13; P.air = 2; tone(700, .15, 'square', 1100); }
 }
 function turbo() { if (!S.run || S.over) return; S.boost = 180; S.inv = Math.max(S.inv, 180); tone(200, .35, 'sawtooth', 800); }
 function dash() { if (!S.run || S.over) return; S.dash = 300; S.inv = Math.max(S.inv, 300); tone(150, .5, 'sawtooth', 1500); }
 function superMode() { if (!S.run || S.over) return; S.superT = 600; S.inv = Math.max(S.inv, 600); tone(300, .6, 'sawtooth', 1200); }
+
+function playerHitbox() {
+  const radius = 38 - P.roll * 6;
+  const centerY = P.y - (38 - P.roll * 6);
+  const halfHeight = 38 - P.roll * 6;
+  return { left: P.x - radius, right: P.x + radius, top: centerY - halfHeight, bottom: centerY + halfHeight, centerY };
+}
 
 const avatarUrls = {}, avatarImgs = {};
 let levelDonors = {};
@@ -144,7 +156,7 @@ function onGift(user, coins, avatar) {
   donors[user] = (donors[user] || 0) + coins;
   levelDonors[user] = (levelDonors[user] || 0) + coins;
   if (avatar) avatarUrls[user] = avatar;
-  if (coins >= BIG_GIFT) { superMode(); toast('💎 @' + user + ' → SUPER PICO !'); }
+  if (coins >= BIG_GIFT) { superMode(); toast('💎 @' + user + ' → SUPER SONIC !'); }
   else if (coins >= 10) { dash(); toast('⚡ @' + user + ' → 10 ÉTOILES : INVINCIBLE x3 !'); }
   else if (coins >= 5) { turbo(); toast('🔥 @' + user + ' → TURBO !'); }
   else { jump(); toast('🎁 @' + user + ' → SAUT'); }
@@ -193,15 +205,19 @@ function update() {
   if (!S.run) return;
   if (S.over) { S.over--; if (S.over === 0) reset(); return; }
   if (S.clear) {
-    S.clear--; S.dist += 6; P.vy += .7; P.y = Math.min(GROUND, P.y + P.vy); if (P.y >= GROUND) P.vy = 0;
+    S.clear--; S.dist += 6; P.vy += .7; P.y = Math.min(GROUND, P.y + P.vy);
+    if (P.y >= GROUND) { P.vy = 0; P.air = 0; }
     clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
+    P.roll += ((P.air > 0 || P.fall ? 1 : 0) - P.roll) * .22;
+    if (P.roll < .01) P.ang = 0;
     if (S.clear === 0) { if (S.won) reset(); else startLevel(S.level + 1); }
     return;
   }
   if (S.wheel) { updateWheel(); return; }
   if (S.rings >= S.nextWheel && !P.fall && !S.loop) startWheel();
   if (P.fall) {
-    P.vy += .7; P.y += P.vy; P.ang += .25;
+    P.vy += .7; P.y += P.vy;
+    P.roll += (1 - P.roll) * .22; P.ang += .25;
     if (P.y > H + 60) {
       P.fall = false;
       if (!loseLife('🕳️ Tombé dans un trou !')) {
@@ -214,7 +230,7 @@ function update() {
   }
   if (S.loop) {
     // le looping : le décor se fige, la mascotte roule en boule le long de l'anneau
-    const L = S.loop; L.phi += .09; P.ang += .5; S.dist += 2;
+    const L = S.loop; L.phi += .09; P.roll = 1; P.ang += .5; S.dist += 2;
     clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
     while (L.got < 12 && L.phi > .5 + L.got * Math.PI * 2 / 12.5) { L.got++; S.rings += S.superT > 0 ? 2 : 1; ringSound(); }
     if (S.boost > 0) S.boost--; if (S.dash > 0) S.dash--; if (S.superT > 0) S.superT--;
@@ -238,32 +254,38 @@ function update() {
   const prevY = P.y;
   P.vy += .7; P.y += P.vy;
   for (const b of bridges) {
-    if (P.vy >= 0 && prevY <= b.y + 1 && P.y >= b.y && P.x + 8 > b.x && P.x - 8 < b.x + b.w) { P.y = b.y; P.vy = 0; P.air = 0; }
+    const halfWidth = 38 - P.roll * 6;
+    if (P.vy >= 0 && prevY <= b.y + 1 && P.y >= b.y && P.x + halfWidth > b.x && P.x - halfWidth < b.x + b.w) { P.y = b.y; P.vy = 0; P.air = 0; }
   }
   if (P.y >= GROUND) { P.y = GROUND; P.vy = 0; P.air = 0; }
-  P.ang += P.y < GROUND ? .35 : 0;
+  const airborne = P.air > 0 || P.fall;
+  P.roll += ((airborne ? 1 : 0) - P.roll) * .22;
+  if (airborne) P.ang += .22;
+  else if (P.roll < .01) P.ang = 0;
   clouds.forEach(c => { c.x -= c.s * .6; if (c.x < -120) c.x = W + 60; });
   const gp = LV().gap;
   spawnIn -= v; if (spawnIn <= 0) { spawnIn = gp[0] + Math.random() * gp[1] + (spawn() || 0); }
   obstacles.forEach(o => o.x -= v); rings.forEach(r => r.x -= v); bridges.forEach(b => b.x -= v); loops.forEach(l => l.x -= v); pits.forEach(p => p.x -= v);
   obstacles = obstacles.filter(o => o.x > -80); rings = rings.filter(r => r.x > -30); pits = pits.filter(p => p.x + p.w > -30);
   bridges = bridges.filter(b => b.x + b.w > -30); loops = loops.filter(l => l.x + l.w > -30);
-  if (P.y >= GROUND && pits.some(p => P.x > p.x + 14 && P.x < p.x + p.w - 14)) { P.fall = true; P.vy = 2; tone(500, .7, 'sine', 80); return; }
+  const hitbox = playerHitbox();
+  if (P.y >= GROUND && pits.some(p => hitbox.right > p.x + 4 && hitbox.left < p.x + p.w - 4)) { P.fall = true; P.vy = 2; tone(500, .7, 'sine', 80); return; }
   for (const l of loops) {
     if (l.used) continue;
     const cx = l.x + l.w / 2;
     if (cx <= P.x && cx > P.x - 40 && P.y >= GROUND - 2) { l.used = true; l.x = P.x - l.w / 2; S.loop = { l, phi: 0, got: 0 }; tone(400, .5, 'sawtooth', 1000); return; }
     if (cx <= P.x - 40) l.used = true;
   }
-  const px = P.x, pt = P.y - 44;
-  for (const r of rings) if (!r.got && Math.hypot(px - r.x, (P.y - 24) - r.y) < 30) { r.got = true; S.rings += S.superT > 0 ? 2 : 1; ringSound(); }
+  const px = P.x;
+  for (const r of rings) if (!r.got && Math.hypot(px - r.x, hitbox.centerY - r.y) < 30) { r.got = true; S.rings += S.superT > 0 ? 2 : 1; ringSound(); }
   for (const o of obstacles) {
     if (o.hit) continue;
-    const hit = px + 16 > o.x && px - 16 < o.x + o.w && P.y > GROUND - o.h + 6;
+    const hit = hitbox.right > o.x && hitbox.left < o.x + o.w &&
+      hitbox.bottom > GROUND - o.h && hitbox.top < GROUND;
     if (!hit) continue;
     o.hit = true;
     if (S.inv > 0) { tone(150, .2, 'square', 60); continue; }
-    if (loseLife()) { /* game over */ } else P.vy = -9;
+    if (loseLife()) { /* game over */ } else { P.vy = -9; P.air = 1; }
   }
 }
 
@@ -274,67 +296,79 @@ function hill(off, col, h, w, sp) {
   for (let x = -w; x <= W + w; x += 20) g.lineTo(x - o, GROUND - h - Math.sin((x - o + off) / w * Math.PI * 2) * h * .5);
   g.lineTo(W + w, GROUND); g.closePath(); g.fill();
 }
-function drawPico(x, y, t) {
-  const sup = S.superT > 0, body = sup ? '#ffd23f' : '#4a1d96', dark = sup ? '#e0a800' : '#2a0f5c', skin = '#ffe7c2', shoe = '#e01b1b';
-  g.save(); g.translate(x, y);
-  g.shadowColor = 'rgba(255,255,255,.95)'; g.shadowBlur = 9;
-  if (S.inv > 0 && S.superT <= 0 && S.boost <= 0 && S.dash <= 0 && (S.t >> 2) % 2) g.globalAlpha = .4;
-  const air = y < GROUND - 2 || P.fall;
-  if (air) {
-    g.translate(0, -26); g.rotate(P.ang);
-    const bg = g.createRadialGradient(-6, -8, 2, 0, 0, 26); bg.addColorStop(0, sup ? '#fff3b0' : '#9a63f0'); bg.addColorStop(.6, body); bg.addColorStop(1, dark);
-    g.fillStyle = dark; g.beginPath(); g.arc(0, 0, 26, 0, 7); g.fill();
-    g.fillStyle = bg; g.beginPath(); g.arc(0, 0, 21, 0, 7); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 15, .3, 2.4); g.stroke();
-    g.fillStyle = dark; for (let i = 0; i < 3; i++) { g.rotate(2.09); g.beginPath(); g.moveTo(-5, -20); g.lineTo(0, -34); g.lineTo(5, -20); g.fill(); }
-  } else {
-    const ph = t * .45, wv = Math.sin(t * .4) * 3, bob = Math.abs(Math.sin(ph)) * 2.5;
-    g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(2, 0, 24, 5, 0, 0, 7); g.fill();
-    g.translate(0, -bob); g.lineCap = 'round'; g.lineJoin = 'round';
-    const limb = (x1, y1, x2, y2, x3, y3, w, c) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x1, y1); g.quadraticCurveTo(x2, y2, x3, y3); g.stroke(); };
-    const shoeAt = (fx, fy, c) => {
-      g.fillStyle = c; g.beginPath(); g.ellipse(fx + 6, fy - 3, 15, 8, 0, 0, 7); g.fill();
-      g.fillStyle = '#fff'; g.beginPath(); g.ellipse(fx + 3, fy - 8, 9, 3.2, 0, 0, 7); g.fill();
-      g.fillStyle = '#3a2210'; g.fillRect(fx - 8, fy, 28, 3);
-    };
-    const leg = (p, c, sc) => {
-      const fx = Math.sin(p) * 16 + 2, fy = -6 - Math.max(0, Math.cos(p)) * 10;
-      limb(0, -24, fx * .5 + 7, (-24 + fy) / 2, fx, fy - 4, 9, c); shoeAt(fx, fy, sc);
-    };
-    // piquants courbes
-    g.fillStyle = dark;
-    [[-70, -58, -88], [-58, -64, -64], [-46, -54, -44], [-36, -44, -26]].forEach(([by, tx, ty]) => {
-      g.beginPath(); g.moveTo(-2, by - 10); g.quadraticCurveTo(-26, by - 16 + wv, tx + wv, ty); g.quadraticCurveTo(-24, by + 10, -2, by + 8); g.fill();
-    });
-    leg(ph + Math.PI, dark, '#a31212');
-    limb(1, -44, -4 + Math.sin(ph) * 8, -34, Math.sin(ph) * 14 + 2, -27, 7, dark);
-    g.fillStyle = '#f3f3f3'; g.beginPath(); g.arc(Math.sin(ph) * 14 + 2, -27, 5, 0, 7); g.fill();
-    const tg = g.createRadialGradient(-2, -48, 2, 3, -38, 24); tg.addColorStop(0, sup ? '#ffe680' : '#8a4fe0'); tg.addColorStop(1, dark);
-    g.fillStyle = tg; g.beginPath(); g.ellipse(2, -38, 14, 18, 0, 0, 7); g.fill();
-    const bl = g.createLinearGradient(0, -48, 0, -24); bl.addColorStop(0, '#fff0d4'); bl.addColorStop(1, '#f1c997');
-    g.fillStyle = bl; g.beginPath(); g.ellipse(8, -35, 8, 13, 0, 0, 7); g.fill();
-    leg(ph, body, shoe);
-    // écharpe
-    g.fillStyle = '#ffd23f'; g.beginPath(); g.ellipse(4, -53, 13, 4.5, 0, 0, 7); g.fill();
-    g.beginPath(); g.moveTo(-6, -54); g.quadraticCurveTo(-22 + wv, -50, -30 + wv * 2, -44 + wv); g.quadraticCurveTo(-18, -46, -4, -49); g.fill();
-    limb(2, -44, 8 + Math.sin(ph + Math.PI) * 8, -34, Math.sin(ph + Math.PI) * 14 + 4, -27, 8, body);
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(Math.sin(ph + Math.PI) * 14 + 4, -27, 5.5, 0, 7); g.fill();
-    // tete
-    const hg = g.createRadialGradient(-1, -74, 3, 5, -66, 24); hg.addColorStop(0, sup ? '#fff0a0' : '#8a4fe0'); hg.addColorStop(.7, body); hg.addColorStop(1, dark);
-    g.fillStyle = hg; g.beginPath(); g.arc(5, -66, 19, 0, 7); g.fill();
-    g.fillStyle = dark; g.beginPath(); g.moveTo(-6, -80); g.lineTo(-10, -94); g.lineTo(4, -84); g.fill();
-    g.fillStyle = skin; g.beginPath(); g.ellipse(15, -60, 10, 8, .1, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,120,120,.35)'; g.beginPath(); g.ellipse(14, -55, 4, 2.5, 0, 0, 7); g.fill();
-    g.fillStyle = '#111'; g.beginPath(); g.ellipse(24, -62, 3.4, 2.6, 0, 0, 7); g.fill();
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(23, -63, .9, 0, 7); g.fill();
-    g.strokeStyle = '#5a2e12'; g.lineWidth = 1.6; g.beginPath(); g.arc(17, -57, 6, .3, 1.6); g.stroke();
-    g.fillStyle = '#fff'; g.strokeStyle = '#0a4a5a'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(11, -68, 7, 9, .1, 0, 7); g.fill(); g.stroke();
-    const ig = g.createRadialGradient(13, -69, 1, 13, -68, 5.5); ig.addColorStop(0, '#6fe0a0'); ig.addColorStop(1, '#1b6a46');
-    g.fillStyle = ig; g.beginPath(); g.ellipse(13, -68, 4, 5.5, 0, 0, 7); g.fill();
-    g.fillStyle = '#000'; g.beginPath(); g.ellipse(13.5, -68, 2, 3, 0, 0, 7); g.fill();
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(14.5, -70, 1.5, 0, 7); g.fill();
-    g.strokeStyle = dark; g.lineWidth = 2.5; g.beginPath(); g.moveTo(5, -79); g.lineTo(17, -76); g.stroke();
-    g.lineCap = 'butt';
+function drawSonic(x, y, t, roll = P.roll, angle = P.ang) {
+  const sup = S.superT > 0, turboing = S.boost > 0, dashing = S.dash > 0;
+  const air = roll > .02, size = 76 - roll * 12;
+  const bob = air ? 0 : Math.abs(Math.sin(t * .45)) * 2.5;
+  const auraColor = sup ? '#ffd23f' : dashing ? '#ff4f9a' : '#49d8ff';
+  g.save();
+  g.translate(x, y - (38 - roll * 6) - bob);
+  g.rotate(angle * roll);
+  if (S.inv > 0 && !sup && !turboing && !dashing && (S.t >> 2) % 2) g.globalAlpha = .4;
+
+  if (!air) {
+    g.fillStyle = 'rgba(0,0,0,.28)';
+    g.beginPath(); g.ellipse(0, 39, 24, 5, 0, 0, Math.PI * 2); g.fill();
+  }
+  if (sup || turboing || dashing || air) {
+    const radius = sup ? 76 : dashing ? 66 : turboing ? 60 : 48;
+    const aura = g.createRadialGradient(0, 0, 8, 0, 0, radius);
+    aura.addColorStop(0, sup ? 'rgba(255,225,75,.38)' : 'rgba(95,200,255,.3)');
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = aura; g.beginPath(); g.arc(0, 0, radius, 0, Math.PI * 2); g.fill();
+  }
+  if (turboing || dashing || sup) {
+    g.lineWidth = dashing ? 4 : 3;
+    g.strokeStyle = sup ? 'rgba(255,239,151,.9)' : dashing ? 'rgba(255,255,255,.9)' : 'rgba(255,145,54,.9)';
+    for (let i = 0; i < 5; i++) {
+      const offset = (t * (dashing ? 11 : 7) + i * 24) % 72;
+      const yy = (i - 2) * 12;
+      g.beginPath(); g.moveTo(-size * .3 - offset, yy); g.lineTo(-size * .8 - offset, yy); g.stroke();
+    }
+  }
+  if (roll > .02) {
+    const count = sup ? 8 : 6, baseRadius = size * .3, tipRadius = size * .46;
+    g.fillStyle = sup ? '#ffd23f' : '#1267b2';
+    g.strokeStyle = sup ? '#fff1a3' : '#073b75';
+    g.lineWidth = 2;
+    for (let i = 0; i < count; i++) {
+      const spikeAngle = i * Math.PI * 2 / count + (roll > .02 ? t * .035 : 0);
+      g.beginPath();
+      g.moveTo(Math.cos(spikeAngle - .22) * baseRadius, Math.sin(spikeAngle - .22) * baseRadius);
+      g.lineTo(Math.cos(spikeAngle) * tipRadius, Math.sin(spikeAngle) * tipRadius);
+      g.lineTo(Math.cos(spikeAngle + .22) * baseRadius, Math.sin(spikeAngle + .22) * baseRadius);
+      g.closePath(); g.fill(); g.stroke();
+    }
+  } else if (sup) {
+    g.fillStyle = '#ffd23f';
+    g.strokeStyle = '#fff1a3';
+    g.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const baseX = -size * .22, baseY = -26 + i * 10;
+      g.beginPath();
+      g.moveTo(baseX, baseY - 5);
+      g.lineTo(baseX - 10, baseY);
+      g.lineTo(baseX, baseY + 5);
+      g.closePath(); g.fill(); g.stroke();
+    }
+  }
+  if (runnerImage.complete && runnerImage.naturalWidth) {
+    g.shadowColor = sup ? '#ffd23f' : turboing || dashing ? auraColor : 'rgba(255,255,255,.8)';
+    g.shadowBlur = sup ? 24 : turboing || dashing ? 18 : 8;
+    g.filter = sup ? 'sepia(1) saturate(6) hue-rotate(350deg)' : 'none';
+    let frameTime = (S.t * 1000 / 60) % runnerFrameDuration, frame = 0;
+    while (frame < runnerFrameDurations.length - 1 && frameTime >= runnerFrameDurations[frame]) {
+      frameTime -= runnerFrameDurations[frame++];
+    }
+    g.drawImage(runnerImage, frame * 61, 0, 61, 60, -size / 2, -size / 2, size, size);
+    g.filter = 'none';
+  }
+  if (sup) {
+    g.fillStyle = '#fff7c2';
+    for (let i = 0; i < 4; i++) {
+      const angle = t * .06 + i * Math.PI / 2, radius = 44 + Math.sin(t * .12 + i) * 3;
+      g.beginPath(); g.arc(Math.cos(angle) * radius, Math.sin(angle) * radius, 2.5, 0, Math.PI * 2); g.fill();
+    }
   }
   g.restore();
 }
@@ -563,8 +597,8 @@ function draw() {
   }
   if (S.loop) {
     const L = S.loop, cx = L.l.x + L.l.w / 2, Ri = L.l.ri;
-    g.save(); g.translate(cx + Ri * Math.sin(L.phi), GROUND - Ri + Ri * Math.cos(L.phi)); g.rotate(-L.phi); drawPico(0, 0, S.t); g.restore();
-  } else drawPico(P.x, P.y, S.t);
+    g.save(); g.translate(cx + Ri * Math.sin(L.phi), GROUND - Ri + Ri * Math.cos(L.phi)); g.rotate(-L.phi); drawSonic(0, 0, S.t, 1, 0); g.restore();
+  } else drawSonic(P.x, P.y, S.t);
   g.restore();
 
   // HUD
