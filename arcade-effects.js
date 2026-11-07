@@ -86,7 +86,7 @@
     void refreshOverlaySettings();
     window.setInterval(() => {
         void refreshOverlaySettings();
-    }, 15000);
+    }, 30000);
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) void refreshOverlaySettings();
     });

@@ -472,7 +472,7 @@ const defaultHomepageNotice = Object.freeze({
     placement: 'hero'
 });
 const applicationPresence = new Map();
-const PRESENCE_EXPIRY_MS = 45 * 1000;
+const PRESENCE_EXPIRY_MS = 60 * 1000;
 
 function invalidAdminInput(message) {
     const error = new Error(message);
@@ -3089,6 +3089,18 @@ const server = http.createServer((req, res) => {
         ['/ballon-foot-reel.jpg', [footballImage, 'image/jpeg']]
     ]);
     let route = routes.get(pathname);
+    if (!route) {
+        const webpMatch = pathname.match(/^\/images-vitrine\/([a-z0-9._-]+)\.webp$/i);
+        if (webpMatch) {
+            const baseRoute = `/images-vitrine/${webpMatch[1]}`;
+            const sourceRoute = routes.get(`${baseRoute}.png`) ||
+                routes.get(`${baseRoute}.jpg`) ||
+                routes.get(`${baseRoute}.jpeg`);
+            if (sourceRoute && sourceRoute[1].startsWith('image/')) {
+                route = [sourceRoute[0].replace(/\.(?:png|jpe?g)$/i, '.webp'), 'image/webp'];
+            }
+        }
+    }
     if (!route && pathname.startsWith('/squid-storm/')) {
         const relativeFile = pathname.slice('/squid-storm/'.length);
         const resolvedFile = path.resolve(squidStormDirectory, relativeFile);
@@ -3240,6 +3252,8 @@ const server = http.createServer((req, res) => {
             const headers = { 'Content-Type': contentType };
             if (contentType.startsWith('text/html;')) {
                 headers['Cache-Control'] = 'no-store';
+            } else if (contentType.startsWith('image/')) {
+                headers['Cache-Control'] = 'public, max-age=3600';
             }
             if (pathname === '/live-alerts-sw.js') {
                 headers['Cache-Control'] = 'no-store';

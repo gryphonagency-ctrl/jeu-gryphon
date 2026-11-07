@@ -40,7 +40,7 @@
         .then(session => {
             if (!session?.authenticated || stopped) return;
             void sendPresence('heartbeat');
-            timer = window.setInterval(() => sendPresence('heartbeat'), 15000);
+            timer = window.setInterval(() => sendPresence('heartbeat'), 30000);
             window.addEventListener('pagehide', () => {
                 stopped = true;
                 window.clearInterval(timer);
