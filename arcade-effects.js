@@ -101,7 +101,7 @@
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
 .ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none;opacity:0}
 .ae-treasure-gifts{position:absolute;inset:0;z-index:3}
-.ae-treasure-gift{position:absolute;width:clamp(8px,1.8vw,24px);height:clamp(8px,1.8vw,24px);display:flex;align-items:center;justify-content:center;
+.ae-treasure-gift{position:absolute;width:clamp(16px,3.6vw,48px);height:clamp(16px,3.6vw,48px);display:flex;align-items:center;justify-content:center;
  overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform}
 .ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:none}
 .ae-treasure-gift-name{max-width:100%;padding:2px;color:#fff4cf;text-align:center;font:700 8px/1.1 Arial,sans-serif;overflow:hidden;overflow-wrap:anywhere}
