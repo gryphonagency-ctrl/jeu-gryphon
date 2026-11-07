@@ -62,6 +62,32 @@
         }
     }
 
+    function drawAvatar(image, x, y, size, rotation) {
+        if (!image || !image.complete || image.failed || !image.naturalWidth) {
+            drawStar(x, y, size, rotation);
+            return;
+        }
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(image, -size, -size, size * 2, size * 2);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fff3a6';
+        ctx.lineWidth = Math.max(2, size * 0.13);
+        ctx.shadowColor = '#ffdb4d';
+        ctx.shadowBlur = size * 0.55;
+        ctx.stroke();
+        ctx.restore();
+    }
+
     function drawName(text, x, y, size, alpha) {
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -103,16 +129,21 @@
             const alpha = b > 1.9 ? Math.max(0, 1 - (b - 1.9) / (TOTAL - ROCKET - 1.9)) : 1;
             ctx.save();
             ctx.globalAlpha = alpha;
-            for (let k = 0; k < 12; k++) {
-                const angle = Math.PI * 2 * k / 12 - Math.PI / 2;
+            for (let k = 0; k < 10; k++) {
+                const angle = Math.PI * 2 * k / 10 - Math.PI / 2;
                 drawIcon(fx.image,
                     fx.x + Math.cos(angle) * radius * spread,
                     fx.y + Math.sin(angle) * radius * spread + fall,
                     iconSize, b * 2 * (k % 2 ? 1 : -1));
-                const innerAngle = angle + Math.PI / 12;
+                const avatarAngle = angle + Math.PI / 10;
+                drawAvatar(fx.avatar,
+                    fx.x + Math.cos(avatarAngle) * radius * 0.62 * spread,
+                    fx.y + Math.sin(avatarAngle) * radius * 0.62 * spread + fall,
+                    iconSize * 1.15, b * 2);
+                const innerAngle = angle + Math.PI / 20;
                 drawStar(
-                    fx.x + Math.cos(innerAngle) * radius * 0.55 * spread,
-                    fx.y + Math.sin(innerAngle) * radius * 0.55 * spread + fall,
+                    fx.x + Math.cos(innerAngle) * radius * 0.85 * spread,
+                    fx.y + Math.sin(innerAngle) * radius * 0.85 * spread + fall,
                     iconSize * 0.55 * (1 - b * 0.12), b * 3);
             }
             ctx.restore();
@@ -148,14 +179,15 @@
     }
 
     window.OverlayFirework = {
-        launch({ name, imageUrl, volume = 0.15 }) {
+        launch({ name, imageUrl, avatarUrl, volume = 0.15 }) {
             if (effects.length >= MAX_EFFECTS) return;
             effects.push({
                 start: performance.now(),
                 x: innerWidth * (0.25 + Math.random() * 0.5),
                 y: innerHeight * (0.25 + Math.random() * 0.2),
                 name: String(name || '').slice(0, 24),
-                image: loadImage(imageUrl)
+                image: loadImage(imageUrl),
+                avatar: loadImage(avatarUrl)
             });
             setTimeout(() => pop(volume), ROCKET * 1000);
             if (!running) { running = true; requestAnimationFrame(frame); }

@@ -23,9 +23,9 @@ const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
 const params = new URLSearchParams(location.search);
 const showStatus = params.get('statut') !== '0';
-// Feu d'artifice : cadeaux à partir de 10 pièces par défaut. ?seuil=50 pour changer, ?feu=0 pour désactiver, ?test=1 pour un aperçu.
+// Feu d'artifice : tous les cadeaux par défaut. ?seuil=50 pour changer, ?feu=0 pour désactiver, ?test=1 pour un aperçu.
 const fireworkEnabled = params.get('feu') !== '0';
-const fireworkThreshold = Math.max(1, Number(params.get('seuil')) || 10);
+const fireworkThreshold = Math.max(1, Number(params.get('seuil')) || 1);
 if (params.get('test') === '1') {
   const demo = () => window.OverlayFirework.launch({ name: 'Username' });
   setTimeout(demo, 500);
@@ -36,6 +36,23 @@ let queue = [];
 let playing = false;
 let reconnectDelay = 3000;
 let hideTimer = null;
+const viewerAvatars = new Map();
+
+function viewerKey(profile) {
+  return String(profile?.uniqueId || profile?.username || profile?.nickname || '')
+    .trim().replace(/^@/, '').toLocaleLowerCase();
+}
+
+function validImageUrl(value) {
+  if (typeof value !== 'string' || value.length > 700000) return '';
+  if (/^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i.test(value)) return value;
+  try {
+    const url = new URL(value, location.href);
+    return url.protocol === 'https:' || url.origin === location.origin ? url.href : '';
+  } catch {
+    return '';
+  }
+}
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -128,12 +145,27 @@ function connect() {
       socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: data.username }));
     } else if (data.type === 'STATUS') {
       setStatus(data.message || '');
+    } else if (data.type === 'viewer' && data.viewer) {
+      const key = viewerKey(data.viewer);
+      const avatar = validImageUrl(data.viewer.avatarDataUri || data.viewer.avatarUrl);
+      if (key && avatar) {
+        viewerAvatars.set(key, avatar);
+        if (viewerAvatars.size > 500) viewerAvatars.delete(viewerAvatars.keys().next().value);
+      }
     } else {
       if (data.type === 'follow' || data.type === 'subscribe' || data.type === 'share' || data.type === 'gift') {
         if (data.type === 'gift' && fireworkEnabled && Number(data.gift?.coinCount) >= fireworkThreshold) {
+          const gift = data.gift;
+          const giftKey = viewerKey(gift);
           window.OverlayFirework.launch({
-            name: data.gift.nickname || data.gift.uniqueId || data.gift.username,
-            imageUrl: data.gift.giftImageUrl
+            name: gift.nickname || gift.uniqueId || gift.username,
+            imageUrl: validImageUrl(gift.giftImageUrl || gift.giftImageUrls?.[0]),
+            avatarUrl: validImageUrl(
+              gift.avatarDataUri ||
+              viewerAvatars.get(giftKey) ||
+              gift.avatarUrls?.find(url => validImageUrl(url)) ||
+              gift.avatarUrl
+            )
           });
         }
         await loadAlerts();
