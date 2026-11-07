@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le Mot du Live — Griffon Arcade</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
+        h1, h2, h3, .font-heading {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Landscape view styling */
+        body {
+            background-color: #0f172a;
+            overflow: hidden;
+        }
+
+        /* Glassmorphism utility */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(236, 72, 153, 0.4); }
+            50% { box-shadow: 0 0 30px rgba(236, 72, 153, 0.8); }
+        }
+        .glow-active {
+            animation: pulse-glow 2s infinite;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Tile styles */
+        .grid-tile {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .grid-tile.revealed {
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+            color: #0f172a;
+            transform: scale(1);
+            box-shadow: 0 10px 15px -3px rgba(255, 255, 255, 0.2);
+        }
+
+        .grid-tile.empty {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+        }
+
+        /* Floating TikTok Hearts */
+        .tiktok-heart {
+            position: absolute;
+            pointer-events: none;
+            animation: flyUp 2s linear forwards;
+            z-index: 50;
+        }
+
+        @keyframes flyUp {
+            0% { transform: translateY(0) scale(0.8) rotate(0deg); opacity: 1; }
+            50% { transform: translateY(-100px) scale(1.2) rotate(-15deg); }
+            100% { transform: translateY(-250px) scale(0.5) rotate(15deg); opacity: 0; }
+        }
+
+        /* Canvas for Letter Wheel SVG Connections */
+        #wheel-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #game-layout > section {
+            grid-column: auto !important;
+            min-width: 0;
+        }
+
+        #game-layout {
+            grid-template-columns: minmax(220px, .8fr) minmax(0, 1.5fr) minmax(270px, .8fr);
+        }
+
+        #game-layout.hide-leaderboard {
+            grid-template-columns: minmax(0, 1.7fr) minmax(270px, .8fr);
+        }
+
+        #game-layout.hide-queue {
+            grid-template-columns: minmax(220px, .8fr) minmax(0, 1.7fr);
+        }
+
+        #game-layout.hide-leaderboard.hide-queue {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        #crossword-grid > div {
+            width: 40px;
+            height: 40px;
+            font-size: 18px;
+        }
+
+        #live-chat-column[hidden],
+        #leaderboard-column[hidden] {
+            display: none !important;
+        }
+
+        #live-chat-column.chat-hidden #chat-panel-body,
+        #live-chat-column.chat-hidden #chat-test-controls {
+            display: none !important;
+        }
+
+        #live-chat-column.queue-detached {
+            position: fixed;
+            z-index: 40;
+            top: 12px;
+            right: 12px;
+            width: min(360px, calc(100vw - 24px));
+            height: min(78vh, 680px);
+            box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+        }
+
+        #live-chat-column.queue-detached > div:first-child {
+            min-height: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #live-chat-column.queue-detached #chat-feed {
+            height: auto;
+            flex: 1;
+        }
+
+        #chat-drag-handle {
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #chat-drag-handle:active {
+            cursor: grabbing;
+        }
+
+        @media (min-width: 901px) {
+            #game-layout {
+                min-height: 0;
+            }
+
+            #crossword-section {
+                min-height: 0;
+            }
+
+            #crossword-grid-stage {
+                min-height: 0;
+            }
+        }
+
+        @media (min-width: 901px) and (max-height: 820px) {
+            #crossword-grid {
+                gap: 4px !important;
+            }
+
+            #crossword-grid > div {
+                width: 34px;
+                height: 34px;
+                font-size: 16px;
+            }
+
+            #letter-wheel-container {
+                width: 220px;
+                height: 220px;
+                flex-shrink: 0;
+            }
+
+            #letter-wheel {
+                width: 200px;
+                height: 200px;
+            }
+        }
+
+        #control-panel {
+            position: fixed;
+            z-index: 60;
+            top: 72px;
+            right: 16px;
+            width: min(390px, calc(100vw - 24px));
+            max-height: calc(100vh - 88px);
+            overflow-y: auto;
+        }
+
+        #control-panel[hidden] {
+            display: none !important;
+        }
+
+        @media (max-width: 900px) {
+            body.h-screen {
+                height: auto;
+                min-height: 100vh;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+
+            body > header {
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+
+            body > header > div:last-child {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            #game-layout,
+            #game-layout.hide-leaderboard,
+            #game-layout.hide-queue,
+            #game-layout.hide-leaderboard.hide-queue {
+                display: flex;
+                flex-direction: column;
+                overflow: visible;
+            }
+
+            #leaderboard-column {
+                order: 2;
+            }
+
+            #crossword-section {
+                order: 1;
+                min-height: 520px;
+            }
+
+            #live-chat-column {
+                order: 3;
+                min-height: 360px;
+            }
+
+            #live-chat-column.queue-detached {
+                order: initial;
+            }
+
+            footer {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+        }
+
+        @media (max-width: 540px) {
+            body > header {
+                padding: 12px;
+            }
+
+            body > header > div:first-child {
+                align-items: flex-start;
+            }
+
+            body > header h1 {
+                font-size: 16px;
+            }
+
+            #game-layout {
+                padding: 10px;
+            }
+
+            #crossword-section {
+                min-height: 460px;
+            }
+
+            #crossword-grid {
+                gap: 4px !important;
+            }
+
+            #crossword-grid .grid-tile,
+            #crossword-grid > div {
+                width: min(10vw, 42px);
+                height: min(10vw, 42px);
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative overflow-hidden flex flex-col justify-between text-white">
+
+    <!-- Background Nature / Aurora Landscape Canvas -->
+    <canvas id="bg-canvas" class="absolute inset-0 w-full h-full -z-10"></canvas>
+
+    <!-- Top Bar Navigation & Info -->
+    <header class="w-full px-6 py-3 glass-panel flex justify-between items-center z-20 shadow-lg">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2 bg-gradient-to-r from-pink-500 to-rose-600 px-3 py-1.5 rounded-full shadow-md animate-pulse">
+                <i class="fa-solid font-bold fa-broadcast-tower text-sm"></i>
+                <span class="text-xs font-black uppercase tracking-wider">LIVE STREAM</span>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-200 to-white">
+                    LE MOT DU LIVE <span class="text-xs bg-cyan-500/30 text-cyan-300 px-2 py-0.5 rounded ml-2 border border-cyan-400/30">MOTS CROISÉS</span>
+                </h1>
+                <p class="text-xs text-slate-300">Écrivez les lettres ou mots complets dans le chat !</p>
+            </div>
+        </div>
+
+        <!-- Level Selector & Controls -->
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center bg-slate-800/80 rounded-xl px-3 py-1.5 border border-slate-700">
+                <span class="text-xs text-slate-400 mr-2 uppercase font-bold">Niveau:</span>
+                <select id="level-select" onchange="changeLevel(this.value)" class="bg-transparent text-sm font-bold text-cyan-400 focus:outline-none cursor-pointer">
+                    <!-- Dynamic Options -->
+                </select>
+            </div>
+
+            <div class="flex items-center space-x-3 bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/40">
+                <i class="fa-solid fa-star text-amber-400 text-sm"></i>
+                <span id="found-words-count" class="text-sm font-bold text-amber-300">0 / 0 Mots</span>
+            </div>
+
+            <button onclick="toggleAudio()" id="audio-btn" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition text-slate-300">
+                <i class="fa-solid fa-volume-high" id="audio-icon"></i>
+            </button>
+            <button type="button" id="controls-open" aria-expanded="false" aria-controls="control-panel" class="p-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/40 transition text-cyan-200" title="Ouvrir les réglages">
+                <i class="fa-solid fa-sliders"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT AREA (3-Column Layout: Leaderboard | Crossword & Wheel | Interactive Chat) -->
+    <main id="game-layout" class="flex-1 grid grid-cols-12 gap-4 p-4 z-10 overflow-hidden max-w-[1920px] mx-auto w-full">
+
+        <!-- LEFT COLUMN: Live Leaderboard & Viewer Stats -->
+        <section id="leaderboard-column" class="col-span-3 glass-panel rounded-2xl p-4 flex flex-col justify-between shadow-2xl relative overflow-hidden">
+            <div>
+                <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-trophy text-amber-400"></i>
+                        <h2 class="font-bold text-sm tracking-wide text-slate-100">TOP SPECTATEURS</h2>
+                    </div>
+                    <span id="leaderboard-live-status" class="text-[10px] bg-slate-500/20 text-slate-300 px-2 py-0.5 rounded-full font-bold">EN ATTENTE</span>
+                </div>
+
+                <!-- Leaderboard List -->
+                <div id="leaderboard-list" class="space-y-2.5 max-h-[45vh] overflow-y-auto pr-1">
+                    <!-- Dynamic Leaderboard Content -->
+                </div>
+            </div>
+
+            <!-- Game Instructions for Viewers -->
+            <div class="mt-4 pt-3 border-t border-slate-700/60 bg-slate-900/40 rounded-xl p-3 border border-slate-800">
+                <h3 class="text-xs font-bold text-cyan-400 uppercase mb-1.5 flex items-center">
+                    <i class="fa-solid fa-circle-info mr-1.5"></i> Comment participer ?
+                </h3>
+                <ul class="text-xs text-slate-300 space-y-1">
+                    <li class="flex items-start"><span class="text-cyan-400 font-bold mr-1">•</span> Proposez une lettre isolée (ex: "E")</li>
+                    <li class="flex items-start"><span class="text-cyan-400 font-bold mr-1">•</span> Proposez un mot entier (ex: "FLEUR")</li>
+                    <li class="flex items-start"><span class="text-cyan-400 font-bold mr-1">•</span> Gagnez +100 pts par mot trouvé !</li>
+                    <li class="flex items-start text-slate-400"><span class="text-cyan-400 font-bold mr-1">•</span> Les points ne sont pas des étoiles de portefeuille.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- CENTER COLUMN: Crossword Grid & Wheel -->
+        <section id="crossword-section" class="col-span-6 flex flex-col items-center justify-between py-2 relative">
+
+            <!-- Current Hint / Topic Display -->
+            <div class="text-center mb-2">
+                <div class="inline-flex items-center space-x-2 bg-gradient-to-r from-cyan-900/60 via-slate-900/80 to-indigo-900/60 px-5 py-2 rounded-2xl border border-cyan-500/30 shadow-lg backdrop-blur-md">
+                    <i class="fa-solid fa-lightbulb text-amber-300 text-lg animate-pulse"></i>
+                    <span class="text-xs text-slate-300 font-medium">THÈME :</span>
+                    <span id="theme-display" class="text-sm font-extrabold text-cyan-200 tracking-wider">CHARGEMENT...</span>
+                </div>
+            </div>
+
+            <!-- CROSSWORD GRID CONTAINER -->
+            <div id="crossword-grid-stage" class="w-full flex-1 flex items-center justify-center relative my-2">
+                <div id="crossword-grid" class="relative transition-all duration-500">
+                    <!-- Dynamic Grid Tiles populated via JS -->
+                </div>
+            </div>
+
+            <!-- Word Preview Banner -->
+            <div class="h-10 mb-2 flex items-center justify-center">
+                <div id="word-preview-box" class="opacity-0 transition-all duration-200 bg-slate-900/90 border border-cyan-400/50 px-6 py-1.5 rounded-full shadow-lg flex items-center space-x-1 tracking-widest text-xl font-black text-cyan-300">
+                    <span id="word-preview-text"></span>
+                </div>
+            </div>
+
+            <!-- LETTER WHEEL CONTAINER -->
+            <div id="letter-wheel-container" class="relative w-64 h-64 flex items-center justify-center">
+                <svg id="wheel-canvas"></svg>
+
+                <!-- Central Wheel Circle -->
+                <div id="letter-wheel" class="w-56 h-56 rounded-full glass-panel relative flex items-center justify-center border-2 border-white/20 shadow-2xl">
+                    <!-- Dynamic Letter Buttons placed in circle -->
+                </div>
+
+                <!-- Side Action Buttons -->
+                <!-- Shuffle -->
+                <button onclick="shuffleWheelLetters()" title="Mélanger" class="absolute left-[-20px] top-1/2 -translate-y-1/2 w-12 h-12 rounded-full glass-card hover:bg-slate-700/80 border border-white/20 flex items-center justify-center text-cyan-300 shadow-xl hover:scale-110 active:scale-95 transition">
+                    <i class="fa-solid fa-shuffle text-lg"></i>
+                </button>
+
+                <!-- Hint -->
+                <button onclick="giveHint()" title="Obtenir un Indice" class="absolute right-[-20px] top-1/2 -translate-y-1/2 w-12 h-12 rounded-full glass-card hover:bg-slate-700/80 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-xl hover:scale-110 active:scale-95 transition">
+                    <i class="fa-solid fa-lightbulb text-lg"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: Simulated Live TikTok Chat -->
+        <section id="live-chat-column" class="col-span-3 glass-panel rounded-2xl p-4 flex flex-col justify-between shadow-2xl relative overflow-hidden">
+            <div>
+                <!-- Chat Header -->
+                <div id="chat-drag-handle" class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-brands fa-tiktok text-pink-500 text-lg"></i>
+                        <h2 class="font-bold text-sm tracking-wide text-slate-100">CHAT DU LIVE</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-400 font-mono" id="viewer-count">En attente du direct</span>
+                        <button type="button" id="chat-visibility-toggle" class="p-1 text-slate-300 hover:text-white" aria-label="Masquer le chat" aria-pressed="false" title="Masquer le chat">
+                            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" id="queue-detach" class="text-xs text-cyan-300 hover:text-white" title="Détacher la file">Détacher</button>
+                    </div>
+                </div>
+
+                <!-- Chat Feed -->
+                <div id="chat-panel-body">
+                    <div id="chat-feed" class="space-y-3 h-[48vh] overflow-y-auto pr-1 flex flex-col justify-end">
+                        <!-- Dynamic Messages -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input / Simulation Panel with Username -->
+            <div id="chat-test-controls" class="mt-3 pt-3 border-t border-slate-700/60 space-y-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-[11px] text-slate-400 font-bold uppercase">Pseudo test :</span>
+                    <input type="text" id="chat-username" value="Ami_du_Live" class="bg-slate-900/80 text-xs text-pink-300 font-bold px-2 py-1 rounded border border-slate-700 focus:outline-none w-full">
+                </div>
+                <form onsubmit="handleUserChatSubmit(event)" class="relative flex items-center">
+                    <input type="text" id="chat-input" placeholder="Écrire une lettre ou un mot..." autocomplete="off" class="w-full bg-slate-900/90 text-sm text-white placeholder-slate-400 px-4 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-cyan-400 transition pr-10">
+                    <button type="submit" class="absolute right-2 text-cyan-400 hover:text-cyan-300 p-1.5">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+                <div class="flex justify-between items-center mt-1 text-[11px] text-slate-400">
+                    <span>Message de test · Entrée pour envoyer</span>
+                    <button onclick="toggleBotChat()" id="bot-toggle-btn" class="text-pink-400 font-bold hover:underline">
+                        Bot : OFF
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="w-full px-6 py-2 glass-panel flex justify-between items-center text-xs text-slate-400 z-20">
+        <div class="flex items-center space-x-4">
+            <span><i class="fa-solid fa-comments text-cyan-400 mr-1"></i> Le chat propose des lettres et des mots.</span>
+            <span><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Enchaînement automatique des niveaux</span>
+        </div>
+        <div class="flex items-center space-x-3">
+            <span class="text-slate-300 font-semibold">Le Mot du Live · Griffon Arcade</span>
+        </div>
+    </footer>
+
+    <aside id="control-panel" class="glass-panel rounded-2xl p-4 shadow-2xl text-sm" aria-label="Panneau de contrôle" hidden>
+        <div class="flex items-center justify-between border-b border-slate-700/70 pb-3 mb-3">
+            <h2 class="font-bold text-cyan-200">Panneau de contrôle</h2>
+            <button type="button" id="controls-close" class="text-slate-300 hover:text-white p-2" aria-label="Fermer le panneau">✕</button>
+        </div>
+        <section class="mb-4">
+            <h3 class="font-bold text-pink-300 mb-2">Connexion TikTok LIVE</h3>
+            <div class="flex gap-2">
+                <input id="live-user" type="text" maxlength="32" placeholder="Pseudo TikTok du direct" class="min-w-0 flex-1 bg-slate-900/80 text-white px-3 py-2 rounded-lg border border-slate-700">
+                <button id="live-connect" type="button" class="px-3 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 font-bold">Connecter</button>
+            </div>
+            <p id="live-status" class="mt-2 text-xs text-slate-300" role="status">Direct non connecté.</p>
+        </section>
+        <section class="mb-4 border-t border-slate-700/60 pt-3">
+            <h3 class="font-bold text-cyan-200 mb-2">Affichage et vitesse</h3>
+            <label for="speed-control" class="flex justify-between text-xs text-slate-300 mb-1">
+                <span>Vitesse de simulation</span><span id="speed-value">1×</span>
+            </label>
+            <input id="speed-control" type="range" min="0.5" max="2" step="0.5" value="1" class="w-full accent-cyan-400">
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button type="button" id="queue-toggle" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Masquer la file</button>
+                <button type="button" id="leaderboard-toggle" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Masquer le classement</button>
+            </div>
+        </section>
+        <section class="mb-4 border-t border-slate-700/60 pt-3">
+            <h3 class="font-bold text-amber-200 mb-2">Simulateur (sans étoiles)</h3>
+            <div class="flex gap-2 mb-2">
+                <input id="simulation-username" type="text" maxlength="32" value="Spectateur_test" aria-label="Pseudo de simulation" class="min-w-0 flex-1 bg-slate-900/80 text-white px-3 py-2 rounded-lg border border-slate-700">
+                <input id="simulation-message" type="text" maxlength="80" placeholder="Une lettre ou un mot" aria-label="Message de simulation" class="min-w-0 flex-[1.4] bg-slate-900/80 text-white px-3 py-2 rounded-lg border border-slate-700">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="simulate-chat" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold">Envoyer le message</button>
+                <button type="button" id="simulate-bot" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Bot : OFF</button>
+                <button type="button" id="simulate-rose" class="px-3 py-2 rounded-lg bg-rose-800 hover:bg-rose-700 text-xs font-bold">Simuler une rose (1 pièce)</button>
+                <button type="button" id="simulate-gift" class="px-3 py-2 rounded-lg bg-pink-700 hover:bg-pink-600 text-xs font-bold">Simuler un gros cadeau</button>
+                <button type="button" id="simulate-share" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Simuler un partage</button>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-400">Les points du classement sont propres au jeu ; les simulations ne créditent jamais le portefeuille d’étoiles.</p>
+        </section>
+        <section class="border-t border-slate-700/60 pt-3">
+            <h3 class="font-bold text-cyan-200 mb-2">Partie</h3>
+            <div class="flex gap-2">
+                <button type="button" id="reset-game" class="px-3 py-2 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-xs">Nouvelle partie</button>
+                <button type="button" id="queue-detach-panel" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Détacher la file</button>
+            </div>
+            <div data-save-key="le-mot-du-live-save"></div>
+            <p id="save-status" class="mt-2 text-[11px] text-slate-400" role="status">Progression sauvegardée automatiquement sur cet appareil.</p>
+        </section>
+    </aside>
+
+    <!-- AUTOMATIC NEXT LEVEL OVERLAY WITH COUNTDOWN -->
+    <div id="victory-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-panel border-2 border-cyan-400/50 p-8 rounded-3xl max-w-md w-full text-center shadow-2xl transform scale-90 transition-transform duration-300" id="victory-modal-card">
+            <div class="w-20 h-20 bg-gradient-to-tr from-amber-400 via-pink-500 to-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg animate-bounce">
+                <i class="fa-solid fa-trophy text-4xl text-white"></i>
+            </div>
+            <h2 class="text-3xl font-black text-white mb-1 tracking-wide">NIVEAU COMPLÉTÉ !</h2>
+            <p class="text-cyan-300 text-sm mb-4">Bien joué au chat ! Passage au niveau suivant...</p>
+
+            <!-- Automatic Countdown Timer -->
+            <div class="my-6">
+                <div class="text-5xl font-black text-amber-400 animate-pulse font-mono" id="auto-countdown">3</div>
+                <div class="text-xs text-slate-400 uppercase tracking-widest mt-2">Chargement automatique</div>
+            </div>
+
+            <div class="bg-slate-900/70 rounded-2xl p-4 mb-4 border border-slate-700">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-slate-400">Joueur MVP :</span>
+                    <span id="mvp-name" class="font-bold text-pink-400">@Chat</span>
+                </div>
+            </div>
+
+            <button onclick="skipCountdownAndStartNext()" class="w-full py-3 bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 font-extrabold text-white rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition text-sm">
+                PASSER TOUT DE SUITE <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT GAME ENGINE -->
+    <script>
+        /* ==========================================
+           GAME LEVELS & CROSSWORD CONFIGURATION
+           ========================================== */
+        const LEVELS = [
+            {
+                id: 1,
+                theme: "DÉLICES DE LA PLAGE 🍦",
+                letters: ["S", "O", "L", "E", "I", "L", "P", "G", "A", "C", "U"],
+                words: [
+                    { word: "SOLEIL", x: 0, y: 2, direction: "horizontal", hint: "Il brille fort en été" },
+                    { word: "PLAGE",  x: 2, y: 1, direction: "vertical",   hint: "Sable et coquillages" },
+                    { word: "GLACE",  x: 2, y: 4, direction: "horizontal", hint: "En cornet ou en pot" },
+                    { word: "EAU",    x: 6, y: 4, direction: "vertical",   hint: "Essentielle pour se rafraîchir" }
+                ],
+                gridCols: 7,
+                gridRows: 7
+            },
+            {
+                id: 2,
+                theme: "MONTAGNE & NATURE 🏔️",
+                letters: ["N", "E", "I", "G", "E", "F", "O", "R", "T", "C", "H", "L"],
+                words: [
+                    { word: "NEIGE",  x: 1, y: 4, direction: "horizontal", hint: "Manteau blanc des sommets" },
+                    { word: "FORET",  x: 5, y: 1, direction: "vertical",   hint: "Remplie d'arbres et de pins" },
+                    { word: "GEL",    x: 4, y: 4, direction: "horizontal", hint: "Froid extrême" },
+                    { word: "ROCHE",  x: 2, y: 0, direction: "vertical",   hint: "Constituant de la montagne" }
+                ],
+                gridCols: 7,
+                gridRows: 6
+            },
+            {
+                id: 3,
+                theme: "SOIRÉE STREAMING 🎮",
+                letters: ["C", "H", "A", "T", "L", "I", "V", "E", "J", "E", "U", "P"],
+                words: [
+                    { word: "LIVE",   x: 3, y: 2, direction: "horizontal", hint: "En direct sur TikTok" },
+                    { word: "CHAT",   x: 1, y: 3, direction: "horizontal", hint: "Là où les viewers écrivent" },
+                    { word: "JEU",    x: 6, y: 1, direction: "vertical",   hint: "Divertissement interactif" },
+                    { word: "CLAP",   x: 3, y: 1, direction: "vertical",   hint: "Applaudissements" }
+                ],
+                gridCols: 7,
+                gridRows: 6
+            }
+        ];
+
+        /* ==========================================
+           GAME STATE VARIABLES
+           ========================================== */
+        const SAVE_KEY = 'le-mot-du-live-save';
+        const MAX_CHAT_MESSAGES = 60;
+        let currentLevelIndex = 0;
+        let currentLevel = LEVELS[0];
+        let revealedWords = new Set();
+        let revealedCells = new Map();
+        let currentSelection = [];
+        let isSelecting = false;
+        let audioEnabled = true;
+        let countdownTimer = null;
+        let levelCompletionTimeout = null;
+        let simulationSpeed = 1;
+        let liveSocket = null;
+        const seenChatMessages = new Set();
+
+        // Leaderboard State
+        let leaderboard = [];
+
+        // Simulated Chat Users & Bot Loop
+        const BOT_USERS = ["Alex_Paris", "Léa_M", "Gaming_FR", "Chloe_92", "Enzo_Stream", "Noémie_K"];
+        let botChatInterval = null;
+        let isBotChatActive = false;
+
+        /* ==========================================
+           WEB AUDIO API (SOUND EFFECTS SYNTHESIS)
+           ========================================== */
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+        }
+
+        function playSound(type) {
+            if (!audioEnabled) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                osc.frequency.setValueAtTime(1046.50, now + 0.3); // C6
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const icon = document.getElementById('audio-icon');
+            icon.className = audioEnabled ? "fa-solid fa-volume-high" : "fa-solid fa-volume-xmark text-rose-400";
+        }
+
+        /* ==========================================
+           BACKGROUND LANDSCAPE CANVAS ANIMATION
+           ========================================== */
+        const bgCanvas = document.getElementById('bg-canvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        let particles = [];
+
+        function resizeBgCanvas() {
+            bgCanvas.width = window.innerWidth;
+            bgCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeBgCanvas);
+        resizeBgCanvas();
+
+        for(let i=0; i<60; i++) {
+            particles.push({
+                x: Math.random() * window.innerWidth,
+                y: Math.random() * window.innerHeight,
+                radius: Math.random() * 2 + 0.5,
+                speedY: Math.random() * 0.5 + 0.2,
+                speedX: Math.random() * 0.4 - 0.2,
+                opacity: Math.random() * 0.6 + 0.2
+            });
+        }
+
+        function drawBackground() {
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            const gradient = bgCtx.createLinearGradient(0, 0, 0, bgCanvas.height);
+            gradient.addColorStop(0, '#020617');
+            gradient.addColorStop(0.5, '#0f172a');
+            gradient.addColorStop(1, '#1e1b4b');
+            bgCtx.fillStyle = gradient;
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            bgCtx.fillStyle = "rgba(15, 23, 42, 0.7)";
+            bgCtx.beginPath();
+            bgCtx.moveTo(0, bgCanvas.height);
+            bgCtx.lineTo(0, bgCanvas.height * 0.7);
+            bgCtx.lineTo(bgCanvas.width * 0.25, bgCanvas.height * 0.45);
+            bgCtx.lineTo(bgCanvas.width * 0.5, bgCanvas.height * 0.65);
+            bgCtx.lineTo(bgCanvas.width * 0.75, bgCanvas.height * 0.4);
+            bgCtx.lineTo(bgCanvas.width, bgCanvas.height * 0.75);
+            bgCtx.lineTo(bgCanvas.width, bgCanvas.height);
+            bgCtx.fill();
+
+            bgCtx.fillStyle = "#ffffff";
+            particles.forEach(p => {
+                bgCtx.globalAlpha = p.opacity;
+                bgCtx.beginPath();
+                bgCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                bgCtx.fill();
+
+                p.y += p.speedY;
+                p.x += p.speedX;
+
+                if (p.y > bgCanvas.height) p.y = 0;
+                if (p.x > bgCanvas.width) p.x = 0;
+                if (p.x < 0) p.x = bgCanvas.width;
+            });
+            bgCtx.globalAlpha = 1;
+
+            requestAnimationFrame(drawBackground);
+        }
+
+        function safeUsername(value) {
+            return String(value || "Spectateur")
+                .replace(/[\u0000-\u001f\u007f]/g, "")
+                .trim()
+                .replace(/^@/, "")
+                .slice(0, 32) || "Spectateur";
+        }
+
+        function normalizeGuess(value) {
+            return String(value || "")
+                .trim()
+                .toLocaleUpperCase("fr-FR")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+        }
+
+        function setSaveStatus(message, isError = false) {
+            const status = document.getElementById("save-status");
+            status.textContent = message;
+            status.classList.toggle("text-rose-300", isError);
+            status.classList.toggle("text-slate-400", !isError);
+        }
+
+        function saveGameState() {
+            const state = {
+                version: 2,
+                levelIndex: currentLevelIndex,
+                revealedWords: [...revealedWords],
+                revealedCells: [...revealedCells.entries()],
+                leaderboard: leaderboard.slice(0, 100).map(player => ({
+                    name: safeUsername(player.name),
+                    score: Math.max(0, Math.floor(Number(player.score) || 0))
+                }))
+            };
+
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+                setSaveStatus("Progression sauvegardée automatiquement sur cet appareil.");
+            } catch (error) {
+                console.error("Impossible de sauvegarder Le Mot du Live.", error);
+                setSaveStatus("Sauvegarde impossible sur cet appareil.", true);
+            }
+        }
+
+        function restoreGameState() {
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return null;
+
+                const state = JSON.parse(raw);
+                if (!state || ![1, 2].includes(state.version) || !Number.isInteger(state.levelIndex) ||
+                    state.levelIndex < 0 || state.levelIndex >= LEVELS.length) {
+                    throw new Error("Format de sauvegarde invalide.");
+                }
+
+                currentLevelIndex = state.levelIndex;
+                const allowedWords = new Set(LEVELS[currentLevelIndex].words.map(item => item.word));
+                revealedWords = new Set(
+                    Array.isArray(state.revealedWords)
+                        ? state.revealedWords.filter(word => allowedWords.has(word))
+                        : []
+                );
+                const allowedCells = new Map();
+                LEVELS[currentLevelIndex].words.forEach(word => {
+                    [...normalizeGuess(word.word)].forEach((letter, index) => {
+                        const x = word.x + (word.direction === 'horizontal' ? index : 0);
+                        const y = word.y + (word.direction === 'vertical' ? index : 0);
+                        allowedCells.set(`${y},${x}`, letter);
+                    });
+                });
+                revealedCells = new Map(
+                    Array.isArray(state.revealedCells)
+                        ? state.revealedCells.filter(entry =>
+                            Array.isArray(entry) && allowedCells.get(entry[0]) === entry[1])
+                        : []
+                );
+                leaderboard = Array.isArray(state.leaderboard)
+                    ? state.leaderboard
+                        .filter(player => player && typeof player.name === "string")
+                        .slice(0, 100)
+                        .map(player => ({
+                            name: safeUsername(player.name),
+                            score: Math.max(0, Math.min(100000000, Math.floor(Number(player.score) || 0)))
+                        }))
+                        .filter(player => player.score > 0)
+                    : [];
+                leaderboard.sort((a, b) => b.score - a.score);
+                return true;
+            } catch (error) {
+                console.error("La sauvegarde de Le Mot du Live est illisible.", error);
+                setSaveStatus("Sauvegarde illisible : démarre une nouvelle partie.", true);
+                return false;
+            }
+        }
+
+        function setLiveStatus(message, isOnline = false, isError = false) {
+            const status = document.getElementById("live-status");
+            status.textContent = message;
+            status.classList.toggle("text-rose-300", isError);
+            status.classList.toggle("text-slate-300", !isError);
+            document.getElementById("viewer-count").textContent = isOnline ? "Direct connecté" : "En attente du direct";
+            const liveBadge = document.getElementById("leaderboard-live-status");
+            liveBadge.textContent = isOnline ? "EN DIRECT" : "EN ATTENTE";
+            liveBadge.classList.toggle("bg-rose-500/20", isOnline);
+            liveBadge.classList.toggle("text-rose-300", isOnline);
+            liveBadge.classList.toggle("bg-slate-500/20", !isOnline);
+            liveBadge.classList.toggle("text-slate-300", !isOnline);
+        }
+
+        function handleLiveMessage(message) {
+            const type = String(message.type || message.event || "").toLowerCase();
+            const data = message.data && typeof message.data === "object" ? message.data : message;
+
+            if (type === "status") {
+                const text = String(data.message || data.status || "Statut du direct mis à jour.");
+                setLiveStatus(text, /connecté/i.test(text) && !/non connecté|déconnecté|erreur/i.test(text), /erreur|échec/i.test(text));
+                return;
+            }
+
+            if (["gift", "tiktok-gift"].includes(type)) {
+                handleLiveGift(data.gift || data.giftData || data);
+                return;
+            }
+
+            if (!["comment", "tiktok-comment", "chat"].includes(type)) return;
+            const comment = data.commentData || data;
+            const text = String(comment.comment ?? comment.text ?? comment.message ?? comment.content ?? "").trim().slice(0, 120);
+            if (!text) return;
+
+            const messageId = String(comment.messageId || comment.msgId || message.messageId || message.msgId || "");
+            if (messageId) {
+                if (seenChatMessages.has(messageId)) return;
+                seenChatMessages.add(messageId);
+                if (seenChatMessages.size > 500) seenChatMessages.delete(seenChatMessages.values().next().value);
+            }
+
+            const username = safeUsername(comment.uniqueId || comment.username || comment.nickname || message.username);
+            addChatMessage(username, text);
+            processWordSubmission(text, username);
+        }
+
+        function connectLive() {
+            const username = document.getElementById("live-user").value.trim().replace(/^@/, "").slice(0, 32);
+            if (!username) {
+                setLiveStatus("Saisis le pseudo TikTok du direct.", false, true);
+                return;
+            }
+            if (!["http:", "https:"].includes(location.protocol)) {
+                setLiveStatus("Ouvre le jeu depuis le serveur Griffon Arcade pour connecter TikTok.", false, true);
+                return;
+            }
+            if (liveSocket) liveSocket.close();
+
+            const socket = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`);
+            liveSocket = socket;
+            setLiveStatus(`Connexion à @${username}…`);
+            socket.addEventListener("open", () => {
+                socket.send(JSON.stringify({ action: "CONNECT_TIKTOK", username }));
+                setLiveStatus(`Demande de connexion envoyée pour @${username}.`);
+            });
+            socket.addEventListener("message", event => {
+                try {
+                    handleLiveMessage(JSON.parse(event.data));
+                } catch (error) {
+                    console.error("Message TikTok invalide reçu par Le Mot du Live.", error);
+                    setLiveStatus("Message reçu du direct illisible.", false, true);
+                }
+            });
+            socket.addEventListener("error", () => setLiveStatus("Erreur de connexion au direct.", false, true));
+            socket.addEventListener("close", () => {
+                if (liveSocket === socket) {
+                    liveSocket = null;
+                    setLiveStatus("Connexion au direct interrompue.", false, true);
+                    document.getElementById("live-connect").textContent = "Connecter";
+                }
+            });
+            document.getElementById("live-connect").textContent = "Déconnecter";
+        }
+
+        function disconnectLive() {
+            if (liveSocket) {
+                const socket = liveSocket;
+                liveSocket = null;
+                socket.close();
+            }
+            document.getElementById("live-connect").textContent = "Connecter";
+            setLiveStatus("Direct non connecté.");
+        }
+
+        function toggleQueue() {
+            const queue = document.getElementById("live-chat-column");
+            const isHidden = !queue.hidden;
+            queue.hidden = isHidden;
+            document.getElementById("game-layout").classList.toggle("hide-queue", isHidden);
+            document.getElementById("queue-toggle").textContent = isHidden ? "Afficher la file" : "Masquer la file";
+        }
+
+        function toggleChatVisibility() {
+            const queue = document.getElementById("live-chat-column");
+            const button = document.getElementById("chat-visibility-toggle");
+            const hidden = queue.classList.toggle("chat-hidden");
+            button.setAttribute("aria-pressed", String(hidden));
+            button.setAttribute("aria-label", hidden ? "Afficher le chat" : "Masquer le chat");
+            button.title = hidden ? "Afficher le chat" : "Masquer le chat";
+            button.innerHTML = `<i class="fa-solid ${hidden ? "fa-eye-slash" : "fa-eye"}" aria-hidden="true"></i>`;
+        }
+
+        function toggleLeaderboard() {
+            const board = document.getElementById("leaderboard-column");
+            const isHidden = !board.hidden;
+            board.hidden = isHidden;
+            document.getElementById("game-layout").classList.toggle("hide-leaderboard", isHidden);
+            document.getElementById("leaderboard-toggle").textContent = isHidden ? "Afficher le classement" : "Masquer le classement";
+        }
+
+        function toggleQueueDetached() {
+            const queue = document.getElementById("live-chat-column");
+            if (queue.hidden) toggleQueue();
+            const detached = queue.classList.toggle("queue-detached");
+            if (!detached) {
+                queue.style.left = "";
+                queue.style.top = "";
+                queue.style.right = "";
+            }
+            document.getElementById("queue-detach").textContent = detached ? "Rattacher" : "Détacher";
+            document.getElementById("queue-detach-panel").textContent = detached ? "Rattacher la file" : "Détacher la file";
+        }
+
+        function setupQueueDragging() {
+            const queue = document.getElementById("live-chat-column");
+            const handle = document.getElementById("chat-drag-handle");
+            let drag = null;
+
+            handle.addEventListener("pointerdown", event => {
+                if (!queue.classList.contains("queue-detached") || event.target.closest("button")) return;
+                const rect = queue.getBoundingClientRect();
+                drag = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+                handle.setPointerCapture(event.pointerId);
+                event.preventDefault();
+            });
+            handle.addEventListener("pointermove", event => {
+                if (!drag) return;
+                const left = Math.max(0, Math.min(window.innerWidth - queue.offsetWidth, event.clientX - drag.x));
+                const top = Math.max(0, Math.min(window.innerHeight - 80, event.clientY - drag.y));
+                queue.style.left = `${left}px`;
+                queue.style.top = `${top}px`;
+                queue.style.right = "auto";
+            });
+            handle.addEventListener("pointerup", () => { drag = null; });
+            handle.addEventListener("pointercancel", () => { drag = null; });
+        }
+
+        function setupControlPanel() {
+            const panel = document.getElementById("control-panel");
+            const openButton = document.getElementById("controls-open");
+            const closeButton = document.getElementById("controls-close");
+            const setPanelOpen = isOpen => {
+                panel.hidden = !isOpen;
+                openButton.setAttribute("aria-expanded", String(isOpen));
+            };
+
+            openButton.addEventListener("click", () => setPanelOpen(panel.hidden));
+            closeButton.addEventListener("click", () => setPanelOpen(false));
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape" && !panel.hidden) setPanelOpen(false);
+            });
+            document.getElementById("live-connect").addEventListener("click", () => {
+                if (liveSocket) disconnectLive();
+                else connectLive();
+            });
+            document.getElementById("queue-toggle").addEventListener("click", toggleQueue);
+            document.getElementById("leaderboard-toggle").addEventListener("click", toggleLeaderboard);
+            document.getElementById("chat-visibility-toggle").addEventListener("click", toggleChatVisibility);
+            document.getElementById("queue-detach").addEventListener("click", toggleQueueDetached);
+            document.getElementById("queue-detach-panel").addEventListener("click", toggleQueueDetached);
+            document.getElementById("simulate-chat").addEventListener("click", simulateChatMessage);
+            document.getElementById("simulate-bot").addEventListener("click", toggleBotChat);
+            document.getElementById("simulate-rose").addEventListener("click", () => {
+                handleLiveGift({
+                    giftName: "Rose",
+                    repeatCount: 1,
+                    nickname: safeUsername(document.getElementById("simulation-username").value)
+                });
+            });
+            document.getElementById("simulate-gift").addEventListener("click", () => {
+                if (!window.ArcadeEffects) {
+                    setLiveStatus("Les effets live sont disponibles lorsque le jeu est servi par Griffon Arcade.", false, true);
+                    return;
+                }
+                window.ArcadeEffects.simulateBigGift(safeUsername(document.getElementById("simulation-username").value), 100);
+            });
+            document.getElementById("simulate-share").addEventListener("click", () => {
+                if (!window.ArcadeEffects) {
+                    setLiveStatus("Les effets live sont disponibles lorsque le jeu est servi par Griffon Arcade.", false, true);
+                    return;
+                }
+                window.ArcadeEffects.simulateShare();
+            });
+            document.getElementById("speed-control").addEventListener("input", event => {
+                simulationSpeed = Number(event.target.value);
+                document.getElementById("speed-value").textContent = `${simulationSpeed}×`;
+                startBotChatSimulation();
+            });
+            document.getElementById("reset-game").addEventListener("click", resetGame);
+        }
+
+        function simulateChatMessage() {
+            const username = safeUsername(document.getElementById("simulation-username").value);
+            const input = document.getElementById("simulation-message");
+            const message = input.value.trim().slice(0, 80);
+            if (!message) {
+                setLiveStatus("Écris une lettre ou un mot à simuler.", false, true);
+                return;
+            }
+            addChatMessage(username, message);
+            processWordSubmission(message, username);
+            input.value = "";
+        }
+
+        function resetGame() {
+            if (!window.confirm("Recommencer la partie et effacer le classement local ?")) return;
+            if (countdownTimer) clearInterval(countdownTimer);
+            if (levelCompletionTimeout) clearTimeout(levelCompletionTimeout);
+            document.getElementById("victory-modal").classList.add("opacity-0", "pointer-events-none");
+            currentLevelIndex = 0;
+            leaderboard = [];
+            loadLevel(0);
+            renderLeaderboard();
+            setSaveStatus("Nouvelle partie démarrée.");
+        }
+
+        /* ==========================================
+           GAME INITIALIZATION & RENDERERS
+           ========================================== */
+        window.onload = function() {
+            populateLevelSelect();
+            restoreGameState();
+            const restoredWords = [...revealedWords];
+            loadLevel(currentLevelIndex, false, true);
+            revealedWords = new Set(restoredWords);
+            renderCrosswordGrid();
+            updateFoundCounter();
+            renderLeaderboard();
+            startBotChatSimulation();
+            drawBackground();
+            setupGlobalKeyboardListeners();
+            setupControlPanel();
+            setupQueueDragging();
+        };
+
+        function populateLevelSelect() {
+            const select = document.getElementById('level-select');
+            select.innerHTML = '';
+            LEVELS.forEach((lvl, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.innerText = `Niveau ${lvl.id}`;
+                select.appendChild(opt);
+            });
+        }
+
+        function changeLevel(idx) {
+            if (countdownTimer) clearInterval(countdownTimer);
+            if (levelCompletionTimeout) clearTimeout(levelCompletionTimeout);
+            const nextIndex = Number.parseInt(idx, 10);
+            if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= LEVELS.length) return;
+            currentLevelIndex = nextIndex;
+            loadLevel(currentLevelIndex);
+        }
+
+        function loadLevel(index, persist = true, preserveRevealedCells = false) {
+            currentLevel = LEVELS[index];
+            revealedWords.clear();
+            if (!preserveRevealedCells) revealedCells.clear();
+            currentSelection = [];
+
+            document.getElementById('theme-display').innerText = currentLevel.theme;
+            document.getElementById('level-select').value = index;
+            updateFoundCounter();
+            hideWordPreview();
+
+            renderCrosswordGrid();
+            renderLetterWheel();
+            clearWheelCanvas();
+            if (persist) saveGameState();
+        }
+
+        /* RENDER CROSSWORD GRID */
+        function renderCrosswordGrid() {
+            const gridContainer = document.getElementById('crossword-grid');
+            gridContainer.innerHTML = '';
+
+            const cols = currentLevel.gridCols;
+            const rows = currentLevel.gridRows;
+
+            gridContainer.style.display = 'grid';
+            gridContainer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            gridContainer.style.gap = '8px';
+
+            const matrix = Array(rows).fill(null).map(() => Array(cols).fill(null).map(() => ({ entries: [] })));
+
+            currentLevel.words.forEach(wObj => {
+                const w = wObj.word;
+                let cx = wObj.x;
+                let cy = wObj.y;
+
+                for (let i = 0; i < w.length; i++) {
+                    matrix[cy][cx].entries.push({ letter: w[i], wordRef: wObj.word });
+                    if (wObj.direction === 'horizontal') cx++;
+                    else cy++;
+                }
+            });
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cellData = matrix[r][c];
+                    const cell = document.createElement('div');
+                    cell.className = "w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-xl select-none transition-all duration-300";
+
+                    if (cellData.entries.length) {
+                        const cellKey = `${r},${c}`;
+                        const revealedEntry = cellData.entries.find(entry => revealedWords.has(entry.wordRef));
+                        const letter = revealedCells.get(cellKey) ?? revealedEntry?.letter;
+                        cell.id = `cell-${r}-${c}`;
+
+                        if (letter !== undefined) {
+                            cell.classList.add('grid-tile', 'revealed');
+                            cell.dataset.letter = letter;
+                            cell.innerText = letter;
+                        } else {
+                            cell.classList.add('grid-tile', 'empty');
+                            cell.innerText = '';
+                        }
+                    } else {
+                        cell.classList.add('opacity-0', 'pointer-events-none');
+                    }
+
+                    gridContainer.appendChild(cell);
+                }
+            }
+        }
+
+        /* RENDER LETTER WHEEL */
+        function renderLetterWheel() {
+            const wheel = document.getElementById('letter-wheel');
+            wheel.innerHTML = '';
+
+            const letters = currentLevel.letters;
+            const total = letters.length;
+            const radius = 80;
+
+            letters.forEach((char, i) => {
+                const angle = (i / total) * (2 * Math.PI) - (Math.PI / 2);
+                const x = radius * Math.cos(angle);
+                const y = radius * Math.sin(angle);
+
+                const btn = document.createElement('div');
+                btn.className = "wheel-letter-btn absolute w-11 h-11 rounded-full glass-card hover:bg-cyan-500/30 border border-white/40 flex items-center justify-center font-black text-xl text-white cursor-pointer shadow-lg transform -translate-x-1/2 -translate-y-1/2 transition active:scale-90";
+                btn.style.left = `calc(50% + ${x}px)`;
+                btn.style.top = `calc(50% + ${y}px)`;
+                btn.innerText = char;
+                btn.dataset.letter = char;
+                btn.dataset.index = i;
+
+                btn.addEventListener('pointerdown', (e) => startSelection(char, btn, e));
+
+                wheel.appendChild(btn);
+            });
+        }
+
+        function shuffleWheelLetters() {
+            playSound('click');
+            currentLevel.letters.sort(() => Math.random() - 0.5);
+            renderLetterWheel();
+        }
+
+        /* ==========================================
+           INTERACTIVE SELECTION & WHEEL ENGINE
+           ========================================== */
+        function startSelection(char, btnEl, e) {
+            isSelecting = true;
+            currentSelection = [{ letter: char, el: btnEl }];
+            btnEl.classList.add('bg-cyan-500', 'border-cyan-300', 'scale-110');
+            playSound('click');
+            updateWordPreview();
+        }
+
+        function continueSelection(char, btnEl, e) {
+            if (!isSelecting) return;
+
+            const alreadySelected = currentSelection.find(item => item.el === btnEl);
+            if (!alreadySelected) {
+                currentSelection.push({ letter: char, el: btnEl });
+                btnEl.classList.add('bg-cyan-500', 'border-cyan-300', 'scale-110');
+                playSound('click');
+                updateWordPreview();
+                drawWheelConnections();
+            }
+        }
+
+        function endSelection() {
+            if (!isSelecting) return;
+            isSelecting = false;
+
+            const attemptedWord = currentSelection.map(s => s.letter).join('');
+            if (attemptedWord.length > 0) {
+                const username = document.getElementById('chat-username').value.trim() || "Host";
+                processWordSubmission(attemptedWord, username);
+            }
+
+            document.querySelectorAll('.wheel-letter-btn').forEach(btn => {
+                btn.classList.remove('bg-cyan-500', 'border-cyan-300', 'scale-110');
+            });
+            currentSelection = [];
+            clearWheelCanvas();
+            hideWordPreview();
+        }
+
+        function updateWordPreview() {
+            const previewBox = document.getElementById('word-preview-box');
+            const previewText = document.getElementById('word-preview-text');
+            const word = currentSelection.map(s => s.letter).join('');
+
+            if (word.length > 0) {
+                previewText.innerText = word;
+                previewBox.style.opacity = '1';
+            }
+        }
+
+        function hideWordPreview() {
+            const previewBox = document.getElementById('word-preview-box');
+            previewBox.style.opacity = '0';
+        }
+
+        function drawWheelConnections() {
+            const svg = document.getElementById('wheel-canvas');
+            svg.innerHTML = '';
+
+            if (currentSelection.length < 2) return;
+
+            const svgRect = svg.getBoundingClientRect();
+            let pathD = '';
+
+            currentSelection.forEach((item, idx) => {
+                if (!item.el) return;
+                const rect = item.el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2 - svgRect.left;
+                const y = rect.top + rect.height / 2 - svgRect.top;
+
+                if (idx === 0) pathD += `M ${x} ${y}`;
+                else pathD += ` L ${x} ${y}`;
+            });
+
+            if (pathD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', pathD);
+                path.setAttribute('stroke', '#22d3ee');
+                path.setAttribute('stroke-width', '4');
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('stroke-linejoin', 'round');
+                svg.appendChild(path);
+            }
+        }
+
+        function clearWheelCanvas() {
+            const svg = document.getElementById('wheel-canvas');
+            svg.innerHTML = '';
+        }
+
+        function setupGlobalKeyboardListeners() {
+            const wheel = document.getElementById('letter-wheel');
+            wheel.addEventListener('pointermove', event => {
+                if (!isSelecting) return;
+                const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.wheel-letter-btn');
+                if (target && wheel.contains(target)) {
+                    continueSelection(target.dataset.letter, target, event);
+                }
+            });
+            window.addEventListener('pointerup', endSelection);
+            window.addEventListener('keydown', (e) => {
+                if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+
+                const key = normalizeGuess(e.key);
+                if (key === 'ENTER') {
+                    const word = currentSelection.map(s => s.letter).join('');
+                    const username = safeUsername(document.getElementById('chat-username').value || "Host");
+                    if (word) processWordSubmission(word, username);
+                    currentSelection = [];
+                    hideWordPreview();
+                } else if (key === 'BACKSPACE') {
+                    currentSelection.pop();
+                    updateWordPreview();
+                } else if (/^[A-ZÀ-Ü]$/.test(key)) {
+                    currentSelection.push({ letter: key, el: null });
+                    playSound('click');
+                    updateWordPreview();
+                }
+            });
+        }
+
+        /* ==========================================
+           WORD VERIFICATION & GAME LOGIC
+           ========================================== */
+        function processWordSubmission(submittedWord, authorName) {
+            const cleanedWord = normalizeGuess(submittedWord);
+            authorName = safeUsername(authorName);
+            if (!cleanedWord) return;
+
+            let wordMatched = false;
+
+            // 1. Check if full word matches any unrevealed target word
+            currentLevel.words.forEach(wObj => {
+                if (wObj.word === cleanedWord) {
+                    wordMatched = true;
+                    if (!revealedWords.has(cleanedWord)) {
+                        revealWord(cleanedWord, authorName);
+                    } else {
+                        triggerTikTokHearts();
+                        addChatMessage(authorName, `a réécrit "${cleanedWord}" (Déjà trouvé!)`, "text-slate-400");
+                    }
+                }
+            });
+
+            // 2. Check if a single letter was submitted by chat
+            if (!wordMatched && cleanedWord.length === 1) {
+                let revealedCount = 0;
+                const visibleCells = getVisibleCellKeys();
+                currentLevel.words.forEach(wObj => {
+                    if (revealedWords.has(wObj.word)) return;
+                    [...normalizeGuess(wObj.word)].forEach((letter, index) => {
+                        if (letter !== cleanedWord) return;
+                        const x = wObj.x + (wObj.direction === 'horizontal' ? index : 0);
+                        const y = wObj.y + (wObj.direction === 'vertical' ? index : 0);
+                        const cellKey = `${y},${x}`;
+                        if (!visibleCells.has(cellKey)) {
+                            revealedCells.set(cellKey, letter);
+                            visibleCells.add(cellKey);
+                            revealedCount++;
+                        }
+                    });
+                });
+
+                if (revealedCount > 0) {
+                    playSound('click');
+                    renderCrosswordGrid();
+                    saveGameState();
+                    addChatMessage(authorName, `propose la lettre '${cleanedWord}' : ${revealedCount} case${revealedCount > 1 ? 's' : ''} révélée${revealedCount > 1 ? 's' : ''} !`, "text-amber-300 font-semibold");
+                    triggerTikTokHearts();
+                    awardPoints(authorName, 25);
+                } else {
+                    playSound('error');
+                    addChatMessage(authorName, `propose '${cleanedWord}' (Pas dans la grille)`, "text-slate-400");
+                }
+                return;
+            }
+
+            // 3. Invalid word
+            if (!wordMatched) {
+                playSound('error');
+                addChatMessage(authorName, `a proposé "${cleanedWord}" ❌`, "text-rose-400/80");
+            }
+        }
+
+        function getVisibleCellKeys() {
+            const visible = new Set(revealedCells.keys());
+            currentLevel.words.forEach(word => {
+                if (!revealedWords.has(word.word)) return;
+                [...word.word].forEach((_, index) => {
+                    const x = word.x + (word.direction === 'horizontal' ? index : 0);
+                    const y = word.y + (word.direction === 'vertical' ? index : 0);
+                    visible.add(`${y},${x}`);
+                });
+            });
+            return visible;
+        }
+
+        function handleLiveGift(gift) {
+            const giftName = String(gift.giftName ?? gift.gift?.name ?? gift.name ?? "")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .trim()
+                .toLowerCase();
+            if (giftName !== "rose") return;
+
+            const repeatCount = Math.floor(Number(gift.repeatCount) || 1);
+            const giftCount = Number.isFinite(repeatCount)
+                ? Math.min(Math.max(1, repeatCount), currentLevel.gridCols * currentLevel.gridRows)
+                : 1;
+            const visibleCells = getVisibleCellKeys();
+            const candidates = new Map();
+            currentLevel.words.forEach(word => {
+                if (revealedWords.has(word.word)) return;
+                [...word.word].forEach((letter, index) => {
+                    const x = word.x + (word.direction === 'horizontal' ? index : 0);
+                    const y = word.y + (word.direction === 'vertical' ? index : 0);
+                    const cellKey = `${y},${x}`;
+                    if (!visibleCells.has(cellKey)) candidates.set(cellKey, normalizeGuess(letter));
+                });
+            });
+
+            let revealedCount = 0;
+            for (let i = 0; i < giftCount && candidates.size; i++) {
+                const available = [...candidates.entries()];
+                const [cellKey, letter] = available[Math.floor(Math.random() * available.length)];
+                revealedCells.set(cellKey, letter);
+                visibleCells.add(cellKey);
+                candidates.delete(cellKey);
+                revealedCount++;
+            }
+
+            if (!revealedCount) return;
+            renderCrosswordGrid();
+            saveGameState();
+            playSound('success');
+            triggerTikTokHearts();
+            const username = safeUsername(gift.nickname || gift.username || gift.uniqueId || "Spectateur");
+            addChatMessage(username, `🌹 offre ${giftCount} rose${giftCount > 1 ? 's' : ''} : ${revealedCount} case${revealedCount > 1 ? 's' : ''} révélée${revealedCount > 1 ? 's' : ''} !`, "text-rose-300 font-bold");
+        }
+
+        function revealWord(word, authorName) {
+            revealedWords.add(word);
+            playSound('success');
+            updateFoundCounter();
+            triggerTikTokHearts();
+
+            renderCrosswordGrid();
+            saveGameState();
+
+            addChatMessage(authorName, `🎉 A TROUVÉ LE MOT : "${word}" ! (+100 pts)`, "text-cyan-300 font-extrabold");
+            awardPoints(authorName, 100);
+
+            // Check Level Completion
+            if (revealedWords.size === currentLevel.words.length) {
+                if (levelCompletionTimeout) clearTimeout(levelCompletionTimeout);
+                levelCompletionTimeout = setTimeout(startAutomaticNextLevelCountdown, 600);
+            }
+        }
+
+        function giveHint() {
+            playSound('click');
+            const unrevealed = currentLevel.words.find(w => !revealedWords.has(w.word));
+            if (unrevealed) {
+                addChatMessage("SYSTÈME", `💡 Indice pour ${unrevealed.word.length} lettres : "${unrevealed.hint}"`, "text-amber-300 font-bold");
+            }
+        }
+
+        function updateFoundCounter() {
+            document.getElementById('found-words-count').innerText = `${revealedWords.size} / ${currentLevel.words.length} Mots`;
+        }
+
+        /* ==========================================
+           AUTOMATIC NEXT LEVEL COUNTDOWN ENGINE
+           ========================================== */
+        function startAutomaticNextLevelCountdown() {
+            const modal = document.getElementById('victory-modal');
+            const card = document.getElementById('victory-modal-card');
+            const countdownEl = document.getElementById('auto-countdown');
+
+            const topPlayer = leaderboard[0] || { name: "Chat TikTok", score: 0 };
+            document.getElementById('mvp-name').innerText = `@${topPlayer.name}`;
+
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            card.classList.remove('scale-90');
+            card.classList.add('scale-100');
+
+            let count = 4;
+            countdownEl.innerText = count;
+
+            if (countdownTimer) clearInterval(countdownTimer);
+
+            countdownTimer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.innerText = count;
+                    playSound('click');
+                } else {
+                    clearInterval(countdownTimer);
+                    skipCountdownAndStartNext();
+                }
+            }, 1000 / simulationSpeed);
+        }
+
+        function skipCountdownAndStartNext() {
+            if (countdownTimer) clearInterval(countdownTimer);
+            if (levelCompletionTimeout) clearTimeout(levelCompletionTimeout);
+            const modal = document.getElementById('victory-modal');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+
+            // Automatic next level (Looping through levels continuously)
+            currentLevelIndex = (currentLevelIndex + 1) % LEVELS.length;
+            loadLevel(currentLevelIndex);
+        }
+
+        /* ==========================================
+           LEADERBOARD & CHAT SYSTEM
+           ========================================== */
+        function awardPoints(username, points) {
+            username = safeUsername(username);
+            let player = leaderboard.find(p => p.name === username);
+            if (player) {
+                player.score += points;
+            } else {
+                leaderboard.push({ name: username, score: points });
+            }
+
+            leaderboard.sort((a, b) => b.score - a.score);
+            leaderboard = leaderboard.slice(0, 100);
+            renderLeaderboard();
+            saveGameState();
+        }
+
+        function renderLeaderboard() {
+            const listContainer = document.getElementById('leaderboard-list');
+            listContainer.innerHTML = '';
+
+            leaderboard.slice(0, 5).forEach((player, rank) => {
+                const item = document.createElement('div');
+                item.className = "flex items-center justify-between p-2 rounded-xl glass-card transition hover:bg-white/10";
+                const identity = document.createElement('div');
+                identity.className = "flex items-center space-x-2.5 min-w-0";
+                const rankBadge = document.createElement('span');
+                rankBadge.className = `w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${rank === 0 ? "bg-amber-400 text-slate-900" : rank === 1 ? "bg-slate-300 text-slate-900" : rank === 2 ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-300"}`;
+                rankBadge.textContent = String(rank + 1);
+                const avatar = document.createElement('span');
+                avatar.className = "w-8 h-8 shrink-0 rounded-full border border-white/30 bg-indigo-600 flex items-center justify-center text-sm font-bold";
+                avatar.textContent = player.name.charAt(0).toUpperCase();
+                const name = document.createElement('span');
+                name.className = "text-xs font-bold text-slate-200 truncate max-w-[100px]";
+                name.textContent = `@${player.name}`;
+                identity.append(rankBadge, avatar, name);
+
+                const score = document.createElement('span');
+                score.className = "text-xs font-extrabold text-cyan-400 font-mono shrink-0";
+                score.textContent = `${player.score} pts`;
+                item.append(identity, score);
+                listContainer.appendChild(item);
+            });
+        }
+
+        function addChatMessage(user, message, extraClass = "text-slate-200") {
+            const feed = document.getElementById('chat-feed');
+            const msgEl = document.createElement('div');
+            msgEl.className = "animate-pop text-xs p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 flex flex-col space-y-0.5";
+
+            const heading = document.createElement('div');
+            heading.className = "flex items-center space-x-1.5";
+            const username = document.createElement('span');
+            username.className = "font-bold text-pink-400";
+            username.textContent = `@${safeUsername(user)}`;
+            const time = document.createElement('span');
+            time.className = "text-[10px] text-slate-500";
+            time.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            heading.append(username, time);
+
+            const body = document.createElement('div');
+            body.className = extraClass;
+            body.textContent = String(message);
+            msgEl.append(heading, body);
+            feed.appendChild(msgEl);
+            while (feed.children.length > MAX_CHAT_MESSAGES) feed.firstElementChild.remove();
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function handleUserChatSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const username = safeUsername(document.getElementById('chat-username').value || "Viewer");
+            const val = input.value.trim();
+            if (val) {
+                processWordSubmission(val, username);
+                input.value = '';
+            }
+        }
+
+        /* Bot Chat Auto Simulation */
+        function startBotChatSimulation() {
+            if (botChatInterval) clearInterval(botChatInterval);
+            if (!isBotChatActive) return;
+            botChatInterval = setInterval(() => {
+                const randomUser = BOT_USERS[Math.floor(Math.random() * BOT_USERS.length)];
+                const unrevealed = currentLevel.words.filter(w => !revealedWords.has(w.word));
+
+                if (unrevealed.length > 0 && Math.random() > 0.4) {
+                    const targetObj = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+                    if (Math.random() > 0.5) {
+                        processWordSubmission(targetObj.word, randomUser);
+                    } else {
+                        const randomChar = targetObj.word.charAt(Math.floor(Math.random() * targetObj.word.length));
+                        processWordSubmission(randomChar, randomUser);
+                    }
+                } else {
+                    const dummyGuesses = ["SOLEIL", "CHAT", "FLEUR", "MER", "VENT", "A", "E", "S"];
+                    const guess = dummyGuesses[Math.floor(Math.random() * dummyGuesses.length)];
+                    processWordSubmission(guess, randomUser);
+                }
+            }, 5000 / simulationSpeed);
+        }
+
+        function toggleBotChat() {
+            isBotChatActive = !isBotChatActive;
+            const label = `Bot : ${isBotChatActive ? 'ON' : 'OFF'}`;
+            document.getElementById('bot-toggle-btn').innerText = label;
+            document.getElementById('simulate-bot').innerText = label;
+            startBotChatSimulation();
+        }
+
+        function triggerTikTokHearts() {
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const heart = document.createElement('div');
+                    heart.className = "tiktok-heart text-2xl";
+                    heart.innerHTML = ['❤️', '💖', '✨', '🎁', '🔥'][Math.floor(Math.random() * 5)];
+                    heart.style.left = `${Math.random() * 80 + 10}%`;
+                    heart.style.bottom = "20%";
+                    document.body.appendChild(heart);
+
+                    setTimeout(() => heart.remove(), 2000);
+                }, i * 150);
+            }
+        }
+    </script>
+</body>
+</html>

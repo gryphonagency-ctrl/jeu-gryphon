@@ -172,6 +172,7 @@ const protectedRoutes = new Set([
     '/maya-island.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
+    '/noyau-des-abysses.html',
     '/machine-cadeaux.html',
     '/machina-cadeau-circulaire.html',
     '/machine-a-pinces.html',
@@ -179,6 +180,7 @@ const protectedRoutes = new Set([
     '/lancer-de-cerceaux.html',
     '/lion-temple-maya.html',
     '/mots-associes.html',
+    '/mot-du-live.html',
     '/squid-storm.html',
     '/tower-up.html',
     '/tir-a-la-corde.html',
@@ -212,6 +214,7 @@ const freeTrialRoutes = new Set([
     '/pendu',
     '/pendu.html',
     '/mots-associes.html',
+    '/mot-du-live.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/lion-temple-maya.html',
     '/petits-chevaux-tiktok.html',
@@ -260,9 +263,11 @@ const staticGameIds = [
     '/maya-island.html',
     '/monde-du-ballon.html',
     '/peluches-mutantes.html',
+    '/noyau-des-abysses.html',
     '/machine-cadeaux.html',
     '/machina-cadeau-circulaire.html',
     '/mots-associes.html',
+    '/mot-du-live.html',
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
@@ -294,6 +299,7 @@ store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
+store.grantGameAccessToExistingCreators('/noyau-des-abysses.html');
 store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
 store.grantGameAccessToExistingCreators('/machina-cadeau-circulaire.html');
 store.grantGameAccessToExistingCreators('/machine-a-pinces.html');
@@ -301,6 +307,7 @@ store.grantGameAccessToExistingCreators('/memoire-du-cirque.html');
 store.grantGameAccessToExistingCreators('/lancer-de-cerceaux.html');
 store.grantGameAccessToExistingCreators('/lion-temple-maya.html');
 store.grantGameAccessToExistingCreators('/mots-associes.html');
+store.grantGameAccessToExistingCreators('/mot-du-live.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/gryphon-blackjack.html');
 store.grantGameAccessToExistingCreators('/telepusher.html');
@@ -359,6 +366,7 @@ const staticGameTitles = {
     '/maya-island.html': 'Maya Island',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
+    '/noyau-des-abysses.html': 'Le Noyau des Abysses',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
     '/machina-cadeau-circulaire.html': 'Machina Cadeau circulaire',
     '/machine-a-pinces.html': 'Machine à Pinces',
@@ -366,6 +374,7 @@ const staticGameTitles = {
     '/lancer-de-cerceaux.html': 'Lancer de Cerceaux',
     '/lion-temple-maya.html': 'Lion dans la Savane',
     '/mots-associes.html': 'Mots Associés',
+    '/mot-du-live.html': 'Le Mot du Live',
     '/flipper-neon.html': 'Flipper Néon',
     '/gryphon-blackjack.html': 'Gryphon Blackjack',
     '/telepusher.html': 'A, ma télépusher',
@@ -416,6 +425,7 @@ const gameRouteIds = new Map([
     ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
+    ['/noyau-des-abysses.html', '/noyau-des-abysses.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
     ['/machina-cadeau-circulaire.html', '/machina-cadeau-circulaire.html'],
     ['/machine-a-pinces.html', '/machine-a-pinces.html'],
@@ -423,6 +433,7 @@ const gameRouteIds = new Map([
     ['/lancer-de-cerceaux.html', '/lancer-de-cerceaux.html'],
     ['/lion-temple-maya.html', '/lion-temple-maya.html'],
     ['/mots-associes.html', '/mots-associes.html'],
+    ['/mot-du-live.html', '/mot-du-live.html'],
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/gryphon-blackjack.html', '/gryphon-blackjack.html'],
     ['/telepusher.html', '/telepusher.html'],
@@ -2865,6 +2876,7 @@ const server = http.createServer((req, res) => {
         ['/maya-island/assets/horse-racer.svg', [path.join(mayaIslandDirectory, 'assets', 'horse-racer.svg'), 'image/svg+xml']],
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
+        ['/noyau-des-abysses.html', [path.join(__dirname, 'noyau-des-abysses.html'), 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
         ['/machina-cadeau-circulaire.html', [path.join(__dirname, 'machina-cadeau-circulaire.html'), 'text/html; charset=utf-8']],
         ['/machine-a-pinces.html', [path.join(__dirname, 'machine-a-pinces.html'), 'text/html; charset=utf-8']],
@@ -2872,6 +2884,7 @@ const server = http.createServer((req, res) => {
         ['/lancer-de-cerceaux.html', [path.join(__dirname, 'lancer-de-cerceaux.html'), 'text/html; charset=utf-8']],
         ['/lion-temple-maya.html', [path.join(__dirname, 'lion-temple-maya.html'), 'text/html; charset=utf-8']],
         ['/mots-associes.html', [path.join(__dirname, 'mots-associes.html'), 'text/html; charset=utf-8']],
+        ['/mot-du-live.html', [path.join(__dirname, 'mot-du-live.html'), 'text/html; charset=utf-8']],
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/gryphon-blackjack.html', [path.join(__dirname, 'gryphon-blackjack.html'), 'text/html; charset=utf-8']],
         ['/telepusher.html', [path.join(__dirname, 'telepusher.html'), 'text/html; charset=utf-8']],
@@ -2945,6 +2958,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/pont-de-verre.svg', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/noyau-des-abysses.svg', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/mot-du-live.svg', [path.join(__dirname, 'images-vitrine', 'mot-du-live.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
         ['/node_modules/matter-js/build/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
