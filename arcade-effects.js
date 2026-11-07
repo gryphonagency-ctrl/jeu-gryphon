@@ -100,8 +100,8 @@
 .ae-bubble .ae-name{max-width:150px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:700 13px/1.4 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
 .ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none}
-.ae-treasure-gifts{position:absolute;inset:0;z-index:1}
-.ae-treasure-gift{position:absolute;width:clamp(16px,2.4vw,32px);height:clamp(16px,2.4vw,32px);display:flex;align-items:center;justify-content:center;
+.ae-treasure-gifts{position:absolute;inset:0;z-index:3}
+.ae-treasure-gift{position:absolute;width:clamp(8px,1.8vw,24px);height:clamp(8px,1.8vw,24px);display:flex;align-items:center;justify-content:center;
  overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform}
 .ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:none}
 .ae-treasure-gift-name{max-width:100%;padding:2px;color:#fff4cf;text-align:center;font:700 8px/1.1 Arial,sans-serif;overflow:hidden;overflow-wrap:anywhere}
@@ -189,8 +189,8 @@
             return { x: window.innerWidth / 2, y: window.innerHeight - 40 };
         }
         return {
-            x: bounds.left + bounds.width * (0.31 + ((seed * 31) % 38) / 100),
-            y: bounds.top + bounds.height * (0.40 + ((seed * 17) % 13) / 100)
+            x: bounds.left + bounds.width * (0.39 + ((seed * 31) % 29) / 100),
+            y: bounds.top + bounds.height * (0.39 + ((seed * 17) % 5) / 100)
         };
     }
 
