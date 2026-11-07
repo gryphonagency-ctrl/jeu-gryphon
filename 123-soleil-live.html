@@ -35,10 +35,10 @@
     #finish-line { position: absolute; z-index: 1; top: 28%; left: 0; width: 100%; height: 7px; background: repeating-linear-gradient(90deg, #fff 0 24px, #d33b48 24px 48px); box-shadow: 0 0 10px #fff9; }
     #start-line { position: absolute; z-index: 1; bottom: 4%; left: 0; width: 100%; border-top: 3px dashed #fff; }
     .doll-zone { position: absolute; z-index: 3; top: 1%; left: 50%; width: clamp(90px, 16vw, 170px); transform: translateX(-50%); perspective: 900px; text-align: center; }
-    #doll { position: relative; display: block; width: 100%; height: clamp(110px, 23vh, 195px); transform-style: preserve-3d; transform-origin: center; transition: transform .65s cubic-bezier(.2,.7,.25,1); filter: drop-shadow(0 5px 5px #0008); }
+    #doll { position: relative; display: block; width: 100%; height: clamp(110px, 23vh, 195px); transform-style: preserve-3d; transform-origin: center; transition: transform .65s cubic-bezier(.2,.7,.25,1); }
     #doll[data-state="green"] { transform: rotateY(0deg); }
     #doll[data-state="red"] { transform: rotateY(180deg); }
-    .doll-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; backface-visibility: hidden; }
+    .doll-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; backface-visibility: hidden; filter: drop-shadow(0 5px 5px #0008); }
     .doll-face-front { transform: rotateY(180deg); }
     #light-state { display: inline-block; margin-top: 2px; padding: 6px 10px; border-radius: 99px; background: #14532d; color: #c9ffd8; font-size: clamp(10px, 1.7vw, 14px); font-weight: 900; box-shadow: 0 2px 12px #0008; }
     #light-state.red { background: #8d1c2a; color: #ffe0e4; }
@@ -46,8 +46,8 @@
     #race-message.phase-message { opacity: 0; transition: opacity .15s ease; }
     #race-message.phase-message.visible { opacity: 1; }
     #race-message strong { display: inline-block; padding: 10px 18px; border: 1px solid #fff5; border-radius: 12px; background: #111c; font-size: clamp(18px, 4vw, 32px); text-shadow: 0 2px 4px #000; }
-    .player { position: absolute; z-index: 2; bottom: calc(4% + var(--progress, 0) * .69%); width: clamp(54px, 7vw, 82px); transform: translateX(-50%); text-align: center; transition: bottom .35s cubic-bezier(.2,.8,.25,1), opacity .3s, filter .3s; }
-    .player img { display: block; width: clamp(34px, 5.5vw, 48px); height: clamp(34px, 5.5vw, 48px); margin: 0 auto; border: 3px solid #f5cd44; border-radius: 50%; background: #293345; object-fit: cover; }
+    .player { position: absolute; z-index: 2; bottom: calc(4% + var(--progress-offset, 0%)); width: clamp(108px, 14vw, 164px); transform: translateX(-50%); text-align: center; transition: bottom .35s cubic-bezier(.2,.8,.25,1), opacity .3s, filter .3s; }
+    .player img { display: block; width: clamp(68px, 11vw, 96px); height: clamp(68px, 11vw, 96px); margin: 0 auto; border: 3px solid #f5cd44; border-radius: 50%; background: #293345; object-fit: cover; }
     .player .number { display: inline-block; margin-top: -6px; padding: 2px 6px; position: relative; z-index: 2; border-radius: 4px; background: #7136a0; font-size: 11px; font-weight: 900; }
     .player .name { display: block; overflow: hidden; color: white; font-size: 11px; font-weight: 800; text-overflow: ellipsis; text-shadow: 0 2px 3px black; white-space: nowrap; }
     .player.eliminated { opacity: .28; filter: grayscale(1); transform: translateX(-50%) rotate(90deg) scale(.9); }
@@ -161,7 +161,7 @@
         </div>
         <div id="connection-status" role="status" aria-live="polite">Connecte le compte TikTok de ton direct pour recevoir les inscriptions et les cadeaux.</div>
         <div class="control-row">
-          <span>Chat : une lettre ou un nombre de 1 à 100 pour entrer · <strong>RUN</strong> dépense les étoiles du portefeuille, puis chaque étoile jouée fait un pas.</span>
+          <span>Chat : une lettre ou un nombre de 1 à 100 pour entrer · <strong>RUN</strong> dépense les étoiles du portefeuille, puis chaque étoile jouée fait un pas. Cadeaux : 1 pièce TikTok = 1 pas (10 %), même au feu rouge ; 10 pièces pour finir.</span>
         </div>
         <div class="control-row">
           <label for="speed-control">Vitesse du cycle</label>
@@ -290,7 +290,7 @@
         const row = document.createElement('div');
         row.className = 'player';
         row.style.left = `${player.lane}%`;
-        row.style.setProperty('--progress', player.progress);
+        row.style.setProperty('--progress-offset', `${(player.progress * 0.69).toFixed(2)}%`);
         row.id = `player-${player.id}`;
         row.appendChild(createAvatar(player));
 
@@ -353,13 +353,17 @@
 
         const cleanEntry = String(entry || '').trim();
         if (!/^(?:[1-9]\d?|100|[a-z])$/i.test(cleanEntry)) return;
+        const terrainWidth = terrain.clientWidth || window.innerWidth;
+        const playerWidth = Math.min(164, Math.max(108, window.innerWidth * 0.14));
+        const laneInset = Math.min(49, playerWidth / terrainWidth * 50);
+        const laneRange = 100 - laneInset * 2;
         const player = {
           id: players.size + 1,
           key,
           username,
           entry: cleanEntry.toLocaleUpperCase('fr-FR'),
           avatarUrl: resolveAvatar(user),
-          lane: 5 + ((players.size * 37) % 90),
+          lane: laneInset + ((players.size * 37) % laneRange),
           progress: 0,
           eliminated: false,
           winner: false,
@@ -485,11 +489,11 @@
         }
       }
 
-      function movePlayer(username, stepCount = 1, simulated = false) {
+      function movePlayer(username, stepCount = 1, simulated = false, giftMovement = false) {
         if (raceFinished) return;
         const player = players.get(playerKey(username));
         if (!player || player.eliminated || player.winner) return;
-        if (lightState === 'red') {
+        if (lightState === 'red' && !giftMovement) {
           eliminate(player);
           return;
         }
@@ -497,7 +501,7 @@
         const advances = Math.min(100, Math.max(1, Math.floor(Number(stepCount) || 1)));
         for (let i = 0; i < advances && !raceFinished; i++) {
           player.progress = Math.min(100, player.progress + 10);
-          player.element.style.setProperty('--progress', player.progress);
+          player.element.style.setProperty('--progress-offset', `${(player.progress * 0.69).toFixed(2)}%`);
           if (player.progress >= 100) {
             player.winner = true;
             player.element.classList.add('winner');
@@ -535,8 +539,7 @@
         roundGiftCoins = Math.min(Number.MAX_SAFE_INTEGER, roundGiftCoins + value);
         updateRoundPot();
         const username = gift.uniqueId || gift.username || gift.nickname;
-        const repeats = Math.max(1, Math.min(100, Math.floor(Number(gift.repeatCount) || 1)));
-        movePlayer(username, repeats);
+        movePlayer(username, value, false, true);
       }
 
       function handleWalletRun(event) {
@@ -695,7 +698,7 @@
           return;
         }
         const player = active[Math.floor(Math.random() * active.length)];
-        movePlayer(player.username, 1, true);
+        movePlayer(player.username, 1, true, true);
       });
       $('simulate-red').addEventListener('click', () => setLight('red'));
       $('simulate-big-gift').addEventListener('click', () => {

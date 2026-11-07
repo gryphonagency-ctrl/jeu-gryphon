@@ -235,7 +235,6 @@ const freeTrialRoutes = new Set([
 const staticGameIds = [
     '/combat-goku-luffy.html',
     '/showdown-tiktok.html',
-    '/dessiner-cest-gagne.html',
     '/super-mario-live.html',
     '/bingo-gryphon.html',
     '/puissance-4-tiktok.html',
@@ -338,12 +337,10 @@ store.grantGameAccessToExistingCreators('/123-soleil-live.html');
 store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
-store.grantGameAccessToExistingCreators('/dessiner-cest-gagne.html');
 store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
-    '/dessiner-cest-gagne.html': 'Dessiner, c’est gagné !',
     '/super-mario-live.html': 'Mario',
     '/bingo-gryphon.html': 'Bingo Gryphon',
     '/puissance-4-tiktok.html': 'Puissance 4 · TikTok Live',
@@ -403,7 +400,6 @@ const staticGameTitles = {
 const gameRouteIds = new Map([
     ['/combat-goku-luffy.html', '/combat-goku-luffy.html'],
     ['/showdown-tiktok.html', '/showdown-tiktok.html'],
-    ['/dessiner-cest-gagne.html', '/dessiner-cest-gagne.html'],
     ['/super-mario-live.html', '/super-mario-live.html'],
     ['/bingo-gryphon.html', '/bingo-gryphon.html'],
     ['/puissance-4-tiktok.html', '/puissance-4-tiktok.html'],
@@ -2920,7 +2916,6 @@ const server = http.createServer((req, res) => {
         ['/combat-goku-luffy.html', [path.join(__dirname, 'combat-goku-luffy.html'), 'text/html; charset=utf-8']],
         ['/showdown-tiktok.html', [path.join(__dirname, 'showdown-tiktok.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/showdown-tiktok.svg', [path.join(__dirname, 'images-vitrine', 'showdown-tiktok.svg'), 'image/svg+xml']],
-        ['/images-vitrine/dessiner-cest-gagne.svg', [path.join(__dirname, 'images-vitrine', 'dessiner-cest-gagne.svg'), 'image/svg+xml']],
         ['/images-vitrine/combat-goku-luffy.png', [path.join(__dirname, 'images-vitrine', 'combat-goku-luffy.png'), 'image/png']],
         ['/super-mario-live.html', [path.join(__dirname, 'super-mario-live.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/super-mario-live.png', [path.join(__dirname, 'images-vitrine', 'super-mario-live.png'), 'image/png']],
