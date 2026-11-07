@@ -101,9 +101,9 @@
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
 .ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none}
 .ae-treasure-gifts{position:absolute;inset:0;z-index:1}
-.ae-treasure-gift{position:absolute;width:clamp(24px,3.8vw,48px);height:clamp(24px,3.8vw,48px);display:flex;align-items:center;justify-content:center;
- overflow:hidden;border:1px solid rgba(255,224,132,.78);border-radius:11px;background:rgba(37,23,9,.65);box-shadow:0 2px 7px rgba(0,0,0,.45);will-change:transform}
-.ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+.ae-treasure-gift{position:absolute;width:clamp(16px,2.4vw,32px);height:clamp(16px,2.4vw,32px);display:flex;align-items:center;justify-content:center;
+ overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform}
+.ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:none}
 .ae-treasure-gift-name{max-width:100%;padding:2px;color:#fff4cf;text-align:center;font:700 8px/1.1 Arial,sans-serif;overflow:hidden;overflow-wrap:anywhere}
 .ae-treasure-gift-count{position:absolute;right:-4px;top:-5px;padding:1px 4px;border-radius:8px;background:#a51234;color:#fff;font:800 9px/1.2 Arial,sans-serif}
 .ae-treasure-count{position:absolute;z-index:3;transform:translate(-50%,-50%);padding:4px 11px;border:1px solid #ffe27a;border-radius:99px;
@@ -169,20 +169,36 @@
 
     function treasureChestBounds() {
         const chest = treasureStage && treasureStage.querySelector('.ae-treasure-chest');
-        return chest ? chest.getBoundingClientRect() : null;
+        if (!chest) return null;
+        const bounds = chest.getBoundingClientRect();
+        if (bounds.width && bounds.height) return bounds;
+        const width = Math.min(
+            window.innerWidth * treasureLayout.width / 100,
+            window.innerWidth * 0.9,
+            window.innerHeight * 0.72 * 1.75
+        );
+        const height = width / 1.75;
+        const left = window.innerWidth * treasureLayout.x / 100 - width / 2;
+        const top = window.innerHeight * treasureLayout.y / 100 - height / 2;
+        return { left, top, right: left + width, bottom: top + height, width, height };
     }
 
-    function treasurePosition(index, bounds) {
+    function treasureInsidePosition(index, bounds) {
         const seed = index + 1;
         if (!bounds || !bounds.width || !bounds.height) {
             return { x: window.innerWidth / 2, y: window.innerHeight - 40 };
         }
+        return {
+            x: bounds.left + bounds.width * (0.31 + ((seed * 31) % 38) / 100),
+            y: bounds.top + bounds.height * (0.40 + ((seed * 17) % 13) / 100)
+        };
+    }
+
+    function treasurePosition(index, bounds) {
         if (index < TREASURE_CAPACITY) {
-            return {
-                x: bounds.left + bounds.width * (0.28 + ((seed * 31) % 43) / 100),
-                y: bounds.top + bounds.height * (0.42 + ((seed * 17) % 17) / 100)
-            };
+            return treasureInsidePosition(index, bounds);
         }
+        const seed = index + 1;
         const overflowIndex = index - TREASURE_CAPACITY;
         const side = overflowIndex % 2;
         return {
@@ -508,14 +524,37 @@
             const giftElement = items && items.children[index - firstVisible];
             if (!giftElement || typeof giftElement.animate !== 'function') continue;
             const target = treasurePosition(index, bounds);
-            const startDistance = target.y + 64;
+            const landing = treasureInsidePosition(
+                index < TREASURE_CAPACITY ? index : (index - TREASURE_CAPACITY) % TREASURE_CAPACITY,
+                bounds
+            );
+            const landingOffsetX = landing.x - target.x;
+            const landingOffsetY = landing.y - target.y;
+            const fallDistance = Math.max(180, landing.y + 64);
             giftElement.animate([
-                { transform: `translateY(-${startDistance}px) scale(.65)`, opacity: 0 },
-                { transform: 'translate(0, 0) scale(1)', opacity: 1 }
+                {
+                    transform: `translate(${landingOffsetX}px, ${landingOffsetY - fallDistance}px) scale(.65)`,
+                    opacity: 0,
+                    offset: 0,
+                    easing: 'cubic-bezier(.2,.7,.25,1)'
+                },
+                {
+                    transform: `translate(${landingOffsetX}px, ${landingOffsetY}px) scale(1)`,
+                    opacity: 1,
+                    offset: index < TREASURE_CAPACITY ? 1 : .72,
+                    easing: 'cubic-bezier(.3,.7,.25,1)'
+                },
+                ...(index < TREASURE_CAPACITY ? [] : [{
+                    transform: 'translate(0, 0) scale(1)',
+                    opacity: 1,
+                    offset: 1
+                }])
             ], {
-                duration: 700 + Math.random() * 300,
+                duration: index < TREASURE_CAPACITY
+                    ? 700 + Math.random() * 300
+                    : 1000 + Math.random() * 250,
                 delay: Math.min(i * 24, 650),
-                easing: 'cubic-bezier(.2,.8,.3,1)'
+                fill: 'both'
             });
         }
     }
