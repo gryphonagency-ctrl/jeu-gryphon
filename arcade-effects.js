@@ -99,7 +99,7 @@
 .ae-bubble .ae-initial{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff2e93,#ffb400);color:#fff;font:900 34px/1 Arial,sans-serif}
 .ae-bubble .ae-name{max-width:150px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:700 13px/1.4 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
-.ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none}
+.ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none;opacity:0}
 .ae-treasure-gifts{position:absolute;inset:0;z-index:3}
 .ae-treasure-gift{position:absolute;width:clamp(8px,1.8vw,24px);height:clamp(8px,1.8vw,24px);display:flex;align-items:center;justify-content:center;
  overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform}
@@ -110,7 +110,7 @@
  background:rgba(30,18,4,.78);color:#fff3b1;font:800 13px/1.2 Arial,sans-serif;text-shadow:0 1px 2px #000;white-space:nowrap}
 .ae-treasure-handle{position:absolute;z-index:4;display:none;pointer-events:auto;touch-action:none;border:2px solid #fff3b1;border-radius:10px;
  background:rgba(24,18,10,.88);color:white;box-shadow:0 2px 10px rgba(0,0,0,.55);font:800 18px/1 Arial,sans-serif}
-.ae-treasure-edit .ae-treasure-chest{outline:2px dashed #ffe27a;outline-offset:-10px;pointer-events:auto;cursor:move}
+.ae-treasure-edit .ae-treasure-chest{pointer-events:auto;cursor:move}
 .ae-treasure-edit .ae-treasure-handle{display:grid;place-items:center}
 .ae-treasure-move{width:42px;height:42px;cursor:move}
 .ae-treasure-resize{width:38px;height:38px;cursor:nwse-resize}
@@ -232,7 +232,7 @@
         chest.className = 'ae-treasure-chest';
         chest.src = '/images-vitrine/overlay-coffre-tresor.png';
         chest.alt = '';
-        chest.title = 'Glisser pour déplacer le coffre';
+        chest.title = 'Zone de réception invisible';
         chest.draggable = false;
         chest.addEventListener('load', applyTreasureLayout);
         const count = document.createElement('div');
