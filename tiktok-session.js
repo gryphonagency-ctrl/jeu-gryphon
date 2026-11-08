@@ -320,7 +320,8 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 uniqueId: identity.uniqueId || identity.username,
                 nickname: identity.nickname,
                 likeCount,
-                avatarDataUri
+                avatarDataUri,
+                avatarUrls: identity.avatarUrls
             }
         });
     });

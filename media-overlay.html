@@ -93,25 +93,38 @@ function showLikeBubble(profile) {
   if (liveEffectsEl.children.length >= 10) liveEffectsEl.children[0].remove();
   const name = String(profile.uniqueId || profile.username || profile.nickname || 'Spectateur').replace(/^@/, '').slice(0, 40);
   const key = viewerKey(profile);
-  const avatar = validImageUrl(profile.avatarDataUri || profile.avatarUrl || viewerAvatars.get(key));
+  const avatarUrl = Array.isArray(profile.avatarUrls)
+    ? profile.avatarUrls.find(url => validImageUrl(url))
+    : '';
+  const avatar = validImageUrl(profile.avatarDataUri || profile.avatarUrl || viewerAvatars.get(key) || avatarUrl);
   const bubble = document.createElement('div');
   bubble.className = 'like-bubble';
   bubble.style.setProperty('--bubble-x', `${10 + Math.random() * Math.max(0, window.innerWidth - 100)}px`);
   const orb = document.createElement('div');
   orb.className = 'like-avatar';
   if (avatar) {
-    const image = document.createElement('img');
-    image.alt = '';
-    image.referrerPolicy = 'no-referrer';
-    image.src = avatar;
-    image.onerror = () => {
-      image.remove();
-      const initial = document.createElement('span');
-      initial.className = 'like-initial';
-      initial.textContent = (name[0] || '?').toUpperCase();
-      orb.appendChild(initial);
+    const sources = [
+      validImageUrl(profile.avatarDataUri),
+      validImageUrl(viewerAvatars.get(key)),
+      validImageUrl(profile.avatarUrl),
+      avatarUrl && validImageUrl(avatarUrl)
+    ].filter(Boolean);
+    const showAvatar = index => {
+      if (index >= sources.length) {
+        const initial = document.createElement('span');
+        initial.className = 'like-initial';
+        initial.textContent = (name[0] || '?').toUpperCase();
+        orb.appendChild(initial);
+        return;
+      }
+      const image = document.createElement('img');
+      image.alt = '';
+      image.referrerPolicy = 'no-referrer';
+      image.src = sources[index];
+      image.onerror = () => { image.remove(); showAvatar(index + 1); };
+      orb.appendChild(image);
     };
-    orb.appendChild(image);
+    showAvatar(0);
   } else {
     const initial = document.createElement('span');
     initial.className = 'like-initial';
