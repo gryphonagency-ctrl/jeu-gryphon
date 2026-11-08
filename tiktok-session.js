@@ -285,7 +285,11 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         const identity = getTikTokIdentity(message.user);
         send({
             type: 'follow',
-            followData: { username: identity.uniqueId || identity.username, nickname: identity.nickname }
+            followData: {
+                messageId: String(message.common?.msgId || ''),
+                username: identity.uniqueId || identity.username,
+                nickname: identity.nickname
+            }
         });
     });
 
@@ -310,6 +314,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         send({
             type: 'like',
             likeData: {
+                messageId: String(message.common?.msgId || ''),
                 userId: identity.userId,
                 username: identity.uniqueId || identity.username,
                 uniqueId: identity.uniqueId || identity.username,

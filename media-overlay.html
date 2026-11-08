@@ -11,10 +11,24 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 #stage video, #stage img { max-width: 100%; max-height: 100%; display: none; }
 #status { position: fixed; left: 8px; bottom: 8px; font: 12px sans-serif; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; }
 #status.hide { display: none; }
+#live-effects { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
+#live-stats { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); display: none; align-items: center; gap: 12px; max-width: calc(100vw - 20px); padding: 9px 13px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; background: rgba(14,18,30,.86); box-shadow: 0 4px 18px rgba(0,0,0,.3); color: #fff; font: 700 14px/1.2 Arial,sans-serif; transform: translateX(-50%); white-space: nowrap; }
+#live-stats.visible { display: flex; }
+.live-stat { display: flex; align-items: center; gap: 5px; }
+.live-stat strong { color: #ffd45a; font-variant-numeric: tabular-nums; }
+.like-bubble { position: absolute; bottom: -120px; left: var(--bubble-x); display: flex; flex-direction: column; align-items: center; gap: 5px; width: 82px; animation: like-float 2.8s ease-out forwards; }
+.like-avatar { display: flex; align-items: center; justify-content: center; width: 76px; height: 76px; padding: 4px; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; background: linear-gradient(135deg,#ff2e93,#ffd45a); box-shadow: 0 0 18px rgba(255,46,147,.65); box-sizing: border-box; }
+.like-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.like-initial { color: #fff; font: 900 30px/1 Arial,sans-serif; }
+.like-name { max-width: 130px; overflow: hidden; padding: 2px 8px; border-radius: 99px; background: rgba(0,0,0,.7); color: #fff; font: 700 12px/1.4 Arial,sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes like-float { 0% { transform: translateY(0) scale(.65); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(calc(-100vh - 150px)) scale(1.05); opacity: 0; } }
+@media(max-width:480px) { #live-stats { gap: 8px; padding: 8px 10px; font-size: 12px; } .like-bubble { transform: scale(.85); transform-origin: bottom center; } }
 </style>
 </head>
 <body>
 <div id="stage"><video id="video" playsinline></video></div>
+<div id="live-effects" aria-hidden="true"></div>
+<div id="live-stats" aria-live="polite"></div>
 <div id="status">Connexion…</div>
 <script src="/overlay-firework.js"></script>
 <script>
@@ -23,6 +37,8 @@ const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
 const params = new URLSearchParams(location.search);
 const showStatus = params.get('statut') !== '0';
+const liveStatsEl = document.getElementById('live-stats');
+const liveEffectsEl = document.getElementById('live-effects');
 // Feu d'artifice : tous les cadeaux par défaut. ?seuil=50 pour changer, ?feu=0 pour désactiver, ?test=1 pour un aperçu.
 const fireworkEnabled = params.get('feu') !== '0';
 const fireworkThreshold = Math.max(1, Number(params.get('seuil')) || 1);
@@ -37,6 +53,8 @@ let playing = false;
 let reconnectDelay = 3000;
 let hideTimer = null;
 const viewerAvatars = new Map();
+const seenLiveEvents = new Set();
+const liveStats = { followers: 0, likes: 0 };
 
 function viewerKey(profile) {
   return String(profile?.uniqueId || profile?.username || profile?.nickname || '')
@@ -52,6 +70,70 @@ function validImageUrl(value) {
   } catch {
     return '';
   }
+}
+
+function updateLiveStats(type, amount) {
+  const count = Math.floor(Number(amount) || 0);
+  if (!Number.isSafeInteger(count) || count < 1) return;
+  liveStats[type] = Math.min(Number.MAX_SAFE_INTEGER, liveStats[type] + count);
+  liveStatsEl.replaceChildren();
+  for (const [key, label, icon] of [['followers', 'Abonnés', '👥'], ['likes', 'J’aime', '❤️']]) {
+    const item = document.createElement('span');
+    item.className = 'live-stat';
+    item.append(document.createTextNode(`${icon} ${label} `));
+    const value = document.createElement('strong');
+    value.textContent = liveStats[key].toLocaleString('fr-FR');
+    item.appendChild(value);
+    liveStatsEl.appendChild(item);
+  }
+  liveStatsEl.classList.add('visible');
+}
+
+function showLikeBubble(profile) {
+  if (liveEffectsEl.children.length >= 10) liveEffectsEl.children[0].remove();
+  const name = String(profile.uniqueId || profile.username || profile.nickname || 'Spectateur').replace(/^@/, '').slice(0, 40);
+  const key = viewerKey(profile);
+  const avatar = validImageUrl(profile.avatarDataUri || profile.avatarUrl || viewerAvatars.get(key));
+  const bubble = document.createElement('div');
+  bubble.className = 'like-bubble';
+  bubble.style.setProperty('--bubble-x', `${10 + Math.random() * Math.max(0, window.innerWidth - 100)}px`);
+  const orb = document.createElement('div');
+  orb.className = 'like-avatar';
+  if (avatar) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.referrerPolicy = 'no-referrer';
+    image.src = avatar;
+    image.onerror = () => {
+      image.remove();
+      const initial = document.createElement('span');
+      initial.className = 'like-initial';
+      initial.textContent = (name[0] || '?').toUpperCase();
+      orb.appendChild(initial);
+    };
+    orb.appendChild(image);
+  } else {
+    const initial = document.createElement('span');
+    initial.className = 'like-initial';
+    initial.textContent = (name[0] || '?').toUpperCase();
+    orb.appendChild(initial);
+  }
+  const label = document.createElement('span');
+  label.className = 'like-name';
+  label.textContent = `@${name}`;
+  bubble.append(orb, label);
+  liveEffectsEl.appendChild(bubble);
+  bubble.addEventListener('animationend', () => bubble.remove(), { once: true });
+}
+
+function firstLiveEvent(type, data) {
+  const id = String(data.messageId || '');
+  if (!id) return true;
+  const key = `${type}:${id}`;
+  if (seenLiveEvents.has(key)) return false;
+  seenLiveEvents.add(key);
+  if (seenLiveEvents.size > 2000) seenLiveEvents.delete(seenLiveEvents.values().next().value);
+  return true;
 }
 
 function setStatus(text) {
@@ -153,6 +235,16 @@ function connect() {
         if (viewerAvatars.size > 500) viewerAvatars.delete(viewerAvatars.keys().next().value);
       }
     } else {
+      if (data.type === 'follow' && firstLiveEvent('follow', data.followData || data.eventData || {})) {
+        updateLiveStats('followers', 1);
+      } else if (data.type === 'like' && data.likeData && firstLiveEvent('like', data.likeData)) {
+        const like = data.likeData;
+        const count = Math.floor(Number(like.likeCount) || 0);
+        if (Number.isSafeInteger(count) && count > 0) {
+          updateLiveStats('likes', count);
+          showLikeBubble(like);
+        }
+      }
       if (data.type === 'follow' || data.type === 'subscribe' || data.type === 'share' || data.type === 'gift') {
         if (data.type === 'gift' && fireworkEnabled && Number(data.gift?.coinCount) >= fireworkThreshold) {
           const gift = data.gift;
@@ -178,6 +270,17 @@ function connect() {
     setStatus('Overlay déconnecté. Nouvelle tentative…');
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  });
+}
+
+if (params.get('test') === 'follow') {
+  updateLiveStats('followers', 1);
+} else if (params.get('test') === 'like') {
+  updateLiveStats('likes', 25);
+  showLikeBubble({
+    uniqueId: 'spectateur_test',
+    nickname: 'Spectateur test',
+    avatarDataUri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%23ff2e93'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='36' fill='white'%3ET%3C/text%3E%3C/svg%3E"
   });
 }
 
