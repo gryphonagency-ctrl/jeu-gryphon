@@ -573,9 +573,15 @@ function injectArcadeScripts(html) {
         content = content.replace(/<head\b[^>]*>/i,
             match => `${match}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`);
     }
-    const walletScript = '<script src="/arcade-stars.js"></script>';
+    content = content.replace(
+        /<script\b(?=[^>]*\bsrc=["']\/(?:arcade-effects|arcade-stars|arcade-presence|arcade-mobile-controls)\.js["'])[^>]*>/gi,
+        scriptTag => /\sdefer(?:\s|=|>)/i.test(scriptTag)
+            ? scriptTag
+            : scriptTag.replace(/^<script\b/i, '$& defer')
+    );
+    const walletScript = '<script src="/arcade-stars.js" defer></script>';
     const presenceScript = '<script src="/arcade-presence.js" defer></script>';
-    const effectsScript = '<script src="/arcade-effects.js"></script>';
+    const effectsScript = '<script src="/arcade-effects.js" defer></script>';
     if (!/<script\b[^>]*src=["']\/arcade-effects\.js["']/i.test(content)) {
         content = /<head\b[^>]*>/i.test(content)
             ? content.replace(/<head\b[^>]*>/i, match => `${match}${effectsScript}`)
