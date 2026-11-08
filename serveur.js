@@ -1819,24 +1819,31 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (pathname === '/api/session' && req.method === 'GET') {
-        const authenticated = access.isAuthenticated(req);
-        const username = authenticated ? access.usernameForRequest(req) : '';
-        const account = username ? store.getAccount(username) : null;
-        const creatorTts = username ? store.getAccountLiveTts(username) : null;
-        const creatorSettings = username ? store.getCreatorSettings(username) : {};
-        const isAdmin = access.isAdmin(req);
+        const session = access.getSessionContext(req);
+        const {
+            authenticated,
+            configured,
+            isAdmin,
+            username,
+            hasSubscription,
+            canUseTts,
+            canAccessGames,
+            creatorSettings,
+            creatorTts,
+            roomNumber
+        } = session;
         res.writeHead(200, {
             'Cache-Control': 'no-store',
             'Content-Type': 'application/json; charset=utf-8'
         });
         res.end(JSON.stringify({
             authenticated,
-            configured: access.hasUsers,
+            configured,
             isAdmin,
             username,
-            hasSubscription: access.hasActiveSubscription(account),
-            canUseTts: canUseCreatorTts(username),
-            canAccessGames: access.canAccessGames(req),
+            hasSubscription,
+            canUseTts,
+            canAccessGames,
             arcadeBigGiftOverlayEnabled: username
                 ? creatorSettings.arcadeBigGiftOverlayEnabled !== false
                 : false,
@@ -1856,7 +1863,7 @@ const server = http.createServer((req, res) => {
             creatorTts: creatorTts
                 ? { active: true, username: creatorTts.username }
                 : { active: false, username: null },
-            roomNumber: username ? getCreatorRoomNumber(username) : null
+            roomNumber
         }));
         return;
     }

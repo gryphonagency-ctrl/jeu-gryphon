@@ -269,6 +269,21 @@ function getAccount(username) {
     return store.users[username.toLowerCase()] || null;
 }
 
+function getSessionData(username) {
+    const store = readStore();
+    const key = username.toLowerCase();
+    return {
+        account: store.users[key] || null,
+        creatorSettings: store.creatorSettings[key] || {},
+        creatorTts: store.liveTtsSources[key] || null,
+        creatorRemoved: store.removedUsers[key] === true,
+        userRevoked: store.revokedUsers[key] === true,
+        serviceAccess: store.serviceAccess[key] || {},
+        serviceRevocations: store.serviceRevocations[key] || {},
+        hasAccounts: Object.keys(store.users).length > 0
+    };
+}
+
 function upsertTikTokPlayer(profile) {
     return updateStore(store => {
         const playerKey = profile.userId
@@ -1199,6 +1214,7 @@ module.exports = {
     deleteCheckout,
     deleteGame,
     getAccount,
+    getSessionData,
     applyTikTokStarTransaction,
     getTikTokStarSummaryForAccount,
     importTikTokStarLeaderboard,

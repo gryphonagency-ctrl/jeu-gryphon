@@ -46,65 +46,126 @@ function getClientKey(req) {
 }
 
 function isAuthenticated(req) {
-    const cookieHeader = req.headers.cookie || '';
-    const token = cookieHeader.split(';').map(item => item.trim())
-        .find(item => item.startsWith(`${SESSION_COOKIE}=`))
-        ?.slice(SESSION_COOKIE.length + 1);
-    if (!token) return false;
-
-    const session = sessions.get(token);
+    const { token, session } = getRequestSession(req);
     if (!session) return false;
     if (session.expiresAt <= Date.now()) {
         sessions.delete(token);
         return false;
     }
     const administrator = isAdminUser(session.username);
-    if (!administrator && store.isCreatorRemoved(session.username)) {
-        sessions.delete(token);
-        return false;
-    }
-    if (session.storeBacked) {
-        const account = store.getAccount(session.username);
-        if (!administrator && !account) {
-            sessions.delete(token);
-            return false;
-        }
-    }
-    if (!administrator && store.isUserRevoked(session.username)) {
+    if (administrator) return true;
+    const data = store.getSessionData(session.username);
+    if (data.creatorRemoved || (session.storeBacked && !data.account) || data.userRevoked) {
         sessions.delete(token);
         return false;
     }
     return true;
 }
 
-function usernameForRequest(req) {
+function getRequestSession(req) {
     const cookieHeader = req.headers.cookie || '';
     const token = cookieHeader.split(';').map(item => item.trim())
         .find(item => item.startsWith(`${SESSION_COOKIE}=`))
         ?.slice(SESSION_COOKIE.length + 1);
-    if (!token) return '';
-    const session = sessions.get(token);
+    return { token, session: token ? sessions.get(token) : null };
+}
+
+function usernameForRequest(req) {
+    const { session } = getRequestSession(req);
     return session && session.expiresAt > Date.now() ? session.username || '' : '';
+}
+
+function getSessionContext(req) {
+    const { token, session } = getRequestSession(req);
+    const now = Date.now();
+    if (!session || session.expiresAt <= now) {
+        if (session) sessions.delete(token);
+        return {
+            authenticated: false,
+            configured: users.size > 0 || store.hasAccounts(),
+            isAdmin: false,
+            username: '',
+            hasSubscription: false,
+            canUseTts: false,
+            canAccessGames: false,
+            creatorSettings: {},
+            creatorTts: null,
+            roomNumber: null
+        };
+    }
+
+    const username = session.username || '';
+    const administrator = isAdminUser(username);
+    const data = store.getSessionData(username);
+    if ((!administrator && data.creatorRemoved) ||
+        (session.storeBacked && !administrator && !data.account) ||
+        (!administrator && data.userRevoked)) {
+        sessions.delete(token);
+        return {
+            authenticated: false,
+            configured: users.size > 0 || data.hasAccounts,
+            isAdmin: false,
+            username: '',
+            hasSubscription: false,
+            canUseTts: false,
+            canAccessGames: false,
+            creatorSettings: {},
+            creatorTts: null,
+            roomNumber: null
+        };
+    }
+
+    const activeSubscription = hasActiveSubscription(data.account, now);
+    const roomSettings = data.creatorSettings;
+    const manualAccessExpiresAt = data.account?.accessMode === 'MANUAL'
+        ? Date.parse(data.account.accessExpiresAt || '')
+        : NaN;
+    const manualAccessExpired = data.account?.accessMode === 'MANUAL' &&
+        data.account.accessExpiresAt !== undefined &&
+        (!Number.isFinite(manualAccessExpiresAt) || manualAccessExpiresAt <= now);
+    const canUseRoom = administrator || (!manualAccessExpired &&
+        (data.account?.accessMode === 'MANUAL' ||
+            hasConfiguredUser(username) ||
+            activeSubscription));
+
+    return {
+        authenticated: true,
+        configured: users.size > 0 || data.hasAccounts,
+        isAdmin: administrator,
+        username,
+        hasSubscription: activeSubscription,
+        canUseTts: canUseCreatorServiceFromData(username, 'tts', data, now),
+        canAccessGames: canUseCreatorServiceFromData(username, 'games', data, now),
+        creatorSettings: data.creatorSettings,
+        creatorTts: data.creatorTts,
+        roomNumber: roomSettings.roomNumber && !roomSettings.roomRevoked &&
+            !data.creatorRemoved && !data.userRevoked && canUseRoom
+            ? roomSettings.roomNumber
+            : null
+    };
 }
 
 function canUseCreatorService(username, service) {
     if (isAdminUser(username)) return true;
-    const account = store.getAccount(username);
-    if (store.isCreatorRemoved(username) || store.isUserRevoked(username)) return false;
+    return canUseCreatorServiceFromData(username, service, store.getSessionData(username));
+}
 
-    if (account?.accessMode === 'MANUAL') {
-        if (account.accessExpiresAt !== undefined) {
-            const accessExpiresAt = Date.parse(account.accessExpiresAt);
-            if (!Number.isFinite(accessExpiresAt) || accessExpiresAt <= Date.now()) return false;
+function canUseCreatorServiceFromData(username, service, data, now = Date.now()) {
+    if (isAdminUser(username)) return true;
+    if (data.creatorRemoved || data.userRevoked) return false;
+    if (data.account?.accessMode === 'MANUAL') {
+        if (data.account.accessExpiresAt !== undefined) {
+            const accessExpiresAt = Date.parse(data.account.accessExpiresAt);
+            if (!Number.isFinite(accessExpiresAt) || accessExpiresAt <= now) return false;
         }
-        return store.isCreatorServiceEnabled(username, service) &&
-            store.getCreatorServiceAccess(username, service) === true;
+        return data.serviceRevocations[service] !== true &&
+            data.serviceAccess[service] === true;
     }
     if (hasConfiguredUser(username)) {
-        return store.isCreatorServiceEnabled(username, service) &&
-            store.getCreatorServiceAccess(username, service) !== false;
+        return data.serviceRevocations[service] !== true &&
+            data.serviceAccess[service] !== false;
     }
-    return hasActiveSubscription(account);
+    return hasActiveSubscription(data.account, now);
 }
 
 function hasActiveSubscription(account, now = Date.now()) {
@@ -226,6 +287,7 @@ module.exports = {
     hasConfiguredUser,
     canAccessGames,
     canUseCreatorService,
+    getSessionContext,
     isCreatorRemoved: store.isCreatorRemoved,
     isAdminUser,
     isAdmin,
