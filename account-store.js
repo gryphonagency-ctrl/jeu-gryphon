@@ -1087,6 +1087,36 @@ function listGames() {
     return Object.values(readStore().games);
 }
 
+function getGameCatalogData(staticGameIds, username = '') {
+    const store = readStore();
+    const games = Object.values(store.games);
+    const gameImages = {};
+    const metadata = {};
+    for (const gameId of staticGameIds) {
+        const game = store.games[gameId];
+        const image = game?.imageUrl || game?.image;
+        if (image) gameImages[gameId] = image;
+        if (game && !game.uploaded && (game.title || game.description)) {
+            metadata[gameId] = {
+                title: game.title,
+                description: game.description
+            };
+        }
+    }
+    const gameAccess = username
+        ? store.gameAccess[username.toLowerCase()]
+        : null;
+    return {
+        games,
+        hiddenGames: Object.keys(store.hiddenGames),
+        gameImages,
+        metadata,
+        homepageNotice: store.homepageNotice,
+        paypalLink: store.paypalLink,
+        creatorGameAccess: Array.isArray(gameAccess) ? gameAccess : null
+    };
+}
+
 function saveGame(game) {
     updateStore(store => {
         store.games[game.id] = game;
@@ -1297,6 +1327,7 @@ module.exports = {
     listLiveAlertPushSubscriptions,
     getTikTokAvatarPath,
     getGameImage,
+    getGameCatalogData,
     getHiddenGames,
     getHomepageNotice,
     getPaypalLink,

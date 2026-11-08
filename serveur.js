@@ -605,9 +605,9 @@ function getCreatorRoomNumber(username) {
     return canUseCreatorRoom(username) ? settings.roomNumber : null;
 }
 
-function getGameCatalog() {
-    const hiddenGames = new Set(store.getHiddenGames());
-    const storedGames = store.listGames();
+function getGameCatalog(data = store.getGameCatalogData(staticGameIds)) {
+    const hiddenGames = new Set(data.hiddenGames);
+    const storedGames = data.games;
     const builtInGames = staticGameIds.map(id => {
         const metadata = storedGames.find(game => game.id === id && !game.uploaded);
         return {
@@ -2653,8 +2653,17 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (pathname === '/api/games' && req.method === 'GET') {
-        const storedGames = store.listGames();
-        const hiddenGames = store.getHiddenGames();
+        const session = access.getSessionContext(req);
+        const catalogData = store.getGameCatalogData(
+            staticGameIds,
+            session.authenticated ? session.username : ''
+        );
+        const storedGames = catalogData.games;
+        const hiddenGames = catalogData.hiddenGames;
+        const canAccessGame = gameId => session.isAdmin || (
+            session.canAccessGames &&
+            (!catalogData.creatorGameAccess || catalogData.creatorGameAccess.includes(gameId))
+        );
         const games = storedGames.filter(game => game.uploaded).map(game => ({
             id: game.id,
             title: game.title,
@@ -2663,26 +2672,19 @@ const server = http.createServer((req, res) => {
             image: cloudinaryImageUrl(game.imageUrl)
                 ? game.imageUrl
                 : `/game-assets/${game.image}`,
-            hidden: !access.isAdmin(req) && hiddenGames.includes(game.id),
-            allowed: access.canAccessGames(req, game.id)
+            hidden: !session.isAdmin && hiddenGames.includes(game.id),
+            allowed: canAccessGame(game.id)
         }));
-        const allowedGameIds = getGameCatalog()
-            .filter(game => access.canAccessGames(req, game.id))
+        const allowedGameIds = getGameCatalog(catalogData)
+            .filter(game => canAccessGame(game.id))
             .map(game => game.id);
         const gameImages = {};
-        const metadata = {};
-        for (const gameId of staticGameIds) {
-            const image = store.getGameImage(gameId);
-            if (image) gameImages[gameId] = cloudinaryImageUrl(image)
+        for (const [gameId, image] of Object.entries(catalogData.gameImages)) {
+            gameImages[gameId] = cloudinaryImageUrl(image)
                 ? image
                 : `/game-assets/${image}`;
-            const game = storedGames.find(item => item.id === gameId && !item.uploaded);
-            if (game?.title || game?.description) metadata[gameId] = {
-                title: game.title,
-                description: game.description
-            };
         }
-        const savedHomepageNotice = store.getHomepageNotice();
+        const savedHomepageNotice = catalogData.homepageNotice;
         const homepageNotice = savedHomepageNotice
             ? {
                 ...savedHomepageNotice,
@@ -2700,11 +2702,11 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
             games,
             images: gameImages,
-            metadata,
-            hidden: access.isAdmin(req) ? [] : hiddenGames,
-            allowedGameIds: access.isAuthenticated(req) ? allowedGameIds : null,
+            metadata: catalogData.metadata,
+            hidden: session.isAdmin ? [] : hiddenGames,
+            allowedGameIds: session.authenticated ? allowedGameIds : null,
             homepageNotice,
-            paypalLink: store.getPaypalLink()
+            paypalLink: catalogData.paypalLink
         }));
         return;
     }
