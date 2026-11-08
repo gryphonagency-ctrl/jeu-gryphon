@@ -3141,6 +3141,12 @@ const server = http.createServer((req, res) => {
         ['/defi-topic-bank-f.js', [path.join(__dirname, 'defi-topic-bank-f.js'), 'text/javascript; charset=utf-8']],
         ['/defi-topic-bank-g.js', [path.join(__dirname, 'defi-topic-bank-g.js'), 'text/javascript; charset=utf-8']],
         ['/defi-topic-bank-h.js', [path.join(__dirname, 'defi-topic-bank-h.js'), 'text/javascript; charset=utf-8']],
+        ...['manga', 'film', 'jeux', 'histoire', 'sport', 'musique', 'science', 'culture'].flatMap(theme =>
+            Array.from({ length: ['histoire', 'science', 'culture'].includes(theme) ? 4 : 3 }, (_, index) => {
+                const file = `defi-${theme}-expansion-${index + 1}.js`;
+                return [`/${file}`, [path.join(__dirname, file), 'text/javascript; charset=utf-8']];
+            })
+        ),
         ['/bunker-player-original.jpg', [path.join(__dirname, 'bunker-player-original.jpg'), 'image/jpeg']],
         ['/bunker-route-02.jpg', [path.join(__dirname, 'bunker-route-02.jpg'), 'image/jpeg']],
         ['/bunker-route-03.jpg', [path.join(__dirname, 'bunker-route-03.jpg'), 'image/jpeg']],
