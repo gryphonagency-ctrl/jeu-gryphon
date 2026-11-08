@@ -2283,6 +2283,8 @@
         let paypalConfigurationPromise;
         let liveSessionsRefreshTimer;
         let starsLeaderboardRefreshTimer;
+        let liveAdminRefreshInProgress = false;
+        let starsRefreshInProgress = false;
         let gameCatalogLoaded = false;
         let draggedDashboardWidget = null;
         let dashboardPointerStart = null;
@@ -2746,11 +2748,21 @@
                 }
                 if (!starsLeaderboardRefreshTimer) {
                     starsLeaderboardRefreshTimer = window.setInterval(() => {
-                        void refreshOwnStarsSummary().catch(error => showStarsSummaryError(error, 'own'));
+                        if (document.hidden || starsRefreshInProgress) return;
+                        starsRefreshInProgress = true;
+                        const requests = [
+                            refreshOwnStarsSummary().catch(error => showStarsSummaryError(error, 'own'))
+                        ];
                         if (isAdminSession || walletSession) {
-                            void refreshAdminStarsLeaderboard().catch(error => showStarsSummaryError(error, 'admin'));
+                            requests.push(
+                                refreshAdminStarsLeaderboard()
+                                    .catch(error => showStarsSummaryError(error, 'admin'))
+                            );
                         }
-                    }, 15000);
+                        void Promise.all(requests).finally(() => {
+                            starsRefreshInProgress = false;
+                        });
+                    }, 30000);
                 }
             } else {
                 window.clearInterval(starsLeaderboardRefreshTimer);
@@ -2848,9 +2860,14 @@
                     ]);
                     if (!liveSessionsRefreshTimer) {
                         liveSessionsRefreshTimer = window.setInterval(() => {
+                            if (document.hidden || liveAdminRefreshInProgress) return;
+                            liveAdminRefreshInProgress = true;
                             Promise.all([refreshLiveSessions(), refreshCreatorAdmin()])
-                                .catch(showLiveSessionsError);
-                        }, 10000);
+                                .catch(showLiveSessionsError)
+                                .finally(() => {
+                                    liveAdminRefreshInProgress = false;
+                                });
+                        }, 30000);
                     }
                 } catch (error) {
                     const status = liveTtsForm.querySelector('[data-admin-status="live-tts"]');
