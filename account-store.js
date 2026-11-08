@@ -19,8 +19,27 @@ if (renderEnvironment) {
 }
 const storeFile = process.env.GAME_DATA_FILE || path.join(defaultStoreDirectory, 'gryphon-accounts.json');
 const gameFilesDirectory = path.join(path.dirname(storeFile), 'game-files');
+let cachedStore = null;
+let cachedStoreSignature = null;
+
+function getStoreSignature() {
+    try {
+        const stats = fs.statSync(storeFile);
+        return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+    } catch (error) {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+    }
+}
 
 function readStore() {
+    let signature;
+    try {
+        signature = getStoreSignature();
+    } catch (error) {
+        throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
+    }
+    if (cachedStore && signature === cachedStoreSignature) return cachedStore;
     try {
         const parsed = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -218,34 +237,40 @@ function readStore() {
                     !/^https:\/\/(?:www\.)?paypal\.(?:com|me)\/[^\s]*$/i.test(parsed.paypalLink)))) {
             throw new Error('Game account store has an invalid data shape.');
         }
-        return parsed;
+        cachedStore = parsed;
+        cachedStoreSignature = signature;
+        return cachedStore;
     } catch (error) {
-        if (error.code === 'ENOENT') return {
-            users: {},
-            checkouts: {},
-            plans: {},
-            games: {},
-            hiddenGames: {},
-            homepageNotice: null,
-            paypalLink: null,
-            liveTtsSource: null,
-            liveTtsSources: {},
-            revokedTtsLinks: {},
-            revokedUsers: {},
-            removedUsers: {},
-            creatorSettings: {},
-            dailyUsage: {},
-            serviceAccess: {},
-            serviceRevocations: {},
-            gameAccess: {},
-            gameAccessMigrations: {},
-            adminDashboardLayouts: {},
-            tiktokPlayers: {},
-            tiktokPlayerAliases: {},
-            tiktokStarTransactions: {},
-            liveAlertPushSubscriptions: {},
-            liveAlertRooms: {}
-        };
+        if (error.code === 'ENOENT') {
+            cachedStore = {
+                users: {},
+                checkouts: {},
+                plans: {},
+                games: {},
+                hiddenGames: {},
+                homepageNotice: null,
+                paypalLink: null,
+                liveTtsSource: null,
+                liveTtsSources: {},
+                revokedTtsLinks: {},
+                revokedUsers: {},
+                removedUsers: {},
+                creatorSettings: {},
+                dailyUsage: {},
+                serviceAccess: {},
+                serviceRevocations: {},
+                gameAccess: {},
+                gameAccessMigrations: {},
+                adminDashboardLayouts: {},
+                tiktokPlayers: {},
+                tiktokPlayerAliases: {},
+                tiktokStarTransactions: {},
+                liveAlertPushSubscriptions: {},
+                liveAlertRooms: {}
+            };
+            cachedStoreSignature = null;
+            return cachedStore;
+        }
         throw new Error(`Could not read game account store at ${storeFile}.`, { cause: error });
     }
 }
@@ -254,13 +279,16 @@ function writeStore(store) {
     const directory = path.dirname(storeFile);
     fs.mkdirSync(directory, { recursive: true });
     const temporaryFile = `${storeFile}.${process.pid}.tmp`;
-    fs.writeFileSync(temporaryFile, JSON.stringify(store), { mode: 0o600 });
+    const serialized = JSON.stringify(store);
+    fs.writeFileSync(temporaryFile, serialized, { mode: 0o600 });
     fs.renameSync(temporaryFile, storeFile);
-    dbSync.push('accounts', JSON.stringify(store));
+    cachedStore = store;
+    cachedStoreSignature = getStoreSignature();
+    dbSync.push('accounts', serialized);
 }
 
 function updateStore(mutator) {
-    const store = readStore();
+    const store = structuredClone(readStore());
     const result = mutator(store);
     writeStore(store);
     return result;
