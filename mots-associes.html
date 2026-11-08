@@ -157,6 +157,9 @@
     <input type="hidden" data-k="url" id="url">
     <button id="connect">Connecter</button>
     <span id="status">Déconnecté</span>
+    <label>Voix IA des thèmes<input type="checkbox" data-k="voiceOn"></label>
+    <button id="voiceEnable" type="button">🔊 Activer la voix IA</button>
+    <small>La voix annonce chaque thème. Cliquez une fois pour autoriser l'audio dans le navigateur.</small>
     <small>Une lettre écrite dans le chat est révélée dans tous les mots ; un mot complet est validé.</small>
   </details>
 
@@ -298,7 +301,7 @@ const DEFAULTS = {
   label: "Associé à…", chatText: "Tapez votre réponse dans le chat !", brandText: "GRYPHON AGENCY",
   gameW: 480, cols: 2, slotFs: 34, showMascot: true, mascotW: 130, showTimer: true, showRose: true, showChat: true,
   showBrand: true, showScores: true,
-  seconds: 60, rounds: 10, pause: 4, letters: -1, maxWords: 0, diff: 0,
+  seconds: 60, rounds: 10, pause: 4, letters: -1, maxWords: 0, diff: 0, voiceOn: true,
   custom: "", onlyCustom: false, user: "", url: "wss://jeu6boite.onrender.com", open: true
 };
 let S = { ...DEFAULTS };
@@ -350,6 +353,16 @@ function bindCfg() {
     if (el.type === "checkbox") el.checked = !!S[k]; else el.value = S[k];
     el.addEventListener("input", () => {
       S[k] = el.type === "checkbox" ? el.checked : el.dataset.num !== undefined ? Number(el.value) : el.value;
+      if (k === "diff") currentLevel = Math.max(1, Number(S.diff) || 1);
+      if (k === "voiceOn") {
+        if (S.voiceOn) {
+          voiceReady = true;
+          announceTheme();
+        } else if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+        updateVoiceButton();
+      }
       applyCfg(); saveCfg();
     });
   });
@@ -466,39 +479,68 @@ $("cfgReset").onclick = () => {
   clearBackgroundVideo().catch(error => { $("cfgMsg").textContent = `Vidéo retirée, mais sa suppression des données locales a échoué : ${error.message}`; });
 };
 
-let round = 0, timeLeft = 0, timer = null, slots = [], used = new Set(), scores = {}, roundActive = false, pendingRoses = 0;
+let round = 0, currentLevel = 1, timeLeft = 0, timer = null, transitionTimer = null;
+let slots = [], used = new Set(), scores = {}, roundActive = false, pendingRoses = 0;
+let voiceReady = false, currentTheme = "";
 
-const level = r => S.diff || r;
+const level = () => currentLevel;
 // Lettres révélées au départ : plus la manche est difficile, moins il y en a
-const startLetters = r => S.letters >= 0 ? S.letters : level(r) <= 3 ? 2 : level(r) <= 7 ? 1 : 0;
+const startLetters = () => S.letters >= 0 ? S.letters : level() <= 3 ? 2 : level() <= 7 ? 1 : 0;
 
-function pickTheme(r) {
-  const all = getThemes(), lv = level(r);
+function pickTheme() {
+  const all = getThemes(), lv = level();
   let pool = all.filter(t => !used.has(t.theme) && (S.diff ? Math.abs(t.difficulty - lv) <= 1 : t.difficulty <= lv && t.difficulty >= lv - 2));
   if (!pool.length) pool = all.filter(t => !used.has(t.theme));
   if (!pool.length) { used.clear(); pool = all; }
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-function maxWords(r) { return S.maxWords || (level(r) <= 3 ? 7 : 9); }
+function maxWords() { return S.maxWords || (level() <= 3 ? 7 : 9); }
+
+function updateVoiceButton() {
+  const button = $("voiceEnable");
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    button.disabled = true;
+    button.textContent = "Voix non disponible";
+    return;
+  }
+  button.disabled = false;
+  button.textContent = voiceReady && S.voiceOn ? "🔁 Répéter le thème" : "🔊 Activer la voix IA";
+}
+
+function announceTheme() {
+  if (!S.voiceOn || !voiceReady || !currentTheme || !("speechSynthesis" in window)) return;
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  synth.resume();
+  const utterance = new SpeechSynthesisUtterance(`Niveau ${currentLevel}. Thème : ${currentTheme}.`);
+  utterance.lang = "fr-FR";
+  utterance.rate = 0.95;
+  const voice = synth.getVoices().find(item => /^fr/i.test(item.lang));
+  if (voice) utterance.voice = voice;
+  synth.speak(utterance);
+}
 
 function startRound() {
   clearInterval(timer);
+  clearTimeout(transitionTimer);
   if (round >= S.rounds) return endGame();
   round++;
-  const t = pickTheme(round);
+  const t = pickTheme();
   used.add(t.theme);
-  const words = [...t.words].sort(() => Math.random() - .5).slice(0, maxWords(round));
-  const n = startLetters(round);
+  const words = [...t.words].sort(() => Math.random() - .5).slice(0, maxWords());
+  const n = startLetters();
   slots = words.map(w => {
     const key = norm(w);
     return { word: w, key, rev: new Set([...Array(Math.min(n, key.length - 1)).keys()]), done: false, by: "", missed: false };
   });
-  $("theme").textContent = t.theme;
-  $("round").textContent = `Manche ${round}/${S.rounds}`;
+  currentTheme = t.theme;
+  $("theme").textContent = currentTheme;
+  $("round").textContent = `Niveau ${currentLevel} · Manche ${round}/${S.rounds}`;
   timeLeft = S.seconds; roundActive = true;
   $("notice").textContent = "";
   render();
+  announceTheme();
   timer = setInterval(() => { if (--timeLeft <= 0) finishRound(false); else renderTime(); }, 1000);
   renderTime();
   while (pendingRoses > 0 && useRose());
@@ -537,11 +579,15 @@ function renderTime() {
 }
 
 function finishRound(allFound) {
+  if (!roundActive) return;
   clearInterval(timer); roundActive = false;
   slots.forEach(s => { if (!s.done) s.missed = true; });
   render();
-  $("notice").textContent = allFound ? "🎉 Tous les mots trouvés !" : "⏰ Temps écoulé !";
-  setTimeout(startRound, S.pause * 1000);
+  if (allFound) currentLevel = Math.min(10, currentLevel + 1);
+  $("notice").textContent = allFound
+    ? `🎉 Tous les mots trouvés ! Niveau ${currentLevel} dans ${S.pause} s…`
+    : "⏰ Temps écoulé ! La grille suivante arrive automatiquement.";
+  transitionTimer = setTimeout(startRound, S.pause * 1000);
 }
 
 const hiddenCount = s => s.key.length - s.rev.size;
@@ -601,12 +647,15 @@ function handleGift(g = {}) {
 }
 
 function endGame() {
+  clearTimeout(transitionTimer);
   const top = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 5);
   $("theme").textContent = "FIN";
   $("slots").innerHTML = top.map(([u, p], i) => `<div class="slot found" style="grid-column:span 2">${i + 1}. @${u} — ${p} pts</div>`).join("")
     || `<div class="slot" style="grid-column:span 2">Aucun gagnant</div>`;
   $("notice").textContent = "Partie terminée ! Merci d'avoir joué.";
-  setTimeout(() => { round = 0; used.clear(); scores = {}; startRound(); }, 15000);
+  transitionTimer = setTimeout(() => {
+    round = 0; currentLevel = Math.max(1, Number(S.diff) || 1); used.clear(); scores = {}; startRound();
+  }, 15000);
 }
 
 // Connexion au connecteur TikTok (même protocole que pendu.html)
@@ -640,9 +689,22 @@ $("send").onclick = () => { guess($("test").value, "testeur"); $("test").value =
 $("test").addEventListener("keydown", e => { if (e.key === "Enter") $("send").click(); });
 $("rose").onclick = () => handleGift({ giftName: "Rose", username: "test" });
 $("skip").onclick = startRound;
-$("restart").onclick = () => { round = 0; used.clear(); scores = {}; startRound(); };
+$("restart").onclick = () => { round = 0; currentLevel = Math.max(1, Number(S.diff) || 1); used.clear(); scores = {}; startRound(); };
+$("voiceEnable").onclick = () => {
+  voiceReady = true;
+  if (!S.voiceOn) {
+    S.voiceOn = true;
+    document.querySelector('[data-k="voiceOn"]').checked = true;
+    saveCfg();
+  }
+  updateVoiceButton();
+  announceTheme();
+};
 bindCfg(); applyCfg();
 loadBackgroundVideo().catch(error => { $("cfgMsg").textContent = `Chargement de la vidéo impossible : ${error.message}`; });
+currentLevel = Math.max(1, Number(S.diff) || 1);
+if ("speechSynthesis" in window) window.speechSynthesis.getVoices();
+updateVoiceButton();
 startRound();
 </script>
 </body>

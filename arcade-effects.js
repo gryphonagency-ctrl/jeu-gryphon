@@ -26,6 +26,8 @@
     let treasureLayoutSaving = false;
     let treasureGiftCount = 0;
     let treasureGiftItems = [];
+    let treasureGiftResetAt = 0;
+    let treasureGiftResetTimer = 0;
     let treasureLayout = { x: 50, y: 82, width: 38 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
@@ -170,8 +172,8 @@
     const TREASURE_STORAGE_PREFIX = 'ga-arcade-treasure-gifts:';
     const TREASURE_LAYOUT_STORAGE_KEY = 'ga-arcade-treasure-layout';
     const TREASURE_EDIT_STORAGE_KEY = 'ga-arcade-treasure-layout-edit';
-    const TREASURE_CAPACITY = 36;
     const TREASURE_VISIBLE_LIMIT = 600;
+    const TREASURE_RESET_INTERVAL = 3 * 60 * 60 * 1000;
     const DEFAULT_TREASURE_LAYOUT = { x: 50, y: 82, width: 38 };
 
     function normalizeTreasureLayout(layout) {
@@ -201,28 +203,17 @@
     }
 
     function treasureInsidePosition(index, bounds) {
-        const seed = index + 1;
         if (!bounds || !bounds.width || !bounds.height) {
-            return { x: window.innerWidth / 2, y: window.innerHeight - 40 };
+            return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         }
         return {
-            x: bounds.left + bounds.width * (0.39 + ((seed * 31) % 29) / 100),
-            y: bounds.top + bounds.height * (0.39 + ((seed * 17) % 5) / 100)
+            x: bounds.left + bounds.width * 0.5,
+            y: bounds.top + bounds.height * 0.55
         };
     }
 
     function treasurePosition(index, bounds) {
-        if (index < TREASURE_CAPACITY) {
-            return treasureInsidePosition(index, bounds);
-        }
-        const seed = index + 1;
-        const overflowIndex = index - TREASURE_CAPACITY;
-        const side = overflowIndex % 2;
-        return {
-            x: Math.max(20, Math.min(window.innerWidth - 20,
-                side ? bounds.right + 8 + ((seed * 13) % 32) : bounds.left - 8 - ((seed * 13) % 32))),
-            y: window.innerHeight - 34 - ((seed * 11) % 5) * 8
-        };
+        return treasureInsidePosition(index, bounds);
     }
 
     function treasureEditIsRequested() {
@@ -328,7 +319,7 @@
                 const totalIndex = firstVisible + localIndex++;
                 const item = document.createElement('span');
                 const position = treasurePosition(totalIndex, bounds);
-                item.className = `ae-treasure-gift${totalIndex >= TREASURE_CAPACITY ? ' ae-treasure-gift-overflow' : ''}`;
+                item.className = 'ae-treasure-gift';
                 item.style.left = `${position.x}px`;
                 item.style.top = `${position.y}px`;
                 item.title = gift.name || 'Cadeau TikTok reçu';
@@ -368,9 +359,25 @@
         treasureGiftCount = 0;
         treasureGiftItems = [];
         treasureLiveRoomId = String(liveRoomId || '');
+        treasureGiftResetAt = Date.now();
         seenTreasureGifts.clear();
         saveTreasureGifts();
         renderTreasureGifts();
+        scheduleTreasureGiftReset();
+    }
+
+    function scheduleTreasureGiftReset() {
+        clearTimeout(treasureGiftResetTimer);
+        treasureGiftResetTimer = 0;
+        if (!treasureChestEnabled || !treasureOwner) return;
+        if (!Number.isFinite(treasureGiftResetAt) || treasureGiftResetAt <= 0) {
+            treasureGiftResetAt = Date.now();
+            saveTreasureGifts();
+        }
+        treasureGiftResetTimer = setTimeout(
+            () => resetTreasureGifts(),
+            Math.max(0, treasureGiftResetAt + TREASURE_RESET_INTERVAL - Date.now())
+        );
     }
 
     function handleTreasureLiveState(data) {
@@ -394,9 +401,23 @@
         if (!owner) return;
         try {
             const stored = JSON.parse(localStorage.getItem(TREASURE_STORAGE_PREFIX + owner.toLowerCase()) || 'null');
-            if (!stored || !Array.isArray(stored.gifts)) return;
+            if (!stored || !Array.isArray(stored.gifts)) {
+                treasureGiftResetAt = Date.now();
+                saveTreasureGifts();
+                return;
+            }
             treasureGiftCount = Number.isSafeInteger(stored.total) && stored.total > 0 ? stored.total : 0;
             treasureLiveRoomId = typeof stored.liveRoomId === 'string' ? stored.liveRoomId : '';
+            treasureGiftResetAt = Number.isSafeInteger(stored.resetAt) && stored.resetAt > 0
+                ? stored.resetAt
+                : Date.now();
+            if (Date.now() >= treasureGiftResetAt + TREASURE_RESET_INTERVAL) {
+                treasureGiftCount = 0;
+                treasureGiftItems = [];
+                treasureGiftResetAt = Date.now();
+                saveTreasureGifts();
+                return;
+            }
             const gifts = stored.gifts
                 .filter(gift => gift && typeof gift === 'object')
                 .map(gift => ({
@@ -416,6 +437,7 @@
             console.warn('Les cadeaux du coffre local ne peuvent pas être lus :', error.message);
             treasureGiftItems = [];
             treasureGiftCount = 0;
+            treasureGiftResetAt = Date.now();
         }
     }
 
@@ -425,7 +447,8 @@
             localStorage.setItem(TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase(), JSON.stringify({
                 total: treasureGiftCount,
                 gifts: treasureGiftItems.slice(-TREASURE_VISIBLE_LIMIT),
-                liveRoomId: treasureLiveRoomId
+                liveRoomId: treasureLiveRoomId,
+                resetAt: treasureGiftResetAt
             }));
         } catch (error) {
             console.warn('Les cadeaux du coffre ne peuvent pas être sauvegardés localement :', error.message);
@@ -448,10 +471,13 @@
         }
         treasureChestEnabled = nextEnabled;
         if (!treasureChestEnabled) {
+            clearTimeout(treasureGiftResetTimer);
+            treasureGiftResetTimer = 0;
             if (treasureStage) treasureStage.remove();
             treasureStage = null;
             return;
         }
+        scheduleTreasureGiftReset();
         if (!treasureStage || !treasureStage.isConnected) ensureTreasureStage();
         applyTreasureLayout();
     }
@@ -575,10 +601,7 @@
             const giftElement = items && items.children[index - firstVisible];
             if (!giftElement || typeof giftElement.animate !== 'function') continue;
             const target = treasurePosition(index, bounds);
-            const landing = treasureInsidePosition(
-                index < TREASURE_CAPACITY ? index : (index - TREASURE_CAPACITY) % TREASURE_CAPACITY,
-                bounds
-            );
+            const landing = treasureInsidePosition(index, bounds);
             const landingOffsetX = landing.x - target.x;
             const landingOffsetY = landing.y - target.y;
             const fallDistance = Math.max(180, landing.y + 64);
@@ -592,18 +615,11 @@
                 {
                     transform: `translate(${landingOffsetX}px, ${landingOffsetY}px) scale(1)`,
                     opacity: 1,
-                    offset: index < TREASURE_CAPACITY ? 1 : .72,
+                    offset: 1,
                     easing: 'cubic-bezier(.3,.7,.25,1)'
-                },
-                ...(index < TREASURE_CAPACITY ? [] : [{
-                    transform: 'translate(0, 0) scale(1)',
-                    opacity: 1,
-                    offset: 1
-                }])
+                }
             ], {
-                duration: index < TREASURE_CAPACITY
-                    ? 700 + Math.random() * 300
-                    : 1000 + Math.random() * 250,
+                duration: 700 + Math.random() * 300,
                 delay: Math.min(i * 24, 650),
                 fill: 'both'
             });
@@ -611,6 +627,25 @@
     }
 
     window.addEventListener('storage', event => {
+        if (event.key && event.key.startsWith(TREASURE_STORAGE_PREFIX)) {
+            if (!event.newValue || !treasureOwner ||
+                event.key !== TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase()) return;
+            try {
+                const setting = JSON.parse(event.newValue);
+                if (Number.isSafeInteger(setting.resetAt) && setting.resetAt > treasureGiftResetAt &&
+                    Array.isArray(setting.gifts) && setting.gifts.length === 0 && setting.total === 0) {
+                    treasureGiftCount = 0;
+                    treasureGiftItems = [];
+                    treasureGiftResetAt = setting.resetAt;
+                    seenTreasureGifts.clear();
+                    renderTreasureGifts();
+                    scheduleTreasureGiftReset();
+                }
+            } catch (error) {
+                console.warn('La remise à zéro du coffre reçue est invalide :', error.message);
+            }
+            return;
+        }
         if (!event.newValue) return;
         try {
             if (event.key === 'ga-arcade-treasure-setting') {

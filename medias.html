@@ -35,6 +35,7 @@ button.danger{background:#ff6b7a}
 .slot .state{grid-column:1/-1;font-size:.8rem;color:#9dffb0}
 .slot .state.off{color:#bac9e8}
 .hint{margin:0;color:#bac9e8;font-size:.9rem}
+.avatar-preview{flex:0 0 auto;display:grid;place-items:center;width:76px;height:76px;border:3px solid rgba(255,255,255,.9);border-radius:50%;background:linear-gradient(135deg,#ff2e93,#ffd45a);box-shadow:0 0 18px rgba(255,46,147,.65);color:#fff;font-size:28px;font-weight:900;transition:width .12s,height .12s}
 @media(max-width:600px){.slot{grid-template-columns:1fr}}
 #status{min-height:1.3em;color:#9dffb0}#status.err{color:#ff9aa5}
 </style>
@@ -68,7 +69,7 @@ button.danger{background:#ff6b7a}
 <div id="alert-sections"></div>
 <section class="card" id="overlay-card">
 <h2>Mon overlay de live</h2>
-<p>Ajoute le lien des alertes comme source navigateur dans TikTok Studio. Pour afficher les compteurs d’abonnés/likes et les photos des personnes qui tapotent, ajoute aussi la source « Likes & photos » ci-dessous. Les deux liens sont privés; ne les partage pas.</p>
+<p>Ajoute le lien des alertes comme source navigateur dans TikTok Studio. Pour afficher uniquement les photos de profil qui montent lors des likes, ajoute aussi la source « Likes & photos » ci-dessous. Les deux liens sont privés; ne les partage pas.</p>
 <div class="row">
 <input id="overlay-url" readonly aria-label="Lien overlay" placeholder="Aucun lien généré" style="flex:1;min-width:260px">
 <button id="overlay-copy" type="button" hidden>Copier</button>
@@ -81,9 +82,13 @@ button.danger{background:#ff6b7a}
 <button id="likes-overlay-copy" type="button" hidden>Copier le lien likes</button>
 </div>
 <div class="row">
-<button id="overlay-test-follow" type="button" hidden>Tester la barre followers</button>
-<button id="overlay-test-like" type="button" hidden>Tester la barre likes et les photos</button>
+<label for="overlay-avatar-size">Taille des photos de likes : <output id="overlay-avatar-size-value">76 px</output>
+<input id="overlay-avatar-size" type="range" min="44" max="180" step="4" value="76"></label>
+<div id="overlay-avatar-preview" class="avatar-preview" aria-label="Aperçu de la taille des photos">T</div>
+<button id="overlay-test-like" type="button" hidden>Tester les photos de likes</button>
 </div>
+<p class="hint">La source « Likes & photos » affiche uniquement les photos de profil qui montent, sans les compteurs « Abonnés » et « J’aime ». La taille choisie est ajoutée au lien.</p>
+<p class="hint">Après un changement de taille, recopie le lien dans les propriétés de la source navigateur TikTok Studio pour appliquer le nouveau réglage.</p>
 </section>
 
 <section class="card"><h2>Bibliothèque</h2><div id="library" class="grid"></div></section>
@@ -232,10 +237,20 @@ function render() {
 
 function showOverlay(path) {
   $('overlay-url').value = path ? location.origin + path : '';
-  $('likes-overlay-url').value = path ? `${location.origin}${path}?mode=likes` : '';
+  updateLikesOverlayUrl(path);
   $('overlay-copy').hidden = $('overlay-revoke').hidden = !path;
-  $('likes-overlay-copy').hidden = $('overlay-test-follow').hidden = $('overlay-test-like').hidden = !path;
+  $('likes-overlay-copy').hidden = $('overlay-test-like').hidden = !path;
   $('overlay-new').textContent = path ? 'Régénérer' : 'Générer mon lien';
+}
+function updateLikesOverlayUrl(path = state.overlayPath) {
+  if (!path) {
+    $('likes-overlay-url').value = '';
+    return;
+  }
+  const url = new URL(location.origin + path);
+  url.searchParams.set('mode', 'likes');
+  url.searchParams.set('avatarSize', $('overlay-avatar-size').value);
+  $('likes-overlay-url').value = url.href;
 }
 $('overlay-new').onclick = async () => {
   if (state.overlayPath && !confirm('L’ancien lien cessera de fonctionner. Continuer ?')) return;
@@ -254,8 +269,18 @@ $('overlay-copy').onclick = async () => {
 $('likes-overlay-copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('likes-overlay-url').value); say('Lien Likes & photos copié.'); } catch { $('likes-overlay-url').select(); say('Copie le lien sélectionné (Ctrl+C).'); }
 };
-$('overlay-test-follow').onclick = () => window.open(`${$('likes-overlay-url').value}&test=follow`, '_blank');
-$('overlay-test-like').onclick = () => window.open(`${$('likes-overlay-url').value}&test=like`, '_blank');
+$('overlay-avatar-size').oninput = event => {
+  const size = Number(event.target.value);
+  $('overlay-avatar-size-value').value = `${size} px`;
+  $('overlay-avatar-preview').style.width = `${size}px`;
+  $('overlay-avatar-preview').style.height = `${size}px`;
+  updateLikesOverlayUrl();
+};
+$('overlay-test-like').onclick = () => {
+  const url = new URL($('likes-overlay-url').value);
+  url.searchParams.set('test', 'like');
+  window.open(url.href, '_blank');
+};
 
 async function refresh() {
   state = await api(); showOverlay(state.overlayPath);

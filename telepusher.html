@@ -436,6 +436,8 @@ function drawCoinPortrait(ctx,image,cx,cy,r){
   if(!side) return;
   ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.clip();
   ctx.drawImage(image,(width-side)/2,(height-side)/2,side,side,cx-r,cy-r,r*2,r*2); ctx.restore();
+  ctx.beginPath(); ctx.arc(cx,cy,r-1,0,Math.PI*2); ctx.strokeStyle='#07101f'; ctx.lineWidth=7; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,r-3,0,Math.PI*2); ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke();
 }
 function topMat(avatar,seed){
   const key=avatar?'u:'+avatar:'f:'+(seed%40); if(topMats[key]) return topMats[key];
@@ -451,7 +453,7 @@ function topMat(avatar,seed){
     x.strokeStyle='rgba(70,43,10,.9)'; x.lineWidth=3; x.beginPath(); x.arc(128,128,122,0,Math.PI*2); x.stroke();
   });
   const faceTexture=tex(face);
-  const m=new THREE.MeshPhysicalMaterial({map:faceTexture,color:0xffffff,metalness:.34,roughness:.3,envMapIntensity:1.05,clearcoat:.65,clearcoatRoughness:.22});
+  const m=new THREE.MeshBasicMaterial({map:faceTexture,color:0xffffff,toneMapped:false});
   if(avatar) loader.load(avatar,t=>{
     drawCoinPortrait(face.getContext('2d'),t.image,128,128,106);
     faceTexture.needsUpdate=true;
@@ -505,10 +507,13 @@ function cardTex(d){
     x.clearRect(0,0,256,166); x.fillStyle=lg(x,0,0,256,166,[[0,'#ffec96'],[.5,'#deaa3c'],[1,'#ffd66e']]);
     x.beginPath(); x.roundRect(6,6,244,154,20); x.fill();
     x.save(); x.shadowColor='#ff3fd0'; x.shadowBlur=12; x.strokeStyle='#ffb8f2'; x.lineWidth=5; x.stroke(); x.restore();
-    x.save(); x.beginPath(); x.arc(64,66,40,0,7); x.clip(); x.drawImage(img||fallbackAvatar(d.seed||hash(d.username)),24,26,80,80); x.restore();
-    x.strokeStyle='#fff'; x.lineWidth=4; x.beginPath(); x.arc(64,66,40,0,7); x.stroke();
-    x.textAlign='center'; x.fillStyle='#2a1500'; x.font='700 22px "Trebuchet MS",sans-serif';
-    let n=String(d.username||'VIP'); while(n.length>3&&x.measureText(n).width>110) n=n.slice(0,-1); x.fillText(n,64,138);
+    x.fillStyle='#07101f'; x.beginPath(); x.arc(65,72,56,0,Math.PI*2); x.fill();
+    x.save(); x.beginPath(); x.arc(65,72,50,0,Math.PI*2); x.clip(); x.drawImage(img||fallbackAvatar(d.seed||hash(d.username)),15,22,100,100); x.restore();
+    x.strokeStyle='#39efff'; x.lineWidth=7; x.beginPath(); x.arc(65,72,53,0,Math.PI*2); x.stroke();
+    x.strokeStyle='#fff'; x.lineWidth=3; x.beginPath(); x.arc(65,72,48,0,Math.PI*2); x.stroke();
+    x.textAlign='center'; x.fillStyle='#2a1500'; x.font='900 20px "Trebuchet MS",sans-serif';
+    let n=String(d.username||'VIP'); while(n.length>3&&x.measureText(n).width>108) n=n.slice(0,-1);
+    x.strokeStyle='#fff0ad'; x.lineWidth=3; x.strokeText(n,65,151,108); x.fillText(n,65,151,108);
     x.save(); x.fillStyle='#fff'; x.shadowColor='#ff3fd0'; x.shadowBlur=14; x.font='800 72px "Trebuchet MS",sans-serif'; x.fillText(d.value,176,92);
     x.font='700 20px "Trebuchet MS",sans-serif'; x.shadowColor='#27e8ff'; x.fillText('★ ÉTOILE'+(d.value>1?'S':''),176,128); x.restore();
   };
@@ -694,16 +699,28 @@ async function runWheelQueue(){ wBusy=true;
 drawWheel(0);
 $('cpWheel').onclick=()=>startWheel('Sarah',null);
 function onLive(d){
-  if(d.type==='gift'||d.type==='tiktok-gift'){ const g=d.gift||d, name=g.username||g.nickname, avatar=g.profilePictureUrl||g.avatar||null;
+  if(d.type==='gift'||d.type==='tiktok-gift'){ const g=d.gift||d, name=g.username||g.nickname||d.walletPlayer?.username||'VIP', avatar=avatarOf(g)||avatarOf(d.walletPlayer)||avatarOf(d);
     const worth=Math.max(1,Math.floor(Number(g.coinCount)||(Number(g.coinValue??g.diamondCount??g.diamonds)||1)*(Number(g.repeatCount)||1))), n=Math.min(worth,2000); for(let i=0;i<n;i++) spawnCoin(avatar,name);
     if(worth>=WHEEL_MIN) startWheel(name,avatar);
   }
   else if(d.type==='WALLET_RUN'&&!window.ArcadeStars) runStars(d); // sans la plateforme : le relais envoie lui-même l'évènement
-  else if(d.type==='vip-trigger') spawnVIPCard(d.username,d.avatar,d.value,false,true);
+  else if(d.type==='vip-trigger') spawnVIPCard(d.username,avatarOf(d),d.value,false,true);
+}
+function avatarOf(user){
+  if(!user||typeof user!=='object') return null;
+  const candidates=[user.avatarDataUri,user.avatarUrl,user.profilePictureUrl,user.avatar,user.profilePicture,user.avatarUrls,user.profilePictureUrls];
+  for(const candidate of candidates){
+    const urls=candidate?.urlList??candidate?.url_list;
+    const values=typeof candidate==='string'?[candidate]:Array.isArray(candidate)?candidate:
+      candidate&&typeof candidate==='object'?[candidate.url,candidate.profilePictureUrl,...(Array.isArray(urls)?urls:[])]:[];
+    const avatar=values.find(value=>typeof value==='string'&&/^(https?:\/\/|data:image\/)/i.test(value));
+    if(avatar) return avatar;
+  }
+  return null;
 }
 // RUN : les étoiles déjà débitées du solde global deviennent des jetons (1 étoile = 1 jeton) lâchés avec la photo du joueur
 function runStars(d){ const n=Math.min(Math.floor(+d.spent)||0,2000), p=d.player||{}; if(n<=0) return;
-  for(let i=0;i<n;i++) setTimeout(()=>spawnCoin(p.avatarUrl||null,p.username||p.uniqueId||'run',true),i*40); }
+  const avatar=avatarOf(p); for(let i=0;i<n;i++) setTimeout(()=>spawnCoin(avatar,p.username||p.uniqueId||'run',true),i*40); }
 addEventListener('arcade:wallet-run',e=>runStars(e.detail||{}));
 const cpSet=t=>$('cpStatus').textContent=t;
 function liveConnect(){

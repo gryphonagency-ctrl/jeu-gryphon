@@ -14,15 +14,16 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 #live-effects { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
 #live-stats { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); display: none; align-items: center; gap: 12px; max-width: calc(100vw - 20px); padding: 9px 13px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; background: rgba(14,18,30,.86); box-shadow: 0 4px 18px rgba(0,0,0,.3); color: #fff; font: 700 14px/1.2 Arial,sans-serif; transform: translateX(-50%); white-space: nowrap; }
 #live-stats.visible { display: flex; }
+body.likes-only #live-stats { display: none !important; }
 .live-stat { display: flex; align-items: center; gap: 5px; }
 .live-stat strong { color: #ffd45a; font-variant-numeric: tabular-nums; }
-.like-bubble { position: absolute; bottom: -120px; left: var(--bubble-x); display: flex; flex-direction: column; align-items: center; gap: 5px; width: 82px; animation: like-float 2.8s ease-out forwards; }
-.like-avatar { display: flex; align-items: center; justify-content: center; width: 76px; height: 76px; padding: 4px; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; background: linear-gradient(135deg,#ff2e93,#ffd45a); box-shadow: 0 0 18px rgba(255,46,147,.65); box-sizing: border-box; }
+.like-bubble { position: absolute; bottom: calc(-1 * var(--like-avatar-size) - 44px); left: var(--bubble-x); display: flex; flex-direction: column; align-items: center; gap: 5px; width: var(--like-avatar-size); animation: like-float 2.8s ease-out forwards; }
+.like-avatar { display: flex; align-items: center; justify-content: center; width: var(--like-avatar-size); height: var(--like-avatar-size); padding: 4px; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; background: linear-gradient(135deg,#ff2e93,#ffd45a); box-shadow: 0 0 18px rgba(255,46,147,.65); box-sizing: border-box; }
 .like-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .like-initial { color: #fff; font: 900 30px/1 Arial,sans-serif; }
 .like-name { max-width: 130px; overflow: hidden; padding: 2px 8px; border-radius: 99px; background: rgba(0,0,0,.7); color: #fff; font: 700 12px/1.4 Arial,sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes like-float { 0% { transform: translateY(0) scale(.65); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(calc(-100vh - 150px)) scale(1.05); opacity: 0; } }
-@media(max-width:480px) { #live-stats { gap: 8px; padding: 8px 10px; font-size: 12px; } .like-bubble { transform: scale(.85); transform-origin: bottom center; } }
+@media(max-width:480px) { #live-stats { gap: 8px; padding: 8px 10px; font-size: 12px; } }
 </style>
 </head>
 <body>
@@ -38,6 +39,12 @@ const video = document.getElementById('video');
 const params = new URLSearchParams(location.search);
 const showStatus = params.get('statut') !== '0';
 const showLiveEffects = params.get('mode') === 'likes';
+const requestedAvatarSize = Number(params.get('avatarSize'));
+const likeAvatarSize = Number.isFinite(requestedAvatarSize)
+  ? Math.max(44, Math.min(180, requestedAvatarSize))
+  : 76;
+document.documentElement.style.setProperty('--like-avatar-size', `${likeAvatarSize}px`);
+if (showLiveEffects) document.body.classList.add('likes-only');
 const liveStatsEl = document.getElementById('live-stats');
 const liveEffectsEl = document.getElementById('live-effects');
 // Feu d'artifice : tous les cadeaux par défaut. ?seuil=50 pour changer, ?feu=0 pour désactiver, ?test=1 pour un aperçu.
@@ -74,6 +81,7 @@ function validImageUrl(value) {
 }
 
 function updateLiveStats(type, amount) {
+  if (showLiveEffects) return;
   const count = Math.floor(Number(amount) || 0);
   if (!Number.isSafeInteger(count) || count < 1) return;
   liveStats[type] = Math.min(Number.MAX_SAFE_INTEGER, liveStats[type] + count);
@@ -100,7 +108,7 @@ function showLikeBubble(profile) {
   const avatar = validImageUrl(profile.avatarDataUri || profile.avatarUrl || viewerAvatars.get(key) || avatarUrl);
   const bubble = document.createElement('div');
   bubble.className = 'like-bubble';
-  bubble.style.setProperty('--bubble-x', `${10 + Math.random() * Math.max(0, window.innerWidth - 100)}px`);
+  bubble.style.setProperty('--bubble-x', `${Math.random() * Math.max(0, window.innerWidth - likeAvatarSize)}px`);
   const orb = document.createElement('div');
   orb.className = 'like-avatar';
   if (avatar) {
