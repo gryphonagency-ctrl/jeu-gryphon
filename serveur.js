@@ -29,6 +29,18 @@ const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TREASURE_LAYOUT = Object.freeze({ x: 50, y: 82, width: 38 });
+const DEFAULT_PROGRESS_OVERLAY_SETTINGS = Object.freeze({
+    enabledLike: true,
+    enabledSub: true,
+    likeAvatarsEnabled: true,
+    likeAvatarSize: 64,
+    likeGoal: 50000,
+    subGoal: 10,
+    layout: Object.freeze({
+        like: Object.freeze({ x: 5, y: 20, width: 42, height: 9 }),
+        sub: Object.freeze({ x: 5, y: 32, width: 42, height: 9 })
+    })
+});
 const DEFAULT_MACHINA_BACKGROUND_URL = 'https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3Y3VyZzNwdHdrMDVkM2RnemJxNWFkYWl0cXFpaWUxeWtuZDZ0N3JjcCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xFHhDYm05cAOknxco6/giphy.gif';
 const machinaBackgroundFile = path.join(store.getDataDirectory(), 'machina-background.json');
 const adminDashboardWidgetIds = [
@@ -498,6 +510,71 @@ function canUseCreatorTts(username) {
     return access.canUseCreatorService(username, 'tts');
 }
 
+function hasTreasureOverlayAccess(username) {
+    return Boolean(username && canUseCreatorTts(username));
+}
+
+function getProgressOverlaySettings(owner) {
+    const saved = store.getCreatorSettings(owner).progressOverlay || {};
+    const layout = saved.layout || {};
+    return {
+        enabledLike: saved.enabledLike !== false,
+        enabledSub: saved.enabledSub !== false,
+        likeAvatarsEnabled: saved.likeAvatarsEnabled !== false,
+        likeAvatarSize: Number.isSafeInteger(saved.likeAvatarSize) &&
+            saved.likeAvatarSize >= 24 && saved.likeAvatarSize <= 160
+            ? saved.likeAvatarSize
+            : DEFAULT_PROGRESS_OVERLAY_SETTINGS.likeAvatarSize,
+        likeGoal: Number.isSafeInteger(saved.likeGoal) && saved.likeGoal > 0
+            ? saved.likeGoal
+            : DEFAULT_PROGRESS_OVERLAY_SETTINGS.likeGoal,
+        subGoal: Number.isSafeInteger(saved.subGoal) && saved.subGoal > 0
+            ? saved.subGoal
+            : DEFAULT_PROGRESS_OVERLAY_SETTINGS.subGoal,
+        layout: {
+            like: { ...DEFAULT_PROGRESS_OVERLAY_SETTINGS.layout.like, ...(layout.like || {}) },
+            sub: { ...DEFAULT_PROGRESS_OVERLAY_SETTINGS.layout.sub, ...(layout.sub || {}) }
+        }
+    };
+}
+
+function normalizeProgressOverlaySettings(settings, current) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        throw invalidAdminInput('Les réglages des objectifs sont invalides.');
+    }
+    const merged = {
+        ...current,
+        ...settings,
+        layout: settings.layout === undefined ? current.layout : settings.layout
+    };
+    if (typeof merged.enabledLike !== 'boolean' || typeof merged.enabledSub !== 'boolean' ||
+        typeof merged.likeAvatarsEnabled !== 'boolean' ||
+        !Number.isSafeInteger(merged.likeAvatarSize) ||
+        merged.likeAvatarSize < 24 || merged.likeAvatarSize > 160 ||
+        !Number.isSafeInteger(merged.likeGoal) || merged.likeGoal < 1 || merged.likeGoal > 1000000000 ||
+        !Number.isSafeInteger(merged.subGoal) || merged.subGoal < 1 || merged.subGoal > 1000000 ||
+        !merged.layout || typeof merged.layout !== 'object' || Array.isArray(merged.layout)) {
+        throw invalidAdminInput('Vérifie les objectifs et leur activation.');
+    }
+    const normalizedLayout = {};
+    for (const key of ['like', 'sub']) {
+        const item = merged.layout[key];
+        if (!item || !Number.isFinite(item.x) || item.x < 0 || item.x > 100 ||
+            !Number.isFinite(item.y) || item.y < 0 || item.y > 100 ||
+            !Number.isFinite(item.width) || item.width < 12 || item.width > 90 ||
+            !Number.isFinite(item.height) || item.height < 5 || item.height > 40) {
+            throw invalidAdminInput('La position ou la taille des barres est invalide.');
+        }
+        normalizedLayout[key] = {
+            x: Math.round(item.x * 10) / 10,
+            y: Math.round(item.y * 10) / 10,
+            width: Math.round(item.width * 10) / 10,
+            height: Math.round(item.height * 10) / 10
+        };
+    }
+    return { ...merged, layout: normalizedLayout };
+}
+
 function isManualAccountExpired(account, now = Date.now()) {
     if (account?.accessMode !== 'MANUAL' || account.accessExpiresAt === undefined) return false;
     const expiresAt = Date.parse(account.accessExpiresAt);
@@ -742,6 +819,7 @@ function listCreatorAccounts() {
                 ? account.durationDays
                 : null,
             protectedAdmin: access.isAdminUser(username),
+            progressOverlay: getProgressOverlaySettings(username),
             accessEnabled: access.isAdminUser(username) ||
                 (!store.isUserRevoked(username) &&
                     (access.canUseCreatorService(username, 'games') || canUseCreatorTts(username))),
@@ -1207,6 +1285,65 @@ const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const pathname = requestUrl.pathname;
     if (handleMedia(req, res, pathname, requestUrl.searchParams)) return;
+    if (pathname === '/api/progress-overlay-settings' && req.method === 'GET') {
+        const owner = handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'));
+        if (!owner || !canUseCreatorTts(owner)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Lien overlay invalide ou accès révoqué.' }));
+            return;
+        }
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ settings: getProgressOverlaySettings(owner) }));
+        return;
+    }
+    if (pathname === '/api/progress-overlay-settings' && req.method === 'POST') {
+        readJsonBody(req, res, body => {
+            const owner = handleMedia.findOverlayOwner(body.token);
+            if (!owner || !canUseCreatorTts(owner)) {
+                res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Lien overlay invalide ou accès révoqué.' }));
+                return;
+            }
+            try {
+                const submittedSettings = body.layoutOnly === true
+                    ? { layout: body.settings?.layout }
+                    : body.settings;
+                const settings = normalizeProgressOverlaySettings(
+                    submittedSettings,
+                    getProgressOverlaySettings(owner)
+                );
+                store.setCreatorProgressOverlaySettings(owner, settings);
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ settings }));
+            } catch (error) {
+                const status = error.statusCode || 400;
+                if (status >= 500) console.error('Échec de sauvegarde des objectifs overlay :', error);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status >= 500 ? 'Impossible d’enregistrer les objectifs.' : error.message
+                }));
+            }
+        }, 8192);
+        return;
+    }
+    if (pathname === '/progress-overlay.html' && req.method === 'GET') {
+        const owner = handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'));
+        if (!owner || !canUseCreatorTts(owner)) {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end('Lien overlay invalide ou accès révoqué.');
+            return;
+        }
+        fs.readFile(path.join(__dirname, 'progress-overlay.html'), (error, content) => {
+            if (error) { res.writeHead(500); res.end('Page introuvable.'); return; }
+            res.writeHead(200, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'text/html; charset=utf-8',
+                'Referrer-Policy': 'no-referrer'
+            });
+            res.end(content);
+        });
+        return;
+    }
     if (pathname.startsWith('/overlay/') && req.method === 'GET') {
         const owner = handleMedia.findOverlayOwner(pathname.slice('/overlay/'.length));
         if (!owner) { res.writeHead(404, { 'Cache-Control': 'no-store' }); res.end('Lien overlay invalide ou révoqué.'); return; }
@@ -1754,6 +1891,11 @@ const server = http.createServer((req, res) => {
             return;
         }
         const settings = store.getCreatorSettings(owner);
+        if (!hasTreasureOverlayAccess(owner)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'L’accès à cet overlay a expiré ou a été révoqué.' }));
+            return;
+        }
         res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
             owner,
@@ -2244,7 +2386,8 @@ const server = http.createServer((req, res) => {
                 }
                 if (access.isAdminUser(username) &&
                     !['tts-create', 'tts-revoke', 'room', 'room-access', 'room-close', 'room-open',
-                        'service-access', 'settings-lock', 'presence-room'].includes(body.action)) {
+                        'service-access', 'settings-lock', 'presence-room',
+                        'progress-overlay-visibility', 'like-avatar-overlay'].includes(body.action)) {
                     throw invalidAdminInput('La protection de l’administrateur principal ne peut pas être modifiée ici.');
                 }
                 if (body.action === 'settings-lock') {
@@ -2288,6 +2431,27 @@ const server = http.createServer((req, res) => {
                     store.setCreatorSettingsLocked(username, body.locked);
                 } else if (store.getCreatorSettings(username).locked === true) {
                     throw invalidAdminInput('Les réglages de ce membre sont verrouillés. Déverrouille-les avant de les modifier.');
+                } else if (body.action === 'progress-overlay-visibility') {
+                    if (typeof body.enabledLike !== 'boolean' || typeof body.enabledSub !== 'boolean') {
+                        throw invalidAdminInput('Les réglages de visibilité des compteurs sont invalides.');
+                    }
+                    const settings = normalizeProgressOverlaySettings({
+                        ...getProgressOverlaySettings(username),
+                        enabledLike: body.enabledLike,
+                        enabledSub: body.enabledSub
+                    }, getProgressOverlaySettings(username));
+                    store.setCreatorProgressOverlaySettings(username, settings);
+                } else if (body.action === 'like-avatar-overlay') {
+                    if (typeof body.enabled !== 'boolean' ||
+                        !Number.isSafeInteger(body.size) || body.size < 24 || body.size > 160) {
+                        throw invalidAdminInput('Les réglages des photos de profil sont invalides.');
+                    }
+                    const current = getProgressOverlaySettings(username);
+                    store.setCreatorProgressOverlaySettings(username, {
+                        ...current,
+                        likeAvatarsEnabled: body.enabled,
+                        likeAvatarSize: body.size
+                    });
                 } else if (body.action === 'presence-room') {
                     const clientId = typeof body.clientId === 'string' ? body.clientId : '';
                     const roomNumber = body.roomNumber;
@@ -3318,6 +3482,7 @@ const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
 const overlaySockets = new Map();
 const treasureOverlaySocketOwners = new Map();
+const treasureOverlaySocketTikTokUsernames = new Map();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
 function closeLiveTtsSockets(username) {
@@ -3348,6 +3513,19 @@ function closeTreasureOverlaySockets(username) {
     }
 }
 
+function sendTreasureLiveState(session, socket) {
+    if (!session || socket.readyState !== WebSocket.OPEN) return;
+    const treasureSource = treasureOverlaySocketTikTokUsernames.get(socket);
+    if (treasureSource && treasureSource !== session.username.toLocaleLowerCase()) return;
+    socket.send(JSON.stringify({
+        type: 'LIVE_STATE',
+        sourceTikTokUsername: session.username,
+        isLive: session.isLive === true,
+        roomId: session.roomId || '',
+        lastEndedRoomId: session.lastEndedRoomId || ''
+    }));
+}
+
 server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
@@ -3360,6 +3538,7 @@ server.on('upgrade', (req, socket, head) => {
         ? store.getCreatorSettings(treasureOverlayOwner)
         : null;
     const canUseTreasureOverlay = Boolean(treasureSettings &&
+        hasTreasureOverlayAccess(treasureOverlayOwner) &&
         treasureSettings.arcadeTreasureChestEnabled === true &&
         treasureSettings.arcadeTreasureTikTokUsername);
     const isTtsControlRequest = requestUrl.pathname === '/live-tts-control';
@@ -3393,6 +3572,10 @@ server.on('upgrade', (req, socket, head) => {
             }
         } else if (isTreasureOverlayRequest) {
             treasureOverlaySocketOwners.set(webSocket, treasureOverlayOwner);
+            treasureOverlaySocketTikTokUsernames.set(
+                webSocket,
+                String(treasureSettings.arcadeTreasureTikTokUsername || '').toLocaleLowerCase()
+            );
         }
         wss.emit('connection', webSocket, req);
     });
@@ -3405,7 +3588,8 @@ setInterval(() => {
     for (const [socket, owner] of treasureOverlaySocketOwners) {
         const settings = store.getCreatorSettings(owner);
         if (settings.arcadeTreasureChestEnabled !== true ||
-            !settings.arcadeTreasureTikTokUsername) socket.terminate();
+            !settings.arcadeTreasureTikTokUsername ||
+            !hasTreasureOverlayAccess(owner)) socket.terminate();
     }
     for (const [username, account] of store.listAccounts()) {
         if (!account.subscriptionId || access.hasActiveSubscription(account)) continue;
@@ -3500,6 +3684,10 @@ function updateSessionWalletProfile(session, messageData) {
     messageData.walletPlayer = getPublicTikTokPlayer(player, session.username);
     if (messageData.type === 'viewer' && messageData.viewer) {
         messageData.viewer.avatarUrl = messageData.walletPlayer.avatarUrl;
+    }
+    if (messageData.type === 'like' && messageData.likeData) {
+        messageData.likeData.avatarUrl = messageData.walletPlayer.avatarUrl;
+        delete messageData.likeData.avatarDataUri;
     }
     if (messageData.type === 'gift' && messageData.gift) {
         messageData.gift.avatarUrl = messageData.walletPlayer.avatarUrl;
@@ -3647,11 +3835,22 @@ function startTikTokSession(session) {
     }, session.username, ({ connected, roomId }) => {
         session.isLive = connected;
         session.roomId = roomId;
+        deliverTikTokMessage(session, {
+            type: 'LIVE_STATE',
+            isLive: connected,
+            roomId: roomId || '',
+            lastEndedRoomId: session.lastEndedRoomId || ''
+        });
     });
 }
 
 function deliverTikTokMessage(session, messageData) {
     if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+    if (messageData.type === 'LIVE_END') {
+        session.lastEndedRoomId = session.roomId || session.lastEndedRoomId || '';
+        session.isLive = false;
+        session.roomId = null;
+    }
     if (session.walletCommandsEnabled) {
         let player = null;
         try {
@@ -3665,14 +3864,21 @@ function deliverTikTokMessage(session, messageData) {
             console.error('Impossible de traiter une commande du portefeuille TikTok :', error);
         }
     }
-    const encoded = JSON.stringify(messageData);
-    const overlayEncoded = messageData.type === 'gift'
+    const sourceMessage = messageData.type === 'gift' ||
+        messageData.type === 'LIVE_END' ||
+        messageData.type === 'LIVE_STATE'
+        ? { ...messageData, sourceTikTokUsername: session.username }
+        : messageData;
+    const encoded = JSON.stringify(sourceMessage);
+    const overlayEncoded = sourceMessage.type === 'gift'
         ? JSON.stringify({
-            ...messageData,
-            matchLive: session.isLive && messageData.gift?.liveMatchActive === true
+            ...sourceMessage,
+            matchLive: session.isLive && sourceMessage.gift?.liveMatchActive === true
         })
         : encoded;
     for (const client of session.clients) {
+        const treasureSource = treasureOverlaySocketTikTokUsernames.get(client);
+        if (treasureSource && treasureSource !== session.username.toLocaleLowerCase()) continue;
         if (session.balloonClients.has(client) &&
             client !== session.balloonOwner &&
             messageData.type !== 'STATUS' &&
@@ -3696,6 +3902,12 @@ function updateCentralTikTokRoomState({ connected, roomId }) {
         session.isLive = connected;
         session.roomId = centralTikTokRoomId;
         deliverTikTokMessage(session, { type: 'STATUS', message: centralTikTokStatusMessage });
+        deliverTikTokMessage(session, {
+            type: 'LIVE_STATE',
+            isLive: connected,
+            roomId: centralTikTokRoomId || '',
+            lastEndedRoomId: session.lastEndedRoomId || ''
+        });
     }
     if (connected) {
         sendLiveStartAlert({
@@ -3917,6 +4129,7 @@ wss.on('connection', (socket, req) => {
                 message: currentSession.statusMessage ||
                     `Connexion TikTok en cours · @${currentSession.username}`
             }));
+            sendTreasureLiveState(currentSession, socket);
             return;
         }
         const currentSession = sessions.get(currentSessionKey);
@@ -3944,6 +4157,7 @@ wss.on('connection', (socket, req) => {
                 disconnect: null,
                 statusMessage: '',
                 roomId: null,
+                lastEndedRoomId: '',
                 isLive: false
             };
             sessions.set(sessionKey, session);
@@ -3976,11 +4190,13 @@ wss.on('connection', (socket, req) => {
             type: 'STATUS',
             message: session.statusMessage || `Connexion TikTok en cours · @${username}`
         }));
+        sendTreasureLiveState(session, socket);
     });
     socket.on('close', () => {
         liveTtsSockets.delete(socket);
         overlaySockets.delete(socket);
         treasureOverlaySocketOwners.delete(socket);
+        treasureOverlaySocketTikTokUsernames.delete(socket);
         authenticatedClientUsernames.delete(socket);
         authenticatedTtsClientUsernames.delete(socket);
         detachClient(socket);
@@ -4040,6 +4256,7 @@ function sweepExpiredManualAccounts(now = Date.now()) {
         }
         closeAuthenticatedSockets(username);
         closeTtsControlSockets(username);
+        closeTreasureOverlaySockets(username);
         if (removedSources.ttsSource) closeLiveTtsSockets(removedSources.ttsSource.username);
         if (removedSources.legacyTtsSource) closeLiveTtsSockets(removedSources.legacyTtsSource.username);
         console.info(`Compte manuel ${username} et ses accès supprimés après expiration.`);

@@ -170,6 +170,8 @@ function readStore() {
                         settings.arcadeTreasureLayout.y < 0 || settings.arcadeTreasureLayout.y > 100 ||
                         !Number.isFinite(settings.arcadeTreasureLayout.width) ||
                         settings.arcadeTreasureLayout.width < 12 || settings.arcadeTreasureLayout.width > 90)) ||
+                (settings.progressOverlay !== undefined &&
+                    !isValidProgressOverlaySettings(settings.progressOverlay)) ||
                 (settings.locked !== undefined && typeof settings.locked !== 'boolean')) ||
             Object.entries(parsed.dailyUsage).some(([date, users]) =>
                 !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -262,6 +264,26 @@ function updateStore(mutator) {
     const result = mutator(store);
     writeStore(store);
     return result;
+}
+
+function isValidProgressOverlaySettings(settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings) ||
+        typeof settings.enabledLike !== 'boolean' || typeof settings.enabledSub !== 'boolean' ||
+        (settings.likeAvatarsEnabled !== undefined &&
+            typeof settings.likeAvatarsEnabled !== 'boolean') ||
+        (settings.likeAvatarSize !== undefined &&
+            (!Number.isSafeInteger(settings.likeAvatarSize) ||
+                settings.likeAvatarSize < 24 || settings.likeAvatarSize > 160)) ||
+        !Number.isSafeInteger(settings.likeGoal) || settings.likeGoal < 1 || settings.likeGoal > 1000000000 ||
+        !Number.isSafeInteger(settings.subGoal) || settings.subGoal < 1 || settings.subGoal > 1000000 ||
+        !settings.layout || typeof settings.layout !== 'object' || Array.isArray(settings.layout)) return false;
+    return ['like', 'sub'].every(key => {
+        const layout = settings.layout[key];
+        return layout && Number.isFinite(layout.x) && layout.x >= 0 && layout.x <= 100 &&
+            Number.isFinite(layout.y) && layout.y >= 0 && layout.y <= 100 &&
+            Number.isFinite(layout.width) && layout.width >= 12 && layout.width <= 90 &&
+            Number.isFinite(layout.height) && layout.height >= 5 && layout.height <= 40;
+    });
 }
 
 function getAccount(username) {
@@ -879,6 +901,46 @@ function setCreatorTreasureLayout(username, layout) {
     });
 }
 
+function setCreatorProgressOverlaySettings(username, settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings) ||
+        typeof settings.enabledLike !== 'boolean' || typeof settings.enabledSub !== 'boolean' ||
+        !Number.isSafeInteger(settings.likeGoal) || settings.likeGoal < 1 || settings.likeGoal > 1000000000 ||
+        !Number.isSafeInteger(settings.subGoal) || settings.subGoal < 1 || settings.subGoal > 1000000 ||
+        !settings.layout || typeof settings.layout !== 'object' || Array.isArray(settings.layout)) {
+        throw new TypeError('Progress overlay settings are invalid.');
+    }
+    const layout = {};
+    for (const key of ['like', 'sub']) {
+        const item = settings.layout[key];
+        if (!item || !Number.isFinite(item.x) || item.x < 0 || item.x > 100 ||
+            !Number.isFinite(item.y) || item.y < 0 || item.y > 100 ||
+            !Number.isFinite(item.width) || item.width < 12 || item.width > 90 ||
+            !Number.isFinite(item.height) || item.height < 5 || item.height > 40) {
+            throw new TypeError('Progress overlay layout is invalid.');
+        }
+        layout[key] = {
+            x: Math.round(item.x * 10) / 10,
+            y: Math.round(item.y * 10) / 10,
+            width: Math.round(item.width * 10) / 10,
+            height: Math.round(item.height * 10) / 10
+        };
+    }
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const creatorSettings = store.creatorSettings[key] || {};
+        creatorSettings.progressOverlay = {
+            enabledLike: settings.enabledLike,
+            enabledSub: settings.enabledSub,
+            likeAvatarsEnabled: settings.likeAvatarsEnabled,
+            likeAvatarSize: settings.likeAvatarSize,
+            likeGoal: settings.likeGoal,
+            subGoal: settings.subGoal,
+            layout
+        };
+        store.creatorSettings[key] = creatorSettings;
+    });
+}
+
 function getAdminDashboardLayout(username) {
     return readStore().adminDashboardLayouts[username.toLowerCase()] ||
         { order: [], pinned: [], hidden: [] };
@@ -1274,6 +1336,7 @@ module.exports = {
     setCreatorTreasureOverlaySettings,
     getCreatorTreasureOverlayOwner,
     setCreatorTreasureLayout,
+    setCreatorProgressOverlaySettings,
     markLiveAlertRoom,
     removeLiveAlertPushSubscription,
     setCreatorGameAccess,

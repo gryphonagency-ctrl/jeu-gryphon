@@ -18,6 +18,8 @@
     let bigGiftFireworksEnabled = false;
     let treasureChestEnabled = false;
     let treasureOwner = '';
+    let treasureSourceUsername = '';
+    let treasureLiveRoomId = '';
     let treasureCanEdit = false;
     let treasureEditingEnabled = false;
     let treasureDragActive = false;
@@ -54,7 +56,11 @@
                     session.arcadeTreasureLayoutEditing === true;
                 bigGiftOverlayEnabled = false;
                 bigGiftFireworksEnabled = false;
-                setTreasureChestEnabled(settings.enabled === true, settings.owner || '');
+                setTreasureChestEnabled(
+                    settings.enabled === true,
+                    settings.owner || '',
+                    settings.username || ''
+                );
                 applyTreasureLayout();
                 return;
             }
@@ -67,7 +73,8 @@
                 session.arcadeBigGiftOverlayEnabled === true;
             setTreasureChestEnabled(
                 session.authenticated === true && session.arcadeTreasureChestEnabled === true,
-                session.username || ''
+                session.username || '',
+                session.arcadeTreasureTikTokUsername || session.tiktokUsername || ''
             );
             setTreasureEditPermission(session.authenticated === true);
             treasureEditingEnabled = session.authenticated === true &&
@@ -357,12 +364,39 @@
         count.textContent = `Cadeaux reçus : ${treasureGiftCount.toLocaleString('fr-FR')}`;
     }
 
+    function resetTreasureGifts(liveRoomId = '') {
+        treasureGiftCount = 0;
+        treasureGiftItems = [];
+        treasureLiveRoomId = String(liveRoomId || '');
+        seenTreasureGifts.clear();
+        saveTreasureGifts();
+        renderTreasureGifts();
+    }
+
+    function handleTreasureLiveState(data) {
+        if (!treasureChestEnabled ||
+            !treasureSourceUsername ||
+            String(data.sourceTikTokUsername || '').trim().replace(/^@/, '').toLocaleLowerCase() !== treasureSourceUsername) return;
+        if (data.type === 'LIVE_END') {
+            resetTreasureGifts();
+            return;
+        }
+        const roomId = String(data.roomId || '');
+        const lastEndedRoomId = String(data.lastEndedRoomId || '');
+        if (data.type === 'LIVE_STATE' &&
+            ((data.isLive === true && roomId && roomId !== treasureLiveRoomId) ||
+                (lastEndedRoomId && lastEndedRoomId === treasureLiveRoomId))) {
+            resetTreasureGifts(data.isLive === true ? roomId : '');
+        }
+    }
+
     function readTreasureGifts(owner) {
         if (!owner) return;
         try {
             const stored = JSON.parse(localStorage.getItem(TREASURE_STORAGE_PREFIX + owner.toLowerCase()) || 'null');
             if (!stored || !Array.isArray(stored.gifts)) return;
             treasureGiftCount = Number.isSafeInteger(stored.total) && stored.total > 0 ? stored.total : 0;
+            treasureLiveRoomId = typeof stored.liveRoomId === 'string' ? stored.liveRoomId : '';
             const gifts = stored.gifts
                 .filter(gift => gift && typeof gift === 'object')
                 .map(gift => ({
@@ -390,15 +424,18 @@
         try {
             localStorage.setItem(TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase(), JSON.stringify({
                 total: treasureGiftCount,
-                gifts: treasureGiftItems.slice(-TREASURE_VISIBLE_LIMIT)
+                gifts: treasureGiftItems.slice(-TREASURE_VISIBLE_LIMIT),
+                liveRoomId: treasureLiveRoomId
             }));
         } catch (error) {
             console.warn('Les cadeaux du coffre ne peuvent pas être sauvegardés localement :', error.message);
         }
     }
 
-    function setTreasureChestEnabled(enabled, owner) {
+    function setTreasureChestEnabled(enabled, owner, sourceUsername = '') {
         const nextOwner = String(owner || '');
+        const previousSource = treasureSourceUsername;
+        treasureSourceUsername = String(sourceUsername || '').trim().replace(/^@/, '').toLocaleLowerCase();
         const ownerChanged = nextOwner.toLowerCase() !== treasureOwner.toLowerCase();
         const nextEnabled = enabled === true && Boolean(nextOwner);
         if (ownerChanged) {
@@ -406,6 +443,8 @@
             treasureGiftItems = [];
             treasureGiftCount = 0;
             readTreasureGifts(nextOwner);
+        } else if (previousSource && treasureSourceUsername && previousSource !== treasureSourceUsername) {
+            resetTreasureGifts();
         }
         treasureChestEnabled = nextEnabled;
         if (!treasureChestEnabled) {
@@ -493,8 +532,10 @@
         });
     }
 
-    function addTreasureGift(gift) {
-        if (!treasureChestEnabled) return;
+    function addTreasureGift(gift, sourceUsername) {
+        if (!treasureChestEnabled ||
+            !treasureSourceUsername ||
+            String(sourceUsername || '').toLocaleLowerCase() !== treasureSourceUsername) return;
         const messageId = gift.messageId && `treasure:${gift.messageId}`;
         if (messageId) {
             if (seenTreasureGifts.has(messageId)) return;
@@ -575,7 +616,7 @@
             if (event.key === 'ga-arcade-treasure-setting') {
                 const setting = JSON.parse(event.newValue);
                 if (setting.username && setting.username.toLowerCase() === treasureOwner.toLowerCase()) {
-                    setTreasureChestEnabled(setting.enabled, setting.username);
+                    setTreasureChestEnabled(setting.enabled, setting.username, treasureSourceUsername);
                 }
             } else if (event.key === TREASURE_LAYOUT_STORAGE_KEY) {
                 const setting = JSON.parse(event.newValue);
@@ -845,12 +886,14 @@
 
     function handle(data) {
         if (!data || typeof data !== 'object') return;
-        if (data.type === 'share') {
+        if (data.type === 'LIVE_END' || data.type === 'LIVE_STATE') {
+            handleTreasureLiveState(data);
+        } else if (data.type === 'share') {
             const share = data.shareData || {};
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
         } else if (data.type === 'gift' && data.gift) {
             const gift = data.gift;
-            addTreasureGift(gift);
+            addTreasureGift(gift, data.sourceTikTokUsername);
             const coins = Number(gift.coinCount) || (Number(gift.coinValue ?? gift.diamondCount ?? gift.diamonds) || 0) * (Number(gift.repeatCount) || 1);
             if (!bigGiftOverlayEnabled || coins < config.bigGiftCoins ||
                 !firstSeen(gift.messageId && 'gift:' + gift.messageId)) return;
@@ -877,7 +920,8 @@
 
     function onMessage(event) {
         const raw = event.data;
-        if (typeof raw !== 'string' || raw.length > 300000 || !/"type"\s*:\s*"(?:gift|share|viewer)"/.test(raw)) return;
+        if (typeof raw !== 'string' || raw.length > 300000 ||
+            !/"type"\s*:\s*"(?:gift|share|viewer|LIVE_END|LIVE_STATE)"/.test(raw)) return;
         try { handle(JSON.parse(raw)); } catch (error) { /* message non JSON */ }
     }
 

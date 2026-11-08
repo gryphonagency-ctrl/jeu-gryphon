@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Objectifs du LIVE · Griffon Arcade</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<style>
+:root { color-scheme: dark; font-family: Arial, Helvetica, sans-serif; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+#widgets { position: fixed; inset: 0; pointer-events: none; }
+.goal-widget {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 48px;
+  max-width: 90vw;
+  max-height: 40vh;
+  padding: clamp(7px, 1.15vw, 15px) clamp(10px, 1.6vw, 20px);
+  overflow: hidden;
+  resize: both;
+  color: #fff;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .38));
+}
+.goal-widget[hidden] { display: none; }
+.goal-widget:not(.editing) { pointer-events: none; resize: none; }
+.goal-widget.like {
+  border: 2px solid rgba(89, 251, 255, .95);
+  border-radius: 12px;
+  background: linear-gradient(110deg, rgba(28, 16, 63, .94), rgba(7, 42, 67, .92));
+  box-shadow: inset 0 0 16px rgba(49, 239, 255, .18), 0 0 18px rgba(43, 213, 255, .28);
+}
+.goal-widget.sub {
+  border: 2px solid #67e9ff;
+  border-radius: 3px 14px;
+  background: linear-gradient(105deg, rgba(13, 30, 75, .96), rgba(29, 65, 139, .92));
+  box-shadow: inset 0 0 16px rgba(59, 173, 255, .22), 0 0 16px rgba(48, 177, 255, .26);
+}
+.goal-widget.editing { outline: 2px dashed #fff; cursor: grab; }
+.goal-widget.editing:active { cursor: grabbing; }
+.goal-widget.editing[data-disabled="true"] { opacity: .48; }
+.widget-grip { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.widget-title { margin: 0; font-size: clamp(13px, 2.2vw, 26px); line-height: 1.1; font-weight: 900; letter-spacing: .045em; text-transform: uppercase; text-shadow: 0 2px 6px #000; }
+.widget-value { flex: 0 0 auto; font-size: clamp(11px, 1.55vw, 18px); font-weight: 800; text-shadow: 0 2px 5px #000; }
+.widget-progress { height: clamp(7px, 1.2vh, 14px); margin-top: clamp(5px, .7vh, 9px); overflow: hidden; border: 1px solid rgba(255,255,255,.82); border-radius: 99px; background: rgba(0,0,0,.52); }
+.widget-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background-size: 220% 100%;
+  animation: goal-fill-shimmer 2.8s linear infinite;
+  transition: width 850ms cubic-bezier(.22, 1, .36, 1), filter 850ms ease;
+}
+.like .widget-fill {
+  background-image: linear-gradient(90deg, #ff3caa, #ed69ff 45%, #48f4ff);
+  box-shadow: 0 0 12px #60f7ff;
+}
+.sub .widget-fill {
+  background-image: linear-gradient(90deg, #30d8ff, #76f5ff);
+  box-shadow: 0 0 12px #48dfff;
+}
+@keyframes goal-fill-shimmer {
+  from { background-position: 0 50%; }
+  to { background-position: 100% 50%; }
+}
+#like-avatar-layer { position: fixed; inset: 0; z-index: 20; overflow: hidden; pointer-events: none; }
+.like-profile-float {
+  position: absolute;
+  bottom: -12vh;
+  display: block;
+  border: 3px solid rgba(255,255,255,.92);
+  border-radius: 50%;
+  object-fit: cover;
+  background: #17213a;
+  box-shadow: 0 0 12px rgba(255, 91, 190, .8), 0 0 30px rgba(80, 224, 255, .5);
+  animation: like-profile-rise var(--float-duration, 5.5s) cubic-bezier(.2,.65,.35,1) forwards;
+}
+@keyframes like-profile-rise {
+  0% { opacity: 0; transform: translate3d(-50%, 0, 0) scale(.5) rotate(-12deg); }
+  12% { opacity: 1; transform: translate3d(-50%, -5vh, 0) scale(1) rotate(0); }
+  78% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--float-drift, 36px)), -118vh, 0) scale(.76) rotate(14deg); }
+}
+.edit-hint { display: none; position: absolute; right: 6px; bottom: 3px; z-index: 1; color: #fff; font: 10px/1 Arial, sans-serif; opacity: .8; }
+.editing .edit-hint { display: block; }
+#status { position: fixed; left: 8px; bottom: 8px; z-index: 10; padding: 5px 9px; border-radius: 6px; background: rgba(0,0,0,.72); color: #fff; font: 12px/1.35 Arial, sans-serif; }
+#status.hide { display: none; }
+@media (max-width: 480px) {
+  .goal-widget { min-width: 170px; min-height: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .widget-fill {
+    animation: none;
+    background-position: 50% 50%;
+    transition: width .01ms, filter .01ms;
+  }
+}
+</style>
+</head>
+<body>
+<main id="widgets" aria-live="polite">
+  <section id="like-widget" class="goal-widget like" aria-label="Objectif de mentions J’aime">
+    <div class="widget-grip">
+      <h1 class="widget-title">Like Goal</h1>
+      <span class="widget-value">0 / 50 000 · 0 %</span>
+    </div>
+    <div class="widget-progress" role="progressbar" aria-label="Progression des mentions J’aime" aria-valuemin="0" aria-valuemax="50000" aria-valuenow="0"><div class="widget-fill"></div></div>
+    <span class="edit-hint" aria-hidden="true">↘</span>
+  </section>
+  <section id="sub-widget" class="goal-widget sub" aria-label="Objectif d’abonnements">
+    <div class="widget-grip">
+      <h2 class="widget-title">Sub Goal</h2>
+      <span class="widget-value">0 / 10 · 0 %</span>
+    </div>
+    <div class="widget-progress" role="progressbar" aria-label="Progression des abonnements" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><div class="widget-fill"></div></div>
+    <span class="edit-hint" aria-hidden="true">↘</span>
+  </section>
+</main>
+<div id="like-avatar-layer" aria-hidden="true"></div>
+<div id="status" role="status">Connexion aux objectifs…</div>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('token') || '';
+const editMode = params.get('edit') === '1';
+const statusEnabled = params.get('statut') !== '0';
+const statusEl = document.getElementById('status');
+const avatarLayer = document.getElementById('like-avatar-layer');
+const widgets = {
+  like: document.getElementById('like-widget'),
+  sub: document.getElementById('sub-widget')
+};
+let settings = null;
+let liveRoomId = '';
+let liveActive = false;
+let reconnectDelay = 3000;
+let saveTimer = null;
+let statusTimer = null;
+let applyingLayout = false;
+let layoutApplyTimer = null;
+const numberFormat = new Intl.NumberFormat('fr-FR');
+const progressKey = `ga-progress-overlay-${token}`;
+let counters = { roomId: '', likes: 0, subs: 0 };
+const viewerAvatars = new Map();
+const likeAvatarQueue = [];
+const LIKE_AVATAR_INTERVAL_MS = 50;
+let likeAvatarTimer = null;
+
+function showStatus(message, temporary = false) {
+  statusEl.textContent = message;
+  statusEl.classList.toggle('hide', !statusEnabled || !message);
+  clearTimeout(statusTimer);
+  if (temporary) statusTimer = setTimeout(() => statusEl.classList.add('hide'), 4000);
+}
+
+function readCounters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(progressKey) || 'null');
+    if (saved && Number.isSafeInteger(saved.likes) && Number.isSafeInteger(saved.subs)) {
+      counters = { roomId: String(saved.roomId || ''), likes: saved.likes, subs: saved.subs };
+    }
+  } catch (error) {
+    console.warn('Impossible de restaurer les objectifs du LIVE.', error);
+  }
+}
+
+function persistCounters() {
+  try { localStorage.setItem(progressKey, JSON.stringify(counters)); }
+  catch (error) { console.warn('Impossible de sauvegarder les objectifs du LIVE.', error); }
+}
+
+function resetCounters() {
+  counters = { roomId: '', likes: 0, subs: 0 };
+  persistCounters();
+  renderProgress();
+}
+
+function applyLayout() {
+  if (!settings) return;
+  applyingLayout = true;
+  clearTimeout(layoutApplyTimer);
+  for (const key of ['like', 'sub']) {
+    const element = widgets[key];
+    const layout = settings.layout[key];
+    element.style.left = `${layout.x}%`;
+    element.style.top = `${layout.y}%`;
+    element.style.width = `${layout.width}%`;
+    element.style.height = `${layout.height}%`;
+    element.classList.toggle('editing', editMode);
+    const enabled = settings[key === 'like' ? 'enabledLike' : 'enabledSub'] === true;
+    element.dataset.disabled = String(!enabled);
+    element.hidden = !enabled && !editMode;
+  }
+  layoutApplyTimer = setTimeout(() => { applyingLayout = false; }, 120);
+}
+
+function renderProgress() {
+  if (!settings) return;
+  const values = {
+    like: { count: counters.likes, goal: settings.likeGoal },
+    sub: { count: counters.subs, goal: settings.subGoal }
+  };
+  for (const [key, value] of Object.entries(values)) {
+    const element = widgets[key];
+    const percent = Math.min(100, Math.floor(value.count / value.goal * 100));
+    element.querySelector('.widget-value').textContent =
+      `${numberFormat.format(value.count)} / ${numberFormat.format(value.goal)} · ${percent} %`;
+    const fill = element.querySelector('.widget-fill');
+    fill.style.width = `${percent}%`;
+    fill.style.filter = `hue-rotate(${Math.round(percent * (key === 'like' ? 1.1 : 0.55))}deg)`;
+    const bar = element.querySelector('[role="progressbar"]');
+    bar.setAttribute('aria-valuemax', String(value.goal));
+    bar.setAttribute('aria-valuenow', String(Math.min(value.count, value.goal)));
+  }
+}
+
+function viewerKey(profile) {
+  return String(profile?.uniqueId || profile?.username || profile?.nickname || '')
+    .trim().replace(/^@/, '').toLocaleLowerCase();
+}
+
+function validAvatarUrl(value) {
+  if (typeof value !== 'string' || value.length > 700000) return '';
+  try {
+    const url = new URL(value, location.href);
+    return url.protocol === 'https:' || url.origin === location.origin ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function showLikeAvatar(profile) {
+  if (!settings?.likeAvatarsEnabled) return false;
+  const key = viewerKey(profile);
+  const avatar = validAvatarUrl(profile?.avatarUrl) ||
+    (key ? validAvatarUrl(viewerAvatars.get(key)) : '');
+  if (!avatar) return false;
+  const image = document.createElement('img');
+  image.className = 'like-profile-float';
+  image.src = avatar;
+  image.alt = '';
+  image.decoding = 'async';
+  image.draggable = false;
+  image.style.width = `${settings.likeAvatarSize}px`;
+  image.style.height = `${settings.likeAvatarSize}px`;
+  image.style.left = `${8 + Math.random() * 84}%`;
+  image.style.setProperty('--float-duration', `${4.8 + Math.random() * 1.4}s`);
+  image.style.setProperty('--float-drift', `${Math.round(Math.random() * 100 - 50)}px`);
+  image.dataset.likeAvatar = 'true';
+  const removeAvatar = () => image.remove();
+  image.addEventListener('animationend', removeAvatar, { once: true });
+  image.addEventListener('error', removeAvatar, { once: true });
+  avatarLayer.append(image);
+  return true;
+}
+
+function drainLikeAvatarQueue() {
+  likeAvatarTimer = null;
+  if (!settings?.likeAvatarsEnabled) {
+    likeAvatarQueue.length = 0;
+    return;
+  }
+  while (likeAvatarQueue.length) {
+    const batch = likeAvatarQueue[0];
+    batch.remaining--;
+    if (batch.remaining <= 0) likeAvatarQueue.shift();
+    if (showLikeAvatar(batch.profile)) break;
+  }
+  if (likeAvatarQueue.length) {
+    likeAvatarTimer = setTimeout(drainLikeAvatarQueue, LIKE_AVATAR_INTERVAL_MS);
+  }
+}
+
+function enqueueLikeAvatars(profile, count) {
+  if (!settings?.likeAvatarsEnabled || !Number.isSafeInteger(count) || count < 1) return;
+  const previous = likeAvatarQueue[likeAvatarQueue.length - 1];
+  if (previous && viewerKey(previous.profile) === viewerKey(profile)) {
+    previous.remaining += count;
+  } else {
+    likeAvatarQueue.push({ profile: { ...profile }, remaining: count });
+  }
+  if (!likeAvatarTimer) likeAvatarTimer = setTimeout(drainLikeAvatarQueue, 0);
+}
+
+async function saveSettings() {
+  if (!settings) return;
+  try {
+    const response = await fetch('/api/progress-overlay-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ token, settings: { layout: settings.layout }, layoutOnly: true })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Impossible d’enregistrer la disposition.');
+    settings = data.settings;
+    applyLayout();
+    showStatus('Position et taille enregistrées.', true);
+  } catch (error) {
+    console.error('Échec de sauvegarde des widgets overlay :', error);
+    showStatus(error.message || 'Impossible d’enregistrer la disposition.');
+  }
+}
+
+function queueSettingsSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSettings, 450);
+}
+
+function captureElementLayout(key) {
+  const element = widgets[key];
+  const rect = element.getBoundingClientRect();
+  settings.layout[key] = {
+    x: Math.max(0, Math.min(100, rect.left / innerWidth * 100)),
+    y: Math.max(0, Math.min(100, rect.top / innerHeight * 100)),
+    width: Math.max(12, Math.min(90, rect.width / innerWidth * 100)),
+    height: Math.max(5, Math.min(40, rect.height / innerHeight * 100))
+  };
+  element.style.left = `${settings.layout[key].x}%`;
+  element.style.top = `${settings.layout[key].y}%`;
+  element.style.width = `${settings.layout[key].width}%`;
+  element.style.height = `${settings.layout[key].height}%`;
+}
+
+function makeDraggable(key) {
+  const element = widgets[key];
+  const grip = element.querySelector('.widget-grip');
+  let drag = null;
+  grip.addEventListener('pointerdown', event => {
+    if (!editMode || event.button !== 0) return;
+    const rect = element.getBoundingClientRect();
+    drag = { startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+    grip.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  grip.addEventListener('pointermove', event => {
+    if (!drag) return;
+    const rect = element.getBoundingClientRect();
+    const left = Math.max(0, Math.min(innerWidth - rect.width, drag.left + event.clientX - drag.startX));
+    const top = Math.max(0, Math.min(innerHeight - rect.height, drag.top + event.clientY - drag.startY));
+    element.style.left = `${left / innerWidth * 100}%`;
+    element.style.top = `${top / innerHeight * 100}%`;
+  });
+  const stopDragging = () => {
+    if (!drag) return;
+    drag = null;
+    captureElementLayout(key);
+    queueSettingsSave();
+  };
+  grip.addEventListener('pointerup', stopDragging);
+  grip.addEventListener('pointercancel', stopDragging);
+  new ResizeObserver(() => {
+    if (!settings || !editMode || applyingLayout || element.hidden) return;
+    captureElementLayout(key);
+    queueSettingsSave();
+  }).observe(element);
+}
+
+async function loadSettings() {
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('Lien overlay invalide.');
+  const response = await fetch(`/api/progress-overlay-settings?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Impossible de charger les objectifs.');
+  settings = data.settings;
+  applyLayout();
+  renderProgress();
+}
+
+async function refreshSettings() {
+  const response = await fetch(`/api/progress-overlay-settings?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Impossible de synchroniser les objectifs.');
+  const currentLayout = settings.layout;
+  const wasLikeAvatarsEnabled = settings.likeAvatarsEnabled;
+  settings = { ...data.settings, layout: editMode ? currentLayout : data.settings.layout };
+  if (wasLikeAvatarsEnabled && !settings.likeAvatarsEnabled) {
+    likeAvatarQueue.length = 0;
+    clearTimeout(likeAvatarTimer);
+    likeAvatarTimer = null;
+  }
+  applyLayout();
+  renderProgress();
+}
+
+function connect() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${protocol}//${location.host}/media-overlay-relay?token=${encodeURIComponent(token)}`);
+  socket.addEventListener('open', () => { reconnectDelay = 3000; });
+  socket.addEventListener('message', event => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === 'TTS_CONFIG') {
+      socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: data.username }));
+      return;
+    }
+    if (data.type === 'STATUS') {
+      showStatus(data.message || '', /connecté/i.test(data.message || ''));
+      return;
+    }
+    if (data.type === 'viewer' && data.viewer) {
+      const key = viewerKey(data.viewer);
+      const avatar = validAvatarUrl(data.viewer.avatarUrl);
+      if (key && avatar) viewerAvatars.set(key, avatar);
+      return;
+    }
+    if (data.type === 'LIVE_STATE') {
+      const nextRoomId = String(data.roomId || '');
+      if (data.isLive && nextRoomId) {
+        if (counters.roomId && counters.roomId !== nextRoomId) resetCounters();
+        liveRoomId = nextRoomId;
+        liveActive = true;
+        if (counters.roomId !== liveRoomId) {
+          counters.roomId = liveRoomId;
+          persistCounters();
+        }
+      } else {
+        liveRoomId = '';
+        liveActive = false;
+        resetCounters();
+      }
+      return;
+    }
+    if (data.type === 'LIVE_END') {
+      liveRoomId = '';
+      liveActive = false;
+      resetCounters();
+      return;
+    }
+    if (!liveActive || !settings) return;
+    if (data.type === 'like') {
+      const amount = Math.floor(Number(data.likeData?.likeCount));
+      if (Number.isSafeInteger(amount) && amount > 0) {
+        counters.likes += amount;
+        persistCounters();
+        renderProgress();
+        enqueueLikeAvatars(data.likeData || {}, amount);
+      }
+    } else if (data.type === 'subscribe') {
+      counters.subs++;
+      persistCounters();
+      renderProgress();
+    }
+  });
+  socket.addEventListener('close', () => {
+    showStatus('Connexion interrompue. Nouvelle tentative…');
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  });
+}
+
+readCounters();
+for (const key of ['like', 'sub']) makeDraggable(key);
+loadSettings().then(() => {
+  if (editMode) showStatus('Mode édition : déplace les barres par leur titre et redimensionne-les avec la poignée en bas à droite.');
+  connect();
+  setInterval(() => {
+    refreshSettings().catch(error => {
+      console.warn('Impossible de synchroniser les réglages des objectifs.', error);
+    });
+  }, 5000);
+}).catch(error => {
+  showStatus(error.message || 'Impossible de charger les objectifs.');
+  console.error('Échec de chargement des widgets overlay :', error);
+});
+</script>
+</body>
+</html>

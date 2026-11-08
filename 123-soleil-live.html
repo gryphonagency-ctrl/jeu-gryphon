@@ -66,6 +66,7 @@
     .control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     .control-row label { font-size: 12px; font-weight: 700; }
     input[type="text"] { min-width: 150px; flex: 1; padding: 8px 10px; border: 1px solid #59687f; border-radius: 8px; background: #0c1220; color: white; }
+    input[type="number"] { width: 110px; padding: 8px 10px; border: 1px solid #59687f; border-radius: 8px; background: #0c1220; color: white; }
     input[type="range"] { width: min(210px, 55vw); accent-color: #fa5571; }
     #connection-status { min-height: 18px; color: #cbd5e1; font-size: 12px; }
     #queue-panel { position: fixed; z-index: 14; right: 14px; bottom: 14px; width: min(300px, calc(100vw - 24px)); max-height: 35vh; overflow: auto; box-shadow: 0 12px 35px #0009; }
@@ -161,7 +162,12 @@
         </div>
         <div id="connection-status" role="status" aria-live="polite">Connecte le compte TikTok de ton direct pour recevoir les inscriptions et les cadeaux.</div>
         <div class="control-row">
-          <span>Chat : une lettre ou un nombre de 1 à 100 pour entrer · <strong>RUN</strong> dépense les étoiles du portefeuille, puis chaque étoile jouée fait un pas. Cadeaux : 1 pièce TikTok = 1 pas (10 %), même au feu rouge ; 10 pièces pour finir.</span>
+          <span>Chat : une lettre ou un nombre de 1 à 100 pour entrer · <strong>RUN</strong> dépense les étoiles du portefeuille, puis chaque étoile jouée fait un pas. Au feu rouge, tout mouvement élimine. Seuls les cadeaux de 1 à 10 pièces font avancer ; ceux de plus de 10 pièces n’avancent pas.</span>
+        </div>
+        <div class="control-row">
+          <label for="gift-coin-goal">Pièces TikTok pour atteindre l’arrivée</label>
+          <input id="gift-coin-goal" type="number" min="1" step="1" value="150" inputmode="numeric">
+          <span id="gift-goal-hint">150 pièces admissibles cumulées par joueur.</span>
         </div>
         <div class="control-row">
           <label for="speed-control">Vitesse du cycle</label>
@@ -212,7 +218,7 @@
     </div>
   </aside>
 
-  <footer class="game-footer">Inscription par une lettre ou un nombre de 1 à 100 · Tous les cadeaux font avancer · 20 % des pièces de la partie sont attribuées au gagnant en étoiles.</footer>
+  <footer class="game-footer">Inscription par une lettre ou un nombre de 1 à 100 · Seuls les cadeaux de 1 à 10 pièces font avancer · 20 % des pièces de la partie sont attribuées au gagnant en étoiles.</footer>
 
   <script>
     (() => {
@@ -224,7 +230,10 @@
       const connectionStatus = $('connection-status');
       const players = new Map();
       const seenEvents = new Set();
+      const DEFAULT_GIFT_COIN_GOAL = 150;
+      const MAX_ADVANCING_GIFT_COINS = 10;
       let lightState = 'green';
+      let lightHistory = [{ state: 'green', at: Date.now() }];
       let cycleTimer = 0;
       let phaseMessageTimer = 0;
       let liveSocket = null;
@@ -232,6 +241,8 @@
       let gameStarted = false;
       let raceFinished = false;
       let roundGiftCoins = 0;
+      let giftCoinGoal = DEFAULT_GIFT_COIN_GOAL;
+      let roundGiftCoinGoal = DEFAULT_GIFT_COIN_GOAL;
       let roundId = crypto.randomUUID();
       let walletBannerTimer = 0;
       let nextRoundTimer = 0;
@@ -365,6 +376,8 @@
           avatarUrl: resolveAvatar(user),
           lane: laneInset + ((players.size * 37) % laneRange),
           progress: 0,
+          giftCoins: 0,
+          runProgress: 0,
           eliminated: false,
           winner: false,
           element: null
@@ -405,6 +418,10 @@
       }
 
       function setLight(nextState, announce = true) {
+        if (nextState !== lightState) {
+          lightHistory.push({ state: nextState, at: Date.now() });
+          if (lightHistory.length > 2000) lightHistory.shift();
+        }
         lightState = nextState;
         const red = nextState === 'red';
         stateLabel.classList.toggle('red', red);
@@ -420,11 +437,36 @@
         );
       }
 
+      function getLightAt(timestamp) {
+        for (let index = lightHistory.length - 1; index >= 0; index--) {
+          if (timestamp >= lightHistory[index].at) return lightHistory[index].state;
+        }
+        return lightState;
+      }
+
       function eliminate(player) {
         if (player.eliminated || player.winner) return;
         player.eliminated = true;
         player.element.classList.add('eliminated');
         renderLists();
+      }
+
+      function updatePlayerProgress(player) {
+        const giftProgress = Math.min(100, player.giftCoins / roundGiftCoinGoal * 100);
+        player.progress = Math.min(100, giftProgress + player.runProgress);
+        player.element.style.setProperty('--progress-offset', `${(player.progress * 0.69).toFixed(2)}%`);
+      }
+
+      function finishRace(player, simulated) {
+        player.winner = true;
+        player.element.classList.add('winner');
+        raceFinished = true;
+        if (cycleTimer) clearTimeout(cycleTimer);
+        if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
+        $('race-message').classList.remove('phase-message', 'visible');
+        $('race-message-text').textContent = `🏆 ${player.username} franchit la ligne d’arrivée !`;
+        void awardWinner(player, simulated);
+        nextRoundTimer = window.setTimeout(resetGame, 15000);
       }
 
       function showWalletBanner(player, title, detail) {
@@ -489,30 +531,26 @@
         }
       }
 
-      function movePlayer(username, stepCount = 1, simulated = false, giftMovement = false) {
+      function movePlayer(username, stepCount = 1, simulated = false, giftMovement = false, actionAt = null) {
         if (raceFinished) return;
         const player = players.get(playerKey(username));
         if (!player || player.eliminated || player.winner) return;
-        if (lightState === 'red' && !giftMovement) {
+        const actionLight = Number.isFinite(actionAt) ? getLightAt(actionAt) : lightState;
+        if (actionLight === 'red') {
           eliminate(player);
           return;
         }
 
-        const advances = Math.min(100, Math.max(1, Math.floor(Number(stepCount) || 1)));
-        for (let i = 0; i < advances && !raceFinished; i++) {
-          player.progress = Math.min(100, player.progress + 10);
-          player.element.style.setProperty('--progress-offset', `${(player.progress * 0.69).toFixed(2)}%`);
-          if (player.progress >= 100) {
-            player.winner = true;
-            player.element.classList.add('winner');
-            raceFinished = true;
-            if (cycleTimer) clearTimeout(cycleTimer);
-            if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
-            $('race-message').classList.remove('phase-message', 'visible');
-            $('race-message-text').textContent = `🏆 ${player.username} franchit la ligne d’arrivée !`;
-            void awardWinner(player, simulated);
-            nextRoundTimer = window.setTimeout(resetGame, 15000);
-          }
+        const advances = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(Number(stepCount) || 1)));
+        if (giftMovement) {
+          if (advances > MAX_ADVANCING_GIFT_COINS) return;
+          player.giftCoins = Math.min(Number.MAX_SAFE_INTEGER, player.giftCoins + advances);
+        } else {
+          player.runProgress = Math.min(100, player.runProgress + advances * 10);
+        }
+        updatePlayerProgress(player);
+        if (player.progress >= 100 && !raceFinished) {
+          finishRace(player, simulated);
         }
         renderLists();
       }
@@ -539,7 +577,8 @@
         roundGiftCoins = Math.min(Number.MAX_SAFE_INTEGER, roundGiftCoins + value);
         updateRoundPot();
         const username = gift.uniqueId || gift.username || gift.nickname;
-        movePlayer(username, value, false, true);
+        const sentAt = Number(gift.sentAt);
+        movePlayer(username, value, false, true, Number.isSafeInteger(sentAt) ? sentAt : null);
       }
 
       function handleWalletRun(event) {
@@ -568,6 +607,23 @@
           `${String(data.message || 'Étoiles non dépensées.')} · solde : ${formatNumber(data.player.stars)} ⭐`
         );
       }
+
+      $('gift-coin-goal').addEventListener('change', event => {
+        const input = event.currentTarget;
+        const nextGoal = input.valueAsNumber;
+        if (!Number.isSafeInteger(nextGoal) || nextGoal < 1) {
+          input.value = String(giftCoinGoal);
+          connectionStatus.textContent = 'Le seuil doit être un nombre entier de pièces supérieur ou égal à 1.';
+          return;
+        }
+        giftCoinGoal = nextGoal;
+        if (!gameStarted) {
+          roundGiftCoinGoal = giftCoinGoal;
+        }
+        const nextGameText = `${formatNumber(giftCoinGoal)} pièces admissibles cumulées par joueur${gameStarted ? ' (dès la prochaine partie)' : ''}.`;
+        $('gift-goal-hint').textContent = nextGameText;
+        connectionStatus.textContent = `Seuil mis à jour : ${formatNumber(giftCoinGoal)} pièces TikTok${gameStarted ? ' pour la prochaine partie' : ' pour cette partie'}.`;
+      });
 
       window.addEventListener('arcade:wallet', event => {
         const data = event.detail || {};
@@ -667,6 +723,8 @@
         raceFinished = false;
         if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
         $('race-message').classList.remove('phase-message', 'visible');
+        roundGiftCoinGoal = giftCoinGoal;
+        $('gift-goal-hint').textContent = `${formatNumber(roundGiftCoinGoal)} pièces admissibles cumulées par joueur.`;
         roundGiftCoins = 0;
         roundId = crypto.randomUUID();
         $('round-pot').textContent = '🎁 0 pièces · gagnant : 0 ⭐';
@@ -675,6 +733,7 @@
         $('race-message-text').style.background = '';
         $('race-message-text').textContent = 'Écris une lettre ou un nombre de 1 à 100 pour jouer !';
         setLight('green', false);
+        lightHistory = [{ state: 'green', at: Date.now() }];
       }
 
       $('connect-live').addEventListener('click', connectLive);

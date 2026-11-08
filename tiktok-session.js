@@ -135,7 +135,21 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         else if ([3, 5, 6, 11].includes(action)) liveMatchActive = false;
     });
 
+    connection.on('streamEnd', event => {
+        liveMatchActive = false;
+        send({
+            type: 'LIVE_END',
+            action: Number(event?.action) || null
+        });
+        onRoomState({ connected: false, roomId: null });
+    });
+
     connection.on('gift', async gift => {
+        const receivedAt = Date.now();
+        const providerTimestamp = Number(gift.common?.createTime);
+        const sentAt = Number.isSafeInteger(providerTimestamp)
+            ? providerTimestamp < 1_000_000_000_000 ? providerTimestamp * 1000 : providerTimestamp
+            : receivedAt;
         const rawGiftId = gift.giftId ?? gift.gift?.id;
         const parsedGiftId = Number(rawGiftId);
         const giftId = Number.isSafeInteger(parsedGiftId) ? parsedGiftId : null;
@@ -200,6 +214,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             type: 'gift',
             gift: {
                 messageId,
+                sentAt,
                 giftId: Number.isSafeInteger(giftId) ? giftId : null,
                 ...identity,
                 avatarDataUri: null,
@@ -282,10 +297,16 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         });
     });
 
-    connection.on('like', message => {
+    connection.on('like', async message => {
         const likeCount = Math.floor(Number(message.likeCount) || 0);
         if (likeCount < 1) return;
         const identity = getTikTokIdentity(message.user);
+        let avatarDataUri = null;
+        try {
+            ({ avatarDataUri } = await getAvatarData(message.user, avatarCache));
+        } catch (error) {
+            console.warn(`Impossible de charger l’avatar TikTok de ${identity.username || 'un spectateur'} :`, error);
+        }
         send({
             type: 'like',
             likeData: {
@@ -293,21 +314,9 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 username: identity.uniqueId || identity.username,
                 uniqueId: identity.uniqueId || identity.username,
                 nickname: identity.nickname,
-                likeCount
+                likeCount,
+                avatarDataUri
             }
-        });
-
-        const viewerKey = String(identity.userId || identity.uniqueId || identity.username).toLocaleLowerCase();
-        const lastLookup = avatarLookupTimes.get(viewerKey) || 0;
-        if (!viewerKey || Date.now() - lastLookup < 60000) return;
-        avatarLookupTimes.set(viewerKey, Date.now());
-        if (avatarLookupTimes.size > 500) {
-            avatarLookupTimes.delete(avatarLookupTimes.keys().next().value);
-        }
-        getAvatarData(message.user, avatarCache).then(({ avatarDataUri }) => {
-            if (avatarDataUri) send({ type: 'viewer', viewer: { ...identity, avatarDataUri } });
-        }).catch(error => {
-            console.warn(`Impossible de charger l’avatar TikTok de ${identity.username || 'un spectateur'} :`, error);
         });
     });
 
