@@ -281,7 +281,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         });
     });
 
-    connection.on('follow', message => {
+    const handleFollow = message => {
         const identity = getTikTokIdentity(message.user);
         send({
             type: 'follow',
@@ -291,6 +291,18 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 nickname: identity.nickname
             }
         });
+    };
+
+    connection.on('follow', handleFollow);
+    connection.on('social', message => {
+        const displayText = [
+            message.common?.displayText?.key,
+            message.displayType,
+            message.action
+        ].filter(Boolean).join(' ').toLocaleLowerCase();
+        if (displayText.includes('follow') || Number(message.followType) > 0) {
+            handleFollow(message);
+        }
     });
 
     connection.on('subNotify', message => {
@@ -302,7 +314,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     });
 
     connection.on('like', async message => {
-        const likeCount = Math.floor(Number(message.likeCount) || 0);
+        const likeCount = Math.floor(Number(message.likeCount ?? message.count) || 0);
         if (likeCount < 1) return;
         const identity = getTikTokIdentity(message.user);
         let avatarDataUri = null;
