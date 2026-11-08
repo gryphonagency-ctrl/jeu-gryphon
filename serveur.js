@@ -3247,6 +3247,10 @@ const server = http.createServer((req, res) => {
             const headers = { 'Content-Type': contentType };
             if (contentType.startsWith('text/html;')) {
                 headers['Cache-Control'] = 'no-store';
+            } else if (contentType.startsWith('text/javascript;')) {
+                headers['Cache-Control'] = protectedRoutes.has(pathname)
+                    ? 'private, max-age=300'
+                    : 'public, max-age=300';
             } else if (contentType.startsWith('image/')) {
                 headers['Cache-Control'] = 'public, max-age=3600';
             }
