@@ -1,6 +1,6 @@
 # Portefeuille global d’étoiles
 
-Le serveur injecte automatiquement `arcade-stars.js` dans les pages de jeu Griffon Arcade, y compris les jeux importés. Ce script gère les commandes de chat `étoile`, `!étoile`, `*` et `run`. Une commande `run` débite tout le solde global disponible une seule fois; un solde nul n’est pas débité.
+Le serveur injecte automatiquement `arcade-stars.js` dans les pages de jeu Griffon Arcade, y compris les jeux importés. Ce script gère les commandes de chat `étoile`, `!étoile`, `*` et `run`. Une commande `run` débite le solde global disponible en une fois, dans la limite de 44 000 étoiles par commande; un solde nul n’est pas débité.
 
 Pour créditer un gain réellement attribué en étoiles dans un jeu, appelez le portefeuille au moment précis où la victoire est confirmée :
 

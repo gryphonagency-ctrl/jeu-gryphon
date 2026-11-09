@@ -65,6 +65,8 @@ button{cursor:pointer}
 .vip-name{overflow:hidden;color:#fff;font-size:clamp(14px,1.9vh,19px);font-weight:900;text-overflow:ellipsis;white-space:nowrap}
 .vip-prize{overflow:hidden;color:#cdeeff;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .vip-crown{margin-left:auto;color:#ffe28c;font-size:26px;text-shadow:0 0 10px #ffb82e}
+#jackpotCelebration{position:fixed;z-index:18;left:50%;top:50%;width:min(42vw,520px);max-height:62vh;object-fit:contain;transform:translate(-50%,-50%);filter:drop-shadow(0 0 28px #ffd978cc);pointer-events:none}
+#jackpotCelebration[hidden]{display:none}
 #ticker{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 #gear{position:fixed;right:12px;top:12px;z-index:20;width:44px;height:44px;border:1px solid #a6f6ff99;border-radius:50%;background:#091122eF;color:#fff;font-size:22px;box-shadow:0 0 18px #3de5ff77;cursor:pointer}
 #panel{position:fixed;z-index:19;top:64px;right:12px;width:min(var(--panel-width,360px),calc(100vw - 20px));min-width:min(240px,calc(100vw - 20px));max-width:min(720px,calc(100vw - 20px));max-height:calc(100vh - 78px);overflow:auto;border:1px solid #7ceeff66;border-radius:16px;background:linear-gradient(155deg,#101630f5,#080b17f7);box-shadow:0 18px 55px #000c,0 0 24px #28c6ff33;font-size:13px;backdrop-filter:blur(16px)}
@@ -308,7 +310,10 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   </section>
   <section>
     <h3>Gros lots · déclenchement manuel</h3>
-    <p class="hint">Les gros lots ne sont pas attribués par tirage normal. Le bouton déclenche le cadeau affiché sur la roue de droite. Le lot Galaxie reste aussi réservé aux cadeaux TikTok de 2 000 pièces ou plus.</p>
+    <label for="jackpotWinner">Joueur destinataire
+      <select id="jackpotWinner" aria-label="Joueur qui recevra le gros lot manuel"><option value="">Choisis un spectateur récent</option></select>
+    </label>
+    <p class="hint">Choisis un spectateur récent avant de déclencher un lot. Les gains supérieurs à 1 000 pièces ajoutent autant d’étoiles à son solde global et lancent la célébration.</p>
     <div id="jackpotList"></div>
   </section>
   <section>
@@ -336,6 +341,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
 </aside>
 <button id="mascotResizeHandle" type="button" aria-label="Redimensionner le gorille" title="Étire pour redimensionner le gorille"></button>
 <button id="panelResizeHandle" type="button" aria-label="Faire glisser pour redimensionner le panneau" title="Faire glisser pour redimensionner">◢</button>
+<img id="jackpotCelebration" alt="" aria-hidden="true" hidden>
 <aside id="queueBox" aria-label="File d’attente détachable" hidden>
   <header>FILE D’ATTENTE · FAIS GLISSER</header>
   <ul id="queueList"></ul>
@@ -350,7 +356,6 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
 (() => {
   'use strict';
   const gifts = [
-    {value:1000,img:'universe.svg'},
     {value:10,img:'lion.svg'},
     {value:3,img:'zeus.svg'},
     {value:30,img:'donut.svg'},
@@ -398,7 +403,9 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   const thresholdGiftGifts=gifts.filter(gift=>gift.requiresGiftValueAtLeast===2000);
   const jackpotGifts=gifts.filter(gift=>gift.value>100&&!gift.requiresGiftValueAtLeast);
   const galaxyGift=gifts.find(gift=>gift.img==='galaxie.png');
-  const manualJackpotGifts=galaxyGift?[galaxyGift,...jackpotGifts]:[];
+  const manualJackpotGifts=galaxyGift
+    ?[{gift:galaxyGift,number:1},...jackpotGifts.map((gift,index)=>({gift,number:index+3}))]
+    :[];
   function distributeEmptySlots(prizes,emptySlots) {
     const shuffledPrizes=prizes.slice();
     for(let i=shuffledPrizes.length-1;i>0;i--){
@@ -435,7 +442,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     distributeEmptySlots(wheelB500CoinGifts.concat(jackpotGifts,thresholdGiftGifts),emptySlotsB)
   ];
   if(oneCoinGifts.length!==8||additionalWheelAGifts.length!==4||emptySlotsA.length!==2||emptySlotsB.length!==2||
-    hundredCoinGifts.length!==7||wheelB500CoinGifts.length!==8||jackpotGifts.length!==7||thresholdGiftGifts.length!==3||
+    hundredCoinGifts.length!==7||wheelB500CoinGifts.length!==8||jackpotGifts.length!==6||thresholdGiftGifts.length!==3||
     manualJackpotGifts.length!==jackpotGifts.length+1||
     oneCoinGifts.some(gift=>gift.value!==1)||hundredCoinGifts.some(gift=>gift.value!==100)||
     additionalWheelAGifts.some(gift=>![5,10].includes(gift.value))||
@@ -525,6 +532,9 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   const angles = [0,0];
   const leaderboard = new Map();
   const queue = [];
+  const runQueue = [];
+  const recentParticipants = new Map();
+  let jackpotCelebrationTimer=0;
   let nextAlternate = 0;
   let liveSocket = null;
   let reconnectTimer = 0;
@@ -879,7 +889,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       if(winner<0){setStatus('La récompense spéciale est absente de la roue.');return;}
     }else if(job.manualPrize){
       winner=list.findIndex(gift=>
-        index===1&&gift.img===job.manualPrize.img&&gift.value>100&&manualJackpotGifts.includes(gift)
+        index===1&&gift.img===job.manualPrize.img&&gift.value>100&&manualJackpotGifts.some(entry=>entry.gift===gift)
       );
       if(winner<0){setStatus('Ce gros lot n’est pas disponible pour un déclenchement manuel.');return;}
     }else{
@@ -924,6 +934,25 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     avatar.onerror=()=>{avatar.hidden=true;initial.hidden=false;};
     if(avatarUrl)avatar.src=avatarUrl;
     else{avatar.removeAttribute('src');initial.hidden=false;}
+    if(gift.value>1000&&job.name!=='Studio')showJackpotCelebration();
+  }
+  function showJackpotCelebration() {
+    const celebration=$('jackpotCelebration');
+    clearTimeout(jackpotCelebrationTimer);
+    celebration.onerror=()=>{
+      celebration.hidden=true;
+      console.error('Le GIF du gros lot n’a pas pu être chargé.');
+      setStatus('Le GIF de célébration du gros lot est inaccessible.');
+    };
+    celebration.onload=()=>{
+      jackpotCelebrationTimer=setTimeout(()=>{
+        celebration.hidden=true;
+        celebration.removeAttribute('src');
+      },8000);
+    };
+    celebration.hidden=false;
+    celebration.removeAttribute('src');
+    requestAnimationFrame(()=>{celebration.src='https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3YngxMmVta2QweHp0aWp3MWdhNzdyOWxtODZ6Yjhta2gzcGRtODJpZSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/hch8rx4DyfZLBc0Bl5/giphy.gif';});
   }
   function showPanelResult(index,message,gift) {
     const result=$(`wheelResult${index}`);
@@ -965,6 +994,16 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       return;
     }
     showVipWinner(index,spin.job,gift);
+    if(name!=='Studio'&&!spin.job.simulation&&gift.value>1000&&window.ArcadeStars){
+      window.ArcadeStars.award({
+        username:name,
+        amount:gift.value,
+        transactionId:`multirou:${crypto.randomUUID()}`
+      }).catch(error=>{
+        console.error(`Impossible d’ajouter les étoiles du gros lot de @${name} au solde global.`,error);
+        setStatus(`Les étoiles du gros lot de @${name} n’ont pas pu être enregistrées.`);
+      });
+    }
     const coinLabel=gift.value===1?'pièce':'pièces';
     const resultIcon=document.createElement('img'),resultText=document.createElement('span');
     const resultImage=images.get(gift.img);
@@ -978,9 +1017,15 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     renderQueue();
   }
   function renderQueue() {
-    $('queueList').innerHTML=queue.slice(0,8).map(job=>`<li><span>${job.manualPrize?'Gros lot manuel':`@${escapeHtml(job.name)}`} · en attente</span><b>EN ATTENTE</b></li>`).join('');
-    if(queue.length>8)$('queueList').insertAdjacentHTML('beforeend',`<li><span>Autres tours</span><b>+${queue.length-8}</b></li>`);
-    const visible=!queueHidden&&(queuePinned||queue.length>0||Boolean(spins[0])||Boolean(spins[1]));
+    const rows=queue.slice(0,8).map(job=>`<li><span>${job.manualPrize?'Gros lot manuel':`@${escapeHtml(job.name)}`} · en attente</span><b>EN ATTENTE</b></li>`);
+    const remainingSlots=Math.max(0,8-rows.length);
+    runQueue.slice(0,remainingSlots).forEach(run=>rows.push(
+      `<li><span>@${escapeHtml(run.name)} · RUN (deux roues)</span><b>${run.remaining.toLocaleString('fr-FR')} paire${run.remaining>1?'s':''}</b></li>`
+    ));
+    $('queueList').innerHTML=rows.join('');
+    const pendingItems=queue.length+runQueue.length;
+    if(pendingItems>8)$('queueList').insertAdjacentHTML('beforeend',`<li><span>Autres tours</span><b>+${pendingItems-8}</b></li>`);
+    const visible=!queueHidden&&(queuePinned||pendingItems>0||Boolean(spins[0])||Boolean(spins[1]));
     $('queueBox').hidden=!visible;
     $('queueToggle').textContent=visible?'Masquer la file':'Afficher la file';
     $('queueTogglePanel').textContent=visible?'Masquer la file':'Afficher la file';
@@ -992,14 +1037,21 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   }
   function renderJackpots() {
     $('jackpotList').replaceChildren();
-    manualJackpotGifts.forEach((gift,index)=>{
+    const winnerKey=$('jackpotWinner').value;
+    const winner=recentParticipants.get(winnerKey);
+    manualJackpotGifts.forEach(({gift,number})=>{
       const item=document.createElement('div'),image=document.createElement('img'),value=document.createElement('b'),button=document.createElement('button');
       item.className='jackpot-item';
       image.src=iconUrl(gift);image.alt='';image.dataset.giftSymbol=gift.img;
-      value.textContent=`Lot ${index+1} · ${gift.value.toLocaleString('fr-FR')} pièces`;
+      value.textContent=`Lot ${number} · ${gift.value.toLocaleString('fr-FR')} pièces`;
       button.type='button';button.textContent='Déclencher';
-      button.setAttribute('aria-label',`Déclencher manuellement le lot ${index+1} de ${gift.value} pièces`);
-      button.addEventListener('click',()=>enqueue({name:'Studio',wheel:1,turns:1,manualPrize:gift}));
+      button.disabled=!winner;
+      button.setAttribute('aria-label',`Déclencher manuellement le lot ${number} de ${gift.value} pièces`);
+      button.addEventListener('click',()=>{
+        const selected=recentParticipants.get($('jackpotWinner').value);
+        if(!selected){setStatus('Choisis un spectateur récent avant de déclencher le gros lot.');return;}
+        enqueue({name:selected.username,avatarUrl:selected.avatarUrl,wheel:1,turns:1,manualPrize:gift});
+      });
       item.append(image,value,button);$('jackpotList').append(item);
     });
   }
@@ -1015,9 +1067,30 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       (Array.isArray(gift.avatarUrls)?gift.avatarUrls.find(Boolean):'');
     return typeof candidate==='string'&&/^(https?:\/\/|data:image\/)/i.test(candidate)?candidate:'';
   }
+  function rememberParticipant(name,avatarUrl='') {
+    const username=String(name||'').replace(/^@/,'').trim().slice(0,24);
+    if(!username)return;
+    const key=username.toLocaleLowerCase('fr-FR');
+    const previous=recentParticipants.get(key);
+    recentParticipants.delete(key);
+    recentParticipants.set(key,{
+      username,
+      avatarUrl:avatarUrl||previous?.avatarUrl||''
+    });
+    while(recentParticipants.size>50)recentParticipants.delete(recentParticipants.keys().next().value);
+    const select=$('jackpotWinner'),selected=select.value;
+    select.replaceChildren(new Option('Choisis un spectateur récent',''));
+    for(const [participantKey,participant] of recentParticipants){
+      select.add(new Option(`@${participant.username}`,participantKey));
+    }
+    if(recentParticipants.has(selected))select.value=selected;
+    renderJackpots();
+  }
   function onTikTokGift(gift) {
     if(gift.repeatEnd===false)return;
     const name=gift.uniqueId||gift.username||gift.nickname||'Invité';
+    const avatarUrl=getGiftAvatarUrl(gift);
+    rememberParticipant(name,avatarUrl);
     const repeatCount=Math.max(1,Math.floor(Number(gift.repeatCount)||1));
     const count=Math.min(10,repeatCount);
     const reportedCoinCount=Number(gift.coinCount);
@@ -1030,7 +1103,6 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       setStatus('Valeur du cadeau TikTok invalide, aucun tour lancé.');
       return;
     }
-    const avatarUrl=getGiftAvatarUrl(gift);
     let wheel,turns;
     if(coinValue>=2000){
       for(let i=0;i<count;i++){
@@ -1074,6 +1146,10 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       if(message.type==='STATUS'){
         const text=String(message.message||'');
         setTikTokStatus(text,/direct tiktok connecté/i.test(text));
+      }
+      if(message.type==='comment'&&message.commentData){
+        const comment=message.commentData;
+        rememberParticipant(comment.uniqueId||comment.username||comment.nickname,getGiftAvatarUrl(comment));
       }
       if(message.type==='gift'&&message.gift)onTikTokGift(message.gift);
     });
@@ -1410,6 +1486,18 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     if(window.ArcadeEffects)window.ArcadeEffects.simulateShare();
     else setStatus('Le simulateur ArcadeEffects est disponible depuis le serveur du jeu.');
   });
+  $('jackpotWinner').addEventListener('change',renderJackpots);
+  window.addEventListener('arcade:wallet-run',event=>{
+    const player=event.detail?.player;
+    const spent=Math.floor(Number(event.detail?.spent)||0);
+    const name=player&&(player.username||player.uniqueId||player.nickname);
+    if(!name||spent<1)return;
+    const avatarUrl=getGiftAvatarUrl(player);
+    rememberParticipant(name,avatarUrl);
+    runQueue.push({name:String(name).replace(/^@/,'').slice(0,24),avatarUrl,remaining:spent});
+    setStatus(`RUN de @${String(name).replace(/^@/,'')} : ${spent.toLocaleString('fr-FR')} paires de roues ajoutées à la file.`);
+    renderQueue();
+  });
   renderJackpots();
   $('clearQueue').addEventListener('click',()=>{queue.length=0;renderQueue();setStatus('File d’attente vidée.');});
   $('queueToggle').addEventListener('click',()=>{
@@ -1583,11 +1671,20 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   draw();
   setInterval(()=>{
     const available=queue.findIndex(job=>!spins[job.wheel]);
-    if(available>=0){const [next]=queue.splice(available,1);startSpin(next.wheel,next);}
+    if(available>=0){
+      const [next]=queue.splice(available,1);
+      startSpin(next.wheel,next);
+    }else if(runQueue.length&&!spins[0]&&!spins[1]){
+      const run=runQueue[0];
+      run.remaining--;
+      if(run.remaining===0)runQueue.shift();
+      startSpin(0,{name:run.name,avatarUrl:run.avatarUrl,wheel:0,turns:1,run:true});
+      startSpin(1,{name:run.name,avatarUrl:run.avatarUrl,wheel:1,turns:1,run:true});
+    }
     renderQueue();
   },250);
   renderQueue();
-  window.__rouesDesCadeaux={gifts,wheelGifts,spins,enqueue,onTikTokGift,draw};
+  window.__rouesDesCadeaux={gifts,wheelGifts,spins,enqueue,onTikTokGift,runQueue,recentParticipants,draw};
 })();
 </script>
 </body>
