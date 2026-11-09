@@ -282,8 +282,8 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     <label for="wheelSelect">Roue utilisée pour les cadeaux
       <select id="wheelSelect"><option value="alternate">Alternance gauche / droite</option><option value="0">Toujours la roue de gauche</option><option value="1">Toujours la roue de droite</option></select>
     </label>
-    <label for="duration">Durée de rotation <span class="range-value" id="durationOut"></span></label>
-    <input id="duration" type="range" min="3" max="14" step="1">
+    <label for="duration">Durée de rotation des roues A et B <span class="range-value" id="durationOut"></span></label>
+    <input id="duration" type="range" min="1" max="14" step="1">
     <label for="turns">Tours complets
       <select id="turns"><option value="5">5 tours</option><option value="7">7 tours</option><option value="9">9 tours</option><option value="12">12 tours</option></select>
     </label>
@@ -525,7 +525,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   } catch (error) {
     console.warn('Le setup sauvegardé n’a pas pu être lu.',error);
   }
-  settings.duration = Math.max(3,Math.min(14,Number(settings.duration) || defaults.duration));
+  settings.duration = Math.max(1,Math.min(14,Number(settings.duration) || defaults.duration));
   settings.turns = [5,7,9,12].includes(Number(settings.turns)) ? Number(settings.turns) : defaults.turns;
   settings.brightness = Math.max(30,Math.min(100,Number(settings.brightness) || defaults.brightness));
   settings.mascotScale = Math.max(50,Math.min(200,Number(settings.mascotScale) || defaults.mascotScale));
@@ -1029,9 +1029,13 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   function renderQueue() {
     const rows=queue.slice(0,8).map(job=>`<li><span>${job.name==='Studio'?'Tirage studio':`@${escapeHtml(job.name)}`}</span><b>1 tour à faire${job.manualPrize?' · GROS LOT':''} · EN ATTENTE</b></li>`);
     const remainingSlots=Math.max(0,8-rows.length);
-    runQueue.slice(0,remainingSlots).forEach(run=>rows.push(
-      `<li><span>@${escapeHtml(run.name)} · RUN</span><b>${run.remaining.toLocaleString('fr-FR')} tour${run.remaining>1?'s':''} A${run.wheelBMode?' · 1 tirage B':''} à faire</b></li>`
-    ));
+    runQueue.slice(0,remainingSlots).forEach(run=>{
+      const runItems=[
+        run.remaining?`${run.remaining.toLocaleString('fr-FR')} tour${run.remaining>1?'s':''} A`:'',
+        run.wheelBMode?'1 tirage B':''
+      ].filter(Boolean).join(' · ');
+      rows.push(`<li><span>@${escapeHtml(run.name)} · RUN</span><b>${runItems} à faire</b></li>`);
+    });
     $('queueList').innerHTML=rows.join('');
     const pendingItems=queue.length+runQueue.length;
     if(pendingItems>8)$('queueList').insertAdjacentHTML('beforeend',`<li><span>Autres tours</span><b>+${pendingItems-8}</b></li>`);
@@ -1122,7 +1126,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     }
     if(coinValue<500){
       wheel=0;
-      if(coinValue<=100)turns=coinValue;
+      turns=coinValue;
     }else if(coinValue===500){
       wheel=1;
       turns=1;
@@ -1504,8 +1508,17 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     const avatarUrl=getGiftAvatarUrl(player);
     rememberParticipant(name,avatarUrl);
     const wheelBMode=spent===500?'standard':spent>=2000?'jackpot':'';
-    runQueue.push({name:String(name).replace(/^@/,'').slice(0,24),avatarUrl,remaining:spent,wheelBMode});
-    setStatus(`RUN de @${String(name).replace(/^@/,'')} : ${spent.toLocaleString('fr-FR')} tours de roue A ajoutés${wheelBMode?' et un tirage de roue B':''} à la file.`);
+    if(spent>=500&&spent<2000&&spent!==500){
+      setStatus(`RUN de ${spent.toLocaleString('fr-FR')} pièces ignoré : la roue A accepte moins de 500 pièces et la roue B se déclenche à 500 ou à partir de 2 000 pièces.`);
+      return;
+    }
+    const wheelATurns=spent<500?spent:0;
+    runQueue.push({name:String(name).replace(/^@/,'').slice(0,24),avatarUrl,remaining:wheelATurns,wheelBMode});
+    const runDescription=[
+      wheelATurns?`${wheelATurns.toLocaleString('fr-FR')} tour${wheelATurns>1?'s':''} de roue A`:'',
+      wheelBMode?'1 tirage de roue B':''
+    ].filter(Boolean).join(' et ');
+    setStatus(`RUN de @${String(name).replace(/^@/,'')} : ${runDescription} ajouté${wheelATurns>1?'s':''} à la file.`);
     renderQueue();
   });
   renderJackpots();
@@ -1686,9 +1699,10 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       startSpin(next.wheel,next);
     }else if(runQueue.length&&!spins[0]&&!spins[1]){
       const run=runQueue[0];
-      run.remaining--;
-      if(run.remaining===0)runQueue.shift();
-      startSpin(0,{name:run.name,avatarUrl:run.avatarUrl,wheel:0,turns:1,run:true});
+      if(run.remaining>0){
+        run.remaining--;
+        startSpin(0,{name:run.name,avatarUrl:run.avatarUrl,wheel:0,turns:1,run:true});
+      }
       if(run.wheelBMode){
         startSpin(1,{
           name:run.name,avatarUrl:run.avatarUrl,wheel:1,turns:1,run:true,
@@ -1697,6 +1711,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
         });
         run.wheelBMode='';
       }
+      if(run.remaining===0)runQueue.shift();
     }
     renderQueue();
   },250);
