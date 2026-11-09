@@ -98,8 +98,8 @@ button{cursor:pointer}
 #queueResizeHandle{position:fixed;z-index:12;display:none;width:22px;height:22px;padding:0;border:1px solid #88edff88;border-radius:6px;background:#091126f2;color:#b7f5ff;font-size:14px;line-height:1;cursor:nwse-resize;touch-action:none;box-shadow:0 0 12px #24c7ff55}
 #queueResizeHandle[hidden]{display:none}
 #queueList{list-style:none;padding:0;margin:0}
-#queueList li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid #ffffff13;color:#e9eaff;font-size:11px}
-#queueList span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#queueList li{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 0;border-top:1px solid #ffffff13;color:#e9eaff;font-size:33px;line-height:1.15}
+#queueList span{width:100%;overflow-wrap:anywhere;white-space:normal}
 #queueList b{flex:none;color:#ffe58a}
 #queueToggle{position:fixed;left:12px;bottom:10px;z-index:11;padding:6px 10px;border:1px solid #89eaff77;border-radius:18px;background:#091126e8;color:#d9faff;font-size:11px;font-weight:800}
 #status{position:fixed;z-index:8;left:50%;bottom:10px;transform:translateX(-50%);max-width:70vw;color:#bac8e3;text-align:center;font-size:11px;text-shadow:0 1px 5px #000}
@@ -534,6 +534,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   const queue = [];
   const runQueue = [];
   const recentParticipants = new Map();
+  const vipBannerTimers=[0,0];
   let jackpotCelebrationTimer=0;
   let nextAlternate = 0;
   let liveSocket = null;
@@ -896,7 +897,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
         const eligible=list.map((gift,slot)=>({gift,slot})).filter(({gift})=>
           index===0
             ?wheelAGiftPool.includes(gift)||gift.empty
-            :gift.value===100||gift.empty||(job.triggerCoinValue>=500&&wheelB500CoinGifts.includes(gift))
+            :gift.value===100||gift.empty||(job.triggerCoinValue===500&&wheelB500CoinGifts.includes(gift))
       );
       if(!eligible.length){setStatus('Aucun lot disponible pour ce tirage.');return;}
         if(index===0){
@@ -934,6 +935,8 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     avatar.onerror=()=>{avatar.hidden=true;initial.hidden=false;};
     if(avatarUrl)avatar.src=avatarUrl;
     else{avatar.removeAttribute('src');initial.hidden=false;}
+    clearTimeout(vipBannerTimers[index]);
+    vipBannerTimers[index]=setTimeout(()=>{banner.hidden=true;},2000);
     if(gift.value>1000&&job.name!=='Studio')showJackpotCelebration();
   }
   function showJackpotCelebration() {
@@ -994,7 +997,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       return;
     }
     showVipWinner(index,spin.job,gift);
-    if(name!=='Studio'&&!spin.job.simulation&&gift.value>1000&&window.ArcadeStars){
+    if(name!=='Studio'&&!spin.job.simulation&&gift.value>=1000&&window.ArcadeStars){
       window.ArcadeStars.award({
         username:name,
         amount:gift.value,
@@ -1017,10 +1020,10 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     renderQueue();
   }
   function renderQueue() {
-    const rows=queue.slice(0,8).map(job=>`<li><span>${job.manualPrize?'Gros lot manuel':`@${escapeHtml(job.name)}`} · en attente</span><b>EN ATTENTE</b></li>`);
+    const rows=queue.slice(0,8).map(job=>`<li><span>${job.name==='Studio'?'Tirage studio':`@${escapeHtml(job.name)}`}</span><b>1 tour à faire${job.manualPrize?' · GROS LOT':''} · EN ATTENTE</b></li>`);
     const remainingSlots=Math.max(0,8-rows.length);
     runQueue.slice(0,remainingSlots).forEach(run=>rows.push(
-      `<li><span>@${escapeHtml(run.name)} · RUN (deux roues)</span><b>${run.remaining.toLocaleString('fr-FR')} paire${run.remaining>1?'s':''}</b></li>`
+      `<li><span>@${escapeHtml(run.name)} · RUN</span><b>${run.remaining.toLocaleString('fr-FR')} tour${run.remaining>1?'s':''} à faire · roues A + B</b></li>`
     ));
     $('queueList').innerHTML=rows.join('');
     const pendingItems=queue.length+runQueue.length;
@@ -1111,14 +1114,14 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       }
       return;
     }
-    if(coinValue<=100){
+    if(coinValue<500){
       wheel=0;
-      turns=coinValue;
-    }else if(coinValue>=500){
+      if(coinValue<=100)turns=coinValue;
+    }else if(coinValue===500){
       wheel=1;
       turns=1;
     }else{
-      setStatus(`Cadeau de ${coinValue} pièces ignoré : les roues acceptent les cadeaux de 1 à 100 ou de 500 pièces et plus.`);
+      setStatus(`Cadeau de ${coinValue} pièces ignoré : les roues acceptent les cadeaux de moins de 500, exactement 500 ou d’au moins 2 000 pièces.`);
       return;
     }
     for(let i=0;i<count;i++)pushGift(name,wheel,turns,undefined,coinValue,avatarUrl);
