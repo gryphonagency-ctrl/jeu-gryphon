@@ -209,6 +209,7 @@ const protectedRoutes = new Set([
     '/course-de-billes.html',
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
+    '/multirou.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -296,6 +297,7 @@ const staticGameIds = [
     '/course-de-billes.html',
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
+    '/multirou.html',
     '/squid-storm.html',
     '/tower-up.html',
     '/tir-a-la-corde.html',
@@ -340,6 +342,7 @@ store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
+store.grantGameAccessToExistingCreators('/multirou.html');
 store.grantGameAccessToExistingCreators('/squid-storm.html');
 store.grantGameAccessToExistingCreators('/tower-up.html');
 store.grantGameAccessToExistingCreators('/tir-a-la-corde.html');
@@ -406,6 +409,7 @@ const staticGameTitles = {
     '/course-de-billes.html': 'Course de Billes',
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
+    '/multirou.html': 'Le Multirou',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -469,6 +473,7 @@ const gameRouteIds = new Map([
     ['/tir-a-la-corde.html', '/tir-a-la-corde.html'],
     ['/pont-de-verre.html', '/pont-de-verre.html'],
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
+    ['/multirou.html', '/multirou.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3211,6 +3216,7 @@ const server = http.createServer((req, res) => {
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
+        ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/tir-a-la-corde.html', [path.join(__dirname, 'tir-a-la-corde.html'), 'text/html; charset=utf-8']],
@@ -3229,6 +3235,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],
+        ['/images-vitrine/multirou-apercu.png', [path.join(__dirname, 'images-vitrine', 'multirou-apercu.png'), 'image/png']],
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
@@ -3359,7 +3366,7 @@ const server = http.createServer((req, res) => {
 
     if (pathname.startsWith('/cadeaux-machine/')) {
         const file = pathname.slice('/cadeaux-machine/'.length);
-        if (!/^[a-z0-9-]+\.(?:svg|png|jpg|gif)$/.test(file)) {
+        if (!/^[a-z0-9-]+\.(?:svg|png|jpg|gif|mp4)$/.test(file)) {
             res.writeHead(404);
             res.end('Image introuvable.');
             return;
@@ -3372,7 +3379,7 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, {
                 'Cache-Control': 'public, max-age=3600',
-                'Content-Type': file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : file.endsWith('.gif') ? 'image/gif' : 'image/jpeg',
+                'Content-Type': file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : file.endsWith('.gif') ? 'image/gif' : file.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg',
                 'X-Content-Type-Options': 'nosniff'
             });
             res.end(content);
