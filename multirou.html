@@ -399,13 +399,18 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   );
   const wheelAGiftPool=oneCoinGifts.concat(additionalWheelAGifts);
   const hundredCoinGifts=gifts.filter(gift=>gift.value===100);
-  const wheelB500CoinGifts=hundredCoinGifts.concat(gifts.filter(gift=>gift.img==='papillon.svg'));
+  const wheelB500CoinGifts=hundredCoinGifts;
   const thresholdGiftGifts=gifts.filter(gift=>gift.requiresGiftValueAtLeast===2000);
+  const thresholdStarGifts=thresholdGiftGifts.filter(gift=>gift.value===1000);
   const jackpotGifts=gifts.filter(gift=>gift.value>100&&!gift.requiresGiftValueAtLeast);
   const galaxyGift=gifts.find(gift=>gift.img==='galaxie.png');
   const manualJackpotGifts=galaxyGift
     ?[{gift:galaxyGift,number:1},...jackpotGifts.map((gift,index)=>({gift,number:index+3}))]
     :[];
+  function chooseThresholdPrize() {
+    const outcomes=Math.random()<.5?thresholdStarGifts:emptySlotsB;
+    return outcomes[Math.floor(Math.random()*outcomes.length)];
+  }
   function distributeEmptySlots(prizes,emptySlots) {
     const shuffledPrizes=prizes.slice();
     for(let i=shuffledPrizes.length-1;i>0;i--){
@@ -442,7 +447,8 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     distributeEmptySlots(wheelB500CoinGifts.concat(jackpotGifts,thresholdGiftGifts),emptySlotsB)
   ];
   if(oneCoinGifts.length!==8||additionalWheelAGifts.length!==4||emptySlotsA.length!==2||emptySlotsB.length!==2||
-    hundredCoinGifts.length!==7||wheelB500CoinGifts.length!==8||jackpotGifts.length!==6||thresholdGiftGifts.length!==3||
+    hundredCoinGifts.length!==7||wheelB500CoinGifts.length!==7||jackpotGifts.length!==6||thresholdGiftGifts.length!==3||
+    thresholdStarGifts.length!==2||thresholdStarGifts.some(gift=>gift.value!==1000)||
     manualJackpotGifts.length!==jackpotGifts.length+1||
     oneCoinGifts.some(gift=>gift.value!==1)||hundredCoinGifts.some(gift=>gift.value!==100)||
     additionalWheelAGifts.some(gift=>![5,10].includes(gift.value))||
@@ -882,11 +888,12 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     const list=wheelGifts[index];
     let winner;
     if(job.thresholdPrize){
-      if(index!==1||job.triggerCoinValue<2000||!thresholdGiftGifts.includes(job.thresholdPrize)){
-        setStatus('Cette récompense spéciale exige un cadeau TikTok de 2 000 pièces ou plus.');
+      if(index!==1||job.triggerCoinValue<2000||
+        (!thresholdStarGifts.includes(job.thresholdPrize)&&!emptySlotsB.includes(job.thresholdPrize))){
+        setStatus('Cette récompense spéciale exige un cadeau TikTok ou un RUN de 2 000 pièces ou plus.');
         return;
       }
-      winner=list.findIndex(gift=>gift.img===job.thresholdPrize.img);
+      winner=list.indexOf(job.thresholdPrize);
       if(winner<0){setStatus('La récompense spéciale est absente de la roue.');return;}
     }else if(job.manualPrize){
       winner=list.findIndex(gift=>
@@ -1023,7 +1030,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     const rows=queue.slice(0,8).map(job=>`<li><span>${job.name==='Studio'?'Tirage studio':`@${escapeHtml(job.name)}`}</span><b>1 tour à faire${job.manualPrize?' · GROS LOT':''} · EN ATTENTE</b></li>`);
     const remainingSlots=Math.max(0,8-rows.length);
     runQueue.slice(0,remainingSlots).forEach(run=>rows.push(
-      `<li><span>@${escapeHtml(run.name)} · RUN</span><b>${run.remaining.toLocaleString('fr-FR')} tour${run.remaining>1?'s':''} à faire · roues A + B</b></li>`
+      `<li><span>@${escapeHtml(run.name)} · RUN</span><b>${run.remaining.toLocaleString('fr-FR')} tour${run.remaining>1?'s':''} A${run.wheelBMode?' · 1 tirage B':''} à faire</b></li>`
     ));
     $('queueList').innerHTML=rows.join('');
     const pendingItems=queue.length+runQueue.length;
@@ -1109,8 +1116,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     let wheel,turns;
     if(coinValue>=2000){
       for(let i=0;i<count;i++){
-        const prize=thresholdGiftGifts[Math.floor(Math.random()*thresholdGiftGifts.length)];
-        pushGift(name,1,1,prize,coinValue,avatarUrl);
+        pushGift(name,1,1,chooseThresholdPrize(),coinValue,avatarUrl);
       }
       return;
     }
@@ -1497,8 +1503,9 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     if(!name||spent<1)return;
     const avatarUrl=getGiftAvatarUrl(player);
     rememberParticipant(name,avatarUrl);
-    runQueue.push({name:String(name).replace(/^@/,'').slice(0,24),avatarUrl,remaining:spent});
-    setStatus(`RUN de @${String(name).replace(/^@/,'')} : ${spent.toLocaleString('fr-FR')} paires de roues ajoutées à la file.`);
+    const wheelBMode=spent===500?'standard':spent>=2000?'jackpot':'';
+    runQueue.push({name:String(name).replace(/^@/,'').slice(0,24),avatarUrl,remaining:spent,wheelBMode});
+    setStatus(`RUN de @${String(name).replace(/^@/,'')} : ${spent.toLocaleString('fr-FR')} tours de roue A ajoutés${wheelBMode?' et un tirage de roue B':''} à la file.`);
     renderQueue();
   });
   renderJackpots();
@@ -1682,7 +1689,14 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
       run.remaining--;
       if(run.remaining===0)runQueue.shift();
       startSpin(0,{name:run.name,avatarUrl:run.avatarUrl,wheel:0,turns:1,run:true});
-      startSpin(1,{name:run.name,avatarUrl:run.avatarUrl,wheel:1,turns:1,run:true});
+      if(run.wheelBMode){
+        startSpin(1,{
+          name:run.name,avatarUrl:run.avatarUrl,wheel:1,turns:1,run:true,
+          triggerCoinValue:run.wheelBMode==='jackpot'?2000:500,
+          thresholdPrize:run.wheelBMode==='jackpot'?chooseThresholdPrize():undefined
+        });
+        run.wheelBMode='';
+      }
     }
     renderQueue();
   },250);
