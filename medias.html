@@ -77,7 +77,7 @@ html[data-embedded="true"] main{max-width:none}
 <div id="alert-sections"></div>
 <section class="card" id="overlay-card">
 <h2>Mon overlay de live</h2>
-<p>Ajoute le lien des alertes comme source navigateur dans TikTok Studio. Pour afficher uniquement les photos de profil qui montent lors des likes, ajoute aussi la source « Likes & photos » ci-dessous. Les deux liens sont privés; ne les partage pas.</p>
+<p>Ajoute les sources navigateur souhaitées dans TikTok Studio. Tous les liens affichés ici sont privés; ne les partage pas.</p>
 <div class="row">
 <input id="overlay-url" readonly aria-label="Lien overlay" placeholder="Aucun lien généré" style="flex:1;min-width:260px">
 <button id="overlay-copy" type="button" hidden>Copier</button>
@@ -97,6 +97,40 @@ html[data-embedded="true"] main{max-width:none}
 </div>
 <p class="hint">La source « Likes & photos » affiche uniquement les photos de profil qui montent, sans les compteurs « Abonnés » et « J’aime ». La taille choisie est ajoutée au lien.</p>
 <p class="hint">Après un changement de taille, recopie le lien dans les propriétés de la source navigateur TikTok Studio pour appliquer le nouveau réglage.</p>
+<h3>Chat en direct</h3>
+<p class="hint">Affiche les commentaires TikTok récents dans une source navigateur séparée.</p>
+<div class="row">
+<label for="chat-overlay-url">Source navigateur « Chat »</label>
+<input id="chat-overlay-url" readonly aria-label="Lien de l’overlay chat" placeholder="Génère d’abord le lien principal" style="flex:1;min-width:260px">
+<button id="chat-overlay-copy" type="button" hidden>Copier le lien chat</button>
+<button id="chat-overlay-test" type="button" hidden>Tester le chat</button>
+</div>
+<div class="row">
+<label for="chat-overlay-rows">Commentaires affichés : <output id="chat-overlay-rows-value">5</output>
+<input id="chat-overlay-rows" type="range" min="3" max="10" step="1" value="5"></label>
+<label for="chat-overlay-duration">Durée d’un commentaire : <output id="chat-overlay-duration-value">8 s</output>
+<input id="chat-overlay-duration" type="range" min="3" max="30" step="1" value="8"></label>
+</div>
+<h3>Meilleurs donateurs</h3>
+<p class="hint">Classe les cadeaux reçus pendant le live par nombre de pièces. Le classement repart au début de chaque source navigateur.</p>
+<div class="row">
+<label for="leaderboard-overlay-url">Source navigateur « Meilleurs donateurs »</label>
+<input id="leaderboard-overlay-url" readonly aria-label="Lien du classement des donateurs" placeholder="Génère d’abord le lien principal" style="flex:1;min-width:260px">
+<button id="leaderboard-overlay-copy" type="button" hidden>Copier le classement</button>
+<button id="leaderboard-overlay-test" type="button" hidden>Tester le classement</button>
+</div>
+<div class="row">
+<label for="leaderboard-overlay-rows">Nombre de donateurs affichés : <output id="leaderboard-overlay-rows-value">5</output>
+<input id="leaderboard-overlay-rows" type="range" min="3" max="10" step="1" value="5"></label>
+</div>
+<h3>Compteurs du live</h3>
+<p class="hint">Affiche le total des abonnés, likes, pièces reçues, partages et abonnements pendant le live.</p>
+<div class="row">
+<label for="stats-overlay-url">Source navigateur « Compteurs du live »</label>
+<input id="stats-overlay-url" readonly aria-label="Lien des compteurs du live" placeholder="Génère d’abord le lien principal" style="flex:1;min-width:260px">
+<button id="stats-overlay-copy" type="button" hidden>Copier les compteurs</button>
+<button id="stats-overlay-test" type="button" hidden>Tester les compteurs</button>
+</div>
 </section>
 
 <section class="card"><h2>Bibliothèque</h2><div id="library" class="grid"></div></section>
@@ -273,8 +307,16 @@ function render() {
 function showOverlay(path) {
   $('overlay-url').value = path ? location.origin + path : '';
   updateLikesOverlayUrl(path);
+  updateAdditionalOverlayUrls(path);
   $('overlay-copy').hidden = $('overlay-revoke').hidden = !path;
   $('likes-overlay-copy').hidden = $('overlay-test-like').hidden = !path;
+  for (const id of [
+    'chat-overlay-copy', 'chat-overlay-test',
+    'leaderboard-overlay-copy', 'leaderboard-overlay-test',
+    'stats-overlay-copy', 'stats-overlay-test'
+  ]) {
+    $(id).hidden = !path;
+  }
   $('overlay-new').textContent = path ? 'Régénérer' : 'Générer mon lien';
 }
 function updateLikesOverlayUrl(path = state.overlayPath) {
@@ -286,6 +328,27 @@ function updateLikesOverlayUrl(path = state.overlayPath) {
   url.searchParams.set('mode', 'likes');
   url.searchParams.set('avatarSize', $('overlay-avatar-size').value);
   $('likes-overlay-url').value = url.href;
+}
+function updateAdditionalOverlayUrls(path = state.overlayPath) {
+  for (const [mode, input, settings] of [
+    ['chat', 'chat-overlay-url', {
+      rows: $('chat-overlay-rows').value,
+      duration: $('chat-overlay-duration').value
+    }],
+    ['leaderboard', 'leaderboard-overlay-url', {
+      rows: $('leaderboard-overlay-rows').value
+    }],
+    ['stats', 'stats-overlay-url', {}]
+  ]) {
+    if (!path) {
+      $(input).value = '';
+      continue;
+    }
+    const url = new URL(location.origin + path);
+    url.searchParams.set('mode', mode);
+    for (const [key, value] of Object.entries(settings)) url.searchParams.set(key, value);
+    $(input).value = url.href;
+  }
 }
 $('overlay-new').onclick = async () => {
   if (state.overlayPath && !confirm('L’ancien lien cessera de fonctionner. Continuer ?')) return;
@@ -304,6 +367,26 @@ $('overlay-copy').onclick = async () => {
 $('likes-overlay-copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('likes-overlay-url').value); say('Lien Likes & photos copié.'); } catch { $('likes-overlay-url').select(); say('Copie le lien sélectionné (Ctrl+C).'); }
 };
+for (const [button, input, message] of [
+  ['chat-overlay-copy', 'chat-overlay-url', 'Lien du chat copié.'],
+  ['leaderboard-overlay-copy', 'leaderboard-overlay-url', 'Lien du classement copié.'],
+  ['stats-overlay-copy', 'stats-overlay-url', 'Lien des compteurs copié.']
+]) {
+  $(button).onclick = async () => {
+    try { await navigator.clipboard.writeText($(input).value); say(message); }
+    catch { $(input).select(); say('Copie le lien sélectionné (Ctrl+C).'); }
+  };
+}
+for (const [id, output, suffix] of [
+  ['chat-overlay-rows', 'chat-overlay-rows-value', ''],
+  ['chat-overlay-duration', 'chat-overlay-duration-value', ' s'],
+  ['leaderboard-overlay-rows', 'leaderboard-overlay-rows-value', '']
+]) {
+  $(id).addEventListener('input', () => {
+    $(output).value = `${$(id).value}${suffix}`;
+    updateAdditionalOverlayUrls();
+  });
+}
 $('overlay-avatar-size').oninput = event => {
   const size = Number(event.target.value);
   $('overlay-avatar-size-value').value = `${size} px`;
@@ -314,6 +397,21 @@ $('overlay-avatar-size').oninput = event => {
 $('overlay-test-like').onclick = () => {
   const url = new URL($('likes-overlay-url').value);
   url.searchParams.set('test', 'like');
+  window.open(url.href, '_blank');
+};
+$('chat-overlay-test').onclick = () => {
+  const url = new URL($('chat-overlay-url').value);
+  url.searchParams.set('test', '1');
+  window.open(url.href, '_blank');
+};
+$('leaderboard-overlay-test').onclick = () => {
+  const url = new URL($('leaderboard-overlay-url').value);
+  url.searchParams.set('test', '1');
+  window.open(url.href, '_blank');
+};
+$('stats-overlay-test').onclick = () => {
+  const url = new URL($('stats-overlay-url').value);
+  url.searchParams.set('test', '1');
   window.open(url.href, '_blank');
 };
 
