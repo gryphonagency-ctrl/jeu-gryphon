@@ -27,8 +27,7 @@
     let treasureGiftCount = 0;
     let treasureGiftItems = [];
     let treasureGiftResetAt = 0;
-    let treasureGiftResetTimer = 0;
-    let treasureLayout = { x: 50, y: 82, width: 38 };
+    let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
     let overlaySettingsRefreshInFlight = false;
@@ -118,18 +117,15 @@
 .ae-bubble .ae-initial{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff2e93,#ffb400);color:#fff;font:900 34px/1 Arial,sans-serif}
 .ae-bubble .ae-name{max-width:150px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:700 13px/1.4 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
-.ae-treasure-chest{position:absolute;max-width:90vw;max-height:72vh;object-fit:contain;z-index:2;user-select:none;opacity:0}
+.ae-treasure-zone{position:absolute;box-sizing:border-box;z-index:2;opacity:0;pointer-events:none;user-select:none}
 .ae-treasure-gifts{position:absolute;inset:0;z-index:3}
-.ae-treasure-gift{position:absolute;width:clamp(16px,3.6vw,48px);height:clamp(16px,3.6vw,48px);display:flex;align-items:center;justify-content:center;
- overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform}
-.ae-treasure-gift img{width:100%;height:100%;object-fit:contain;filter:none}
+.ae-treasure-gift{position:absolute;display:flex;align-items:center;justify-content:center;
+ overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform;filter:drop-shadow(0 3px 4px rgba(0,0,0,.7))}
+.ae-treasure-gift img{position:absolute;width:100%;height:100%;object-fit:contain;filter:url(#ae-treasure-cutout)}
 .ae-treasure-gift-name{max-width:100%;padding:2px;color:#fff4cf;text-align:center;font:700 8px/1.1 Arial,sans-serif;overflow:hidden;overflow-wrap:anywhere}
-.ae-treasure-gift-count{position:absolute;right:-4px;top:-5px;padding:1px 4px;border-radius:8px;background:#a51234;color:#fff;font:800 9px/1.2 Arial,sans-serif}
-.ae-treasure-count{position:absolute;z-index:3;transform:translate(-50%,-50%);padding:4px 11px;border:1px solid #ffe27a;border-radius:99px;
- background:rgba(30,18,4,.78);color:#fff3b1;font:800 13px/1.2 Arial,sans-serif;text-shadow:0 1px 2px #000;white-space:nowrap}
 .ae-treasure-handle{position:absolute;z-index:4;display:none;pointer-events:auto;touch-action:none;border:2px solid #fff3b1;border-radius:10px;
  background:rgba(24,18,10,.88);color:white;box-shadow:0 2px 10px rgba(0,0,0,.55);font:800 18px/1 Arial,sans-serif}
-.ae-treasure-edit .ae-treasure-chest{pointer-events:auto;cursor:move}
+.ae-treasure-edit .ae-treasure-zone{opacity:1;pointer-events:auto;cursor:move;border:2px dashed rgba(255,243,177,.8);border-radius:8px;background:rgba(255,243,177,.05)}
 .ae-treasure-edit .ae-treasure-handle{display:grid;place-items:center}
 .ae-treasure-move{width:42px;height:42px;cursor:move}
 .ae-treasure-resize{width:38px;height:38px;cursor:nwse-resize}
@@ -172,9 +168,7 @@
     const TREASURE_STORAGE_PREFIX = 'ga-arcade-treasure-gifts:';
     const TREASURE_LAYOUT_STORAGE_KEY = 'ga-arcade-treasure-layout';
     const TREASURE_EDIT_STORAGE_KEY = 'ga-arcade-treasure-layout-edit';
-    const TREASURE_VISIBLE_LIMIT = 600;
-    const TREASURE_RESET_INTERVAL = 3 * 60 * 60 * 1000;
-    const DEFAULT_TREASURE_LAYOUT = { x: 50, y: 82, width: 38 };
+    const DEFAULT_TREASURE_LAYOUT = { x: 50, y: 82, width: 38, giftSize: 72 };
 
     function normalizeTreasureLayout(layout) {
         if (!layout || !Number.isFinite(layout.x) || !Number.isFinite(layout.y) ||
@@ -182,38 +176,56 @@
         return {
             x: Math.max(0, Math.min(100, layout.x)),
             y: Math.max(0, Math.min(100, layout.y)),
-            width: Math.max(12, Math.min(90, layout.width))
+            width: Math.max(12, Math.min(90, layout.width)),
+            giftSize: Number.isFinite(layout.giftSize)
+                ? Math.max(24, Math.min(144, layout.giftSize))
+                : DEFAULT_TREASURE_LAYOUT.giftSize
         };
     }
 
-    function treasureChestBounds() {
-        const chest = treasureStage && treasureStage.querySelector('.ae-treasure-chest');
-        if (!chest) return null;
-        const bounds = chest.getBoundingClientRect();
-        if (bounds.width && bounds.height) return bounds;
-        const width = Math.min(
-            window.innerWidth * treasureLayout.width / 100,
-            window.innerWidth * 0.9,
-            window.innerHeight * 0.72 * 1.75
-        );
-        const height = width / 1.75;
-        const left = window.innerWidth * treasureLayout.x / 100 - width / 2;
-        const top = window.innerHeight * treasureLayout.y / 100 - height / 2;
-        return { left, top, right: left + width, bottom: top + height, width, height };
+    function treasureZoneBounds() {
+        const zone = treasureStage && treasureStage.querySelector('.ae-treasure-zone');
+        if (!zone) return null;
+        const bounds = zone.getBoundingClientRect();
+        return bounds.width && bounds.height ? bounds : null;
     }
 
-    function treasureInsidePosition(index, bounds) {
+    function treasurePileSlots(bounds) {
+        const size = Math.max(20, Math.min(
+            treasureLayout.giftSize,
+            window.innerWidth * 0.1,
+            window.innerHeight * 0.2
+        ));
         if (!bounds || !bounds.width || !bounds.height) {
-            return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            return [{
+                x: window.innerWidth / 2 - size / 2,
+                y: window.innerHeight / 2 - size / 2,
+                width: size,
+                row: 0
+            }];
         }
-        return {
-            x: bounds.left + bounds.width * 0.5,
-            y: bounds.top + bounds.height * 0.55
-        };
-    }
-
-    function treasurePosition(index, bounds) {
-        return treasureInsidePosition(index, bounds);
+        const horizontalStep = size * 0.72;
+        const verticalStep = size * 0.62;
+        const columns = Math.max(1, Math.floor((bounds.width - size) / horizontalStep) + 1);
+        const maxRows = Math.max(1, Math.floor((bounds.height - size * 0.38) / verticalStep) + 1);
+        const rows = Math.min(maxRows, Math.max(1, Math.ceil(columns * 0.75)));
+        const centerX = bounds.left + bounds.width * 0.5;
+        const baseY = bounds.bottom - size;
+        const slots = [];
+        for (let row = 0; row < rows; row++) {
+            const count = Math.max(1, Math.round(columns * (rows - row) / rows));
+            const offsets = Array.from({ length: count }, (_, index) => index - (count - 1) / 2);
+            const orderedOffsets = offsets.sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+            orderedOffsets.forEach(offset => {
+                slots.push({
+                    x: centerX + offset * horizontalStep - size / 2,
+                    y: baseY - row * verticalStep,
+                    width: size,
+                    row
+                });
+            });
+        }
+        return slots;
     }
 
     function treasureEditIsRequested() {
@@ -236,29 +248,26 @@
         treasureStage.className = 'ae-treasure';
         const gifts = document.createElement('div');
         gifts.className = 'ae-treasure-gifts';
-        const chest = document.createElement('img');
-        chest.className = 'ae-treasure-chest';
-        chest.src = '/images-vitrine/overlay-coffre-tresor.png';
-        chest.alt = '';
-        chest.title = 'Zone de réception invisible';
-        chest.draggable = false;
-        chest.addEventListener('load', applyTreasureLayout);
-        const count = document.createElement('div');
-        count.className = 'ae-treasure-count';
-        count.setAttribute('aria-live', 'polite');
+        const zone = document.createElement('div');
+        zone.className = 'ae-treasure-zone';
+        zone.setAttribute('aria-hidden', 'true');
         const moveHandle = document.createElement('button');
         moveHandle.className = 'ae-treasure-handle ae-treasure-move';
         moveHandle.type = 'button';
         moveHandle.textContent = '↕';
-        moveHandle.setAttribute('aria-label', 'Déplacer le coffre');
+        moveHandle.setAttribute('aria-label', 'Déplacer la zone des cadeaux');
         const resizeHandle = document.createElement('button');
         resizeHandle.className = 'ae-treasure-handle ae-treasure-resize';
         resizeHandle.type = 'button';
         resizeHandle.textContent = '↘';
-        resizeHandle.setAttribute('aria-label', 'Redimensionner le coffre');
-        treasureStage.append(gifts, chest, count, moveHandle, resizeHandle);
+        resizeHandle.setAttribute('aria-label', 'Redimensionner la zone des cadeaux');
+        const filterSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        filterSvg.setAttribute('aria-hidden', 'true');
+        filterSvg.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
+        filterSvg.innerHTML = '<filter id="ae-treasure-cutout" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0.2126 0.7152 0.0722 0 0" result="giftLuminance"/><feComponentTransfer in="giftLuminance" result="giftCutout"><feFuncA type="table" tableValues="0 0 0.02 0.05 0.1 0.2 0.35 0.5 0.65 0.78 0.88 0.94 0.98 1 1 1 1"/></feComponentTransfer><feComposite in="giftCutout" in2="SourceGraphic" operator="in"/></filter>';
+        treasureStage.append(filterSvg, gifts, zone, moveHandle, resizeHandle);
         layer.appendChild(treasureStage);
-        bindTreasureDrag(chest, 'move');
+        bindTreasureDrag(zone, 'move');
         bindTreasureDrag(moveHandle, 'move');
         bindTreasureDrag(resizeHandle, 'resize');
         applyTreasureLayout();
@@ -267,27 +276,23 @@
 
     function applyTreasureLayout() {
         if (!treasureStage || !treasureStage.isConnected) return;
-        const chest = treasureStage.querySelector('.ae-treasure-chest');
-        const count = treasureStage.querySelector('.ae-treasure-count');
+        const zone = treasureStage.querySelector('.ae-treasure-zone');
         const moveHandle = treasureStage.querySelector('.ae-treasure-move');
         const resizeHandle = treasureStage.querySelector('.ae-treasure-resize');
         const x = `${treasureLayout.x}%`;
-        const y = `${treasureLayout.y}%`;
-        chest.style.left = x;
-        chest.style.top = y;
-        chest.style.width = `${treasureLayout.width}vw`;
-        chest.style.transform = 'translate(-50%, -50%)';
-        const chestBounds = treasureChestBounds();
-        if (chestBounds) {
-            count.style.left = `${chestBounds.left + chestBounds.width / 2}px`;
-            count.style.top = `${chestBounds.bottom - 20}px`;
-            moveHandle.style.left = `${chestBounds.left + 8}px`;
-            moveHandle.style.top = `${chestBounds.top + 8}px`;
-            resizeHandle.style.left = `${chestBounds.right - 46}px`;
-            resizeHandle.style.top = `${chestBounds.bottom - 46}px`;
-        } else {
-            count.style.left = x;
-            count.style.top = y;
+        const baseY = Math.max(14, treasureLayout.y);
+        const y = `${baseY}%`;
+        zone.style.left = x;
+        zone.style.top = y;
+        zone.style.width = `${treasureLayout.width}vw`;
+        zone.style.height = `${Math.max(12, Math.min(76, baseY - 4))}vh`;
+        zone.style.transform = 'translate(-50%, -100%)';
+        const zoneBounds = treasureZoneBounds();
+        if (zoneBounds) {
+            moveHandle.style.left = `${zoneBounds.left + 8}px`;
+            moveHandle.style.top = `${zoneBounds.top + 8}px`;
+            resizeHandle.style.left = `${zoneBounds.right - 46}px`;
+            resizeHandle.style.top = `${zoneBounds.bottom - 46}px`;
         }
         treasureStage.classList.toggle('ae-treasure-edit', treasureEditIsRequested());
         renderTreasureGifts();
@@ -306,29 +311,62 @@
     function renderTreasureGifts() {
         if (!treasureStage || !treasureStage.isConnected) return;
         const container = treasureStage.querySelector('.ae-treasure-gifts');
-        const count = treasureStage.querySelector('.ae-treasure-count');
-        if (!container || !count) return;
-        const bounds = treasureChestBounds();
-        container.replaceChildren();
-        const retainedCount = treasureGiftItems.reduce((total, gift) => total + gift.count, 0);
-        const firstVisible = Math.max(0, treasureGiftCount - retainedCount);
-        let localIndex = 0;
+        if (!container) return;
+        const bounds = treasureZoneBounds();
+        const existingItems = new Map(
+            [...container.children].map(item => [Number(item.dataset.pileSlot), item])
+        );
+        const slots = treasurePileSlots(bounds);
+        const visibleGifts = new Map();
+        let nextSlot = 0;
         for (const giftEntry of treasureGiftItems) {
-            for (let repeatIndex = 0; repeatIndex < giftEntry.count; repeatIndex++) {
-                const gift = { ...giftEntry, repeatIndex };
-                const totalIndex = firstVisible + localIndex++;
-                const item = document.createElement('span');
-                const position = treasurePosition(totalIndex, bounds);
-                item.className = 'ae-treasure-gift';
-                item.style.left = `${position.x}px`;
-                item.style.top = `${position.y}px`;
-                item.title = gift.name || 'Cadeau TikTok reçu';
+            const count = Math.max(0, Math.floor(giftEntry.count));
+            const firstSlot = nextSlot;
+            for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
+                const firstOffset = (slotIndex - firstSlot + slots.length) % slots.length;
+                if (firstOffset >= count) continue;
+                const giftCount = Math.floor((count - 1 - firstOffset) / slots.length) + 1;
+                const pile = visibleGifts.get(slotIndex) || { gifts: [], count: 0 };
+                pile.gifts.push(giftEntry);
+                pile.count += giftCount;
+                visibleGifts.set(slotIndex, pile);
+            }
+            nextSlot = (nextSlot + count % slots.length) % slots.length;
+        }
+        for (const [slotIndex, pile] of visibleGifts) {
+            const item = existingItems.get(slotIndex) || document.createElement('span');
+            existingItems.delete(slotIndex);
+            item.replaceChildren();
+            const position = slots[slotIndex];
+            const size = Math.max(20, Math.min(
+                treasureLayout.giftSize,
+                window.innerWidth * 0.1,
+                window.innerHeight * 0.2
+            ));
+            item.className = 'ae-treasure-gift';
+            item.dataset.pileSlot = String(slotIndex);
+            item.style.left = `${position.x}px`;
+            item.style.top = `${position.y}px`;
+            item.style.width = `${size}px`;
+            item.style.height = `${size}px`;
+            item.style.zIndex = String(10 + slots.length - position.row);
+            const giftTypes = pile.gifts.slice(-3);
+            if (giftTypes.length === 1 && pile.count > 1) {
+                giftTypes.unshift(giftTypes[0]);
+                if (pile.count > 2) giftTypes.unshift(giftTypes[0]);
+            }
+            item.title = pile.gifts[pile.gifts.length - 1].name || 'Cadeau TikTok reçu';
+            giftTypes.forEach((gift, layerIndex) => {
                 if (gift.imageUrl) {
                     const image = document.createElement('img');
                     image.src = gift.imageUrl;
-                    image.alt = gift.name || 'Cadeau reçu';
+                    image.alt = '';
+                    image.setAttribute('aria-hidden', 'true');
                     image.loading = 'lazy';
                     image.referrerPolicy = 'no-referrer';
+                    image.style.left = `${layerIndex * 3}px`;
+                    image.style.top = `${-layerIndex * 4}px`;
+                    image.style.transform = `rotate(${((slotIndex + layerIndex) % 5 - 2) * 4}deg)`;
                     image.onerror = () => {
                         image.remove();
                         const fallback = document.createElement('span');
@@ -343,41 +381,20 @@
                     fallback.textContent = gift.name || 'Cadeau reçu';
                     item.appendChild(fallback);
                 }
-                if (gift.count > 1 && gift.repeatIndex === 0) {
-                    const repeatBadge = document.createElement('span');
-                    repeatBadge.className = 'ae-treasure-gift-count';
-                    repeatBadge.textContent = String(gift.count);
-                    item.appendChild(repeatBadge);
-                }
-                container.appendChild(item);
-            }
+            });
+            container.appendChild(item);
         }
-        count.textContent = `Cadeaux reçus : ${treasureGiftCount.toLocaleString('fr-FR')}`;
+        existingItems.forEach(item => item.remove());
     }
 
     function resetTreasureGifts(liveRoomId = '') {
         treasureGiftCount = 0;
         treasureGiftItems = [];
         treasureLiveRoomId = String(liveRoomId || '');
-        treasureGiftResetAt = Date.now();
+        treasureGiftResetAt = Math.max(Date.now(), treasureGiftResetAt + 1);
         seenTreasureGifts.clear();
         saveTreasureGifts();
         renderTreasureGifts();
-        scheduleTreasureGiftReset();
-    }
-
-    function scheduleTreasureGiftReset() {
-        clearTimeout(treasureGiftResetTimer);
-        treasureGiftResetTimer = 0;
-        if (!treasureChestEnabled || !treasureOwner) return;
-        if (!Number.isFinite(treasureGiftResetAt) || treasureGiftResetAt <= 0) {
-            treasureGiftResetAt = Date.now();
-            saveTreasureGifts();
-        }
-        treasureGiftResetTimer = setTimeout(
-            () => resetTreasureGifts(),
-            Math.max(0, treasureGiftResetAt + TREASURE_RESET_INTERVAL - Date.now())
-        );
     }
 
     function handleTreasureLiveState(data) {
@@ -390,10 +407,12 @@
         }
         const roomId = String(data.roomId || '');
         const lastEndedRoomId = String(data.lastEndedRoomId || '');
-        if (data.type === 'LIVE_STATE' &&
-            ((data.isLive === true && roomId && roomId !== treasureLiveRoomId) ||
-                (lastEndedRoomId && lastEndedRoomId === treasureLiveRoomId))) {
+        if (data.type !== 'LIVE_STATE') return;
+        if (lastEndedRoomId && (!data.isLive || lastEndedRoomId === treasureLiveRoomId)) {
             resetTreasureGifts(data.isLive === true ? roomId : '');
+        } else if (data.isLive === true && roomId && !treasureLiveRoomId) {
+            treasureLiveRoomId = roomId;
+            saveTreasureGifts();
         }
     }
 
@@ -411,28 +430,15 @@
             treasureGiftResetAt = Number.isSafeInteger(stored.resetAt) && stored.resetAt > 0
                 ? stored.resetAt
                 : Date.now();
-            if (Date.now() >= treasureGiftResetAt + TREASURE_RESET_INTERVAL) {
-                treasureGiftCount = 0;
-                treasureGiftItems = [];
-                treasureGiftResetAt = Date.now();
-                saveTreasureGifts();
-                return;
-            }
             const gifts = stored.gifts
                 .filter(gift => gift && typeof gift === 'object')
                 .map(gift => ({
                     name: String(gift.name || '').slice(0, 80),
                     imageUrl: safeGiftImageUrl(gift.imageUrl),
-                    count: Math.max(1, Math.min(TREASURE_VISIBLE_LIMIT, Math.floor(Number(gift.count) || 1)))
-                }));
-            let remaining = TREASURE_VISIBLE_LIMIT;
-            treasureGiftItems = [];
-            for (let index = gifts.length - 1; index >= 0 && remaining > 0; index--) {
-                const gift = gifts[index];
-                const retained = Math.min(gift.count, remaining);
-                treasureGiftItems.unshift({ ...gift, count: retained });
-                remaining -= retained;
-            }
+                    count: Number.isSafeInteger(gift.count) && gift.count > 0 ? gift.count : 1
+                }))
+                .filter(gift => gift.imageUrl || gift.name);
+            treasureGiftItems = gifts;
         } catch (error) {
             console.warn('Les cadeaux du coffre local ne peuvent pas être lus :', error.message);
             treasureGiftItems = [];
@@ -446,7 +452,7 @@
         try {
             localStorage.setItem(TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase(), JSON.stringify({
                 total: treasureGiftCount,
-                gifts: treasureGiftItems.slice(-TREASURE_VISIBLE_LIMIT),
+                gifts: treasureGiftItems,
                 liveRoomId: treasureLiveRoomId,
                 resetAt: treasureGiftResetAt
             }));
@@ -457,7 +463,6 @@
 
     function setTreasureChestEnabled(enabled, owner, sourceUsername = '') {
         const nextOwner = String(owner || '');
-        const previousSource = treasureSourceUsername;
         treasureSourceUsername = String(sourceUsername || '').trim().replace(/^@/, '').toLocaleLowerCase();
         const ownerChanged = nextOwner.toLowerCase() !== treasureOwner.toLowerCase();
         const nextEnabled = enabled === true && Boolean(nextOwner);
@@ -466,18 +471,13 @@
             treasureGiftItems = [];
             treasureGiftCount = 0;
             readTreasureGifts(nextOwner);
-        } else if (previousSource && treasureSourceUsername && previousSource !== treasureSourceUsername) {
-            resetTreasureGifts();
         }
         treasureChestEnabled = nextEnabled;
         if (!treasureChestEnabled) {
-            clearTimeout(treasureGiftResetTimer);
-            treasureGiftResetTimer = 0;
             if (treasureStage) treasureStage.remove();
             treasureStage = null;
             return;
         }
-        scheduleTreasureGiftReset();
         if (!treasureStage || !treasureStage.isConnected) ensureTreasureStage();
         applyTreasureLayout();
     }
@@ -566,7 +566,6 @@
         if (messageId) {
             if (seenTreasureGifts.has(messageId)) return;
             seenTreasureGifts.add(messageId);
-            if (seenTreasureGifts.size > 500) seenTreasureGifts.delete(seenTreasureGifts.values().next().value);
         }
         const repeatCount = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
         const safeCount = Math.min(repeatCount, Number.MAX_SAFE_INTEGER - treasureGiftCount);
@@ -574,54 +573,62 @@
         const item = {
             name: String(gift.giftName || gift.name || '').slice(0, 80),
             imageUrl: safeGiftImageUrl(gift.giftImageUrl || gift.giftImage || ''),
-            count: Math.min(safeCount, TREASURE_VISIBLE_LIMIT)
+            count: safeCount
         };
-        if (safeCount >= TREASURE_VISIBLE_LIMIT) treasureGiftItems = [item];
-        else treasureGiftItems.push(item);
-        treasureGiftCount += safeCount;
-        let retainedCount = treasureGiftItems.reduce((total, giftItem) => total + giftItem.count, 0);
-        while (retainedCount > TREASURE_VISIBLE_LIMIT) {
-            const excess = retainedCount - TREASURE_VISIBLE_LIMIT;
-            if (treasureGiftItems[0].count <= excess) {
-                retainedCount -= treasureGiftItems.shift().count;
-            } else {
-                treasureGiftItems[0].count -= excess;
-                retainedCount -= excess;
-            }
+        const existingIndex = treasureGiftItems.findIndex(existing =>
+            item.name
+                ? existing.name === item.name
+                : !existing.name && existing.imageUrl === item.imageUrl
+        );
+        if (existingIndex >= 0) {
+            const [existing] = treasureGiftItems.splice(existingIndex, 1);
+            item.count = Math.min(Number.MAX_SAFE_INTEGER, existing.count + item.count);
         }
+        treasureGiftItems.push(item);
+        treasureGiftCount += safeCount;
         saveTreasureGifts();
         ensureTreasureStage();
         renderTreasureGifts();
         const items = treasureStage && treasureStage.querySelector('.ae-treasure-gifts');
-        const bounds = treasureChestBounds();
-        const animatedCount = Math.min(safeCount, retainedCount);
-        for (let i = 0; i < animatedCount; i++) {
-            const index = treasureGiftCount - animatedCount + i;
-            const firstVisible = Math.max(0, treasureGiftCount - retainedCount);
-            const giftElement = items && items.children[index - firstVisible];
+        const bounds = treasureZoneBounds();
+        const animatedSlots = new Set();
+        const slots = treasurePileSlots(bounds);
+        const firstSlot = (treasureGiftCount - safeCount) % slots.length;
+        const animatedCount = Math.min(safeCount, slots.length);
+        for (let offset = 0; offset < animatedCount; offset++) {
+            animatedSlots.add((firstSlot + offset) % slots.length);
+        }
+        let animationIndex = 0;
+        for (const slotIndex of animatedSlots) {
+            const giftElement = items && items.querySelector(`[data-pile-slot="${slotIndex}"]`);
             if (!giftElement || typeof giftElement.animate !== 'function') continue;
-            const target = treasurePosition(index, bounds);
-            const landing = treasureInsidePosition(index, bounds);
-            const landingOffsetX = landing.x - target.x;
-            const landingOffsetY = landing.y - target.y;
-            const fallDistance = Math.max(180, landing.y + 64);
+            giftElement.getAnimations().forEach(animation => animation.cancel());
+            const fallDistance = Math.max(180, window.innerHeight * 0.55);
+            const drift = slots[slotIndex].x + slots[slotIndex].width / 2 -
+                (bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2);
             giftElement.animate([
                 {
-                    transform: `translate(${landingOffsetX}px, ${landingOffsetY - fallDistance}px) scale(.65)`,
+                    transform: `translate(${-drift}px, ${-fallDistance}px) rotate(0deg) scale(.55)`,
                     opacity: 0,
                     offset: 0,
                     easing: 'cubic-bezier(.2,.7,.25,1)'
                 },
                 {
-                    transform: `translate(${landingOffsetX}px, ${landingOffsetY}px) scale(1)`,
+                    transform: `translate(${drift * 0.08}px, 6px) rotate(${drift < 0 ? -9 : 9}deg) scale(1.05)`,
+                    opacity: 1,
+                    offset: 0.86,
+                    easing: 'cubic-bezier(.3,.7,.25,1)'
+                },
+                {
+                    transform: 'translate(0, 0) rotate(0deg) scale(1)',
                     opacity: 1,
                     offset: 1,
                     easing: 'cubic-bezier(.3,.7,.25,1)'
                 }
             ], {
-                duration: 700 + Math.random() * 300,
-                delay: Math.min(i * 24, 650),
-                fill: 'both'
+                duration: 850 + Math.random() * 250,
+                delay: Math.min(animationIndex++ * 55, 650),
+                fill: 'none'
             });
         }
     }
@@ -639,7 +646,6 @@
                     treasureGiftResetAt = setting.resetAt;
                     seenTreasureGifts.clear();
                     renderTreasureGifts();
-                    scheduleTreasureGiftReset();
                 }
             } catch (error) {
                 console.warn('La remise à zéro du coffre reçue est invalide :', error.message);

@@ -28,7 +28,7 @@ if (typeof store.getWalletBalance !== 'function') {
 const port = Number(process.env.PORT) || 3000;
 const GAME_HTML_MAX_BYTES = 2 * 1024 * 1024;
 const GAME_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-const DEFAULT_TREASURE_LAYOUT = Object.freeze({ x: 50, y: 82, width: 38 });
+const DEFAULT_TREASURE_LAYOUT = Object.freeze({ x: 50, y: 82, width: 38, giftSize: 72 });
 const DEFAULT_PROGRESS_OVERLAY_SETTINGS = Object.freeze({
     enabledLike: true,
     enabledSub: true,
@@ -1866,15 +1866,20 @@ const server = http.createServer((req, res) => {
             if (!layout || typeof layout !== 'object' || Array.isArray(layout) ||
                 !Number.isFinite(layout.x) || layout.x < 0 || layout.x > 100 ||
                 !Number.isFinite(layout.y) || layout.y < 0 || layout.y > 100 ||
-                !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90) {
+                !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90 ||
+                (layout.giftSize !== undefined &&
+                    (!Number.isFinite(layout.giftSize) || layout.giftSize < 24 || layout.giftSize > 144))) {
                 res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ message: 'La position ou la taille du coffre est invalide.' }));
+                res.end(JSON.stringify({ message: 'La position de la zone ou la taille des cadeaux est invalide.' }));
                 return;
             }
             const normalizedLayout = {
                 x: Math.round(layout.x * 10) / 10,
                 y: Math.round(layout.y * 10) / 10,
-                width: Math.round(layout.width * 10) / 10
+                width: Math.round(layout.width * 10) / 10,
+                giftSize: Number.isFinite(layout.giftSize)
+                    ? Math.round(layout.giftSize)
+                    : DEFAULT_TREASURE_LAYOUT.giftSize
             };
             const owner = access.usernameForRequest(req);
             store.setCreatorTreasureLayout(owner, normalizedLayout);

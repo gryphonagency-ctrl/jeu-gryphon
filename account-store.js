@@ -189,6 +189,10 @@ function readStore() {
                         settings.arcadeTreasureLayout.y < 0 || settings.arcadeTreasureLayout.y > 100 ||
                         !Number.isFinite(settings.arcadeTreasureLayout.width) ||
                         settings.arcadeTreasureLayout.width < 12 || settings.arcadeTreasureLayout.width > 90)) ||
+                (settings.arcadeTreasureLayout?.giftSize !== undefined &&
+                    (!Number.isFinite(settings.arcadeTreasureLayout.giftSize) ||
+                        settings.arcadeTreasureLayout.giftSize < 24 ||
+                        settings.arcadeTreasureLayout.giftSize > 144)) ||
                 (settings.progressOverlay !== undefined &&
                     !isValidProgressOverlaySettings(settings.progressOverlay)) ||
                 (settings.locked !== undefined && typeof settings.locked !== 'boolean')) ||
@@ -914,7 +918,9 @@ function getCreatorTreasureOverlayOwner(token) {
 function setCreatorTreasureLayout(username, layout) {
     if (!layout || !Number.isFinite(layout.x) || layout.x < 0 || layout.x > 100 ||
         !Number.isFinite(layout.y) || layout.y < 0 || layout.y > 100 ||
-        !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90) {
+        !Number.isFinite(layout.width) || layout.width < 12 || layout.width > 90 ||
+        (layout.giftSize !== undefined &&
+            (!Number.isFinite(layout.giftSize) || layout.giftSize < 24 || layout.giftSize > 144))) {
         throw new TypeError('Treasure overlay layout is invalid.');
     }
     updateStore(store => {
@@ -923,7 +929,8 @@ function setCreatorTreasureLayout(username, layout) {
         settings.arcadeTreasureLayout = {
             x: layout.x,
             y: layout.y,
-            width: layout.width
+            width: layout.width,
+            giftSize: Number.isFinite(layout.giftSize) ? layout.giftSize : 72
         };
         store.creatorSettings[key] = settings;
     });

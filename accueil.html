@@ -767,7 +767,9 @@
                     <p>Compte : <strong id="creator-overlay-username"></strong></p>
                     <section class="creator-overlay-treasure">
                         <strong>🪙 Coffre au trésor</strong>
-                        <p>Chaque cadeau TikTok reçu tombe automatiquement au même endroit dans le coffre avec son vrai visuel. Les cadeaux affichés repartent de zéro toutes les 3 heures. Le coffre reste déplaçable dans tous les jeux. Masque sa source dans TikTok Studio pour le dissimuler pendant le live.</p>
+                        <p>Les cadeaux tombent au même endroit et s’empilent en montagne sans fond ni coffre visible. Ils restent affichés pendant tout le live et sont effacés lorsque sa fin est détectée. La source fonctionne aussi pendant un Live Match.</p>
+                        <label for="creator-treasure-gift-size">Taille des cadeaux <output id="creator-treasure-gift-size-value">72 px</output></label>
+                        <input id="creator-treasure-gift-size" type="range" min="24" max="144" step="4" value="72" aria-label="Taille des cadeaux dans la montagne">
                         <div class="creator-overlay-options">
                             <label><input id="creator-treasure-overlay" type="checkbox"> Recevoir les cadeaux dans le coffre</label>
                         </div>
@@ -782,8 +784,8 @@
                         </div>
                         <p id="creator-treasure-overlay-link-status" class="checkout-status" role="status" aria-live="polite"></p>
                         <p>Ajoute ce lien comme source navigateur dans TikTok LIVE Studio ou OBS. Il fonctionne sans lancer de jeu et suit les cadeaux, y compris pendant un Live Match.</p>
-                        <button id="creator-treasure-layout-edit" class="button button-secondary" type="button" aria-pressed="false">Modifier la position et la taille du coffre</button>
-                        <p id="creator-treasure-layout-status" class="checkout-status" role="status" aria-live="polite">Tu peux activer ce mode à tout moment. Dans un jeu ouvert, utilise la poignée du coffre pour le déplacer et celle en bas à droite pour le redimensionner.</p>
+                        <button id="creator-treasure-layout-edit" class="button button-secondary" type="button" aria-pressed="false">Modifier la position et la taille de la zone des cadeaux</button>
+                        <p id="creator-treasure-layout-status" class="checkout-status" role="status" aria-live="polite">Tu peux activer ce mode à tout moment. Dans un jeu ouvert, déplace la zone transparente avec sa poignée et redimensionne-la par le coin inférieur droit.</p>
                     </section>
                     <p id="creator-overlay-locked" hidden>L’overlay et les médias personnalisés sont réservés aux abonnés et aux comptes autorisés par l’administrateur.</p>
                     <div id="creator-overlay-body">
@@ -2393,6 +2395,8 @@
             treasureEffect: document.getElementById('creator-treasure-overlay'),
             treasureEffectSave: document.getElementById('creator-treasure-overlay-save'),
             treasureStatus: document.getElementById('creator-treasure-overlay-status'),
+            treasureGiftSize: document.getElementById('creator-treasure-gift-size'),
+            treasureGiftSizeValue: document.getElementById('creator-treasure-gift-size-value'),
             treasureTikTokUsername: document.getElementById('creator-treasure-tiktok-username'),
             treasureLinkCreate: document.getElementById('creator-treasure-overlay-link-create'),
             treasureUrl: document.getElementById('creator-treasure-overlay-url'),
@@ -2418,6 +2422,7 @@
             owner: null,
             account: null,
             treasureEditing: false,
+            treasureLayout: { x: 50, y: 82, width: 38, giftSize: 72 },
             progressSettings: null
         };
 
@@ -2504,6 +2509,9 @@
                 overlayCard.treasureCopy.hidden = true;
                 overlayCard.treasureLinkStatus.textContent = '';
                 overlayCard.treasureLayoutEdit.hidden = true;
+                overlayCard.treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
+                overlayCard.treasureGiftSize.value = 72;
+                overlayCard.treasureGiftSizeValue.value = '72 px';
                 overlayCard.progressStatus.textContent = '';
                 overlayCard.progressLikeEnabled.checked = true;
                 overlayCard.progressLikeGoal.value = 50000;
@@ -2521,6 +2529,9 @@
             overlayCard.account = session.username || null;
             overlayCard.treasureEffect.checked = session.arcadeTreasureChestEnabled === true;
             overlayCard.treasureTikTokUsername.value = session.arcadeTreasureTikTokUsername || '';
+            overlayCard.treasureLayout = session.arcadeTreasureLayout || { x: 50, y: 82, width: 38, giftSize: 72 };
+            overlayCard.treasureGiftSize.value = overlayCard.treasureLayout.giftSize || 72;
+            overlayCard.treasureGiftSizeValue.value = `${overlayCard.treasureGiftSize.value} px`;
             overlayCard.treasureUrl.value = session.arcadeTreasureOverlayToken
                 ? `${location.origin}/arcade-treasure-overlay.html?token=${encodeURIComponent(session.arcadeTreasureOverlayToken)}`
                 : '';
@@ -2533,8 +2544,8 @@
                         String(edit.username || '').toLowerCase() === String(session.username || '').toLowerCase());
                 overlayCard.treasureEditing = editing;
                 overlayCard.treasureLayoutEdit.textContent = editing
-                    ? 'Terminer la modification du coffre'
-                    : 'Modifier la position et la taille du coffre';
+                    ? 'Terminer la modification de la zone'
+                    : 'Modifier la position et la taille de la zone des cadeaux';
                 overlayCard.treasureLayoutEdit.setAttribute('aria-pressed', String(editing));
             } catch (error) {
                 console.warn('Impossible de lire le mode de déplacement du coffre.', error);
@@ -2608,7 +2619,7 @@
                         updatedAt: Date.now()
                     }));
                     overlayCard.treasureStatus.textContent = enabled
-                        ? 'Réception activée : chaque cadeau tombe dans le coffre.'
+                        ? 'Réception activée : les cadeaux s’empilent dans la montagne.'
                         : 'Réception du coffre désactivée.';
                 } catch (error) {
                     console.warn('Le coffre est enregistré, mais la mise à jour des autres onglets a échoué.', error);
@@ -2619,6 +2630,40 @@
                 overlayCard.treasureStatus.textContent = error.message || 'Impossible d’enregistrer le coffre au trésor.';
             } finally {
                 overlayCard.treasureEffectSave.disabled = false;
+            }
+        });
+        overlayCard.treasureGiftSize.addEventListener('input', () => {
+            overlayCard.treasureGiftSizeValue.value = `${overlayCard.treasureGiftSize.value} px`;
+        });
+        overlayCard.treasureGiftSize.addEventListener('change', async () => {
+            overlayCard.treasureGiftSize.disabled = true;
+            overlayCard.treasureLayoutStatus.className = 'checkout-status';
+            try {
+                if (!overlayCard.account) throw new Error('Connecte-toi pour enregistrer la taille des cadeaux.');
+                const layout = {
+                    ...overlayCard.treasureLayout,
+                    giftSize: Number(overlayCard.treasureGiftSize.value)
+                };
+                const response = await fetch('/api/arcade-treasure-layout', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ layout })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible d’enregistrer la taille des cadeaux.');
+                overlayCard.treasureLayout = result.layout;
+                localStorage.setItem('ga-arcade-treasure-layout', JSON.stringify({
+                    username: overlayCard.account,
+                    layout: result.layout,
+                    updatedAt: Date.now()
+                }));
+                overlayCard.treasureLayoutStatus.textContent = `Taille enregistrée : ${result.layout.giftSize} px.`;
+            } catch (error) {
+                overlayCard.treasureLayoutStatus.className = 'checkout-status error';
+                overlayCard.treasureLayoutStatus.textContent = error.message || 'Impossible d’enregistrer la taille des cadeaux.';
+            } finally {
+                overlayCard.treasureGiftSize.disabled = false;
             }
         });
         overlayCard.treasureLinkCreate.addEventListener('click', async () => {
@@ -2673,12 +2718,12 @@
                 }));
                 overlayCard.treasureEditing = result.arcadeTreasureLayoutEditing;
                 overlayCard.treasureLayoutEdit.textContent = enabled
-                    ? 'Terminer la modification du coffre'
-                    : 'Modifier la position et la taille du coffre';
+                    ? 'Terminer la modification de la zone'
+                    : 'Modifier la position et la taille de la zone des cadeaux';
                 overlayCard.treasureLayoutEdit.setAttribute('aria-pressed', String(enabled));
                 overlayCard.treasureLayoutStatus.className = 'checkout-status';
                 overlayCard.treasureLayoutStatus.textContent = enabled
-                    ? 'Mode modification activé : sur un jeu ouvert, déplace le coffre par sa poignée et redimensionne-le avec la poignée en bas à droite.'
+                    ? 'Mode modification activé : sur un jeu ouvert, déplace la zone transparente par sa poignée et redimensionne-la avec la poignée en bas à droite.'
                     : 'Modification terminée et enregistrée. Tu peux reprendre le déplacement ou le redimensionnement quand tu veux.';
             } catch (error) {
                 overlayCard.treasureLayoutStatus.className = 'checkout-status error';
