@@ -21,8 +21,9 @@ button.danger{background:#ff6b7a}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 .media{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;font-size:.85rem;word-break:break-all}
 .media img,.media video{width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#000}
-.slot .heart-preview{grid-column:1/-1;width:min(100%,520px);height:280px;object-fit:contain;background:#000;border-radius:8px}
-.slot .heart-preview[hidden]{display:none}
+.slot .video-preview{grid-column:1/-1;display:flex;align-items:center;justify-content:center;overflow:hidden;width:min(100%,520px);height:280px;background:#000;border-radius:8px}
+.slot .video-preview[hidden]{display:none}
+.slot .video-preview video{max-width:none;max-height:none;object-fit:contain}
 .media audio{width:100%}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
@@ -182,30 +183,33 @@ function slot(key, label, removable) {
   const volumeValue = el('span', { textContent: `${volume.value} %` });
   volume.addEventListener('input', () => { volumeValue.textContent = `${volume.value} %`; });
   const videoVolume = el('label', { className: 'video-volume' }, 'Volume de la vidéo', volumeValue, volume);
-  let heartPreview;
+  const videoPreview = el('video', { controls: true, playsInline: true, preload: 'metadata' });
+  const videoPreviewFrame = el('div', {
+    className: 'video-preview',
+    role: 'group',
+    'aria-label': `Aperçu de la vidéo pour ${label}`
+  }, videoPreview);
   const updatePreview = () => {
-    if (!heartPreview) return;
     const file = state.files.find(item => item.id === video.value && item.kind === 'video');
-    heartPreview.hidden = !file;
+    videoPreviewFrame.hidden = !file;
     if (file) {
-      heartPreview.src = file.url;
-      heartPreview.style.width = `${Math.min(100, Number(videoWidth.value))}%`;
-      heartPreview.style.height = `${280 * Math.min(100, Number(videoHeight.value)) / 100}px`;
-      heartPreview.style.objectFit = videoFit.value;
+      if (videoPreview.getAttribute('src') !== file.url) videoPreview.src = file.url;
+      videoPreview.style.width = `${Number(videoWidth.value)}%`;
+      videoPreview.style.height = `${Number(videoHeight.value)}%`;
+      videoPreview.style.objectFit = videoFit.value;
+      videoPreview.volume = Number(volume.value) / 100;
     } else {
-      heartPreview.pause();
-      heartPreview.removeAttribute('src');
-      heartPreview.load();
+      videoPreview.pause();
+      videoPreview.removeAttribute('src');
+      videoPreview.load();
     }
   };
-  if (key === 'gift_heart_me') {
-    heartPreview = el('video', { className: 'heart-preview', controls: true, preload: 'metadata', hidden: true });
-    videoWidth.addEventListener('input', () => { videoWidthValue.textContent = `${videoWidth.value} %`; updatePreview(); });
-    videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); });
-    videoFit.addEventListener('change', updatePreview);
-    video.addEventListener('change', updatePreview);
-    updatePreview();
-  }
+  videoWidth.addEventListener('input', () => { videoWidthValue.textContent = `${videoWidth.value} %`; updatePreview(); });
+  videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); });
+  videoFit.addEventListener('change', updatePreview);
+  video.addEventListener('change', updatePreview);
+  volume.addEventListener('input', updatePreview);
+  updatePreview();
   const active = Boolean(alert.audio || alert.video);
   const save = el('button', { type: 'button', textContent: 'Enregistrer',
     onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value,
@@ -219,7 +223,7 @@ function slot(key, label, removable) {
         : run(() => api({ action: 'delete-alert', event: key }), 'Alerte supprimée.') }));
   }
   return el('div', { className: 'slot' }, el('h3', { textContent: label }),
-    ...(heartPreview ? [heartPreview] : []),
+    videoPreviewFrame,
     el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video),
     el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
     el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
