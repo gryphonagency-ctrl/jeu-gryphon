@@ -235,10 +235,12 @@
       let lightState = 'green';
       let lightHistory = [{ state: 'green', at: Date.now() }];
       let cycleTimer = 0;
+      let countdownTimer = 0;
       let phaseMessageTimer = 0;
       let liveSocket = null;
       let gameSpeed = 1;
       let gameStarted = false;
+      let countdownActive = false;
       let raceFinished = false;
       let roundGiftCoins = 0;
       let giftCoinGoal = DEFAULT_GIFT_COIN_GOAL;
@@ -387,7 +389,7 @@
         renderLists();
         if (!gameStarted) {
           gameStarted = true;
-          setLight(lightState);
+          startCountdown();
         }
         return player;
       }
@@ -429,12 +431,30 @@
         $('doll').dataset.state = nextState;
         $('doll').setAttribute('aria-label', red ? 'La poupée regarde les joueurs' : 'La poupée est tournée vers le mur');
         if (cycleTimer) clearTimeout(cycleTimer);
-        if (!gameStarted || raceFinished) return;
+        if (!gameStarted || countdownActive || raceFinished) return;
         if (announce) showPhaseMessage(red ? 'BOUGEZ PAS' : 'GO', red);
         cycleTimer = window.setTimeout(
           () => setLight(red ? 'green' : 'red'),
-          (red ? 3000 : 3000 + Math.random() * 3000) / gameSpeed
+          (red ? 4000 + Math.random() * 1000 : 8000 + Math.random() * 4000) / gameSpeed
         );
+      }
+
+      function startCountdown() {
+        countdownActive = true;
+        setLight('green', false);
+        let remaining = 3;
+        const tick = () => {
+          if (!countdownActive || raceFinished) return;
+          showPhaseMessage(remaining ? String(remaining) : 'C’EST PARTI !', false);
+          if (remaining === 0) {
+            countdownActive = false;
+            setLight('green', false);
+            return;
+          }
+          remaining--;
+          countdownTimer = window.setTimeout(tick, 1000);
+        };
+        tick();
       }
 
       function getLightAt(timestamp) {
@@ -461,7 +481,9 @@
         player.winner = true;
         player.element.classList.add('winner');
         raceFinished = true;
+        countdownActive = false;
         if (cycleTimer) clearTimeout(cycleTimer);
+        if (countdownTimer) clearTimeout(countdownTimer);
         if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
         $('race-message').classList.remove('phase-message', 'visible');
         $('race-message-text').textContent = `🏆 ${player.username} franchit la ligne d’arrivée !`;
@@ -578,7 +600,10 @@
         updateRoundPot();
         const username = gift.uniqueId || gift.username || gift.nickname;
         const sentAt = Number(gift.sentAt);
-        movePlayer(username, value, false, true, Number.isSafeInteger(sentAt) ? sentAt : null);
+        const actionAt = Number.isSafeInteger(sentAt) && sentAt > 0 && Math.abs(Date.now() - sentAt) <= 60000
+          ? sentAt
+          : null;
+        movePlayer(username, value, false, true, actionAt);
       }
 
       function handleWalletRun(event) {
@@ -716,10 +741,12 @@
 
       function resetGame() {
         if (cycleTimer) clearTimeout(cycleTimer);
+        if (countdownTimer) clearTimeout(countdownTimer);
         if (nextRoundTimer) clearTimeout(nextRoundTimer);
         players.clear();
         terrain.querySelectorAll('.player').forEach(player => player.remove());
         gameStarted = false;
+        countdownActive = false;
         raceFinished = false;
         if (phaseMessageTimer) clearTimeout(phaseMessageTimer);
         $('race-message').classList.remove('phase-message', 'visible');
