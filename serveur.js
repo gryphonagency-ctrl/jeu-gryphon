@@ -1103,9 +1103,7 @@ async function saveAdminGame(body) {
 }
 
 function canManageMedia(req) {
-    if (!access.isAuthenticated(req)) return false;
-    const username = access.usernameForRequest(req);
-    return Boolean(username) && access.canUseCreatorService(username, 'tts');
+    return access.canAccessGames(req);
 }
 
 function validPushEndpoint(value) {
@@ -1222,7 +1220,7 @@ const handleMedia = createMediaAdmin({
     persistent: mediaStoragePersistent,
     getUser: req => access.usernameForRequest(req),
     canManage: canManageMedia,
-    canManageUser: username => canUseCreatorTts(username),
+    canManageUser: username => access.canUseCreatorService(username, 'games'),
     readJsonBody: (...args) => readJsonBody(...args)
 });
 
