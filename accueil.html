@@ -768,6 +768,11 @@
                     <p class="kicker">Overlay de live</p>
                     <strong id="creator-overlay-heading">Configurer mon overlay</strong>
                     <p>Compte : <strong id="creator-overlay-username"></strong></p>
+                    <section id="creator-media-editor" class="creator-media-editor" aria-labelledby="creator-media-editor-heading" hidden>
+                        <h3 id="creator-media-editor-heading">Sons et vidéos de mes effets</h3>
+                        <p>Ajoute ou importe tes médias, puis associe un son ou une vidéo à chaque événement du live. Tous les réglages et ta bibliothèque sont disponibles ici.</p>
+                        <iframe id="creator-media-editor-frame" title="Gestion complète des sons et vidéos des effets" loading="eager"></iframe>
+                    </section>
                     <section class="creator-overlay-treasure">
                         <strong>🪙 Coffre au trésor</strong>
                         <p>Les cadeaux tombent au même endroit et s’empilent en montagne sans fond ni coffre visible. Ils restent affichés pendant tout le live et sont effacés lorsque sa fin est détectée. La source fonctionne aussi pendant un Live Match.</p>
@@ -809,13 +814,7 @@
                         </div>
                         <div class="creator-overlay-actions">
                             <button id="creator-overlay-generate" class="button button-primary" type="button">Générer mon lien</button>
-                            <a id="overlay-access-link" class="button button-secondary" href="/medias.html#overlay-card">Gérer mes alertes et médias</a>
                         </div>
-                        <section class="creator-media-editor" aria-labelledby="creator-media-editor-heading">
-                            <h3 id="creator-media-editor-heading">Sons et vidéos de mes effets</h3>
-                            <p>Ajoute tes médias et règle leur cadrage directement ici. Pour une vidéo au format paysage, laisse « Afficher toute la vidéo » et règle sa largeur sur 100 %.</p>
-                            <iframe id="creator-media-editor-frame" src="/medias.html?embedded=1" title="Gestion complète des sons et vidéos des effets" loading="lazy"></iframe>
-                        </section>
                         <section class="creator-overlay-progress" aria-labelledby="creator-overlay-progress-heading">
                             <strong id="creator-overlay-progress-heading">📊 Barres d’objectifs du LIVE</strong>
                             <p>Crée une source navigateur séparée pour TikTok LIVE Studio ou OBS. Les likes et abonnements reçus pendant le direct font progresser les barres; elles repartent de zéro au prochain LIVE.</p>
@@ -1044,11 +1043,6 @@
             <div class="admin-panel">
                 <div class="admin-grid">
                     <div id="admin-overlay-host"></div>
-                    <section class="admin-card">
-                        <h3>Alertes, sons et vidéos du live</h3>
-                        <p>Gère les alertes, les médias, les photos de likes et le lien principal de source navigateur.</p>
-                        <a class="button button-primary" href="/medias.html#overlay-card">Gérer mes overlays et médias</a>
-                    </section>
                 </div>
             </div>
         </section>
@@ -2275,6 +2269,7 @@
         const creatorSpace = document.getElementById('creator-space');
         const creatorSpaceKicker = document.getElementById('creator-space-kicker');
         const creatorSpaceHeading = document.getElementById('creator-space-heading');
+        const creatorMediaEditor = document.getElementById('creator-media-editor');
         const creatorMediaEditorFrame = document.getElementById('creator-media-editor-frame');
         window.addEventListener('message', event => {
             if (event.origin !== window.location.origin || event.source !== creatorMediaEditorFrame.contentWindow ||
@@ -2846,6 +2841,16 @@
             walletOwnerName = String(session.username || '').toLowerCase();
             const overlayHost = session.isAdmin ? adminOverlayHost : creatorOverlayHost;
             if (creatorOverlayPanel.parentElement !== overlayHost) overlayHost.appendChild(creatorOverlayPanel);
+            const canManageOwnMedia = Boolean(session.authenticated && session.canUseTts);
+            creatorMediaEditor.hidden = !canManageOwnMedia;
+            const mediaOwner = String(session.username || '').toLowerCase();
+            if (canManageOwnMedia && creatorMediaEditorFrame.dataset.owner !== mediaOwner) {
+                creatorMediaEditorFrame.dataset.owner = mediaOwner;
+                creatorMediaEditorFrame.src = '/medias.html?embedded=1';
+            } else if (!canManageOwnMedia && creatorMediaEditorFrame.dataset.owner) {
+                creatorMediaEditorFrame.dataset.owner = '';
+                creatorMediaEditorFrame.src = 'about:blank';
+            }
             updateGameLaunchVisibility();
             if (session.authenticated) {
                 void refreshOwnStarsSummary().catch(error => showStarsSummaryError(error, 'own'));
