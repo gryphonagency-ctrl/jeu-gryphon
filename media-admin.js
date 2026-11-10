@@ -244,10 +244,22 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 videoVolume < 0 || videoVolume > 1) {
                 throw fail('Le volume vidéo doit être compris entre 0 et 100 %.');
             }
+            const previousAlert = index.alerts[event] || {};
+            const videoFit = body.videoFit === undefined ? previousAlert.videoFit || 'contain' : body.videoFit;
+            const videoWidth = body.videoWidth === undefined ? previousAlert.videoWidth ?? 100 : body.videoWidth;
+            const videoHeight = body.videoHeight === undefined ? previousAlert.videoHeight ?? 100 : body.videoHeight;
+            if (!['contain', 'cover'].includes(videoFit)) throw fail('Le cadrage vidéo est invalide.');
+            if (![videoWidth, videoHeight].every(value =>
+                typeof value === 'number' && Number.isFinite(value) && value >= 25 && value <= 150)) {
+                throw fail('La taille de la vidéo doit être comprise entre 25 et 150 %.');
+            }
             index.alerts[event] = {
                 audio: pick(body.audio, 'audio'),
                 video: pick(body.video, 'video'),
-                videoVolume
+                videoVolume,
+                videoFit,
+                videoWidth,
+                videoHeight
             };
             writeIndex(owner, index);
             return { success: true };
@@ -267,7 +279,10 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             alerts[event] = {
                 audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
                 videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
-                videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1
+                videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
+                videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
+                videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
+                videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
             };
         }
         return alerts;
@@ -320,7 +335,10 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 alerts[event] = {
                     audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
                     videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
-                    videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1
+                    videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
+                    videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
+                    videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
+                    videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
                 };
             }
             send(res, 200, { alerts });
