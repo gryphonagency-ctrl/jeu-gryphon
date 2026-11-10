@@ -253,13 +253,37 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 typeof value === 'number' && Number.isFinite(value) && value >= 25 && value <= 150)) {
                 throw fail('La taille de la vidéo doit être comprise entre 25 et 150 %.');
             }
+            const giftEventId = /^gift_id_(\d+)$/.exec(event);
+            let giftMetadata = {};
+            if (giftEventId) {
+                const giftId = body.giftId ?? previousAlert.giftId;
+                const giftName = String(body.giftName ?? previousAlert.giftName ?? '').trim();
+                const actionText = String(body.actionText ?? previousAlert.actionText ?? '').trim();
+                const giftImageUrl = body.giftImageUrl ?? previousAlert.giftImageUrl ?? '';
+                if (!Number.isSafeInteger(giftId) || giftId < 1 || String(giftId) !== giftEventId[1] ||
+                    !giftName || giftName.length > 100 || actionText.length > 80) {
+                    throw fail('Les informations du cadeau TikTok sont invalides.');
+                }
+                if (typeof giftImageUrl !== 'string' || giftImageUrl.length > 2048) {
+                    throw fail('L’image du cadeau TikTok est invalide.');
+                }
+                if (giftImageUrl) {
+                    let imageUrl;
+                    try { imageUrl = new URL(giftImageUrl); } catch { throw fail('L’image du cadeau TikTok est invalide.'); }
+                    if (imageUrl.protocol !== 'https:' || imageUrl.username || imageUrl.password) {
+                        throw fail('L’image du cadeau TikTok doit utiliser HTTPS.');
+                    }
+                }
+                giftMetadata = { giftId, giftName, actionText, giftImageUrl };
+            }
             index.alerts[event] = {
                 audio: pick(body.audio, 'audio'),
                 video: pick(body.video, 'video'),
                 videoVolume,
                 videoFit,
                 videoWidth,
-                videoHeight
+                videoHeight,
+                ...giftMetadata
             };
             writeIndex(owner, index);
             return { success: true };
@@ -282,7 +306,16 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
                 videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
                 videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
-                videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
+                videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100,
+                ...(Number.isSafeInteger(alert.giftId) && alert.giftId > 0 ? {
+                    giftId: alert.giftId,
+                    giftName: String(alert.giftName || '').slice(0, 100),
+                    actionText: String(alert.actionText || '').slice(0, 80),
+                    giftImageUrl: typeof alert.giftImageUrl === 'string' &&
+                        alert.giftImageUrl.length <= 2048 && /^https:\/\//i.test(alert.giftImageUrl)
+                        ? alert.giftImageUrl
+                        : ''
+                } : {})
             };
         }
         return alerts;

@@ -365,6 +365,31 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 });
                 console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
                 send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
+                connection.fetchAvailableGifts().then(availableGifts => {
+                    if (!active) return;
+                    const gifts = Array.isArray(availableGifts)
+                        ? availableGifts.slice(0, 2000).flatMap(gift => {
+                            const id = Number(gift?.id);
+                            const name = String(gift?.name || '').trim().slice(0, 100);
+                            if (!Number.isSafeInteger(id) || id < 1 || !name) return [];
+                            const coinValue = Number(gift?.diamond_count ?? gift?.diamondCount);
+                            return [{
+                                id,
+                                name,
+                                coinValue: Number.isSafeInteger(coinValue) && coinValue >= 0 ? coinValue : null,
+                                imageUrl: getTikTokGiftImageUrl(gift)
+                            }];
+                        })
+                        : [];
+                    send({ type: 'AVAILABLE_GIFTS', gifts });
+                }).catch(error => {
+                    if (!active) return;
+                    console.warn(`Impossible de charger les cadeaux TikTok pour @${username} :`, error.message);
+                    send({
+                        type: 'AVAILABLE_GIFTS_ERROR',
+                        message: 'Catalogue indisponible. Vérifie que le direct TikTok est en cours, puis réessaie.'
+                    });
+                });
             })
             .catch(error => {
                 if (!active) return;

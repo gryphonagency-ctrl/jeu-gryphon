@@ -1103,7 +1103,9 @@ async function saveAdminGame(body) {
 }
 
 function canManageMedia(req) {
-    return access.canAccessGames(req);
+    if (!access.isAuthenticated(req)) return false;
+    const username = access.usernameForRequest(req);
+    return Boolean(username) && access.canUseCreatorService(username, 'tts');
 }
 
 function validPushEndpoint(value) {
@@ -1220,7 +1222,7 @@ const handleMedia = createMediaAdmin({
     persistent: mediaStoragePersistent,
     getUser: req => access.usernameForRequest(req),
     canManage: canManageMedia,
-    canManageUser: username => access.canUseCreatorService(username, 'games'),
+    canManageUser: username => canUseCreatorTts(username),
     readJsonBody: (...args) => readJsonBody(...args)
 });
 
@@ -3813,6 +3815,7 @@ function startTikTokSession(session) {
 
 function deliverTikTokMessage(session, messageData) {
     if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
+    if (messageData.type === 'AVAILABLE_GIFTS') session.availableGifts = messageData.gifts;
     if (messageData.type === 'LIVE_END') {
         session.lastEndedRoomId = session.roomId || session.lastEndedRoomId || '';
         session.isLive = false;
@@ -4096,6 +4099,12 @@ wss.on('connection', (socket, req) => {
                 message: currentSession.statusMessage ||
                     `Connexion TikTok en cours · @${currentSession.username}`
             }));
+            if (currentSession.availableGifts) {
+                socket.send(JSON.stringify({
+                    type: 'AVAILABLE_GIFTS',
+                    gifts: currentSession.availableGifts
+                }));
+            }
             sendTreasureLiveState(currentSession, socket);
             return;
         }
@@ -4125,7 +4134,8 @@ wss.on('connection', (socket, req) => {
                 statusMessage: '',
                 roomId: null,
                 lastEndedRoomId: '',
-                isLive: false
+                isLive: false,
+                availableGifts: null
             };
             sessions.set(sessionKey, session);
             startTikTokSession(session);
