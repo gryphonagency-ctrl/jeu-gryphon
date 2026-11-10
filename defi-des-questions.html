@@ -740,7 +740,9 @@ function startQuiz(i,questions){
   sess=shuffle(questions).slice(0,SESSION);idx=0;score=0;streak=0;playerErrors=0;
   $('menu').style.display='none';syncThemeBanner();$('topic-menu').style.display='none';$('start').style.display='none';$('stage').style.display='flex';
   $('end').style.display='none';$('q').style.display='flex';$('opts').style.display='grid';
-  setChatGuide(`<strong>${activePlayer?`${escapeHtml(activePlayer.username)} · `:''}${selectedTopic||THEMES[i][0]} sélectionné.</strong> Répondez uniquement A, B, C ou D. Une erreur est permise; la deuxième élimine.`);
+  setChatGuide(activePlayer
+    ?`<strong>${escapeHtml(activePlayer.username)} · ${selectedTopic||THEMES[i][0]} sélectionné.</strong> Répondez uniquement A, B, C ou D. Une erreur est permise; la deuxième élimine.`
+    :`<strong>${selectedTopic||THEMES[i][0]} sélectionné.</strong> Votez A, B, C ou D dans le chat. La réponse majoritaire sera validée à la fin du compte à rebours.`);
   say('Thème : '+THEMES[i][0]+(selectedTopic?' — '+selectedTopic:'')+'. C\'est parti !');
   setTimeout(next,1800);
 }
@@ -910,6 +912,14 @@ function finishThemeVote(){
 }
 function answerFromChat(){
   if(locked)return;
+  if(!activePlayer&&votes.size){
+    const counts=[0,0,0,0];
+    votes.forEach(choice=>{if(choice>=0&&choice<4)counts[choice]++});
+    const highest=Math.max(...counts);
+    const leaders=counts.map((count,index)=>count===highest?index:-1).filter(index=>index>=0);
+    answer(leaders.length===1?leaders[0]:-1);
+    return;
+  }
   answer(-1);
 }
 function setLiveStatus(message,state=''){
@@ -963,9 +973,13 @@ function handleLiveMessage(message){
     }
     return;
   }
-  if(gamePhase!=='quiz'||activePlayer?.key!==key)return;
+  if(gamePhase!=='quiz'||(activePlayer&&activePlayer.key!==key))return;
   const match=/^([a-d])$/i.exec(text);
-  if(match)answer('abcd'.indexOf(match[1].toLowerCase()));
+  if(match){
+    const letter=match[1].toLowerCase();
+    if(activePlayer)answer('abcd'.indexOf(letter));
+    else castChatVote(username,letter);
+  }
 }
 function connectLiveChat(){
   if(liveSocket&&liveSocket.readyState<2){liveSocket.close();return}
