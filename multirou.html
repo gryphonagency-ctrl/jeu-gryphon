@@ -322,7 +322,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
     <h3>Partie · Symboles disponibles</h3>
     <div class="gift-list" id="giftList"></div>
     <div data-save-key="roues-des-cadeaux-save"></div>
-    <p class="hint">Les cadeaux de moins de 500 pièces lancent la roue A (1 tour par pièce). À partir de 500 pièces, chaque cadeau lance la roue B une fois. À partir de 2 000 pièces, la roue B attribue une récompense de 1 000 étoiles. Les réglages sont sauvegardés automatiquement sur cet appareil.</p>
+    <p class="hint">Les cadeaux de moins de 500 pièces lancent la roue A (1 tour par pièce). Les RUN de la roue A passent par tranches de 50 tours pour laisser jouer les autres, puis reprennent avec les tours restants. À partir de 500 pièces, chaque cadeau lance la roue B une fois. À partir de 2 000 pièces, la roue B attribue une récompense de 1 000 étoiles. Les réglages sont sauvegardés automatiquement sur cet appareil.</p>
   </section>
   <section>
     <h3>Affichage</h3>
@@ -548,6 +548,7 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   const angles = [0,0];
   const leaderboard = new Map();
   const wheelQueues = [[],[]];
+  const MAX_RUN_TURNS_PER_BATCH = 50;
   const recentParticipants = new Map();
   const vipBannerTimers=[0,0];
   let jackpotCelebrationTimer=0;
@@ -1077,13 +1078,21 @@ body[data-position-target="wheelB"] .wheel-card[data-wheel="1"]::after{content:"
   function processQueuedSpins() {
     wheelQueues.forEach((queue,index)=>{
       if(spins[index]||!queue.length)return;
-      const next=queue[0];
+      const next=queue.shift();
       if(next.run){
         next.remaining--;
-        if(next.remaining===0)queue.shift();
+        if(next.remaining>0){
+          const batchTurns=(next.batchTurns||0)+1;
+          if(batchTurns>=MAX_RUN_TURNS_PER_BATCH){
+            next.batchTurns=0;
+            queue.push(next);
+          }else{
+            next.batchTurns=batchTurns;
+            queue.unshift(next);
+          }
+        }
         startSpin(index,{...next,turns:1});
       }else{
-        queue.shift();
         startSpin(index,next);
       }
     });
