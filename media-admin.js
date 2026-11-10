@@ -225,24 +225,35 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 const giftId = gift?.id;
                 const giftName = typeof gift?.name === 'string' ? gift.name.trim() : '';
                 const giftImageUrl = typeof gift?.imageUrl === 'string' ? gift.imageUrl : '';
-                if (!Number.isSafeInteger(giftId) || giftId < 1 ||
+                const hasGiftId = Number.isSafeInteger(giftId) && giftId > 0;
+                const giftSlug = giftName.toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53);
+                if ((!hasGiftId && giftId !== null) ||
                     !giftName || giftName.length > 100 || giftImageUrl.length > 2048) {
                     throw fail('Les informations d’un cadeau TikTok sont invalides.');
                 }
                 if (giftImageUrl) {
-                    let imageUrl;
-                    try { imageUrl = new URL(giftImageUrl); } catch { throw fail('L’image d’un cadeau TikTok est invalide.'); }
-                    if (imageUrl.protocol !== 'https:' || imageUrl.username || imageUrl.password) {
+                    let validImage = /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(giftImageUrl);
+                    try {
+                        const imageUrl = new URL(giftImageUrl);
+                        validImage ||= imageUrl.protocol === 'https:' && !imageUrl.username && !imageUrl.password;
+                    } catch {}
+                    if (!validImage) {
                         throw fail('L’image d’un cadeau TikTok doit utiliser HTTPS.');
                     }
                 }
-                gifts.set(giftId, { giftId, giftName, giftImageUrl });
+                if (!hasGiftId && !giftSlug) throw fail('Le nom d’un cadeau TikTok est invalide.');
+                const key = hasGiftId ? `gift_id_${giftId}` : `gift_${giftSlug}`;
+                gifts.set(key, {
+                    ...(hasGiftId ? { giftId } : {}),
+                    giftName,
+                    giftImageUrl
+                });
             }
             let added = 0;
             for (const gift of gifts.values()) {
-                const key = `gift_id_${gift.giftId}`;
+                const key = gift.giftId ? `gift_id_${gift.giftId}` : `gift_${gift.giftName.toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53)}`;
                 const previousAlert = index.alerts[key] || {};
-                if (!previousAlert.giftId) added++;
+                if (!previousAlert.giftName) added++;
                 index.alerts[key] = {
                     ...previousAlert,
                     ...gift,
@@ -292,12 +303,16 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             }
             const giftEventId = /^gift_id_(\d+)$/.exec(event);
             let giftMetadata = {};
-            if (giftEventId) {
+            const isKnownGift = !giftEventId && event.startsWith('gift_') &&
+                (typeof body.giftName === 'string' || typeof previousAlert.giftName === 'string');
+            if (giftEventId || isKnownGift) {
                 const giftId = body.giftId ?? previousAlert.giftId;
                 const giftName = String(body.giftName ?? previousAlert.giftName ?? '').trim();
                 const actionText = String(body.actionText ?? previousAlert.actionText ?? '').trim();
                 const giftImageUrl = body.giftImageUrl ?? previousAlert.giftImageUrl ?? '';
-                if (!Number.isSafeInteger(giftId) || giftId < 1 || String(giftId) !== giftEventId[1] ||
+                const giftSlug = giftName.toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53);
+                if ((giftEventId && (!Number.isSafeInteger(giftId) || giftId < 1 || String(giftId) !== giftEventId[1])) ||
+                    (!giftEventId && (!giftSlug || event !== `gift_${giftSlug}`)) ||
                     !giftName || giftName.length > 100 || actionText.length > 80) {
                     throw fail('Les informations du cadeau TikTok sont invalides.');
                 }
@@ -305,13 +320,21 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                     throw fail('L’image du cadeau TikTok est invalide.');
                 }
                 if (giftImageUrl) {
-                    let imageUrl;
-                    try { imageUrl = new URL(giftImageUrl); } catch { throw fail('L’image du cadeau TikTok est invalide.'); }
-                    if (imageUrl.protocol !== 'https:' || imageUrl.username || imageUrl.password) {
+                    let validImage = /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(giftImageUrl);
+                    try {
+                        const imageUrl = new URL(giftImageUrl);
+                        validImage ||= imageUrl.protocol === 'https:' && !imageUrl.username && !imageUrl.password;
+                    } catch {}
+                    if (!validImage) {
                         throw fail('L’image du cadeau TikTok doit utiliser HTTPS.');
                     }
                 }
-                giftMetadata = { giftId, giftName, actionText, giftImageUrl };
+                giftMetadata = {
+                    ...(giftEventId ? { giftId } : {}),
+                    giftName,
+                    actionText,
+                    giftImageUrl
+                };
             }
             index.alerts[event] = {
                 audio: pick(body.audio, 'audio'),
@@ -344,14 +367,14 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
                 videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
                 videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100,
-                ...(Number.isSafeInteger(alert.giftId) && alert.giftId > 0 ? {
-                    giftId: alert.giftId,
+                ...(typeof alert.giftName === 'string' && alert.giftName.length <= 100 ? {
+                    ...(Number.isSafeInteger(alert.giftId) && alert.giftId > 0 ? { giftId: alert.giftId } : {}),
                     giftName: String(alert.giftName || '').slice(0, 100),
                     actionText: String(alert.actionText || '').slice(0, 80),
-                    giftImageUrl: typeof alert.giftImageUrl === 'string' &&
-                        alert.giftImageUrl.length <= 2048 && /^https:\/\//i.test(alert.giftImageUrl)
-                        ? alert.giftImageUrl
-                        : ''
+                    giftImageUrl: typeof alert.giftImageUrl === 'string' && alert.giftImageUrl.length <= 2048 &&
+                        (/^https:\/\//i.test(alert.giftImageUrl) ||
+                            /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(alert.giftImageUrl))
+                        ? alert.giftImageUrl : ''
                 } : {})
             };
         }

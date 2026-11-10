@@ -46,6 +46,9 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
 .gift-carousel-empty { padding: 16px; border-radius: 12px; background: rgba(8,12,24,.82); color: #fff; font: 700 18px Arial,sans-serif; }
 #gift-carousel-title { position: absolute; z-index: 1; top: 16px; left: 50%; max-width: calc(100vw - 72px); margin: 0; padding: 8px 18px; border-radius: 12px; background: var(--carousel-panel-color, rgba(8,12,24,.82)); color: var(--carousel-text-color, #fff); font: 900 clamp(20px, 4vw, 36px)/1.1 Arial,sans-serif; text-align: center; text-shadow: 0 2px 6px #000; transform: translateX(-50%); }
 #gift-carousel-arrow { position: absolute; z-index: 1; top: 50%; right: 18px; color: var(--carousel-arrow-color, #ffd45a); font: 900 clamp(32px, 6vw, 64px)/1 Arial,sans-serif; text-shadow: 0 2px 8px #000; transform: translateY(-50%); pointer-events: none; }
+#gift-carousel-audio-unlock { position: absolute; z-index: 2; top: 16px; left: 16px; max-width: calc(50vw - 24px); padding: 9px 13px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(8,12,24,.88); color: #fff; font: 700 14px Arial,sans-serif; cursor: pointer; }
+#gift-carousel-audio-unlock[hidden] { display: none; }
+#gift-carousel-audio-unlock:disabled { opacity: .8; }
 @keyframes gift-carousel-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .live-stat { display: flex; align-items: center; gap: 5px; }
 .live-stat strong { color: #ffd45a; font-variant-numeric: tabular-nums; }
@@ -108,6 +111,7 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
   </div>
 </section>
 <section id="gift-carousel" aria-label="Carrousel de cadeaux TikTok" hidden>
+  <button id="gift-carousel-audio-unlock" type="button">🔊 Activer et tester les sons</button>
   <h1 id="gift-carousel-title"></h1>
   <div id="gift-carousel-track" class="gift-carousel-track"></div>
   <span id="gift-carousel-arrow" aria-hidden="true">→</span>
@@ -153,9 +157,11 @@ const giftCarouselEl = document.getElementById('gift-carousel');
 const giftCarouselTrackEl = document.getElementById('gift-carousel-track');
 const giftCarouselTitleEl = document.getElementById('gift-carousel-title');
 const giftCarouselArrowEl = document.getElementById('gift-carousel-arrow');
+const giftCarouselAudioUnlockEl = document.getElementById('gift-carousel-audio-unlock');
 timerOverlayEl.hidden = !showTimerOverlay;
 wheelOverlayEl.hidden = !showWheelOverlay;
 giftCarouselEl.hidden = !showGiftCarousel;
+giftCarouselAudioUnlockEl.hidden = !showGiftCarousel;
 // Feu d'artifice : tous les cadeaux par défaut. ?seuil=50 pour changer, ?feu=0 pour désactiver, ?test=1 pour un aperçu.
 const fireworkEnabled = params.get('feu') !== '0';
 const fireworkThreshold = Math.max(1, Number(params.get('seuil')) || 1);
@@ -201,13 +207,27 @@ function renderGiftCarousel() {
   document.documentElement.style.setProperty('--carousel-text-color', colorParam('textColor', '#ffffff'));
   document.documentElement.style.setProperty('--carousel-panel-color', `${colorParam('panelColor', '#080c18')}d9`);
   document.documentElement.style.setProperty('--carousel-arrow-color', colorParam('arrowColor', '#ffd45a'));
-  const configuredGifts = Object.entries(alerts)
-    .filter(([key, alert]) => /^gift_id_\d+$/.test(key) && Number.isSafeInteger(alert?.giftId))
-    .map(([, alert]) => ({
-      name: String(alert.giftName || 'Cadeau TikTok').slice(0, 100),
-      action: String(alert.actionText || alert.giftName || 'Cadeau TikTok').slice(0, 80),
+  const configuredByName = new Map();
+  for (const [key, alert] of Object.entries(alerts)) {
+    if (!key.startsWith('gift_') || typeof alert?.giftName !== 'string') continue;
+    const name = alert.giftName.trim().slice(0, 100);
+    if (!name) continue;
+    const nameKey = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr-FR');
+    const existing = configuredByName.get(nameKey);
+    const gift = {
+      giftId: Number.isSafeInteger(alert.giftId) ? alert.giftId : null,
+      name,
+      action: String(alert.actionText || name).slice(0, 80),
       imageUrl: validImageUrl(alert.giftImageUrl)
-    }));
+    };
+    if (!existing) configuredByName.set(nameKey, gift);
+    else configuredByName.set(nameKey, {
+      ...existing,
+      giftId: existing.giftId || gift.giftId,
+      imageUrl: existing.imageUrl || gift.imageUrl
+    });
+  }
+  const configuredGifts = [...configuredByName.values()];
   const gifts = params.get('test') === '1' && configuredGifts.length === 0
     ? [
         { name: 'Rose', action: 'Vine Boom Sound', imageUrl: '' },
@@ -354,6 +374,27 @@ function resetTimer() {
 document.getElementById('timer-start').addEventListener('click', startTimer);
 document.getElementById('timer-pause').addEventListener('click', pauseTimer);
 document.getElementById('timer-reset').addEventListener('click', resetTimer);
+
+giftCarouselAudioUnlockEl.addEventListener('click', async () => {
+  await loadAlerts();
+  const sample = Object.values(alerts).find(alert => alert.audioUrl);
+  if (!sample) {
+    giftCarouselAudioUnlockEl.textContent = '🔇 Aucun son configuré';
+    setStatus('Aucun son configuré. Ajoute un fichier audio à un cadeau dans Mes médias.');
+    return;
+  }
+  const audio = new Audio(sample.audioUrl);
+  try {
+    await audio.play();
+    giftCarouselAudioUnlockEl.textContent = '✓ Sons activés';
+    giftCarouselAudioUnlockEl.disabled = true;
+    setStatus('Sons activés et testés. Les effets se joueront à chaque cadeau reçu.');
+  } catch (error) {
+    console.warn('Impossible de tester le son du carrousel.', error);
+    giftCarouselAudioUnlockEl.textContent = '🔇 Échec · vérifier le son';
+    setStatus('Le son n’a pas pu démarrer. Vérifie le fichier audio et autorise le son dans la source navigateur.');
+  }
+});
 
 const defaultWheelItems = [
   { label: 'Lot 1', color: '#ff6b7a' },
@@ -664,7 +705,12 @@ function playAlert(alert) {
       pending++;
       const audio = new Audio(alert.audioUrl);
       audio.onended = audio.onerror = end;
-      audio.play().catch(end);
+      audio.play().catch(error => {
+        console.warn('Lecture de l’effet sonore refusée par le navigateur.', error);
+        if (showGiftCarousel) giftCarouselAudioUnlockEl.textContent = '🔇 Son bloqué · cliquer ici';
+        else setStatus('Son bloqué par le navigateur. Autorise le son dans la source navigateur.');
+        end();
+      });
     }
     if (alert.videoUrl) {
       pending++;
@@ -751,9 +797,10 @@ function connect() {
           showLikeBubble(like);
         }
       }
-      if (showAlertOverlay &&
+      if ((showAlertOverlay || (showGiftCarousel && data.type === 'gift')) &&
           (data.type === 'follow' || data.type === 'subscribe' || data.type === 'share' || data.type === 'gift')) {
-        if (data.type === 'gift' && fireworkEnabled && Number(data.gift?.coinCount) >= fireworkThreshold) {
+        if (showAlertOverlay && data.type === 'gift' && fireworkEnabled &&
+            Number(data.gift?.coinCount) >= fireworkThreshold) {
           const gift = data.gift;
           const giftKey = viewerKey(gift);
           window.OverlayFirework.launch({

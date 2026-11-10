@@ -80,7 +80,7 @@ html[data-embedded="true"] main{max-width:none}
 <nav id="tabs" class="tabs" aria-label="Types d’alertes"></nav>
 <section class="card" id="gift-catalog-card">
 <h2>Catalogue des cadeaux TikTok</h2>
-<p class="hint">Pour remplir le carrousel en une fois : démarre ton direct TikTok, attends le chargement du catalogue, puis clique sur « Ajouter tous les cadeaux et leurs photos au carrousel ». Ils sont enregistrés directement, sans devoir les ajouter un par un.</p>
+<p class="hint">36 cadeaux avec photos sont déjà disponibles. Clique sur « Ajouter tous les cadeaux » pour les charger tout de suite; les cadeaux supplémentaires de ton direct s’ajouteront quand le catalogue TikTok sera connecté. Les sons choisis ici se déclencheront sur le carrousel.</p>
 <div class="row">
 <label for="gift-catalog-search">Rechercher un cadeau
 <input id="gift-catalog-search" type="search" maxlength="100" placeholder="Ex. rose, cœur, lion"></label>
@@ -90,9 +90,9 @@ html[data-embedded="true"] main{max-width:none}
 <button id="gift-catalog-refresh" type="button">Actualiser le catalogue</button>
 </div>
 <div class="row">
-<button id="gift-catalog-add-all" type="button" disabled>Ajouter tous les cadeaux et leurs photos au carrousel</button>
+<button id="gift-catalog-add-all" type="button" disabled>Ajouter tous les cadeaux</button>
 </div>
-<p id="gift-catalog-status" class="hint" role="status">Le catalogue sera chargé après la connexion au direct TikTok.</p>
+<p id="gift-catalog-status" class="hint" role="status">Cadeaux Griffon connus disponibles tout de suite. Le catalogue complet de ton direct s’ajoutera automatiquement quand TikTok sera connecté.</p>
 </section>
 <div id="alert-sections"></div>
 <section class="card" id="overlay-card">
@@ -245,7 +245,26 @@ const $ = id => document.getElementById(id);
 const embedded = new URLSearchParams(location.search).get('embedded') === '1';
 if (embedded) document.documentElement.dataset.embedded = 'true';
 let state = { files: [], alerts: {} };
-let giftCatalog = [];
+const KNOWN_GIFTS = [
+  ['TikTok', 'tiktok.png'], ['Piment', 'piment.png'], ['Cornet de crème glacée', 'cornet-creme-glacee.png'],
+  ['Cœur nuage', 'coeur-nuage.png'], ["Je t'adore", 'je-tadore.png'], ['Le bisou', 'le-bisou.png'],
+  ['White Dove', 'white-dove.png'], ['GG', 'gg.png'], ['Café', 'cafe.png'], ['Étoile de mer', 'etoile-de-mer.png'],
+  ["Jus d'orange", 'jus-orange.png'], ['Cœur de flamme', 'coeur-flamme.png'], ['Mamma Mia', 'gift-1-1.png'],
+  ['Rose blanche', 'gift-1-2.png'], ['Arc-en-ciel', 'gift-1-3.png'], ['Génial', 'gift-1-4.png'],
+  ['Slay', 'gift-1-5.png'], ['Steven Wingman', 'gift-1-6.png'], ["Clin d'œil", 'gift-1-7.png'],
+  ['Tranche de gâteau', 'gift-1-8.png'], ['Ailes de fée', 'gift-1-9.png'], ['Fleur du matin', 'gift-1-10.png'],
+  ["Ailes d'ange", 'gift-1-11.png'], ['Tom la tomate', 'gift-1-12.png'], ['Bâton lumineux', 'gift-2-1.png'],
+  ['Cool', 'gift-2-2.png'], ['Dolce Vita', 'gift-2-3.png'], ['Éclair', 'gift-2-4.png'], ['Pop', 'gift-2-5.png'],
+  ['À fond', 'gift-2-6.png'], ['Vas-y !', 'gift-2-7.png'], ['Basketball', 'gift-2-8.png'],
+  ['Pass été S', 'gift-2-9.png'], ['Classiques', 'gift-2-10.png'], ['Freestyle', 'gift-2-11.png'],
+  ['Pouce vers le haut', 'gift-2-12.png']
+].map(([name, file]) => ({
+  id: null,
+  name,
+  coinValue: null,
+  imageUrl: `/images-vitrine/petit-trot-cadeaux/${file}`
+}));
+let giftCatalog = [...KNOWN_GIFTS];
 let giftCatalogSocket = null;
 let giftCatalogReconnectTimer = null;
 const DEFAULT_WHEEL_ITEMS = [
@@ -408,6 +427,7 @@ function select(kind, value) {
 function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
   const giftIdMatch = /^gift_id_(\d+)$/.exec(key);
+  const hasGiftMetadata = Boolean(giftIdMatch || alert.giftName);
   const audio = select('audio', alert.audio);
   const video = select('video', alert.video);
   const videoFit = el('select', {},
@@ -450,7 +470,7 @@ function slot(key, label, removable) {
   video.addEventListener('change', updatePreview);
   volume.addEventListener('input', updatePreview);
   updatePreview();
-  const actionText = giftIdMatch
+  const actionText = hasGiftMetadata
     ? el('input', { maxlength: 80, value: alert.actionText || '', placeholder: 'Ex. Buzzer, Bruh, GG !' })
     : null;
   const actionTextLabel = actionText
@@ -470,8 +490,8 @@ function slot(key, label, removable) {
     onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value,
       videoVolume: Number(volume.value) / 100, videoFit: videoFit.value,
       videoWidth: Number(videoWidth.value), videoHeight: Number(videoHeight.value),
-      ...(giftIdMatch ? {
-        giftId: Number(giftIdMatch[1]),
+      ...(hasGiftMetadata ? {
+        ...(giftIdMatch ? { giftId: Number(giftIdMatch[1]) } : {}),
         giftName: alert.giftName,
         giftImageUrl: alert.giftImageUrl || '',
         actionText: actionText.value
@@ -493,7 +513,7 @@ function slot(key, label, removable) {
     el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
     el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight),
     videoVolume, actions,
-    el('span', { className: `state${active ? '' : ' off'}`, textContent: giftIdMatch
+    el('span', { className: `state${active ? '' : ' off'}`, textContent: hasGiftMetadata
       ? '● Cadeau disponible dans le carrousel'
       : active ? '● Active' : '○ Non configurée' }));
 }
@@ -508,8 +528,8 @@ function renderSections() {
       const catalogGift = savedGift?.giftId
         ? giftCatalog.find(gift => gift.id === savedGift.giftId)
         : null;
-      const label = savedGift?.giftId
-        ? `${catalogGift?.name || savedGift.giftName} · ${catalogGift?.coinValue ?? '—'} pièces`
+      const label = savedGift?.giftName
+        ? `${savedGift.giftName}${savedGift.giftId ? ` · ${catalogGift?.coinValue ?? '—'} pièces` : ''}`
         : section.prefix ? key.slice(section.prefix.length) : key;
       card.append(slot(key, label, true));
     }
@@ -555,6 +575,18 @@ function renderGiftCatalogOptions() {
   $('gift-catalog-add-all').disabled = giftCatalog.length === 0;
 }
 
+function normalizeGiftName(name) {
+  const value = String(name || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr-FR');
+  const aliases = {
+    'enfin vendredi': 'dolce vita',
+    'finally friday': 'dolce vita',
+    excellent: 'genial',
+    super: 'genial',
+    awesome: 'genial'
+  };
+  return aliases[value] || value;
+}
+
 function connectGiftCatalog(path = state.overlayPath) {
   clearTimeout(giftCatalogReconnectTimer);
   if (giftCatalogSocket) {
@@ -577,14 +609,25 @@ function connectGiftCatalog(path = state.overlayPath) {
     if (data.type === 'TTS_CONFIG') {
       socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: data.username }));
     } else if (data.type === 'AVAILABLE_GIFTS' && Array.isArray(data.gifts)) {
-      giftCatalog = data.gifts.filter(gift =>
+      const liveGifts = data.gifts.filter(gift =>
         Number.isSafeInteger(gift?.id) && gift.id > 0 &&
         typeof gift.name === 'string' && gift.name.trim()
       );
+      const mergedGifts = new Map(KNOWN_GIFTS.map(gift => [normalizeGiftName(gift.name), gift]));
+      for (const gift of liveGifts) {
+        const key = normalizeGiftName(gift.name);
+        const knownGift = mergedGifts.get(key);
+        mergedGifts.set(key, {
+          ...knownGift,
+          ...gift,
+          imageUrl: gift.imageUrl || knownGift?.imageUrl || ''
+        });
+      }
+      giftCatalog = [...mergedGifts.values()];
       renderGiftCatalogOptions();
       renderSections();
-      $('gift-catalog-status').textContent = giftCatalog.length
-        ? `${giftCatalog.length} cadeaux chargés depuis le catalogue de ton direct TikTok.`
+      $('gift-catalog-status').textContent = liveGifts.length
+        ? `${liveGifts.length} cadeaux du direct et ${KNOWN_GIFTS.length} photos Griffon sont prêts.`
         : 'TikTok n’a signalé aucun cadeau disponible pour ce direct.';
     } else if (data.type === 'AVAILABLE_GIFTS_ERROR') {
       $('gift-catalog-status').textContent = data.message || 'Impossible de charger le catalogue TikTok.';
@@ -634,7 +677,7 @@ async function addTikTokGifts(gifts) {
 
 function addAllTikTokGifts() {
   if (!giftCatalog.length) {
-    say('Actualise le catalogue pendant ton direct TikTok avant d’ajouter les cadeaux.', true);
+    say('Aucun cadeau chargé. Vérifie le direct TikTok ou recharge Mes médias.', true);
     return;
   }
   addTikTokGifts(giftCatalog);
