@@ -216,6 +216,43 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         if (body.action === 'overlay-create') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'create')) };
         if (body.action === 'overlay-regenerate') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'regenerate')) };
         if (body.action === 'overlay-revoke') { revokeOverlay(owner); return { success: true, overlayPath: null }; }
+        if (body.action === 'add-tiktok-gifts') {
+            if (!Array.isArray(body.gifts) || !body.gifts.length || body.gifts.length > 2000) {
+                throw fail('La liste des cadeaux TikTok est invalide.');
+            }
+            const gifts = new Map();
+            for (const gift of body.gifts) {
+                const giftId = gift?.id;
+                const giftName = typeof gift?.name === 'string' ? gift.name.trim() : '';
+                const giftImageUrl = typeof gift?.imageUrl === 'string' ? gift.imageUrl : '';
+                if (!Number.isSafeInteger(giftId) || giftId < 1 ||
+                    !giftName || giftName.length > 100 || giftImageUrl.length > 2048) {
+                    throw fail('Les informations d’un cadeau TikTok sont invalides.');
+                }
+                if (giftImageUrl) {
+                    let imageUrl;
+                    try { imageUrl = new URL(giftImageUrl); } catch { throw fail('L’image d’un cadeau TikTok est invalide.'); }
+                    if (imageUrl.protocol !== 'https:' || imageUrl.username || imageUrl.password) {
+                        throw fail('L’image d’un cadeau TikTok doit utiliser HTTPS.');
+                    }
+                }
+                gifts.set(giftId, { giftId, giftName, giftImageUrl });
+            }
+            let added = 0;
+            for (const gift of gifts.values()) {
+                const key = `gift_id_${gift.giftId}`;
+                const previousAlert = index.alerts[key] || {};
+                if (!previousAlert.giftId) added++;
+                index.alerts[key] = {
+                    ...previousAlert,
+                    ...gift,
+                    giftImageUrl: gift.giftImageUrl || previousAlert.giftImageUrl || '',
+                    actionText: previousAlert.actionText ?? gift.giftName
+                };
+            }
+            writeIndex(owner, index);
+            return { success: true, added, alreadyAdded: gifts.size - added };
+        }
         if (body.action === 'delete') {
             if (typeof body.id !== 'string' || !FILE_PATTERN.test(body.id)) throw fail('Fichier invalide.');
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
