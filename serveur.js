@@ -3055,6 +3055,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/puissance-4-apercu.svg', [path.join(__dirname, 'images-vitrine', 'puissance-4-apercu.svg'), 'image/svg+xml']],
         ['/images-vitrine/123-soleil-live.svg', [path.join(__dirname, 'images-vitrine', '123-soleil-live.svg'), 'image/svg+xml']],
         ['/images-vitrine/123-soleil-terre.svg', [path.join(__dirname, 'images-vitrine', '123-soleil-terre.svg'), 'image/svg+xml']],
+        ['/images-vitrine/coffres-live.svg', [path.join(__dirname, 'images-vitrine', 'coffres-live.svg'), 'image/svg+xml']],
+        ['/images-vitrine/six-boites-live.svg', [path.join(__dirname, 'images-vitrine', 'six-boites-live.svg'), 'image/svg+xml']],
         ['/images-vitrine/123-soleil-poupee-dos.png', [path.join(__dirname, 'images-vitrine', '123-soleil-poupee-dos.png'), 'image/png']],
         ['/images-vitrine/123-soleil-poupee-face.png', [path.join(__dirname, 'images-vitrine', '123-soleil-poupee-face.png'), 'image/png']],
         ['/embleme-ga.png', [path.join(__dirname, 'embleme-ga.png'), 'image/png']],
