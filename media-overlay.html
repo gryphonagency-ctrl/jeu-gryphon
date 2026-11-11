@@ -12,6 +12,8 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 #stage video { object-fit: contain; }
 #status { position: fixed; left: 8px; bottom: 8px; font: 12px sans-serif; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; }
 #status.hide { display: none; }
+#alert-audio-unlock { position: fixed; z-index: 31; top: max(10px, env(safe-area-inset-top)); right: 12px; padding: 9px 14px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(8,12,24,.9); color: #fff; font: 700 14px Arial,sans-serif; cursor: pointer; }
+#alert-audio-unlock[hidden] { display: none; }
 #alert-video-unlock { position: fixed; z-index: 30; top: max(10px, env(safe-area-inset-top)); left: 50%; padding: 9px 14px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(8,12,24,.9); color: #fff; font: 700 14px Arial,sans-serif; cursor: pointer; transform: translateX(-50%); }
 #alert-video-unlock[hidden] { display: none; }
 #live-effects { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
@@ -127,14 +129,17 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
   <span id="gift-carousel-arrow" aria-hidden="true">→</span>
 </section>
 <div id="status">Connexion…</div>
+<button id="alert-audio-unlock" type="button" hidden>🔊 Activer le son des alertes</button>
 <button id="alert-video-unlock" type="button" hidden>🔊 Activer le son de la vidéo</button>
 <script src="/overlay-firework.js"></script>
 <script>
 const token = location.pathname.split('/').pop();
 const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
+const alertAudioUnlockEl = document.getElementById('alert-audio-unlock');
 const alertVideoUnlockEl = document.getElementById('alert-video-unlock');
 let alertVideoForUnlock = null;
+const blockedAlertAudio = new Map();
 const params = new URLSearchParams(location.search);
 const showStatus = params.get('statut') !== '0';
 const requestedMode = params.get('mode');
@@ -786,6 +791,39 @@ alertVideoUnlockEl.addEventListener('click', async () => {
   }
 });
 
+alertAudioUnlockEl.addEventListener('click', () => {
+  for (const retry of blockedAlertAudio.values()) retry();
+});
+
+function playAlertAudio(audio, onEnd) {
+  let finished = false;
+  const finishAudio = () => {
+    if (finished) return;
+    finished = true;
+    blockedAlertAudio.delete(audio);
+    alertAudioUnlockEl.hidden = blockedAlertAudio.size === 0;
+    onEnd();
+  };
+  audio.onended = audio.onerror = finishAudio;
+  const retry = () => {
+    audio.play().then(() => {
+      blockedAlertAudio.delete(audio);
+      alertAudioUnlockEl.hidden = blockedAlertAudio.size === 0;
+      if (alertAudioUnlockEl.hidden) setStatus('Son de l’alerte activé.');
+    }, error => {
+      if (error.name === 'NotAllowedError') {
+        blockedAlertAudio.set(audio, retry);
+        alertAudioUnlockEl.hidden = false;
+        setStatus('Son de l’alerte bloqué par le navigateur. Clique sur « Activer le son des alertes ».');
+        return;
+      }
+      console.warn('Impossible de lire l’effet sonore de l’alerte.', error);
+      finishAudio();
+    });
+  };
+  retry();
+}
+
 function playAlert(alert) {
   return new Promise(resolve => {
     let pending = 0;
@@ -803,13 +841,7 @@ function playAlert(alert) {
     if (alert.audioUrl) {
       pending++;
       const audio = new Audio(alert.audioUrl);
-      audio.onended = audio.onerror = end;
-      audio.play().catch(error => {
-        console.warn('Lecture de l’effet sonore refusée par le navigateur.', error);
-        if (showGiftCarousel) giftCarouselAudioUnlockEl.textContent = '🔇 Son bloqué · cliquer ici';
-        else setStatus('Son bloqué par le navigateur. Autorise le son dans la source navigateur.');
-        end();
-      });
+      playAlertAudio(audio, end);
     }
     if (alert.videoUrl) {
       pending++;
