@@ -3484,6 +3484,7 @@ const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsSockets = new Set();
 const overlaySockets = new Map();
+const mediaAlertOverlaySockets = new WeakSet();
 const treasureOverlaySocketOwners = new Map();
 const treasureOverlaySocketTikTokUsernames = new Map();
 const authenticatedClientUsernames = new Map();
@@ -3548,6 +3549,7 @@ server.on('upgrade', (req, socket, head) => {
     const overlayOwner = requestUrl.pathname === '/media-overlay-relay'
         ? handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'))
         : null;
+    const isMediaAlertOverlay = requestUrl.searchParams.get('mode') === 'alerts';
     const overlayUsername = overlayOwner ? getOverlayTiktokUsername(overlayOwner) : '';
     const authenticated = access.isAuthenticated(req);
     const accountUsername = authenticated ? access.usernameForRequest(req) : '';
@@ -3569,6 +3571,7 @@ server.on('upgrade', (req, socket, head) => {
             liveTtsSockets.add(webSocket);
         } else if (overlayOwner) {
             overlaySockets.set(webSocket, overlayOwner);
+            if (isMediaAlertOverlay) mediaAlertOverlaySockets.add(webSocket);
             if (overlayUsername) {
                 liveTtsClientUsernames.set(webSocket, overlayUsername);
                 liveTtsSockets.add(webSocket);
@@ -3883,6 +3886,12 @@ function deliverTikTokMessage(session, messageData) {
             matchLive: session.isLive && sourceMessage.gift?.liveMatchActive === true
         })
         : encoded;
+    const gameEncoded = ['comment', 'level-up'].includes(sourceMessage.type) &&
+        Array.from(session.clients).some(client =>
+            client.readyState === WebSocket.OPEN && mediaAlertOverlaySockets.has(client)
+        )
+        ? JSON.stringify({ ...sourceMessage, suppressInGameMediaAlert: true })
+        : encoded;
     for (const client of session.clients) {
         const treasureSource = treasureOverlaySocketTikTokUsernames.get(client);
         if (treasureSource && treasureSource !== session.username.toLocaleLowerCase()) continue;
@@ -3893,7 +3902,7 @@ function deliverTikTokMessage(session, messageData) {
         if (client.readyState === WebSocket.OPEN) {
             client.send(overlaySockets.has(client) || treasureOverlaySocketOwners.has(client)
                 ? overlayEncoded
-                : encoded);
+                : gameEncoded);
         }
     }
 }

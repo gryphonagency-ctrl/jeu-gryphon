@@ -1100,9 +1100,9 @@
         if (!data || typeof data !== 'object') return;
         if (data.type === 'LIVE_END' || data.type === 'LIVE_STATE') {
             handleTreasureLiveState(data);
-        } else if (data.type === 'level-up' && data.levelUp) {
+        } else if (data.type === 'level-up' && data.levelUp && !data.suppressInGameMediaAlert) {
             void showLevelUp(data);
-        } else if (data.type === 'comment' && data.commentData) {
+        } else if (data.type === 'comment' && data.commentData && !data.suppressInGameMediaAlert) {
             void showBoboComment(data);
         } else if (data.type === 'share') {
             const share = data.shareData || {};
