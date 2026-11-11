@@ -3871,6 +3871,7 @@ function deliverTikTokMessage(session, messageData) {
         }
     }
     const sourceMessage = messageData.type === 'gift' ||
+        messageData.type === 'comment' ||
         messageData.type === 'LIVE_END' ||
         messageData.type === 'LIVE_STATE'
         ? { ...messageData, sourceTikTokUsername: session.username }

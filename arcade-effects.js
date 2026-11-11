@@ -13,9 +13,9 @@
     const config = { bigGiftCoins: 100, sound: true, volume: 0.5 };
     const seen = new Set();
     const seenTreasureGifts = new Set();
-    const levelUpAlerts = new Map();
-    const levelUpAlertRequests = new Map();
-    const levelUpQueue = [];
+    const mediaAlerts = new Map();
+    const mediaAlertRequests = new Map();
+    const mediaAlertQueue = [];
     const avatars = new Map();
     const liveBubbles = new Map();
     let bigGiftOverlayEnabled = false;
@@ -32,9 +32,9 @@
     let treasureGiftItems = [];
     let treasureGiftResetAt = 0;
     let treasureGiftServerResetAt = 0;
-    let levelUpPlaying = false;
-    let levelUpVideo = null;
-    let levelUpAudio = null;
+    let mediaAlertPlaying = false;
+    let mediaAlertVideo = null;
+    let mediaAlertAudio = null;
     let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
@@ -962,12 +962,12 @@
         return true;
     }
 
-    async function getLevelUpAlert(owner) {
+    async function getMediaAlerts(owner) {
         const username = String(owner || '').trim().replace(/^@/, '').toLowerCase();
         if (!/^[a-z0-9._]{1,32}$/.test(username)) return null;
-        const cached = levelUpAlerts.get(username);
-        if (cached && cached.expiresAt > Date.now()) return cached.alert;
-        if (levelUpAlertRequests.has(username)) return levelUpAlertRequests.get(username);
+        const cached = mediaAlerts.get(username);
+        if (cached && cached.expiresAt > Date.now()) return cached.alerts;
+        if (mediaAlertRequests.has(username)) return mediaAlertRequests.get(username);
 
         const request = (async () => {
             try {
@@ -977,21 +977,26 @@
                 );
                 if (!response.ok) throw new Error(`Alertes média HTTP ${response.status}`);
                 const data = await response.json();
-                const alert = data.alerts?.level_up || null;
-                levelUpAlerts.set(username, { alert, expiresAt: Date.now() + 10000 });
-                return alert;
+                const alerts = data.alerts || {};
+                mediaAlerts.set(username, { alerts, expiresAt: Date.now() + 10000 });
+                return alerts;
             } catch (error) {
-                console.warn('Alerte Niveau Fan Club indisponible :', error.message);
+                console.warn('Alertes média indisponibles :', error.message);
                 return null;
             } finally {
-                levelUpAlertRequests.delete(username);
+                mediaAlertRequests.delete(username);
             }
         })();
-        levelUpAlertRequests.set(username, request);
+        mediaAlertRequests.set(username, request);
         return request;
     }
 
-    function playLevelUpAlert(alert) {
+    async function getMediaAlert(owner, event) {
+        const alerts = await getMediaAlerts(owner);
+        return alerts?.[event] || null;
+    }
+
+    function playMediaAlert(alert) {
         return new Promise(resolve => {
             const pending = Number(Boolean(alert.audioUrl)) + Number(Boolean(alert.videoUrl));
             if (!pending) { resolve(); return; }
@@ -1001,15 +1006,15 @@
                 if (finished || --remaining > 0) return;
                 finished = true;
                 clearTimeout(guard);
-                if (levelUpVideo) {
-                    levelUpVideo.pause();
-                    levelUpVideo.removeAttribute('src');
-                    levelUpVideo.style.display = 'none';
-                    levelUpVideo.load();
+                if (mediaAlertVideo) {
+                    mediaAlertVideo.pause();
+                    mediaAlertVideo.removeAttribute('src');
+                    mediaAlertVideo.style.display = 'none';
+                    mediaAlertVideo.load();
                 }
-                if (levelUpAudio) {
-                    levelUpAudio.pause();
-                    levelUpAudio = null;
+                if (mediaAlertAudio) {
+                    mediaAlertAudio.pause();
+                    mediaAlertAudio = null;
                 }
                 resolve();
             };
@@ -1019,30 +1024,34 @@
             }, 120000);
 
             if (alert.audioUrl) {
-                levelUpAudio = new Audio(alert.audioUrl);
-                levelUpAudio.onended = levelUpAudio.onerror = finishItem;
-                levelUpAudio.play().catch(error => {
+                mediaAlertAudio = new Audio(alert.audioUrl);
+                mediaAlertAudio.onended = mediaAlertAudio.onerror = finishItem;
+                mediaAlertAudio.play().catch(error => {
                     console.warn('Lecture du son Niveau Fan Club impossible :', error.message);
                     finishItem();
                 });
             }
             if (alert.videoUrl) {
-                if (!levelUpVideo) {
-                    levelUpVideo = document.createElement('video');
-                    levelUpVideo.playsInline = true;
-                    levelUpVideo.setAttribute('aria-hidden', 'true');
-                    levelUpVideo.style.cssText =
-                        'position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;' +
-                        'object-fit:contain;display:none;z-index:2147483647;pointer-events:none;background:transparent';
-                    document.documentElement.appendChild(levelUpVideo);
+                if (!mediaAlertVideo) {
+                    mediaAlertVideo = document.createElement('video');
+                    mediaAlertVideo.playsInline = true;
+                    mediaAlertVideo.setAttribute('aria-hidden', 'true');
+                    mediaAlertVideo.style.cssText =
+                        'position:fixed;top:50%;left:50%;width:100vw;height:100vh;height:100dvh;' +
+                        'transform:translate(-50%,-50%);object-fit:contain;display:none;' +
+                        'z-index:2147483647;pointer-events:none;background:transparent';
+                    document.documentElement.appendChild(mediaAlertVideo);
                 }
-                levelUpVideo.volume = Number.isFinite(alert.videoVolume)
+                mediaAlertVideo.volume = Number.isFinite(alert.videoVolume)
                     ? Math.min(1, Math.max(0, alert.videoVolume))
                     : 1;
-                levelUpVideo.src = alert.videoUrl;
-                levelUpVideo.style.display = 'block';
-                levelUpVideo.onended = levelUpVideo.onerror = finishItem;
-                levelUpVideo.play().catch(error => {
+                mediaAlertVideo.style.width = `${Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100}vw`;
+                mediaAlertVideo.style.height = `${Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100}dvh`;
+                mediaAlertVideo.style.objectFit = alert.videoFit === 'cover' ? 'cover' : 'contain';
+                mediaAlertVideo.src = alert.videoUrl;
+                mediaAlertVideo.style.display = 'block';
+                mediaAlertVideo.onended = mediaAlertVideo.onerror = finishItem;
+                mediaAlertVideo.play().catch(error => {
                     console.warn('Lecture de la vidéo Niveau Fan Club impossible :', error.message);
                     finishItem();
                 });
@@ -1050,24 +1059,41 @@
         });
     }
 
+    function enqueueMediaAlert(alert, limit = Infinity) {
+        if (mediaAlertQueue.length >= limit) {
+            console.warn('Alerte média ignorée : la file de lecture est pleine.');
+            return;
+        }
+        mediaAlertQueue.push(alert);
+        if (mediaAlertPlaying) return;
+        mediaAlertPlaying = true;
+        void (async () => {
+            try {
+                while (mediaAlertQueue.length) await playMediaAlert(mediaAlertQueue.shift());
+            } finally {
+                mediaAlertPlaying = false;
+            }
+        })();
+    }
+
     async function showLevelUp(data) {
         const levelUp = data.levelUp || {};
         const eventId = levelUp.messageId ? `level-up:${levelUp.messageId}` : '';
         if (!firstSeen(eventId)) return;
-        const alert = await getLevelUpAlert(data.sourceTikTokUsername || levelUp.sourceTikTokUsername);
+        const alert = await getMediaAlert(data.sourceTikTokUsername || levelUp.sourceTikTokUsername, 'level_up');
         if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
-        if (levelUpQueue.length >= 20) {
-            console.warn('Alerte Niveau Fan Club ignorée : la file de lecture est pleine.');
-            return;
-        }
-        levelUpQueue.push(alert);
-        if (levelUpPlaying) return;
-        levelUpPlaying = true;
-        try {
-            while (levelUpQueue.length) await playLevelUpAlert(levelUpQueue.shift());
-        } finally {
-            levelUpPlaying = false;
-        }
+        enqueueMediaAlert(alert, 20);
+    }
+
+    async function showBoboComment(data) {
+        const commentData = data.commentData || {};
+        const comment = String(commentData.comment || '');
+        if (!/(?:^|[^\p{L}\p{N}_])bobo(?:$|[^\p{L}\p{N}_])/iu.test(comment)) return;
+        const eventId = commentData.messageId ? `comment-bobo:${commentData.messageId}` : '';
+        if (!firstSeen(eventId)) return;
+        const alert = await getMediaAlert(data.sourceTikTokUsername, 'comment_bobo');
+        if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
+        enqueueMediaAlert(alert);
     }
 
     function handle(data) {
@@ -1076,6 +1102,8 @@
             handleTreasureLiveState(data);
         } else if (data.type === 'level-up' && data.levelUp) {
             void showLevelUp(data);
+        } else if (data.type === 'comment' && data.commentData) {
+            void showBoboComment(data);
         } else if (data.type === 'share') {
             const share = data.shareData || {};
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
@@ -1109,7 +1137,7 @@
     function onMessage(event) {
         const raw = event.data;
         if (typeof raw !== 'string' || raw.length > 300000 ||
-            !/"type"\s*:\s*"(?:gift|share|viewer|level-up|LIVE_END|LIVE_STATE)"/.test(raw)) return;
+            !/"type"\s*:\s*"(?:gift|share|viewer|comment|level-up|LIVE_END|LIVE_STATE)"/.test(raw)) return;
         try { handle(JSON.parse(raw)); } catch (error) { /* message non JSON */ }
     }
 

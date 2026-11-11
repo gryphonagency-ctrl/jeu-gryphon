@@ -403,8 +403,10 @@ const SECTIONS = [
     addLabel: 'Multiplicateur (ex. x4)' },
   { id: 'shares', title: '📣 Partages du live', hint: 'Déclenchée quand un spectateur partage ton live.',
     fixed: [{ key: 'share', label: 'Partage' }] },
-  { id: 'level-up', title: '🚀 Niveau Fan Club supérieur', hint: 'Déclenchée seulement quand TikTok signale une hausse du niveau Fan Club, pas à chaque cadeau Heart Me. TikTok ne transmet pas toujours ce badge; le niveau observé la première fois sert de référence. La vidéo s’adapte à tout l’écran sans être étirée, dans les jeux comme dans les live matchs.',
+  { id: 'level-up', title: '🚀 Niveau Fan Club supérieur', hint: 'Déclenchée seulement quand TikTok signale une hausse du niveau Fan Club, pas à chaque cadeau Heart Me. TikTok ne transmet pas toujours ce badge; le niveau observé la première fois sert de référence. La vidéo est centrée sur l’écran et sa largeur et sa hauteur sont réglables dans les jeux comme dans les live matchs.',
     fixed: [{ key: 'level_up', label: 'Hausse de niveau Fan Club' }] },
+  { id: 'comments', title: '💬 Commentaires TikTok', hint: 'Déclenchée à chaque commentaire qui contient le mot « bobo », sans tenir compte des majuscules. La vidéo est centrée en plein écran et sa largeur et sa hauteur sont réglables, dans les jeux comme sur l’overlay du live match.',
+    fixed: [{ key: 'comment_bobo', label: 'Commentaire contenant « bobo »' }] },
   { id: 'others', title: '✨ Autres évènements', hint: 'Évènements personnalisés (nom libre).',
     other: true, addLabel: 'Nom de l’évènement' }
 ];
@@ -434,6 +436,7 @@ function select(kind, value) {
 function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
   const isLevelUp = key === 'level_up';
+  const isFullScreenAlert = isLevelUp || key === 'comment_bobo';
   const giftIdMatch = /^gift_id_(\d+)$/.exec(key);
   const hasGiftMetadata = Boolean(giftIdMatch || alert.giftName);
   const audio = select('audio', alert.audio);
@@ -525,12 +528,12 @@ function slot(key, label, removable) {
       } : {})
     }), hasGiftMetadata ? 'Cadeau TikTok enregistré.' : 'Alerte enregistrée.') });
   const actions = el('div', { className: 'row' }, save);
-  if (isLevelUp) {
+  if (isFullScreenAlert) {
     actions.append(el('button', { type: 'button', textContent: 'Tester sur l’overlay',
       onclick: () => {
         if (!state.overlayPath) return say('Lien d’overlay indisponible.', true);
         const url = new URL(state.overlayPath, location.href);
-        url.searchParams.set('test', 'level-up');
+        url.searchParams.set('test', isLevelUp ? 'level-up' : 'comment-bobo');
         window.open(url.href, '_blank', 'noopener');
       } }));
   }
@@ -545,11 +548,15 @@ function slot(key, label, removable) {
     videoPreviewFrame,
     ...(actionTextLabel ? [actionTextLabel] : []),
     el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), videoHint,
-    ...(!isLevelUp ? [
+    ...(!isFullScreenAlert ? [
       el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
       el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
       el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight)
-    ] : [el('p', { className: 'hint', textContent: 'Lecture en plein écran, redimensionnée automatiquement selon l’écran.' })]),
+    ] : [
+      el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
+      el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight),
+      el('p', { className: 'hint', textContent: 'La vidéo est centrée sur l’écran. Ajuste sa largeur et sa hauteur; 100 % correspond à la taille de l’écran.' })
+    ]),
     videoVolume, actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: hasGiftMetadata
       ? '● Cadeau disponible dans le carrousel'
