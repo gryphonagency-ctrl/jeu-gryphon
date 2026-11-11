@@ -33,9 +33,18 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
 .timer-controls button:focus-visible, .wheel-spin:focus-visible { outline: 3px solid #ffd45a; outline-offset: 3px; }
 .wheel-wrap { position: relative; width: min(var(--wheel-size, 72vw), 440px); aspect-ratio: 1; }
 .wheel-svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 8px 18px rgba(0,0,0,.35)); }
+.wheel-segment { stroke-width: 4; filter: drop-shadow(0 0 4px var(--segment-neon)); transition: filter .35s ease, stroke .35s ease, stroke-width .35s ease; }
+.wheel-segment.wheel-winner { stroke: #fff5a6; stroke-width: 8; filter: drop-shadow(0 0 8px #fff5a6); }
+.wheel-rim { fill: none; stroke: url(#wheel-neon-gradient); stroke-width: 5; stroke-dasharray: 1 10; stroke-linecap: round; opacity: .78; filter: drop-shadow(0 0 3px rgba(114,220,255,.32)); pointer-events: none; }
+.wheel-neon { opacity: .58; animation: wheel-neon-pulse 1.2s ease-in-out infinite alternate; }
+.wheel-logo { position: absolute; z-index: 1; top: 50%; left: 50%; display: grid; width: 50px; aspect-ratio: 1; place-items: center; border-radius: 50%; color: #081224; font: 900 34px/1 Arial,sans-serif; transform: translate(-50%,-50%); pointer-events: none; }
+@keyframes wheel-neon-pulse {
+  from { opacity: .45; filter: drop-shadow(0 0 2px var(--neon-color)); }
+  to { opacity: 1; filter: drop-shadow(0 0 8px var(--neon-color)); }
+}
+@media (prefers-reduced-motion: reduce) { .wheel-neon { animation: none; opacity: .9; } }
 .wheel-pointer { position: absolute; z-index: 1; top: -4px; left: 50%; width: 0; height: 0; border-left: 18px solid transparent; border-right: 18px solid transparent; border-top: 34px solid var(--wheel-pointer-color, #fff); filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); transform: translateX(-50%); }
 .wheel-spin:disabled { opacity: .6; cursor: wait; }
-.wheel-result { min-height: 1.4em; color: #9dffb0; font-size: clamp(18px, 4vw, 26px); }
 #gift-carousel { position: fixed; inset: 0; display: flex; align-items: center; overflow: hidden; }
 #gift-carousel[hidden] { display: none; }
 .gift-carousel-track { display: flex; align-items: center; width: max-content; will-change: transform; animation: gift-carousel-scroll var(--carousel-duration, 30s) linear infinite; }
@@ -97,17 +106,16 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
     </div>
   </div>
 </section>
-<section id="wheel-overlay" class="tool-overlay" aria-label="Roue personnalisée" hidden>
+<section id="wheel-overlay" class="tool-overlay" aria-label="Roue" hidden>
   <div class="tool-card">
-    <h1 class="tool-title">Roue personnalisée</h1>
     <div class="wheel-wrap">
       <div class="wheel-pointer" aria-hidden="true"></div>
+      <span class="wheel-logo" aria-hidden="true">G</span>
       <div id="wheel-visual">
         <svg id="wheel-svg" class="wheel-svg" viewBox="0 0 500 500" role="img" aria-label="Roue à cases colorées"></svg>
       </div>
     </div>
     <button id="wheel-spin" class="wheel-spin" type="button">Lancer la roue</button>
-    <output id="wheel-result" class="wheel-result" aria-live="polite"></output>
   </div>
 </section>
 <section id="gift-carousel" aria-label="Carrousel de cadeaux TikTok" hidden>
@@ -405,10 +413,6 @@ const defaultWheelItems = [
   { label: 'Rejouer', color: '#9dffb0' }
 ];
 let wheelItems = defaultWheelItems;
-const wheelTitle = String(params.get('title') || 'Roue personnalisée').trim().slice(0, 60) || 'Roue personnalisée';
-const wheelTitleEl = document.querySelector('#wheel-overlay .tool-title');
-wheelTitleEl.textContent = wheelTitle;
-wheelTitleEl.style.color = colorParam('titleColor', '#ffd45a');
 const wheelCard = document.querySelector('#wheel-overlay .tool-card');
 const wheelPanelOpacity = Math.max(0, Math.min(90, Math.floor(Number(params.get('panelOpacity')) || 0)));
 if (wheelPanelOpacity === 0) {
@@ -446,6 +450,28 @@ function renderWheel() {
   const radius = 238;
   const anglePerItem = (2 * Math.PI) / wheelItems.length;
   const elements = [];
+  const defs = document.createElementNS(namespace, 'defs');
+  const gradient = document.createElementNS(namespace, 'linearGradient');
+  gradient.setAttribute('id', 'wheel-neon-gradient');
+  gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+  gradient.setAttribute('x1', '12');
+  gradient.setAttribute('y1', '250');
+  gradient.setAttribute('x2', '488');
+  gradient.setAttribute('y2', '250');
+  for (const [offset, color] of [
+    ['0%', '#ff6b7a'],
+    ['25%', '#ffd45a'],
+    ['50%', '#72dcff'],
+    ['75%', '#9dffb0'],
+    ['100%', '#d58cff']
+  ]) {
+    const stop = document.createElementNS(namespace, 'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    gradient.appendChild(stop);
+  }
+  defs.appendChild(gradient);
+  elements.push(defs);
   wheelItems.forEach((item, index) => {
     const startAngle = -Math.PI / 2 + index * anglePerItem;
     const endAngle = startAngle + anglePerItem;
@@ -455,9 +481,11 @@ function renderWheel() {
     const endY = center + radius * Math.sin(endAngle);
     const path = document.createElementNS(namespace, 'path');
     path.setAttribute('d', `M ${center} ${center} L ${startX} ${startY} A ${radius} ${radius} 0 ${anglePerItem > Math.PI ? 1 : 0} 1 ${endX} ${endY} Z`);
+    path.setAttribute('class', 'wheel-segment');
+    path.dataset.index = String(index);
     path.setAttribute('fill', item.color);
-    path.setAttribute('stroke', '#fff');
-    path.setAttribute('stroke-width', '3');
+    path.setAttribute('stroke', item.color);
+    path.style.setProperty('--segment-neon', item.color);
     elements.push(path);
 
     const middleAngle = startAngle + anglePerItem / 2;
@@ -476,6 +504,28 @@ function renderWheel() {
     label.textContent = item.label;
     elements.push(label);
   });
+  const neonCount = 32;
+  for (let index = 0; index < neonCount; index++) {
+    const angle = -Math.PI / 2 + index * (2 * Math.PI / neonCount);
+    const color = `hsl(${Math.round(index * 360 / neonCount)} 100% 65%)`;
+    const neon = document.createElementNS(namespace, 'circle');
+    neon.setAttribute('class', 'wheel-neon');
+    neon.setAttribute('cx', String(center + 246 * Math.cos(angle)));
+    neon.setAttribute('cy', String(center + 246 * Math.sin(angle)));
+    neon.setAttribute('r', '5');
+    neon.setAttribute('fill', color);
+    neon.setAttribute('stroke', '#fff');
+    neon.setAttribute('stroke-width', '1');
+    neon.style.setProperty('--neon-color', color);
+    neon.style.animationDelay = `${-index * 0.075}s`;
+    elements.push(neon);
+  }
+  const rim = document.createElementNS(namespace, 'circle');
+  rim.setAttribute('class', 'wheel-rim');
+  rim.setAttribute('cx', String(center));
+  rim.setAttribute('cy', String(center));
+  rim.setAttribute('r', String(radius));
+  elements.push(rim);
   const hub = document.createElementNS(namespace, 'circle');
   hub.setAttribute('cx', String(center));
   hub.setAttribute('cy', String(center));
@@ -502,10 +552,9 @@ function spinWheel() {
   const svg = document.getElementById('wheel-svg');
   svg.style.transition = 'transform 6s cubic-bezier(.12,.72,.12,1)';
   svg.style.transform = `rotate(${wheelRotation}deg)`;
-  const result = document.getElementById('wheel-result');
-  result.textContent = '';
+  svg.querySelector('.wheel-winner')?.classList.remove('wheel-winner');
   window.setTimeout(() => {
-    result.textContent = `Résultat : ${wheelItems[chosenIndex].label}`;
+    svg.querySelector(`.wheel-segment[data-index="${chosenIndex}"]`)?.classList.add('wheel-winner');
     wheelSpinning = false;
   }, 6200);
 }
