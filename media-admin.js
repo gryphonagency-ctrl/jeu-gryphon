@@ -1,16 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
+const { spawn } = require('child_process');
 const dns = require('dns').promises;
 const net = require('net');
 const https = require('https');
+const ffmpegPath = process.env.FFMPEG_PATH || require('ffmpeg-static');
 
 const MEDIA_MAX_BYTES = 45 * 1024 * 1024;
+const VIDEO_CONVERSION_TIMEOUT_MS = 3 * 60 * 1000;
+const MAX_CONCURRENT_VIDEO_CONVERSIONS = 2;
 const USER_QUOTA_BYTES = 300 * 1024 * 1024;
 const USER_MAX_FILES = 100;
 const MEDIA_TYPES = {
     mp3: ['audio', 'audio/mpeg'], wav: ['audio', 'audio/wav'], ogg: ['audio', 'audio/ogg'], m4a: ['audio', 'audio/mp4'],
-    mp4: ['video', 'video/mp4'], webm: ['video', 'video/webm'],
+    mp4: ['video', 'video/mp4'], webm: ['video', 'video/webm'], mov: ['video', 'video/quicktime'],
+    m4v: ['video', 'video/mp4'], mkv: ['video', 'video/x-matroska'], avi: ['video', 'video/x-msvideo'],
+    wmv: ['video', 'video/x-ms-wmv'], flv: ['video', 'video/x-flv'], mpeg: ['video', 'video/mpeg'],
+    mpg: ['video', 'video/mpeg'], '3gp': ['video', 'video/3gpp'],
     png: ['image', 'image/png'], jpg: ['image', 'image/jpeg'], jpeg: ['image', 'image/jpeg'],
     webp: ['image', 'image/webp'], gif: ['image', 'image/gif']
 };
@@ -18,6 +26,170 @@ const FILE_PATTERN = /^[a-f0-9-]{36}\.(?:mp3|wav|ogg|m4a|mp4|webm|png|jpe?g|webp
 const OWNER_PATTERN = /^[a-z0-9._-]{1,64}$/;
 const EVENT_PATTERN = /^[a-z0-9_-]{1,60}$/;
 const IMPORT_TIMEOUT_MS = 20000;
+let activeVideoConversions = 0;
+
+function probeVideo(inputPath) {
+    if (!ffmpegPath) {
+        return Promise.reject(Object.assign(new Error('La vérification vidéo est indisponible sur ce serveur.'), { statusCode: 503 }));
+    }
+    return new Promise((resolve, reject) => {
+        let child;
+        let output = '';
+        let finished = false;
+        const finish = (error, details) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            if (error) reject(error);
+            else resolve(details);
+        };
+        const timeout = setTimeout(() => {
+            child.kill('SIGKILL');
+            finish(Object.assign(new Error('La vérification vidéo a dépassé son délai.'), { statusCode: 400 }));
+        }, 15000);
+        try {
+            child = spawn(ffmpegPath, ['-hide_banner', '-i', inputPath], { stdio: ['ignore', 'ignore', 'pipe'] });
+        } catch {
+            finish(Object.assign(new Error('Impossible de démarrer la vérification vidéo sur ce serveur.'), { statusCode: 503 }));
+            return;
+        }
+        child.stderr.on('data', chunk => {
+            output += chunk.toString();
+            if (output.length > 65536) {
+                child.kill('SIGKILL');
+                finish(Object.assign(new Error('Les informations de cette vidéo sont trop volumineuses.'), { statusCode: 400 }));
+            }
+        });
+        child.once('error', () => finish(Object.assign(new Error('Impossible de démarrer la vérification vidéo sur ce serveur.'), { statusCode: 503 })));
+        child.once('close', () => {
+            if (finished) return;
+            const videoLine = output.split(/\r?\n/).find(line => /Stream #\d+:\d+.*Video:/i.test(line));
+            const match = videoLine && /Video:\s*([^\s,(]+).*?,\s*([a-z][a-z0-9_]*)(?:\([^)]*\))?,/i.exec(videoLine);
+            if (!match) return finish(Object.assign(new Error('Aucune piste vidéo exploitable n’a été trouvée.'), { statusCode: 400 }));
+            const [, codec, pixelFormat] = match;
+            const hasAlpha = /^yuva|^(?:gbrap|rgba|bgra|argb|abgr)/i.test(pixelFormat) ||
+                /ALPHA_MODE\s*:\s*1/i.test(output);
+            finish(null, { codec: codec.toLowerCase(), hasAlpha });
+        });
+    });
+}
+
+function transcodeVideo(buffer, extension) {
+    if (!ffmpegPath) {
+        return Promise.reject(Object.assign(new Error('La conversion vidéo est indisponible sur ce serveur.'), { statusCode: 503 }));
+    }
+    if (activeVideoConversions >= MAX_CONCURRENT_VIDEO_CONVERSIONS) {
+        return Promise.reject(Object.assign(new Error('Deux vidéos sont déjà en conversion. Réessaie dans quelques instants.'), { statusCode: 503 }));
+    }
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'griffon-video-'));
+    const inputPath = path.join(directory, `input${extension}`);
+    try {
+        fs.writeFileSync(inputPath, buffer);
+    } catch (error) {
+        try { fs.rmSync(directory, { recursive: true, force: true }); } catch (cleanupError) {
+            console.error('Échec du nettoyage du fichier vidéo temporaire :', cleanupError.message);
+        }
+        throw error;
+    }
+    activeVideoConversions++;
+    let active = true;
+    const cleanup = () => {
+        if (!active) return null;
+        active = false;
+        activeVideoConversions--;
+        try {
+            fs.rmSync(directory, { recursive: true, force: true });
+            return null;
+        } catch (error) {
+            console.error('Échec du nettoyage après conversion vidéo :', error.message);
+            return error;
+        }
+    };
+
+    return probeVideo(inputPath).then(probe => {
+        const outputExtension = probe.hasAlpha ? '.webm' : '.mp4';
+        const outputPath = path.join(directory, `converted${outputExtension}`);
+        const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y'];
+        if (probe.hasAlpha && probe.codec === 'vp9') args.push('-c:v', 'libvpx-vp9');
+        else if (probe.hasAlpha && probe.codec === 'vp8') args.push('-c:v', 'libvpx');
+        args.push('-i', inputPath, '-map', '0:v:0', '-map', '0:a:0?');
+        if (probe.hasAlpha) {
+            args.push('-c:v', 'libvpx-vp9', '-deadline', 'good', '-cpu-used', '4',
+                '-crf', '32', '-b:v', '0', '-pix_fmt', 'yuva420p',
+                '-c:a', 'libopus', '-b:a', '96k', '-f', 'webm');
+        } else {
+            args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart');
+        }
+        args.push(outputPath);
+
+        return new Promise((resolve, reject) => {
+            let child;
+            let stopReason = null;
+            const timeout = setTimeout(() => {
+                stopReason = 'timeout';
+                child.kill('SIGKILL');
+            }, VIDEO_CONVERSION_TIMEOUT_MS);
+            const sizeCheck = setInterval(() => {
+                try {
+                    if (fs.statSync(outputPath).size > MEDIA_MAX_BYTES) {
+                        stopReason = 'size';
+                        child.kill('SIGKILL');
+                    }
+                } catch (error) {
+                    if (error.code !== 'ENOENT') {
+                        stopReason = 'storage';
+                        child.kill('SIGKILL');
+                    }
+                }
+            }, 500);
+            const finish = (error, converted) => {
+                clearTimeout(timeout);
+                clearInterval(sizeCheck);
+                if (error) reject(error);
+                else resolve({ buffer: converted, extension: outputExtension });
+            };
+            try {
+                child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'ignore'] });
+            } catch {
+                finish(Object.assign(new Error('Impossible de démarrer la conversion vidéo sur ce serveur.'), { statusCode: 503 }));
+                return;
+            }
+            child.once('error', () => finish(Object.assign(new Error('Impossible de démarrer la conversion vidéo sur ce serveur.'), { statusCode: 503 })));
+            child.once('close', code => {
+                if (stopReason === 'timeout') {
+                    return finish(Object.assign(new Error('La conversion vidéo a dépassé 3 minutes. Essaie une vidéo plus courte.'), { statusCode: 413 }));
+                }
+                if (stopReason === 'size') {
+                    return finish(Object.assign(new Error('La vidéo convertie dépasse la limite de 45 Mo.'), { statusCode: 413 }));
+                }
+                if (stopReason === 'storage') {
+                    return finish(Object.assign(new Error('Espace temporaire insuffisant pour convertir cette vidéo.'), { statusCode: 507 }));
+                }
+                if (code !== 0) {
+                    return finish(Object.assign(new Error('Cette vidéo est illisible ou endommagée. Essaie un fichier vidéo valide.'), { statusCode: 400 }));
+                }
+                try {
+                    const stat = fs.statSync(outputPath);
+                    if (!stat.size || stat.size > MEDIA_MAX_BYTES) {
+                        return finish(Object.assign(new Error('La vidéo convertie dépasse la limite de 45 Mo.'), { statusCode: 413 }));
+                    }
+                    finish(null, fs.readFileSync(outputPath));
+                } catch {
+                    finish(Object.assign(new Error('La conversion vidéo n’a pas produit de fichier exploitable.'), { statusCode: 400 }));
+                }
+            });
+        });
+    }).then(result => {
+        if (cleanup()) throw Object.assign(new Error('Impossible de finaliser le traitement vidéo.'), { statusCode: 500 });
+        return result;
+    }, error => {
+        cleanup();
+        throw error;
+    });
+}
 
 function isPublicAddress(address) {
     if (net.isIPv4(address)) {
@@ -170,13 +342,21 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         return Object.assign(new Error(message), { statusCode });
     }
 
-    function storeMedia(owner, originalName, buffer) {
+    async function storeMedia(owner, originalName, buffer) {
         const index = readIndex(owner);
         const original = String(originalName || '').trim().slice(0, 120);
-        const extension = path.extname(original).toLowerCase();
+        let extension = path.extname(original).toLowerCase();
         const type = MEDIA_TYPES[extension.slice(1)];
-        if (!type) throw fail('Format non pris en charge (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif).');
+        if (!type) throw fail('Format non pris en charge (audio mp3/wav/ogg/m4a, vidéo mp4/webm/mov/m4v/mkv/avi/wmv/flv/mpeg/3gp, png, jpg, webp ou gif).');
         if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 45 Mo maximum.');
+        let storedName = original;
+        if (type[0] === 'video') {
+            const converted = await transcodeVideo(buffer, extension);
+            buffer = converted.buffer;
+            const basename = path.basename(original, path.extname(original));
+            extension = converted.extension;
+            storedName = `${basename}${extension}`;
+        }
         const used = index.files.reduce((sum, file) => sum + (file.size || 0), 0);
         if (index.files.length >= USER_MAX_FILES || used + buffer.length > USER_QUOTA_BYTES) {
             throw fail('Espace média plein : supprime des fichiers avant d’en ajouter (300 Mo / 100 fichiers max).', 413);
@@ -184,7 +364,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         const id = `${crypto.randomUUID()}${extension}`;
         fs.mkdirSync(ownerDir(owner), { recursive: true });
         fs.writeFileSync(path.join(ownerDir(owner), id), buffer, { flag: 'wx', mode: 0o600 });
-        const file = { id, name: original, kind: type[0], size: buffer.length, createdAt: new Date().toISOString() };
+        const file = { id, name: storedName, kind: type[0], size: buffer.length, createdAt: new Date().toISOString() };
         index.files.push(file);
         writeIndex(owner, index);
         return { success: true, file: publicFile(owner, file) };

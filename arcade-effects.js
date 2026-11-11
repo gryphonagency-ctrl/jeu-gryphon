@@ -2,6 +2,7 @@
  * Griffon Arcade — effets de live communs à tous les jeux.
  *  - partage du live      -> petit avion en papier discret
  *  - gros cadeau (>= 100) -> bulle et feu d'artifice, réglables par compte
+ *  - niveau Fan Club      -> média personnalisé plein écran, dans tous les jeux
  *  - cadeau reçu           -> son visuel réel est ajouté au coffre activable par compte
  * Le script écoute les WebSocket TikTok de la page : aucun jeu n'a besoin d'être modifié.
  */
@@ -12,6 +13,9 @@
     const config = { bigGiftCoins: 100, sound: true, volume: 0.5 };
     const seen = new Set();
     const seenTreasureGifts = new Set();
+    const levelUpAlerts = new Map();
+    const levelUpAlertRequests = new Map();
+    const levelUpQueue = [];
     const avatars = new Map();
     const liveBubbles = new Map();
     let bigGiftOverlayEnabled = false;
@@ -28,6 +32,9 @@
     let treasureGiftItems = [];
     let treasureGiftResetAt = 0;
     let treasureGiftServerResetAt = 0;
+    let levelUpPlaying = false;
+    let levelUpVideo = null;
+    let levelUpAudio = null;
     let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
@@ -955,10 +962,120 @@
         return true;
     }
 
+    async function getLevelUpAlert(owner) {
+        const username = String(owner || '').trim().replace(/^@/, '').toLowerCase();
+        if (!/^[a-z0-9._]{1,32}$/.test(username)) return null;
+        const cached = levelUpAlerts.get(username);
+        if (cached && cached.expiresAt > Date.now()) return cached.alert;
+        if (levelUpAlertRequests.has(username)) return levelUpAlertRequests.get(username);
+
+        const request = (async () => {
+            try {
+                const response = await fetch(
+                    `/api/media-alerts?user=${encodeURIComponent(username)}`,
+                    { credentials: 'same-origin', cache: 'no-store' }
+                );
+                if (!response.ok) throw new Error(`Alertes média HTTP ${response.status}`);
+                const data = await response.json();
+                const alert = data.alerts?.level_up || null;
+                levelUpAlerts.set(username, { alert, expiresAt: Date.now() + 10000 });
+                return alert;
+            } catch (error) {
+                console.warn('Alerte Niveau Fan Club indisponible :', error.message);
+                return null;
+            } finally {
+                levelUpAlertRequests.delete(username);
+            }
+        })();
+        levelUpAlertRequests.set(username, request);
+        return request;
+    }
+
+    function playLevelUpAlert(alert) {
+        return new Promise(resolve => {
+            const pending = Number(Boolean(alert.audioUrl)) + Number(Boolean(alert.videoUrl));
+            if (!pending) { resolve(); return; }
+            let remaining = pending;
+            let finished = false;
+            const finishItem = () => {
+                if (finished || --remaining > 0) return;
+                finished = true;
+                clearTimeout(guard);
+                if (levelUpVideo) {
+                    levelUpVideo.pause();
+                    levelUpVideo.removeAttribute('src');
+                    levelUpVideo.style.display = 'none';
+                    levelUpVideo.load();
+                }
+                if (levelUpAudio) {
+                    levelUpAudio.pause();
+                    levelUpAudio = null;
+                }
+                resolve();
+            };
+            const guard = setTimeout(() => {
+                remaining = 1;
+                finishItem();
+            }, 120000);
+
+            if (alert.audioUrl) {
+                levelUpAudio = new Audio(alert.audioUrl);
+                levelUpAudio.onended = levelUpAudio.onerror = finishItem;
+                levelUpAudio.play().catch(error => {
+                    console.warn('Lecture du son Niveau Fan Club impossible :', error.message);
+                    finishItem();
+                });
+            }
+            if (alert.videoUrl) {
+                if (!levelUpVideo) {
+                    levelUpVideo = document.createElement('video');
+                    levelUpVideo.playsInline = true;
+                    levelUpVideo.setAttribute('aria-hidden', 'true');
+                    levelUpVideo.style.cssText =
+                        'position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;' +
+                        'object-fit:contain;display:none;z-index:2147483647;pointer-events:none;background:transparent';
+                    document.documentElement.appendChild(levelUpVideo);
+                }
+                levelUpVideo.volume = Number.isFinite(alert.videoVolume)
+                    ? Math.min(1, Math.max(0, alert.videoVolume))
+                    : 1;
+                levelUpVideo.src = alert.videoUrl;
+                levelUpVideo.style.display = 'block';
+                levelUpVideo.onended = levelUpVideo.onerror = finishItem;
+                levelUpVideo.play().catch(error => {
+                    console.warn('Lecture de la vidéo Niveau Fan Club impossible :', error.message);
+                    finishItem();
+                });
+            }
+        });
+    }
+
+    async function showLevelUp(data) {
+        const levelUp = data.levelUp || {};
+        const eventId = levelUp.messageId ? `level-up:${levelUp.messageId}` : '';
+        if (!firstSeen(eventId)) return;
+        const alert = await getLevelUpAlert(data.sourceTikTokUsername || levelUp.sourceTikTokUsername);
+        if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
+        if (levelUpQueue.length >= 20) {
+            console.warn('Alerte Niveau Fan Club ignorée : la file de lecture est pleine.');
+            return;
+        }
+        levelUpQueue.push(alert);
+        if (levelUpPlaying) return;
+        levelUpPlaying = true;
+        try {
+            while (levelUpQueue.length) await playLevelUpAlert(levelUpQueue.shift());
+        } finally {
+            levelUpPlaying = false;
+        }
+    }
+
     function handle(data) {
         if (!data || typeof data !== 'object') return;
         if (data.type === 'LIVE_END' || data.type === 'LIVE_STATE') {
             handleTreasureLiveState(data);
+        } else if (data.type === 'level-up' && data.levelUp) {
+            void showLevelUp(data);
         } else if (data.type === 'share') {
             const share = data.shareData || {};
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
@@ -992,7 +1109,7 @@
     function onMessage(event) {
         const raw = event.data;
         if (typeof raw !== 'string' || raw.length > 300000 ||
-            !/"type"\s*:\s*"(?:gift|share|viewer|LIVE_END|LIVE_STATE)"/.test(raw)) return;
+            !/"type"\s*:\s*"(?:gift|share|viewer|level-up|LIVE_END|LIVE_STATE)"/.test(raw)) return;
         try { handle(JSON.parse(raw)); } catch (error) { /* message non JSON */ }
     }
 
@@ -1073,6 +1190,17 @@
         config, paperPlane, giftBurst, fireworks, setSound, handleMessage: handle,
         setTreasureChestEnabled,
         simulateShare: () => handle({ type: 'share', shareData: { messageId: '' } }),
-        simulateBigGift: (username, coins) => handle({ type: 'gift', gift: { messageId: '', uniqueId: username || 'spectateur', coinCount: coins || config.bigGiftCoins } })
+        simulateBigGift: (username, coins) => handle({ type: 'gift', gift: { messageId: '', uniqueId: username || 'spectateur', coinCount: coins || config.bigGiftCoins } }),
+        simulateLevelUp: (username, level = 2) => handle({
+            type: 'level-up',
+            sourceTikTokUsername: username,
+            levelUp: {
+                messageId: `simulation:${Date.now()}`,
+                uniqueId: 'spectateur_test',
+                username: 'spectateur_test',
+                nickname: 'Spectateur test',
+                teamMemberLevel: level
+            }
+        })
     };
 })();

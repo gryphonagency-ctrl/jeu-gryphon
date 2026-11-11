@@ -62,8 +62,8 @@ html[data-embedded="true"] main{max-width:none}
 <h2>Ajouter un média</h2>
 <p class="hint">Les réglages de cadrage et de taille sont enregistrés pour chaque effet : 100 % correspond à la taille de l’écran. « Afficher toute la vidéo » conserve son format, idéal pour une vidéo paysage; « Remplir le cadre » peut rogner les bords.</p>
 <div class="row">
-<label>Fichier (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif – 45 Mo max)
-<input id="file" type="file" accept=".mp3,.wav,.ogg,.m4a,.mp4,.webm,.png,.jpg,.jpeg,.webp,.gif" multiple></label>
+<label>Fichier (audio, MP4, WebM, MOV, M4V, MKV, AVI, WMV, FLV, MPEG, 3GP, images – 45 Mo max)
+<input id="file" type="file" accept=".mp3,.wav,.ogg,.m4a,.mp4,.webm,.mov,.m4v,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.png,.jpg,.jpeg,.webp,.gif" multiple></label>
 <button id="upload" type="button">Envoyer</button>
 </div>
 </section>
@@ -403,6 +403,8 @@ const SECTIONS = [
     addLabel: 'Multiplicateur (ex. x4)' },
   { id: 'shares', title: '📣 Partages du live', hint: 'Déclenchée quand un spectateur partage ton live.',
     fixed: [{ key: 'share', label: 'Partage' }] },
+  { id: 'level-up', title: '🚀 Niveau Fan Club supérieur', hint: 'Déclenchée seulement quand TikTok signale une hausse du niveau Fan Club, pas à chaque cadeau Heart Me. TikTok ne transmet pas toujours ce badge; le niveau observé la première fois sert de référence. La vidéo s’adapte à tout l’écran sans être étirée, dans les jeux comme dans les live matchs.',
+    fixed: [{ key: 'level_up', label: 'Hausse de niveau Fan Club' }] },
   { id: 'others', title: '✨ Autres évènements', hint: 'Évènements personnalisés (nom libre).',
     other: true, addLabel: 'Nom de l’évènement' }
 ];
@@ -416,18 +418,37 @@ function sectionKeys(section) {
 }
 
 function select(kind, value) {
+  const media = state.files.filter(f => f.kind === kind);
   const node = el('select', {}, el('option', { value: '', textContent: 'Aucun' }),
-    ...state.files.filter(f => f.kind === kind).map(f => el('option', { value: f.id, textContent: f.name })));
+    ...media.map(file => {
+      const duplicateName = media.some(other => other.id !== file.id && other.name === file.name);
+      const suffix = duplicateName
+        ? ` · ${(file.size / 1048576).toFixed(1)} Mo · ${new Date(file.createdAt).toLocaleString('fr-FR')} · ${file.id.slice(0, 8)}`
+        : '';
+      return el('option', { value: file.id, textContent: `${file.name}${suffix}` });
+    }));
   node.value = state.files.some(f => f.id === value) ? value : '';
   return node;
 }
 
 function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
+  const isLevelUp = key === 'level_up';
   const giftIdMatch = /^gift_id_(\d+)$/.exec(key);
   const hasGiftMetadata = Boolean(giftIdMatch || alert.giftName);
   const audio = select('audio', alert.audio);
   const video = select('video', alert.video);
+  const videoHint = el('p', { className: 'hint', role: 'status' });
+  const updateVideoHint = () => {
+    if (!video.value) {
+      videoHint.textContent = 'Choisis une vidéo. Son aperçu apparaîtra ici; clique sur « Enregistrer » pour l’associer à cet évènement.';
+    } else if (video.value !== (alert.video || '')) {
+      videoHint.textContent = 'Aperçu affiché. Cette sélection n’est pas encore enregistrée : clique sur « Enregistrer » pour l’associer à cet évènement.';
+    } else {
+      videoHint.textContent = 'Vidéo enregistrée pour cet évènement. Tu peux la prévisualiser ci-dessus.';
+    }
+  };
+  updateVideoHint();
   const videoFit = el('select', {},
     el('option', { value: 'contain', textContent: 'Afficher toute la vidéo (recommandé)' }),
     el('option', { value: 'cover', textContent: 'Remplir le cadre (peut rogner)' }));
@@ -465,7 +486,15 @@ function slot(key, label, removable) {
   videoWidth.addEventListener('input', () => { videoWidthValue.textContent = `${videoWidth.value} %`; updatePreview(); });
   videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); });
   videoFit.addEventListener('change', updatePreview);
-  video.addEventListener('change', updatePreview);
+  video.addEventListener('change', () => { updatePreview(); updateVideoHint(); });
+  videoPreview.addEventListener('error', () => {
+    if (!video.value) return;
+    if (videoPreview.error?.code === 3 || videoPreview.error?.code === 4) {
+      videoHint.textContent = 'Cette vidéo est dans ta bibliothèque, mais son encodage ne peut pas être lu par le navigateur. Réencode-la en MP4 H.264/AAC ou WebM VP8/VP9.';
+    } else {
+      videoHint.textContent = 'Impossible de charger l’aperçu de cette vidéo. Vérifie ta connexion et réessaie.';
+    }
+  });
   volume.addEventListener('input', updatePreview);
   updatePreview();
   const actionText = hasGiftMetadata
@@ -494,8 +523,17 @@ function slot(key, label, removable) {
         giftImageUrl: alert.giftImageUrl || '',
         actionText: actionText.value
       } : {})
-    }), 'Cadeau TikTok enregistré.') });
+    }), hasGiftMetadata ? 'Cadeau TikTok enregistré.' : 'Alerte enregistrée.') });
   const actions = el('div', { className: 'row' }, save);
+  if (isLevelUp) {
+    actions.append(el('button', { type: 'button', textContent: 'Tester sur l’overlay',
+      onclick: () => {
+        if (!state.overlayPath) return say('Lien d’overlay indisponible.', true);
+        const url = new URL(state.overlayPath, location.href);
+        url.searchParams.set('test', 'level-up');
+        window.open(url.href, '_blank', 'noopener');
+      } }));
+  }
   if (state.alerts[key]) {
     actions.append(el('button', { type: 'button', className: 'danger', textContent: removable ? 'Supprimer' : 'Réinitialiser',
       onclick: () => drafts.has(key)
@@ -506,10 +544,12 @@ function slot(key, label, removable) {
     ...(giftPhoto ? [giftPhoto] : []),
     videoPreviewFrame,
     ...(actionTextLabel ? [actionTextLabel] : []),
-    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video),
-    el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
-    el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
-    el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight),
+    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), videoHint,
+    ...(!isLevelUp ? [
+      el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
+      el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
+      el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight)
+    ] : [el('p', { className: 'hint', textContent: 'Lecture en plein écran, redimensionnée automatiquement selon l’écran.' })]),
     videoVolume, actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: hasGiftMetadata
       ? '● Cadeau disponible dans le carrousel'
@@ -982,7 +1022,7 @@ function uploadMedia(file, onProgress) {
       request.upload.onprogress = event => {
         if (event.lengthComputable) onProgress('upload', Math.round(event.loaded / event.total * 100));
       };
-      request.upload.onload = () => onProgress('save');
+      request.upload.onload = () => onProgress(/\.(mp4|webm|mov|m4v|mkv|avi|wmv|flv|mpeg|mpg|3gp)$/i.test(file.name) ? 'processing' : 'save');
       request.onload = () => {
         let response = {};
         try { response = JSON.parse(request.responseText); } catch {}
@@ -1010,6 +1050,7 @@ $('upload').onclick = async () => {
       await uploadMedia(file, (phase, percent) => {
         if (phase === 'prepare') say(`Préparation de ${file.name}… ${percent} %`);
         else if (phase === 'upload') say(`Envoi de ${file.name}… ${percent} %`);
+        else if (phase === 'processing') say(`Vidéo reçue. Conversion pour compatibilité de ${file.name}…`);
         else say(`Envoi terminé pour ${file.name}. Enregistrement sur le serveur…`);
       });
     }

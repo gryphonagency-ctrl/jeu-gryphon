@@ -37,6 +37,14 @@ function getTikTokIdentity(user) {
     };
 }
 
+function getTeamMemberLevel(user) {
+    const badgeLevel = Array.isArray(user?.userBadges)
+        ? user.userBadges.find(badge => Number(badge?.badgeSceneType) === 10)?.level
+        : undefined;
+    const level = Number(user?.teamMemberLevel ?? user?.userAttributes?.teamMemberLevel ?? badgeLevel);
+    return Number.isSafeInteger(level) && level > 0 ? level : null;
+}
+
 function getTikTokGiftImageUrl(gift) {
     const candidates = [
         gift.giftImageUrl,
@@ -104,6 +112,7 @@ async function getAvatarData(user, cache) {
 function createTikTokSession(sendToClients, username, onRoomState = () => {}, { diagnostics = false } = {}) {
     const connection = new TikTokLiveConnection(username, {});
     const processedGiftMessageIds = new Set();
+    const teamMemberLevels = new Map();
     const avatarLookupTimes = new Map();
     const avatarCache = new Map();
     const logDiagnostic = (event, details) => {
@@ -118,6 +127,33 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
 
     const send = message => {
         if (active) sendToClients(message);
+    };
+
+    const trackTeamMemberLevel = (user, messageId, sentAt) => {
+        const teamMemberLevel = getTeamMemberLevel(user);
+        const identity = getTikTokIdentity(user);
+        const teamMemberKey = String(identity.userId || identity.uniqueId || identity.username)
+            .trim().toLocaleLowerCase();
+        if (!teamMemberKey || teamMemberLevel === null) return;
+        const previousLevel = teamMemberLevels.get(teamMemberKey);
+        teamMemberLevels.set(teamMemberKey, teamMemberLevel);
+        if (previousLevel !== undefined && teamMemberLevel > previousLevel) {
+            const levelMessageId = messageId
+                ? `${messageId}:level:${teamMemberLevel}`
+                : `${teamMemberKey}:level:${teamMemberLevel}:${sentAt}`;
+            send({
+                type: 'level-up',
+                sourceTikTokUsername: username,
+                levelUp: {
+                    messageId: levelMessageId,
+                    ...identity,
+                    teamMemberLevel
+                }
+            });
+        }
+        if (teamMemberLevels.size > 10000) {
+            teamMemberLevels.delete(teamMemberLevels.keys().next().value);
+        }
     };
 
     const scheduleReconnect = () => {
@@ -137,6 +173,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
 
     connection.on('streamEnd', event => {
         liveMatchActive = false;
+        teamMemberLevels.clear();
         send({
             type: 'LIVE_END',
             action: Number(event?.action) || null
@@ -163,6 +200,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         );
         const repeatEnd = gift.repeatEnd === true ||
             Number(gift.repeatEnd ?? gift.gift?.repeat_end ?? gift.gift?.repeatEnd) === 1;
+        const messageId = String(gift.common?.msgId ?? '');
 
         const coinValue = Number(
             gift.coinValue ??
@@ -188,6 +226,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             timestamp: new Date().toISOString()
         };
         if (giftType === 1 && !repeatEnd) {
+            trackTeamMemberLevel(gift.user, messageId, sentAt);
             logDiagnostic('cadeau', { ...diagnosticDetails, result: 'combo-incomplet' });
             return;
         }
@@ -196,7 +235,6 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             return;
         }
 
-        const messageId = String(gift.common?.msgId ?? '');
         if (messageId && processedGiftMessageIds.has(messageId)) {
             logDiagnostic('cadeau', { ...diagnosticDetails, result: 'doublon' });
             return;
@@ -227,6 +265,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 giftImageUrl: getTikTokGiftImageUrl(gift)
             }
         });
+        trackTeamMemberLevel(gift.user, messageId, sentAt);
         getAvatarData(gift.user, avatarCache).then(({ avatarDataUri }) => {
             if (avatarDataUri) {
                 send({
