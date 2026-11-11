@@ -1006,36 +1006,26 @@ async function run(action, message) {
 
 function uploadMedia(file, onProgress) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onprogress = event => {
-      if (event.lengthComputable) onProgress('prepare', Math.round(event.loaded / event.total * 100));
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/media/upload');
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+    request.timeout = 5 * 60 * 1000;
+    request.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress('upload', Math.round(event.loaded / event.total * 100));
     };
-    reader.onerror = () => reject(new Error('Impossible de lire le fichier sélectionné.'));
-    reader.onabort = () => reject(new Error('Lecture du fichier interrompue.'));
-    reader.onload = () => {
-      const data = String(reader.result).split(',')[1];
-      if (!data) return reject(new Error('Le fichier n’a pas pu être préparé pour l’envoi.'));
-      const request = new XMLHttpRequest();
-      request.open('POST', '/api/media');
-      request.setRequestHeader('Content-Type', 'application/json');
-      request.timeout = 5 * 60 * 1000;
-      request.upload.onprogress = event => {
-        if (event.lengthComputable) onProgress('upload', Math.round(event.loaded / event.total * 100));
-      };
-      request.upload.onload = () => onProgress(/\.(mp4|webm|mov|m4v|mkv|avi|wmv|flv|mpeg|mpg|3gp)$/i.test(file.name) ? 'processing' : 'save');
-      request.onload = () => {
-        let response = {};
-        try { response = JSON.parse(request.responseText); } catch {}
-        if (request.status >= 200 && request.status < 300) return resolve(response);
-        if (request.status === 413) return reject(new Error(response.message || 'Fichier ou requête trop volumineux. La limite est de 45 Mo par fichier.'));
-        reject(new Error(response.message || `Le serveur a refusé l’envoi (HTTP ${request.status || 'inconnu'}).`));
-      };
-      request.onerror = () => reject(new Error('Échec réseau pendant l’envoi. Vérifie ta connexion puis réessaie.'));
-      request.ontimeout = () => reject(new Error('L’envoi a dépassé 5 minutes. Vérifie ta connexion et réessaie avec un fichier plus petit.'));
-      request.onabort = () => reject(new Error('Envoi interrompu.'));
-      request.send(JSON.stringify({ action: 'upload', name: file.name, data }));
+    request.upload.onload = () => onProgress(/\.(mp4|webm|mov|m4v|mkv|avi|wmv|flv|mpeg|mpg|3gp)$/i.test(file.name) ? 'processing' : 'save');
+    request.onload = () => {
+      let response = {};
+      try { response = JSON.parse(request.responseText); } catch {}
+      if (request.status >= 200 && request.status < 300) return resolve(response);
+      if (request.status === 413) return reject(new Error(response.message || 'Fichier ou requête trop volumineux. La limite est de 45 Mo par fichier.'));
+      reject(new Error(response.message || `Le serveur a refusé l’envoi (HTTP ${request.status || 'inconnu'}).`));
     };
-    reader.readAsDataURL(file);
+    request.onerror = () => reject(new Error('Échec réseau pendant l’envoi. Vérifie ta connexion puis réessaie.'));
+    request.ontimeout = () => reject(new Error('L’envoi a dépassé 5 minutes. Vérifie ta connexion et réessaie avec un fichier plus petit.'));
+    request.onabort = () => reject(new Error('Envoi interrompu.'));
+    request.send(file);
   });
 }
 
@@ -1048,8 +1038,7 @@ $('upload').onclick = async () => {
   try {
     for (const file of files) {
       await uploadMedia(file, (phase, percent) => {
-        if (phase === 'prepare') say(`Préparation de ${file.name}… ${percent} %`);
-        else if (phase === 'upload') say(`Envoi de ${file.name}… ${percent} %`);
+        if (phase === 'upload') say(`Envoi de ${file.name}… ${percent} %`);
         else if (phase === 'processing') say(`Vidéo reçue. Conversion pour compatibilité de ${file.name}…`);
         else say(`Envoi terminé pour ${file.name}. Enregistrement sur le serveur…`);
       });

@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const os = require('os');
 const { spawn } = require('child_process');
 const dns = require('dns').promises;
 const net = require('net');
@@ -10,7 +9,7 @@ const ffmpegPath = process.env.FFMPEG_PATH || require('ffmpeg-static');
 
 const MEDIA_MAX_BYTES = 45 * 1024 * 1024;
 const VIDEO_CONVERSION_TIMEOUT_MS = 3 * 60 * 1000;
-const MAX_CONCURRENT_VIDEO_CONVERSIONS = 2;
+const MAX_PENDING_VIDEO_CONVERSIONS = 3;
 const USER_QUOTA_BYTES = 300 * 1024 * 1024;
 const USER_MAX_FILES = 100;
 const MEDIA_TYPES = {
@@ -26,7 +25,8 @@ const FILE_PATTERN = /^[a-f0-9-]{36}\.(?:mp3|wav|ogg|m4a|mp4|webm|png|jpe?g|webp
 const OWNER_PATTERN = /^[a-z0-9._-]{1,64}$/;
 const EVENT_PATTERN = /^[a-z0-9_-]{1,60}$/;
 const IMPORT_TIMEOUT_MS = 20000;
-let activeVideoConversions = 0;
+let pendingVideoConversions = 0;
+let videoConversionQueue = Promise.resolve();
 
 function probeVideo(inputPath) {
     if (!ffmpegPath) {
@@ -74,43 +74,18 @@ function probeVideo(inputPath) {
     });
 }
 
-function transcodeVideo(buffer, extension) {
+function runVideoConversion(inputPath) {
     if (!ffmpegPath) {
         return Promise.reject(Object.assign(new Error('La conversion vidéo est indisponible sur ce serveur.'), { statusCode: 503 }));
     }
-    if (activeVideoConversions >= MAX_CONCURRENT_VIDEO_CONVERSIONS) {
-        return Promise.reject(Object.assign(new Error('Deux vidéos sont déjà en conversion. Réessaie dans quelques instants.'), { statusCode: 503 }));
-    }
-
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'griffon-video-'));
-    const inputPath = path.join(directory, `input${extension}`);
-    try {
-        fs.writeFileSync(inputPath, buffer);
-    } catch (error) {
-        try { fs.rmSync(directory, { recursive: true, force: true }); } catch (cleanupError) {
-            console.error('Échec du nettoyage du fichier vidéo temporaire :', cleanupError.message);
-        }
-        throw error;
-    }
-    activeVideoConversions++;
-    let active = true;
-    const cleanup = () => {
-        if (!active) return null;
-        active = false;
-        activeVideoConversions--;
-        try {
-            fs.rmSync(directory, { recursive: true, force: true });
-            return null;
-        } catch (error) {
-            console.error('Échec du nettoyage après conversion vidéo :', error.message);
-            return error;
-        }
-    };
 
     return probeVideo(inputPath).then(probe => {
         const outputExtension = probe.hasAlpha ? '.webm' : '.mp4';
-        const outputPath = path.join(directory, `converted${outputExtension}`);
-        const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y'];
+        const outputPath = path.join(path.dirname(inputPath), `converted-${crypto.randomUUID()}${outputExtension}`);
+        const args = [
+            '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+            '-threads', '1', '-filter_threads', '1', '-filter_complex_threads', '1'
+        ];
         if (probe.hasAlpha && probe.codec === 'vp9') args.push('-c:v', 'libvpx-vp9');
         else if (probe.hasAlpha && probe.codec === 'vp8') args.push('-c:v', 'libvpx');
         args.push('-i', inputPath, '-map', '0:v:0', '-map', '0:a:0?');
@@ -123,11 +98,12 @@ function transcodeVideo(buffer, extension) {
                 '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart');
         }
-        args.push(outputPath);
+        args.push('-threads', '1', outputPath);
 
         return new Promise((resolve, reject) => {
             let child;
             let stopReason = null;
+            let finished = false;
             const timeout = setTimeout(() => {
                 stopReason = 'timeout';
                 child.kill('SIGKILL');
@@ -146,10 +122,12 @@ function transcodeVideo(buffer, extension) {
                 }
             }, 500);
             const finish = (error, converted) => {
+                if (finished) return;
+                finished = true;
                 clearTimeout(timeout);
                 clearInterval(sizeCheck);
                 if (error) reject(error);
-                else resolve({ buffer: converted, extension: outputExtension });
+                else resolve(converted);
             };
             try {
                 child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'ignore'] });
@@ -176,19 +154,23 @@ function transcodeVideo(buffer, extension) {
                     if (!stat.size || stat.size > MEDIA_MAX_BYTES) {
                         return finish(Object.assign(new Error('La vidéo convertie dépasse la limite de 45 Mo.'), { statusCode: 413 }));
                     }
-                    finish(null, fs.readFileSync(outputPath));
+                    finish(null, { path: outputPath, extension: outputExtension });
                 } catch {
                     finish(Object.assign(new Error('La conversion vidéo n’a pas produit de fichier exploitable.'), { statusCode: 400 }));
                 }
             });
         });
-    }).then(result => {
-        if (cleanup()) throw Object.assign(new Error('Impossible de finaliser le traitement vidéo.'), { statusCode: 500 });
-        return result;
-    }, error => {
-        cleanup();
-        throw error;
     });
+}
+
+function transcodeVideo(inputPath) {
+    if (pendingVideoConversions >= MAX_PENDING_VIDEO_CONVERSIONS) {
+        return Promise.reject(Object.assign(new Error('Trop de vidéos sont en attente de conversion. Réessaie dans quelques instants.'), { statusCode: 503 }));
+    }
+    pendingVideoConversions++;
+    const conversion = videoConversionQueue.then(() => runVideoConversion(inputPath));
+    videoConversionQueue = conversion.catch(() => {});
+    return conversion.finally(() => { pendingVideoConversions--; });
 }
 
 function isPublicAddress(address) {
@@ -262,6 +244,7 @@ function safeDownload(rawUrl, maxBytes, redirects = 3) {
 function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManage, canManageUser, readJsonBody }) {
     const usersDir = path.join(mediaDirectory, 'users');
     const tokensPath = path.join(mediaDirectory, 'overlay-tokens.json');
+    const activeUploads = new Set();
 
     function readTokens() {
         try {
@@ -313,15 +296,24 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
     const indexPath = owner => path.join(ownerDir(owner), 'index.json');
 
     function readIndex(owner) {
+        let content;
         try {
-            const parsed = JSON.parse(fs.readFileSync(indexPath(owner), 'utf8'));
-            return {
-                files: Array.isArray(parsed.files) ? parsed.files : [],
-                alerts: parsed.alerts && typeof parsed.alerts === 'object' ? parsed.alerts : {}
-            };
-        } catch {
-            return { files: [], alerts: {} };
+            content = fs.readFileSync(indexPath(owner), 'utf8');
+        } catch (error) {
+            if (error.code === 'ENOENT') return { files: [], alerts: {} };
+            throw error;
         }
+        let parsed;
+        try {
+            parsed = JSON.parse(content);
+        } catch (error) {
+            throw new Error(`Le catalogue des médias de ${owner} est illisible. Aucun média n’a été modifié.`, { cause: error });
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.files) ||
+            (parsed.alerts !== undefined && (!parsed.alerts || typeof parsed.alerts !== 'object' || Array.isArray(parsed.alerts)))) {
+            throw new Error(`Le catalogue des médias de ${owner} est invalide. Aucun média n’a été modifié.`);
+        }
+        return { files: parsed.files, alerts: parsed.alerts || {} };
     }
 
     function writeIndex(owner, index) {
@@ -342,32 +334,173 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         return Object.assign(new Error(message), { statusCode });
     }
 
-    async function storeMedia(owner, originalName, buffer) {
+    function receiveUpload(req, res, owner) {
+        let original;
+        try {
+            original = decodeURIComponent(String(req.headers['x-file-name'] || '')).trim().slice(0, 120);
+        } catch {
+            send(res, 400, { message: 'Nom de fichier invalide.' });
+            req.resume();
+            return;
+        }
+        const extension = path.extname(original).toLowerCase();
+        if (!original || !MEDIA_TYPES[extension.slice(1)]) {
+            send(res, 400, { message: 'Format de fichier non pris en charge.' });
+            req.resume();
+            return;
+        }
+        if (req.headers['content-type'] !== 'application/octet-stream') {
+            send(res, 415, { message: 'Format de requête invalide. Actualise la page Médias et réessaie.' });
+            req.resume();
+            return;
+        }
+        const lengthHeader = req.headers['content-length'];
+        const expectedSize = lengthHeader === undefined ? null : Number(lengthHeader);
+        if (expectedSize !== null && (!Number.isSafeInteger(expectedSize) || expectedSize <= 0)) {
+            send(res, 400, { message: 'Taille de fichier invalide.' });
+            req.resume();
+            return;
+        }
+        if (expectedSize > MEDIA_MAX_BYTES) {
+            send(res, 413, { message: 'Le fichier doit faire 45 Mo maximum.' });
+            req.resume();
+            return;
+        }
+        if (activeUploads.has(owner)) {
+            send(res, 429, { message: 'Un envoi est déjà en cours pour ce compte. Réessaie dans quelques instants.' });
+            req.resume();
+            return;
+        }
+
+        activeUploads.add(owner);
+        let directory;
+        let inputPath;
+        let output;
+        try {
+            fs.mkdirSync(ownerDir(owner), { recursive: true });
+            directory = fs.mkdtempSync(path.join(ownerDir(owner), '.upload-'));
+            inputPath = path.join(directory, `input${extension}`);
+            output = fs.createWriteStream(inputPath, { flags: 'wx', mode: 0o600 });
+        } catch (error) {
+            activeUploads.delete(owner);
+            send(res, 500, { message: 'Impossible de préparer le stockage du média.' });
+            console.error('Échec de préparation de l’envoi média :', error.message);
+            req.resume();
+            return;
+        }
+
+        let settled = false;
+        let receivedSize = 0;
+        let writeFinished = false;
+        let streamClosed = false;
+        const cleanup = () => {
+            try {
+                fs.rmSync(directory, { recursive: true, force: true });
+            } catch (error) {
+                console.error('Échec du nettoyage du téléversement temporaire :', error.message);
+            }
+        };
+        const release = () => activeUploads.delete(owner);
+        const sendFailure = error => {
+            if (settled) return;
+            settled = true;
+            req.unpipe(output);
+            output.destroy();
+            req.resume();
+            if (output.closed) cleanup();
+            else output.once('close', cleanup);
+            release();
+            const status = error.statusCode || 500;
+            if (status === 500) console.error('Échec de réception du média :', error.message);
+            if (!res.destroyed && !res.writableEnded) {
+                send(res, status, { message: status === 500 ? 'Impossible d’enregistrer le média.' : error.message });
+            }
+        };
+        const finishUpload = () => {
+            if (settled || !writeFinished || !streamClosed) return;
+            if (!receivedSize) return sendFailure(fail('Le fichier est vide.'));
+            if (expectedSize !== null && receivedSize !== expectedSize) {
+                return sendFailure(fail('L’envoi du fichier est incomplet. Réessaie.'));
+            }
+            storeMediaFromPath(owner, original, inputPath, receivedSize).then(result => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                release();
+                if (!res.destroyed && !res.writableEnded) send(res, 200, result);
+            }).catch(sendFailure);
+        };
+
+        req.on('data', chunk => {
+            receivedSize += chunk.length;
+            if (receivedSize > MEDIA_MAX_BYTES) {
+                sendFailure(fail('Le fichier doit faire 45 Mo maximum.', 413));
+            }
+        });
+        req.once('aborted', () => sendFailure(fail('Envoi interrompu.')));
+        req.once('error', sendFailure);
+        output.once('error', sendFailure);
+        output.once('finish', () => { writeFinished = true; finishUpload(); });
+        output.once('close', () => { streamClosed = true; finishUpload(); });
+        req.pipe(output);
+    }
+
+    async function storeMediaFromPath(owner, originalName, inputPath, inputSize) {
         const index = readIndex(owner);
         const original = String(originalName || '').trim().slice(0, 120);
         let extension = path.extname(original).toLowerCase();
         const type = MEDIA_TYPES[extension.slice(1)];
         if (!type) throw fail('Format non pris en charge (audio mp3/wav/ogg/m4a, vidéo mp4/webm/mov/m4v/mkv/avi/wmv/flv/mpeg/3gp, png, jpg, webp ou gif).');
-        if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 45 Mo maximum.');
+        if (!inputSize || inputSize > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 45 Mo maximum.');
         let storedName = original;
+        let storedPath = inputPath;
         if (type[0] === 'video') {
-            const converted = await transcodeVideo(buffer, extension);
-            buffer = converted.buffer;
+            const converted = await transcodeVideo(inputPath);
+            storedPath = converted.path;
             const basename = path.basename(original, path.extname(original));
             extension = converted.extension;
             storedName = `${basename}${extension}`;
         }
+        const stat = fs.statSync(storedPath);
+        if (!stat.size || stat.size > MEDIA_MAX_BYTES) throw fail('La vidéo convertie dépasse la limite de 45 Mo.', 413);
         const used = index.files.reduce((sum, file) => sum + (file.size || 0), 0);
-        if (index.files.length >= USER_MAX_FILES || used + buffer.length > USER_QUOTA_BYTES) {
+        if (index.files.length >= USER_MAX_FILES || used + stat.size > USER_QUOTA_BYTES) {
             throw fail('Espace média plein : supprime des fichiers avant d’en ajouter (300 Mo / 100 fichiers max).', 413);
         }
         const id = `${crypto.randomUUID()}${extension}`;
         fs.mkdirSync(ownerDir(owner), { recursive: true });
-        fs.writeFileSync(path.join(ownerDir(owner), id), buffer, { flag: 'wx', mode: 0o600 });
-        const file = { id, name: storedName, kind: type[0], size: buffer.length, createdAt: new Date().toISOString() };
+        const finalPath = path.join(ownerDir(owner), id);
+        fs.renameSync(storedPath, finalPath);
+        const file = { id, name: storedName, kind: type[0], size: stat.size, createdAt: new Date().toISOString() };
         index.files.push(file);
-        writeIndex(owner, index);
+        try {
+            writeIndex(owner, index);
+        } catch (error) {
+            try { fs.unlinkSync(finalPath); } catch (cleanupError) {
+                if (cleanupError.code !== 'ENOENT') console.error('Échec du nettoyage du média non indexé :', cleanupError.message);
+            }
+            throw error;
+        }
         return { success: true, file: publicFile(owner, file) };
+    }
+
+    async function storeMedia(owner, originalName, buffer) {
+        if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 45 Mo maximum.');
+        const original = String(originalName || '').trim().slice(0, 120);
+        const extension = path.extname(original).toLowerCase();
+        const type = MEDIA_TYPES[extension.slice(1)];
+        if (!type) throw fail('Format non pris en charge.');
+        fs.mkdirSync(ownerDir(owner), { recursive: true });
+        const directory = fs.mkdtempSync(path.join(ownerDir(owner), '.upload-'));
+        const inputPath = path.join(directory, `input${extension}`);
+        try {
+            fs.writeFileSync(inputPath, buffer, { flag: 'wx', mode: 0o600 });
+            return await storeMediaFromPath(owner, original, inputPath, buffer.length);
+        } finally {
+            try { fs.rmSync(directory, { recursive: true, force: true }); } catch (error) {
+                console.error('Échec du nettoyage du média temporaire :', error.message);
+            }
+        }
     }
 
     async function importFromUrl(owner, rawUrl) {
@@ -389,8 +522,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
     function handleAction(owner, body) {
         const index = readIndex(owner);
         if (body.action === 'upload') {
-            const base64 = typeof body.data === 'string' ? body.data.replace(/^data:[^,]*,/, '') : '';
-            return storeMedia(owner, body.name, Buffer.from(base64, 'base64'));
+            throw fail('Actualise la page Médias avant de renvoyer le fichier.');
         }
         if (body.action === 'import-url') return importFromUrl(owner, body.url);
         if (body.action === 'overlay-create') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'create')) };
@@ -597,22 +729,33 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         if (pathname === '/api/overlay-alerts' && req.method === 'GET') {
             const owner = findOverlayOwner(searchParams?.get('token'));
             if (!owner) { send(res, 403, { message: 'Lien overlay invalide ou révoqué.' }); return true; }
-            send(res, 200, { alerts: publicAlerts(owner) });
+            try {
+                send(res, 200, { alerts: publicAlerts(owner) });
+            } catch (error) {
+                console.error(`Impossible de lire le catalogue média de ${owner} :`, error.message);
+                send(res, 500, { message: 'Impossible de lire les médias de cet overlay.' });
+            }
             return true;
         }
         if (pathname === '/api/media-alerts' && req.method === 'GET') {
             const owner = String(searchParams?.get('user') || '').trim().toLowerCase();
             if (!OWNER_PATTERN.test(owner)) { send(res, 400, { message: 'Compte invalide.' }); return true; }
             const alerts = {};
-            for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
-                alerts[event] = {
-                    audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
-                    videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
-                    videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
-                    videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
-                    videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
-                    videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
-                };
+            try {
+                for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
+                    alerts[event] = {
+                        audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
+                        videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
+                        videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
+                        videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
+                        videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
+                        videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
+                    };
+                }
+            } catch (error) {
+                console.error(`Impossible de lire le catalogue média de ${owner} :`, error.message);
+                send(res, 500, { message: 'Impossible de lire les médias de cet overlay.' });
+                return true;
             }
             send(res, 200, { alerts });
             return true;
@@ -623,22 +766,37 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             serveFile(req, res, owner, id);
             return true;
         }
-        if (pathname !== '/api/media') return false;
+        const isUpload = pathname === '/api/media/upload';
+        if (pathname !== '/api/media' && !isUpload) return false;
         const user = String(getUser(req) || '').trim().toLowerCase();
         if (!user || !OWNER_PATTERN.test(user) || !canManage(req, user)) {
+            if (req.method === 'POST') req.resume();
             send(res, 403, { message: 'La gestion des médias est réservée aux abonnés et aux comptes autorisés.' });
             return true;
         }
+        if (isUpload) {
+            if (req.method !== 'POST') {
+                send(res, 405, { message: 'Méthode non autorisée.' });
+                return true;
+            }
+            receiveUpload(req, res, user);
+            return true;
+        }
         if (req.method === 'GET') {
-            const index = readIndex(user);
-            send(res, 200, {
-                user,
-                files: index.files.map(file => publicFile(user, file)),
-                alerts: index.alerts,
-                persistent,
-                overlayPath: overlayPath(overlayToken(user, 'get')),
-                limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
-            });
+            try {
+                const index = readIndex(user);
+                send(res, 200, {
+                    user,
+                    files: index.files.map(file => publicFile(user, file)),
+                    alerts: index.alerts,
+                    persistent,
+                    overlayPath: overlayPath(overlayToken(user, 'get')),
+                    limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
+                });
+            } catch (error) {
+                console.error(`Impossible de lire le catalogue média de ${user} :`, error.message);
+                send(res, 500, { message: 'Impossible de lire ta bibliothèque média. Aucun fichier n’a été supprimé.' });
+            }
             return true;
         }
         if (req.method === 'POST') {
@@ -648,7 +806,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                     if (status === 500) console.error('Échec de la gestion des médias :', error.message);
                     send(res, status, { message: status === 500 ? 'Impossible d’enregistrer le média.' : error.message });
                 });
-            }, Math.ceil(MEDIA_MAX_BYTES * 1.4) + 8192);
+            }, 8 * 1024 * 1024);
             return true;
         }
         return false;
