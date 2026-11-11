@@ -5,7 +5,7 @@ const dns = require('dns').promises;
 const net = require('net');
 const https = require('https');
 
-const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const MEDIA_MAX_BYTES = 45 * 1024 * 1024;
 const USER_QUOTA_BYTES = 300 * 1024 * 1024;
 const USER_MAX_FILES = 100;
 const MEDIA_TYPES = {
@@ -71,7 +71,7 @@ function safeDownload(rawUrl, maxBytes, redirects = 3) {
                 response.on('data', chunk => {
                     size += chunk.length;
                     if (size > maxBytes) {
-                        request.destroy(Object.assign(new Error('Le fichier dépasse 25 Mo.'), { statusCode: 400 }));
+                        request.destroy(Object.assign(new Error('Le fichier dépasse 45 Mo.'), { statusCode: 400 }));
                         return;
                     }
                     chunks.push(chunk);
@@ -176,7 +176,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         const extension = path.extname(original).toLowerCase();
         const type = MEDIA_TYPES[extension.slice(1)];
         if (!type) throw fail('Format non pris en charge (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif).');
-        if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 25 Mo maximum.');
+        if (!buffer.length || buffer.length > MEDIA_MAX_BYTES) throw fail('Le fichier doit faire 45 Mo maximum.');
         const used = index.files.reduce((sum, file) => sum + (file.size || 0), 0);
         if (index.files.length >= USER_MAX_FILES || used + buffer.length > USER_QUOTA_BYTES) {
             throw fail('Espace média plein : supprime des fichiers avant d’en ajouter (300 Mo / 100 fichiers max).', 413);

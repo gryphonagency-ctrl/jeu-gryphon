@@ -62,7 +62,7 @@ html[data-embedded="true"] main{max-width:none}
 <h2>Ajouter un média</h2>
 <p class="hint">Les réglages de cadrage et de taille sont enregistrés pour chaque effet : 100 % correspond à la taille de l’écran. « Afficher toute la vidéo » conserve son format, idéal pour une vidéo paysage; « Remplir le cadre » peut rogner les bords.</p>
 <div class="row">
-<label>Fichier (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif – 25 Mo max)
+<label>Fichier (mp3, wav, ogg, m4a, mp4, webm, png, jpg, webp, gif – 45 Mo max)
 <input id="file" type="file" accept=".mp3,.wav,.ogg,.m4a,.mp4,.webm,.png,.jpg,.jpeg,.webp,.gif" multiple></label>
 <button id="upload" type="button">Envoyer</button>
 </div>
@@ -964,11 +964,37 @@ async function run(action, message) {
   try { await action(); await refresh(); say(message || 'Enregistré.'); } catch (e) { say(e.message, true); }
 }
 
-function toBase64(file) {
+function uploadMedia(file, onProgress) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = reject;
+    reader.onprogress = event => {
+      if (event.lengthComputable) onProgress('prepare', Math.round(event.loaded / event.total * 100));
+    };
+    reader.onerror = () => reject(new Error('Impossible de lire le fichier sélectionné.'));
+    reader.onabort = () => reject(new Error('Lecture du fichier interrompue.'));
+    reader.onload = () => {
+      const data = String(reader.result).split(',')[1];
+      if (!data) return reject(new Error('Le fichier n’a pas pu être préparé pour l’envoi.'));
+      const request = new XMLHttpRequest();
+      request.open('POST', '/api/media');
+      request.setRequestHeader('Content-Type', 'application/json');
+      request.timeout = 5 * 60 * 1000;
+      request.upload.onprogress = event => {
+        if (event.lengthComputable) onProgress('upload', Math.round(event.loaded / event.total * 100));
+      };
+      request.upload.onload = () => onProgress('save');
+      request.onload = () => {
+        let response = {};
+        try { response = JSON.parse(request.responseText); } catch {}
+        if (request.status >= 200 && request.status < 300) return resolve(response);
+        if (request.status === 413) return reject(new Error(response.message || 'Fichier ou requête trop volumineux. La limite est de 45 Mo par fichier.'));
+        reject(new Error(response.message || `Le serveur a refusé l’envoi (HTTP ${request.status || 'inconnu'}).`));
+      };
+      request.onerror = () => reject(new Error('Échec réseau pendant l’envoi. Vérifie ta connexion puis réessaie.'));
+      request.ontimeout = () => reject(new Error('L’envoi a dépassé 5 minutes. Vérifie ta connexion et réessaie avec un fichier plus petit.'));
+      request.onabort = () => reject(new Error('Envoi interrompu.'));
+      request.send(JSON.stringify({ action: 'upload', name: file.name, data }));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -976,17 +1002,25 @@ function toBase64(file) {
 $('upload').onclick = async () => {
   const files = [...$('file').files];
   if (!files.length) return say('Choisis au moins un fichier.', true);
+  const tooLarge = files.find(file => file.size > 45 * 1024 * 1024);
+  if (tooLarge) return say(`${tooLarge.name} dépasse la limite de 45 Mo.`, true);
   $('upload').disabled = true;
   try {
     for (const file of files) {
-      say(`Envoi de ${file.name}…`);
-      await api({ action: 'upload', name: file.name, data: await toBase64(file) });
+      await uploadMedia(file, (phase, percent) => {
+        if (phase === 'prepare') say(`Préparation de ${file.name}… ${percent} %`);
+        else if (phase === 'upload') say(`Envoi de ${file.name}… ${percent} %`);
+        else say(`Envoi terminé pour ${file.name}. Enregistrement sur le serveur…`);
+      });
     }
     $('file').value = '';
-    await refresh();
+    say('Envoi terminé. Actualisation de la bibliothèque…');
+    try { await refresh(); } catch (error) {
+      return say(`Média envoyé, mais impossible d’actualiser la bibliothèque : ${error.message}`, true);
+    }
     say('Média(s) envoyé(s) au serveur.');
   } catch (e) { say(e.message, true); }
-  $('upload').disabled = false;
+  finally { $('upload').disabled = false; }
 };
 
 $('import-form').onsubmit = async event => {
