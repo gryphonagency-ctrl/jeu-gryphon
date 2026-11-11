@@ -210,6 +210,7 @@ const protectedRoutes = new Set([
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
     '/multirou.html',
+    '/araignee.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -297,6 +298,7 @@ store.grantGameAccessToExistingCreators('/combat-goku-luffy.html');
 store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
 store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
+store.grantGameAccessToExistingCreators('/araignee.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -350,6 +352,7 @@ const staticGameTitles = {
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/multirou.html': 'Le Multirou',
+    '/araignee.html': 'Araignée Cybernétique',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -414,6 +417,7 @@ const gameRouteIds = new Map([
     ['/pont-de-verre.html', '/pont-de-verre.html'],
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/multirou.html', '/multirou.html'],
+    ['/araignee.html', '/araignee.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3195,6 +3199,7 @@ const server = http.createServer((req, res) => {
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
         ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
+        ['/araignee.html', [path.join(__dirname, 'araignee.html'), 'text/html; charset=utf-8']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/tir-a-la-corde.html', [path.join(__dirname, 'tir-a-la-corde.html'), 'text/html; charset=utf-8']],
@@ -3246,6 +3251,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
+        ['/images-vitrine/araignee.png', [path.join(__dirname, 'images-vitrine', 'araignee.png'), 'image/png']],
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
