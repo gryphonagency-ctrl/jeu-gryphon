@@ -409,8 +409,17 @@ const wheelTitle = String(params.get('title') || 'Roue personnalisée').trim().s
 const wheelTitleEl = document.querySelector('#wheel-overlay .tool-title');
 wheelTitleEl.textContent = wheelTitle;
 wheelTitleEl.style.color = colorParam('titleColor', '#ffd45a');
-document.querySelector('#wheel-overlay .tool-card').style.backgroundColor =
-  `${colorParam('panelColor', '#080c18')}e8`;
+const wheelCard = document.querySelector('#wheel-overlay .tool-card');
+const wheelPanelOpacity = Math.max(0, Math.min(90, Math.floor(Number(params.get('panelOpacity')) || 0)));
+if (wheelPanelOpacity === 0) {
+  wheelCard.style.backgroundColor = 'transparent';
+  wheelCard.style.borderColor = 'transparent';
+  wheelCard.style.boxShadow = 'none';
+} else {
+  const wheelPanelColor = colorParam('panelColor', '#080c18');
+  const wheelPanelAlpha = Math.round(wheelPanelOpacity * 255 / 100).toString(16).padStart(2, '0');
+  wheelCard.style.backgroundColor = `${wheelPanelColor}${wheelPanelAlpha}`;
+}
 const wheelTextColor = colorParam('textColor', '#081224');
 const wheelSize = Math.max(40, Math.min(90, Math.floor(Number(params.get('size')) || 72)));
 document.documentElement.style.setProperty('--wheel-size', `${wheelSize}vw`);
@@ -481,7 +490,7 @@ function renderWheel() {
 renderWheel();
 let wheelRotation = 0;
 let wheelSpinning = false;
-document.getElementById('wheel-spin').addEventListener('click', () => {
+function spinWheel() {
   if (!showWheelOverlay || wheelSpinning) return;
   wheelSpinning = true;
   const chosenIndex = Math.floor(Math.random() * wheelItems.length);
@@ -499,7 +508,13 @@ document.getElementById('wheel-spin').addEventListener('click', () => {
     result.textContent = `Résultat : ${wheelItems[chosenIndex].label}`;
     wheelSpinning = false;
   }, 6200);
-});
+}
+document.getElementById('wheel-spin').addEventListener('click', spinWheel);
+
+function handleWheelComment(commentData) {
+  if (String(commentData.comment || '').trim().toUpperCase() !== 'SPIN') return;
+  if (firstLiveEvent('comment', commentData)) spinWheel();
+}
 
 function showLikeBubble(profile) {
   if (liveEffectsEl.children.length >= 10) liveEffectsEl.children[0].remove();
@@ -770,6 +785,8 @@ function connect() {
       if (overlayMode === 'chat' && data.type === 'comment' && data.commentData &&
           firstLiveEvent('comment', data.commentData)) {
         addChatMessage(data.commentData);
+      } else if (showWheelOverlay && data.type === 'comment' && data.commentData) {
+        handleWheelComment(data.commentData);
       } else if (overlayMode === 'leaderboard' && data.type === 'gift' && data.gift &&
           firstLiveEvent('gift', data.gift)) {
         addGiftToLeaderboard(data.gift);
@@ -847,6 +864,8 @@ if (overlayMode === 'chat' && params.get('test') === '1') {
   updateLiveStats('subscribers', 3);
 } else if (showTimerOverlay && params.get('test') === '1') {
   startTimer();
+} else if (showWheelOverlay && params.get('test') === '1') {
+  handleWheelComment({ messageId: `wheel-test-${Date.now()}`, comment: 'SPIN' });
 } else if (showLiveEffects && params.get('test') === 'follow') {
   updateLiveStats('followers', 1);
 } else if (showLiveEffects && params.get('test') === 'like') {
