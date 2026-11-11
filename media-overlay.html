@@ -12,6 +12,8 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 #stage video { object-fit: contain; }
 #status { position: fixed; left: 8px; bottom: 8px; font: 12px sans-serif; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; }
 #status.hide { display: none; }
+#alert-video-unlock { position: fixed; z-index: 30; top: max(10px, env(safe-area-inset-top)); left: 50%; padding: 9px 14px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(8,12,24,.9); color: #fff; font: 700 14px Arial,sans-serif; cursor: pointer; transform: translateX(-50%); }
+#alert-video-unlock[hidden] { display: none; }
 #live-effects { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
 #live-stats { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); display: none; align-items: center; gap: 12px; max-width: calc(100vw - 20px); padding: 9px 13px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; background: rgba(14,18,30,.86); box-shadow: 0 4px 18px rgba(0,0,0,.3); color: #fff; font: 700 14px/1.2 Arial,sans-serif; transform: translateX(-50%); white-space: nowrap; }
 #live-stats.visible { display: flex; }
@@ -125,11 +127,14 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
   <span id="gift-carousel-arrow" aria-hidden="true">→</span>
 </section>
 <div id="status">Connexion…</div>
+<button id="alert-video-unlock" type="button" hidden>🔊 Activer le son de la vidéo</button>
 <script src="/overlay-firework.js"></script>
 <script>
 const token = location.pathname.split('/').pop();
 const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
+const alertVideoUnlockEl = document.getElementById('alert-video-unlock');
+let alertVideoForUnlock = null;
 const params = new URLSearchParams(location.search);
 const showStatus = params.get('statut') !== '0';
 const requestedMode = params.get('mode');
@@ -749,6 +754,10 @@ function pickAlert(event, allowMultipliers) {
     const item = slug(name.replace(/[\s_-]*x\s?\d{1,3}$/i, ''));
     if (allowMultipliers && multiplier > 1) keys.push(`gift_${item}_x${multiplier}`);
     if (allowMultipliers && multiplier > 1) keys.push(`multi_x${multiplier}`);
+    const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    if (Number(event.gift?.giftId) === 7934 || normalizedName === 'heart me' || normalizedName === 'coeur du jour') {
+      keys.push('gift_heart_me');
+    }
     if (Number.isSafeInteger(event.gift?.giftId) && event.gift.giftId > 0) keys.push(`gift_id_${event.gift.giftId}`);
     keys.push(`gift_${item}`, `gift_${slug(name)}`);
     keys.push('gift_tous');
@@ -761,6 +770,21 @@ function pickAlert(event, allowMultipliers) {
   }
   return null;
 }
+
+alertVideoUnlockEl.addEventListener('click', async () => {
+  const alertVideo = alertVideoForUnlock;
+  if (!alertVideo) return;
+  alertVideo.muted = false;
+  try {
+    await alertVideo.play();
+    alertVideoUnlockEl.hidden = true;
+    setStatus('Son de la vidéo activé.');
+  } catch (error) {
+    alertVideo.muted = true;
+    console.warn('Impossible d’activer le son de la vidéo.', error);
+    setStatus('La vidéo reste affichée sans son. Vérifie les autorisations audio de la source navigateur.');
+  }
+});
 
 function playAlert(alert) {
   return new Promise(resolve => {
@@ -799,10 +823,33 @@ function playAlert(alert) {
         ? `${height}dvh`
         : `${height}vh`;
       video.style.objectFit = alert.fullScreen ? 'contain' : alert.videoFit === 'cover' ? 'cover' : 'contain';
+      video.muted = false;
       video.src = alert.videoUrl;
       video.style.display = 'block';
-      video.onended = video.onerror = end;
-      video.play().catch(end);
+      alertVideoForUnlock = video;
+      const endVideo = () => {
+        if (alertVideoForUnlock === video) alertVideoForUnlock = null;
+        alertVideoUnlockEl.hidden = true;
+        end();
+      };
+      video.onended = video.onerror = endVideo;
+      video.play().catch(error => {
+        if (error.name !== 'NotAllowedError') {
+          console.warn('Impossible de lire la vidéo de l’alerte.', error);
+          endVideo();
+          return;
+        }
+        video.muted = true;
+        video.play().then(() => {
+          if (alertVideoForUnlock === video) {
+            alertVideoUnlockEl.hidden = false;
+            setStatus('Vidéo lancée sans son. Clique sur « Activer le son » pour l’entendre.');
+          }
+        }).catch(retryError => {
+          console.warn('Impossible de lancer la vidéo, même sans son.', retryError);
+          endVideo();
+        });
+      });
     }
     if (!pending) { clearTimeout(guard); resolve(); }
   });
