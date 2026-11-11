@@ -27,6 +27,7 @@
     let treasureGiftCount = 0;
     let treasureGiftItems = [];
     let treasureGiftResetAt = 0;
+    let treasureGiftServerResetAt = 0;
     let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
@@ -399,11 +400,12 @@
     }
 
     function resetTreasureGiftsFromServer(resetAt) {
-        if (!Number.isSafeInteger(resetAt) || resetAt <= treasureGiftResetAt) return;
+        if (!Number.isSafeInteger(resetAt) || resetAt <= treasureGiftServerResetAt) return;
         treasureGiftCount = 0;
         treasureGiftItems = [];
         treasureLiveRoomId = '';
-        treasureGiftResetAt = resetAt;
+        treasureGiftResetAt = Math.max(Date.now(), treasureGiftResetAt + 1);
+        treasureGiftServerResetAt = resetAt;
         seenTreasureGifts.clear();
         saveTreasureGifts();
         renderTreasureGifts();
@@ -434,6 +436,7 @@
 
     function readTreasureGifts(owner) {
         if (!owner) return;
+        treasureGiftServerResetAt = 0;
         try {
             const stored = JSON.parse(localStorage.getItem(TREASURE_STORAGE_PREFIX + owner.toLowerCase()) || 'null');
             if (!stored || !Array.isArray(stored.gifts)) {
@@ -446,6 +449,9 @@
             treasureGiftResetAt = Number.isSafeInteger(stored.resetAt) && stored.resetAt > 0
                 ? stored.resetAt
                 : Date.now();
+            treasureGiftServerResetAt = Number.isSafeInteger(stored.serverResetAt) && stored.serverResetAt > 0
+                ? stored.serverResetAt
+                : 0;
             const gifts = stored.gifts
                 .filter(gift => gift && typeof gift === 'object')
                 .map(gift => ({
@@ -460,6 +466,7 @@
             treasureGiftItems = [];
             treasureGiftCount = 0;
             treasureGiftResetAt = Date.now();
+            treasureGiftServerResetAt = 0;
         }
     }
 
@@ -470,7 +477,8 @@
                 total: treasureGiftCount,
                 gifts: treasureGiftItems,
                 liveRoomId: treasureLiveRoomId,
-                resetAt: treasureGiftResetAt
+                resetAt: treasureGiftResetAt,
+                serverResetAt: treasureGiftServerResetAt
             }));
         } catch (error) {
             console.warn('Les cadeaux du coffre ne peuvent pas être sauvegardés localement :', error.message);
@@ -655,12 +663,18 @@
                 event.key !== TREASURE_STORAGE_PREFIX + treasureOwner.toLowerCase()) return;
             try {
                 const setting = JSON.parse(event.newValue);
-                if (Number.isSafeInteger(setting.resetAt) && setting.resetAt > treasureGiftResetAt &&
+                const hasNewServerReset = Number.isSafeInteger(setting.serverResetAt) &&
+                    setting.serverResetAt > treasureGiftServerResetAt;
+                const hasNewLocalReset = !Number.isSafeInteger(setting.serverResetAt) &&
+                    Number.isSafeInteger(setting.resetAt) && setting.resetAt > treasureGiftResetAt;
+                if ((hasNewServerReset || hasNewLocalReset) &&
                     Array.isArray(setting.gifts) && setting.gifts.length === 0 && setting.total === 0) {
                     treasureGiftCount = 0;
                     treasureGiftItems = [];
-                    treasureGiftResetAt = setting.resetAt;
+                    treasureGiftResetAt = Math.max(Date.now(), treasureGiftResetAt + 1);
+                    if (hasNewServerReset) treasureGiftServerResetAt = setting.serverResetAt;
                     seenTreasureGifts.clear();
+                    saveTreasureGifts();
                     renderTreasureGifts();
                 }
             } catch (error) {
