@@ -34,6 +34,9 @@
                         settings.owner || '',
                         settings.username || ''
                     );
+                    window.dispatchEvent(new CustomEvent('arcade:treasure-reset', {
+                        detail: { resetAt: settings.resetAt }
+                    }));
                 } catch (error) {
                     console.warn('Impossible de vérifier le lien du coffre :', error.message);
                     retryTimer = setTimeout(connect, 15000);
@@ -47,6 +50,18 @@
                 socket = new WebSocket(`${protocol}//${location.host}/arcade-treasure-overlay-relay?token=${encodeURIComponent(token)}`);
                 socket.addEventListener('open', () => {
                     socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK' }));
+                });
+                socket.addEventListener('message', event => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'RESET_TREASURE_GIFTS') {
+                            window.dispatchEvent(new CustomEvent('arcade:treasure-reset', {
+                                detail: { resetAt: message.resetAt }
+                            }));
+                        }
+                    } catch (error) {
+                        console.warn('Commande du coffre reçue dans un format invalide :', error.message);
+                    }
                 });
                 socket.addEventListener('close', () => {
                     clearTimeout(retryTimer);

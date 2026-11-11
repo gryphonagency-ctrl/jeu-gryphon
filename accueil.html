@@ -782,6 +782,7 @@
                             <label><input id="creator-treasure-overlay" type="checkbox"> Recevoir les cadeaux dans le coffre</label>
                         </div>
                         <button id="creator-treasure-overlay-save" class="button button-secondary" type="button">Enregistrer le coffre</button>
+                        <button id="creator-treasure-overlay-reset" class="button button-secondary" type="button">Vider les cadeaux du coffre</button>
                         <p id="creator-treasure-overlay-status" class="checkout-status" role="status" aria-live="polite"></p>
                         <label for="creator-treasure-tiktok-username">Pseudo TikTok du live (sans @)</label>
                         <input id="creator-treasure-tiktok-username" type="text" maxlength="32" autocomplete="off" placeholder="mon_pseudo">
@@ -2404,6 +2405,7 @@
             gameGiftEffectSave: document.getElementById('creator-game-gift-overlay-save'),
             treasureEffect: document.getElementById('creator-treasure-overlay'),
             treasureEffectSave: document.getElementById('creator-treasure-overlay-save'),
+            treasureReset: document.getElementById('creator-treasure-overlay-reset'),
             treasureStatus: document.getElementById('creator-treasure-overlay-status'),
             treasureGiftSize: document.getElementById('creator-treasure-gift-size'),
             treasureGiftSizeValue: document.getElementById('creator-treasure-gift-size-value'),
@@ -2640,6 +2642,36 @@
                 overlayCard.treasureStatus.textContent = error.message || 'Impossible d’enregistrer le coffre au trésor.';
             } finally {
                 overlayCard.treasureEffectSave.disabled = false;
+            }
+        });
+        overlayCard.treasureReset.addEventListener('click', async () => {
+            if (!overlayCard.account || !window.confirm('Vider tous les cadeaux de la montagne du coffre au trésor ?')) return;
+            overlayCard.treasureReset.disabled = true;
+            overlayCard.treasureStatus.className = 'checkout-status';
+            overlayCard.treasureStatus.textContent = '';
+            try {
+                const response = await fetch('/api/arcade-treasure-reset', {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || 'Impossible de vider le coffre au trésor.');
+                try {
+                    localStorage.setItem(`ga-arcade-treasure-gifts:${overlayCard.account.toLowerCase()}`, JSON.stringify({
+                        total: 0,
+                        gifts: [],
+                        liveRoomId: '',
+                        resetAt: result.resetAt
+                    }));
+                } catch (error) {
+                    console.warn('Le coffre est vidé sur le serveur, mais la synchronisation entre onglets a échoué.', error);
+                }
+                overlayCard.treasureStatus.textContent = 'Cadeaux effacés. La source TikTok est mise à jour.';
+            } catch (error) {
+                overlayCard.treasureStatus.className = 'checkout-status error';
+                overlayCard.treasureStatus.textContent = error.message || 'Impossible de vider le coffre au trésor.';
+            } finally {
+                overlayCard.treasureReset.disabled = false;
             }
         });
         overlayCard.treasureGiftSize.addEventListener('input', () => {

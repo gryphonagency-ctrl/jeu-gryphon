@@ -1851,8 +1851,38 @@ const server = http.createServer((req, res) => {
             owner,
             username: settings.arcadeTreasureTikTokUsername || settings.tiktokUsername || '',
             enabled: settings.arcadeTreasureChestEnabled === true,
+            resetAt: Number.isSafeInteger(settings.arcadeTreasureGiftResetAt)
+                ? settings.arcadeTreasureGiftResetAt
+                : 0,
             layout: settings.arcadeTreasureLayout || DEFAULT_TREASURE_LAYOUT
         }));
+        return;
+    }
+    if (pathname === '/api/arcade-treasure-reset' && req.method === 'POST') {
+        if (!access.isAuthenticated(req)) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Connecte-toi pour vider le coffre au trésor.' }));
+            return;
+        }
+        const owner = access.usernameForRequest(req);
+        if (!hasTreasureOverlayAccess(owner)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Tu n’as pas accès au coffre au trésor.' }));
+            return;
+        }
+        const resetAt = store.resetCreatorTreasureGifts(owner);
+        const message = JSON.stringify({ type: 'RESET_TREASURE_GIFTS', resetAt });
+        for (const [socket, socketOwner] of treasureOverlaySocketOwners) {
+            if (socketOwner.toLowerCase() === owner.toLowerCase() && socket.readyState === WebSocket.OPEN) {
+                try {
+                    socket.send(message);
+                } catch (error) {
+                    console.warn('La commande de vidage du coffre n’a pas été envoyée à une source connectée :', error.message);
+                }
+            }
+        }
+        res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: true, resetAt }));
         return;
     }
     if (pathname === '/api/arcade-treasure-layout' && req.method === 'POST') {

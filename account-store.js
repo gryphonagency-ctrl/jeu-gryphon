@@ -179,6 +179,9 @@ function readStore() {
                 (settings.arcadeTreasureOverlayToken !== undefined &&
                     (typeof settings.arcadeTreasureOverlayToken !== 'string' ||
                         !/^[a-f0-9]{64}$/.test(settings.arcadeTreasureOverlayToken))) ||
+                (settings.arcadeTreasureGiftResetAt !== undefined &&
+                    (!Number.isSafeInteger(settings.arcadeTreasureGiftResetAt) ||
+                        settings.arcadeTreasureGiftResetAt < 0)) ||
                 (settings.arcadeTreasureLayout !== undefined &&
                     (!settings.arcadeTreasureLayout ||
                         typeof settings.arcadeTreasureLayout !== 'object' ||
@@ -908,6 +911,18 @@ function setCreatorTreasureOverlaySettings(username, tiktokUsername, token) {
     });
 }
 
+function resetCreatorTreasureGifts(username) {
+    let resetAt = Date.now();
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const settings = store.creatorSettings[key] || {};
+        resetAt = Math.max(resetAt, (settings.arcadeTreasureGiftResetAt || 0) + 1);
+        settings.arcadeTreasureGiftResetAt = resetAt;
+        store.creatorSettings[key] = settings;
+    });
+    return resetAt;
+}
+
 function getCreatorTreasureOverlayOwner(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return '';
     const settings = readStore().creatorSettings;
@@ -1400,6 +1415,7 @@ module.exports = {
     setCreatorArcadeTreasureChestEnabled,
     setCreatorTreasureLayoutEditing,
     setCreatorTreasureOverlaySettings,
+    resetCreatorTreasureGifts,
     getCreatorTreasureOverlayOwner,
     setCreatorTreasureLayout,
     setCreatorProgressOverlaySettings,

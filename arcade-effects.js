@@ -62,6 +62,7 @@
                     settings.owner || '',
                     settings.username || ''
                 );
+                resetTreasureGiftsFromServer(settings.resetAt);
                 applyTreasureLayout();
                 return;
             }
@@ -396,6 +397,21 @@
         saveTreasureGifts();
         renderTreasureGifts();
     }
+
+    function resetTreasureGiftsFromServer(resetAt) {
+        if (!Number.isSafeInteger(resetAt) || resetAt <= treasureGiftResetAt) return;
+        treasureGiftCount = 0;
+        treasureGiftItems = [];
+        treasureLiveRoomId = '';
+        treasureGiftResetAt = resetAt;
+        seenTreasureGifts.clear();
+        saveTreasureGifts();
+        renderTreasureGifts();
+    }
+
+    window.addEventListener('arcade:treasure-reset', event => {
+        resetTreasureGiftsFromServer(event.detail?.resetAt);
+    });
 
     function handleTreasureLiveState(data) {
         if (!treasureChestEnabled ||
