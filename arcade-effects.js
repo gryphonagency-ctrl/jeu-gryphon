@@ -138,6 +138,7 @@
 .ae-treasure-edit .ae-treasure-handle{display:grid;place-items:center}
 .ae-treasure-move{width:42px;height:42px;cursor:move}
 .ae-treasure-resize{width:38px;height:38px;cursor:nwse-resize}
+.ae-sound-unlock{position:fixed;z-index:2147483647;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:10px 16px;border:1px solid rgba(255,255,255,.7);border-radius:999px;background:rgba(8,12,24,.94);color:#fff;font:700 14px Arial,sans-serif;cursor:pointer;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){.ae-plane{opacity:.6}}`;
         document.head.appendChild(style);
     }
@@ -733,12 +734,39 @@
     }
 
     /* ---------- sons (synthétisés, aucun fichier audio) ---------- */
-    let audio = null, master = null, noiseBuffer = null;
+    let audio = null, master = null, noiseBuffer = null, soundUnlockButton = null;
+    function hideSoundUnlockButton() {
+        soundUnlockButton?.remove();
+        soundUnlockButton = null;
+    }
+
+    function showSoundUnlockButton() {
+        if (soundUnlockButton?.isConnected) return;
+        injectStyle();
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ae-sound-unlock';
+        button.textContent = '🔊 Activer les effets sonores';
+        button.addEventListener('click', () => {
+            if (!audio) return;
+            audio.resume().then(() => {
+                if (audio?.state === 'running') hideSoundUnlockButton();
+            }).catch(error => {
+                console.warn('Impossible d’activer les effets sonores.', error);
+            });
+        });
+        (document.body || document.documentElement).appendChild(button);
+        soundUnlockButton = button;
+    }
+
     function getAudio() {
         if (!config.sound) return null;
         if (!audio) {
             const Ctx = window.AudioContext || window.webkitAudioContext;
-            if (!Ctx) return null;
+            if (!Ctx) {
+                console.warn('Les effets sonores ne sont pas pris en charge par ce navigateur.');
+                return null;
+            }
             try {
                 audio = new Ctx();
                 master = audio.createGain();
@@ -747,10 +775,22 @@
                 noiseBuffer = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
                 const data = noiseBuffer.getChannelData(0);
                 for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-            } catch (error) { audio = null; return null; }
+            } catch (error) {
+                audio = null;
+                console.warn('Impossible de préparer les effets sonores.', error);
+                return null;
+            }
         }
-        if (audio.state === 'suspended') audio.resume().catch(() => {});
+        if (audio.state === 'suspended') {
+            showSoundUnlockButton();
+            audio.resume().then(() => {
+                if (audio?.state === 'running') hideSoundUnlockButton();
+            }).catch(error => {
+                console.warn('Impossible de reprendre les effets sonores.', error);
+            });
+        }
         master.gain.value = config.volume;
+        if (audio.state === 'running') hideSoundUnlockButton();
         return audio.state === 'running' ? audio : null;
     }
     ['pointerdown', 'keydown', 'touchstart'].forEach(name =>
@@ -818,6 +858,7 @@
     function setSound(enabled, volume) {
         config.sound = !!enabled;
         if (typeof volume === 'number') config.volume = Math.max(0, Math.min(1, volume));
+        if (!config.sound) hideSoundUnlockButton();
     }
 
     /* ---------- bulle + feu d'artifice ---------- */
@@ -1146,7 +1187,10 @@
         window.WebSocket = new Proxy(NativeWebSocket, {
             construct(target, args, newTarget) {
                 const socket = Reflect.construct(target, args, newTarget === window.WebSocket ? target : newTarget);
-                socket.addEventListener('message', onMessage);
+                const socketAddress = String(args[0] || '');
+                if (!/\/(?:media-overlay-relay|live-tts-relay)(?:[?#]|$)/.test(socketAddress)) {
+                    socket.addEventListener('message', onMessage);
+                }
                 return socket;
             }
         });

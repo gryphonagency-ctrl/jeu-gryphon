@@ -603,19 +603,23 @@ function injectArcadeScripts(html) {
             match => `${match}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`);
     }
     content = content.replace(
-        /<script\b(?=[^>]*\bsrc=["']\/(?:arcade-effects|arcade-stars|arcade-presence|arcade-mobile-controls)\.js["'])[^>]*>/gi,
+        /<script\b(?=[^>]*\bsrc=["']\/(?:arcade-stars|arcade-presence|arcade-mobile-controls)\.js["'])[^>]*>/gi,
         scriptTag => /\sdefer(?:\s|=|>)/i.test(scriptTag)
             ? scriptTag
             : scriptTag.replace(/^<script\b/i, '$& defer')
     );
+    content = content.replace(
+        /<script\b(?=[^>]*\bsrc=["']\/arcade-effects\.js["'])[^>]*>\s*<\/script>/gi,
+        ''
+    );
     const walletScript = '<script src="/arcade-stars.js" defer></script>';
     const presenceScript = '<script src="/arcade-presence.js" defer></script>';
-    const effectsScript = '<script src="/arcade-effects.js" defer></script>';
-    if (!/<script\b[^>]*src=["']\/arcade-effects\.js["']/i.test(content)) {
-        content = /<head\b[^>]*>/i.test(content)
-            ? content.replace(/<head\b[^>]*>/i, match => `${match}${effectsScript}`)
+    const effectsScript = '<script src="/arcade-effects.js"></script>';
+    content = /<head\b[^>]*>/i.test(content)
+        ? content.replace(/<head\b[^>]*>/i, match => `${match}${effectsScript}`)
+        : /<script\b/i.test(content)
+            ? content.replace(/<script\b/i, `${effectsScript}$&`)
             : insertBeforeDocumentEnd(content, effectsScript);
-    }
     if (!/<script\b[^>]*src=["']\/arcade-stars\.js["']/i.test(content)) {
         content = /<head\b[^>]*>/i.test(content)
             ? content.replace(/<head\b[^>]*>/i, match => `${match}${walletScript}`)
@@ -1167,11 +1171,17 @@ async function sendLiveStartAlert({ username = liveAlertTikTokUsername, roomId =
 
 async function sendTikTokEventAlert(messageData) {
     const messageId = messageData.gift?.messageId ||
+        messageData.followData?.messageId ||
+        messageData.subscribeData?.messageId ||
         messageData.eventData?.messageId ||
-        messageData.shareData?.messageId || '';
+        messageData.shareData?.messageId ||
+        messageData.commentData?.messageId || '';
     const username = messageData.gift?.username ||
+        messageData.followData?.username ||
+        messageData.subscribeData?.username ||
         messageData.eventData?.username ||
-        messageData.shareData?.username || 'Spectateur';
+        messageData.shareData?.username ||
+        messageData.commentData?.username || 'Spectateur';
     let title;
     let body;
     let event;

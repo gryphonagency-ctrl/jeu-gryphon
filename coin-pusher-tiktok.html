@@ -640,6 +640,10 @@
   <script>
     const CIRCUIT_LIMIT = 10000;
     const HEART_OF_DAY_GIFT_ID = 7934;
+    let heartOfDayVideoLoadPromise = Promise.resolve();
+    let heartOfDayVideoLoadFinished = false;
+    let heartOfDayVideoPendingPlay = false;
+    let heartOfDayVideoUnavailableReason = '';
     const STORAGE_KEY = 'tiktok-coin-pusher-v1';
     const DEFAULT_PUSHER_TRAVEL = 35;
     const LEGACY_PUSHER_FULL_TRAVEL_CONTROL = 32;
@@ -1430,7 +1434,10 @@
         const sessionResponse = await fetch('/api/session', { cache: 'no-store' });
         if (!sessionResponse.ok) throw new Error('Impossible de vérifier le compte connecté.');
         const session = await sessionResponse.json();
-        if (!session.authenticated || !session.username) return;
+        if (!session.authenticated || !session.username) {
+          heartOfDayVideoUnavailableReason = 'Connecte-toi au compte Griffon Arcade dans cette page pour charger la vidéo du Cœur du jour.';
+          return;
+        }
 
         const mediaResponse = await fetch(
           `/api/media-alerts?user=${encodeURIComponent(session.username)}`,
@@ -1441,7 +1448,10 @@
         const heartAlert = media.alerts?.gift_heart_me;
         const videoUrl = heartAlert?.videoUrl;
         clearMediaLayer('heartOfDayVideo');
-        if (typeof videoUrl !== 'string' || !videoUrl) return;
+        if (typeof videoUrl !== 'string' || !videoUrl) {
+          heartOfDayVideoUnavailableReason = 'Configure et enregistre la vidéo Heart Me dans Mes médias → Cadeaux.';
+          return;
+        }
 
         const video = document.createElement('video');
         video.muted = state.controls.effectsMuted;
@@ -1458,7 +1468,9 @@
         }, { once: true });
         document.getElementById('heartOfDayVideoOverlay').append(video);
         videoLayers.set('heartOfDayVideo', video);
+        heartOfDayVideoUnavailableReason = '';
       } catch (error) {
+        heartOfDayVideoUnavailableReason = error.message;
         console.error('Impossible de charger la vidéo du cœur du jour depuis Mes médias :', error);
         showToast('La vidéo du cœur du jour de Mes médias est momentanément indisponible.');
       }
@@ -2590,7 +2602,12 @@
       }
       if (type === 'gift' || type === 'tiktok-gift') {
         const gift = data.gift || data;
-        if (Number(gift.giftId ?? gift.gift?.id) === HEART_OF_DAY_GIFT_ID) playHeartOfDayVideo();
+        const giftName = String(gift.giftName || gift.gift?.name || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        if (Number(gift.giftId ?? gift.gift?.id) === HEART_OF_DAY_GIFT_ID ||
+            giftName === 'heart me' || giftName === 'coeur du jour') {
+          playHeartOfDayVideo();
+        }
         const count = gift.coinCount ?? gift.count ?? gift.repeatCount ?? 1;
         const username = gift.username || gift.nickname || 'Spectateur';
         const avatar = getAvatarSource(gift);
@@ -3006,7 +3023,20 @@
     function playHeartOfDayVideo() {
       const video = videoLayers.get('heartOfDayVideo');
       if (!video) {
-        showToast('Cadeau Heart Me reçu · configure sa vidéo dans Mes médias → Cadeaux → Cœur du jour.');
+        if (!heartOfDayVideoLoadFinished && !heartOfDayVideoPendingPlay) {
+          heartOfDayVideoPendingPlay = true;
+          heartOfDayVideoLoadPromise.then(() => {
+            heartOfDayVideoPendingPlay = false;
+            playHeartOfDayVideo();
+          }, error => {
+            heartOfDayVideoPendingPlay = false;
+            console.error('Chargement de la vidéo du cœur du jour impossible :', error);
+            showToast('La vidéo du cœur du jour ne peut pas être chargée pour le moment.');
+          });
+        } else if (heartOfDayVideoLoadFinished) {
+          showToast(heartOfDayVideoUnavailableReason ||
+            'Cadeau Heart Me reçu · configure sa vidéo dans Mes médias → Cadeaux → Cœur du jour.');
+        }
         return;
       }
       document.getElementById('heartOfDayVideoOverlay').hidden = false;
@@ -4974,9 +5004,15 @@
     buildLuckyWheel();
     render();
     requestAnimationFrame(drawMachine);
+    heartOfDayVideoLoadPromise = restoreSavedMedia()
+      .then(loadAdminHeartOfDayVideo)
+      .catch(error => {
+        heartOfDayVideoUnavailableReason = error.message || 'Impossible de charger la vidéo du Cœur du jour.';
+        console.error('Chargement initial de la vidéo du cœur du jour impossible :', error);
+      })
+      .finally(() => { heartOfDayVideoLoadFinished = true; });
     connectRelay();
     saveGame();
-    void restoreSavedMedia().then(loadAdminHeartOfDayVideo);
     showNextLuckyWheel(false);
   </script>
 </body>

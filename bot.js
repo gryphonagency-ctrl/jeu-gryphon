@@ -245,7 +245,7 @@ tiktokLiveConnection.on('chat', message => {
         type: 'comment',
         commentData: {
             username,
-            comment: message.content || ''
+            comment: message.comment || message.content || ''
         }
     });
 

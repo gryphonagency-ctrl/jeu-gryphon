@@ -113,6 +113,8 @@ async function getAvatarData(user, cache) {
 function createTikTokSession(sendToClients, username, onRoomState = () => {}, { diagnostics = false } = {}) {
     const connection = new TikTokLiveConnection(username, {});
     const processedGiftMessageIds = new Set();
+    const processedFollowMessageIds = new Set();
+    const processedShareMessageIds = new Set();
     const teamMemberLevels = new Map();
     const notifiedTeamMemberLevels = new Map();
     const avatarLookupTimes = new Map();
@@ -209,7 +211,12 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         const rawGiftId = gift.giftId ?? gift.gift?.id;
         const parsedGiftId = Number(rawGiftId);
         const giftId = Number.isSafeInteger(parsedGiftId) ? parsedGiftId : null;
-        const giftName = String(gift.gift?.name || '');
+        const giftName = String(
+            gift.gift?.name ||
+            gift.extendedGiftInfo?.name ||
+            gift.giftDetails?.name ||
+            ''
+        );
         const giftType = Number(
             gift.giftDetails?.giftType ??
             gift.giftType ??
@@ -334,7 +341,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             commentData: {
                 ...identity,
                 messageId: String(message.common?.msgId || ''),
-                comment: message.content || ''
+                comment: message.comment || message.content || ''
             }
         });
 
@@ -353,7 +360,17 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         });
     });
 
-    connection.on('share', message => {
+    const rememberSocialMessage = (seen, message) => {
+        const messageId = String(message.common?.msgId || '');
+        if (!messageId) return true;
+        if (seen.has(messageId)) return false;
+        seen.add(messageId);
+        if (seen.size > 5000) seen.delete(seen.values().next().value);
+        return true;
+    };
+
+    const handleShare = message => {
+        if (!rememberSocialMessage(processedShareMessageIds, message)) return;
         const identity = getTikTokIdentity(message.user);
         send({
             type: 'share',
@@ -363,9 +380,12 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 nickname: identity.nickname
             }
         });
-    });
+    };
+
+    connection.on('share', handleShare);
 
     const handleFollow = message => {
+        if (!rememberSocialMessage(processedFollowMessageIds, message)) return;
         const identity = getTikTokIdentity(message.user);
         send({
             type: 'follow',
@@ -379,14 +399,15 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
 
     connection.on('follow', handleFollow);
     connection.on('social', message => {
-        const displayText = [
+        const socialText = [
             message.common?.displayText?.key,
             message.displayType,
             message.action
-        ].filter(Boolean).join(' ').toLocaleLowerCase();
-        if (displayText.includes('follow') || Number(message.followType) > 0) {
-            handleFollow(message);
-        }
+        ].filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
+        const hasShareMetadata = Number(message.shareType) > 0 ||
+            Boolean(String(message.shareTarget || '').trim());
+        if (socialText.includes('share') || hasShareMetadata) handleShare(message);
+        else handleFollow(message);
     });
 
     connection.on('subNotify', message => {
