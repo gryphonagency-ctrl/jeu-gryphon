@@ -685,6 +685,7 @@ function createAccountLiveTts(accountUsername, requestedUsername) {
     );
     const legacySource = store.getLiveTtsSource();
     if (duplicate || (legacySource?.accountUsername &&
+        legacySource.accountUsername.toLowerCase() !== accountUsername.toLowerCase() &&
         canUseCreatorTts(legacySource.accountUsername) &&
         legacySource.username.toLocaleLowerCase() === normalizedUsername)) {
         throw invalidAdminInput('Ce pseudo TikTok possède déjà un lien TTS actif.');
@@ -2195,7 +2196,8 @@ const server = http.createServer((req, res) => {
                 active: Boolean(source),
                 revoked: store.isAccountTtsLinkRevoked(username) &&
                     !access.hasActiveSubscription(store.getAccount(username)),
-                username: source?.username || null,
+                username: source?.username || store.getCreatorSettings(username).tiktokUsername || null,
+                locked: store.getCreatorSettings(username).locked === true,
                 roomNumber: getCreatorRoomNumber(username)
             }));
             return;
@@ -2213,9 +2215,14 @@ const server = http.createServer((req, res) => {
                     error.statusCode = 403;
                     throw error;
                 }
-                if (body.action !== 'create') throw invalidAdminInput('Action TTS inconnue.');
-                if (existing) {
-                    const error = new Error('Un lien TTS est déjà actif. Contacte l’administrateur pour le remplacer.');
+                if (!['create', 'replace'].includes(body.action)) throw invalidAdminInput('Action TTS inconnue.');
+                if (existing && body.action === 'create') {
+                    const error = new Error('Un lien TTS est déjà actif. Choisis l’action de remplacement.');
+                    error.statusCode = 409;
+                    throw error;
+                }
+                if (!existing && body.action === 'replace') {
+                    const error = new Error('Aucun lien TTS actif à remplacer. Crée ton premier lien.');
                     error.statusCode = 409;
                     throw error;
                 }
@@ -2228,6 +2235,10 @@ const server = http.createServer((req, res) => {
                 const result = createAccountLiveTts(username, body.username);
                 store.setCreatorTiktokUsername(username, result.username);
                 store.setAccountTtsLinkRevoked(username, false);
+                if (existing) {
+                    closeAccountLiveTtsSockets(username);
+                    closeTtsControlSockets(username);
+                }
                 res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, ...result }));
             } catch (error) {
@@ -3485,6 +3496,7 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
 
 const wss = new WebSocket.Server({ noServer: true });
 const liveTtsClientUsernames = new WeakMap();
+const liveTtsClientOwners = new WeakMap();
 const liveTtsSockets = new Set();
 const overlaySockets = new Map();
 const mediaAlertOverlaySockets = new WeakSet();
@@ -3496,6 +3508,13 @@ function closeLiveTtsSockets(username) {
     for (const socket of liveTtsSockets) {
         if (username && liveTtsClientUsernames.get(socket)?.toLocaleLowerCase() !== username.toLocaleLowerCase()) continue;
         socket.terminate();
+    }
+}
+
+function closeAccountLiveTtsSockets(username) {
+    const normalizedUsername = username.toLowerCase();
+    for (const socket of liveTtsSockets) {
+        if (liveTtsClientOwners.get(socket)?.toLowerCase() === normalizedUsername) socket.terminate();
     }
 }
 
@@ -3571,6 +3590,7 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, webSocket => {
         if (ttsSource) {
             liveTtsClientUsernames.set(webSocket, ttsSource.username);
+            if (ttsSource.accountUsername) liveTtsClientOwners.set(webSocket, ttsSource.accountUsername);
             liveTtsSockets.add(webSocket);
         } else if (overlayOwner) {
             overlaySockets.set(webSocket, overlayOwner);

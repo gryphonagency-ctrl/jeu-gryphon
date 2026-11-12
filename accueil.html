@@ -851,7 +851,7 @@
                         <div><p class="kicker">Espace créateur</p><h2>Mon TTS et mon salon</h2></div>
                         <p id="creator-room-label" class="section-intro"></p>
                     </div>
-                    <p>Associe ton pseudo TikTok pour créer ton lien audio privé, puis connecte la voix directement à ton live.</p>
+                    <p>Associe ton pseudo TikTok pour créer ton lien audio privé. Si tu changes de pseudo, renouvelle le lien ici : l’ancien lien cessera de fonctionner.</p>
                     <form id="creator-tts-form" class="admin-actions">
                         <label class="field"><span class="field-label">Pseudo TikTok (sans @)</span><input id="creator-tts-username" name="username" maxlength="32" pattern="[A-Za-z0-9._]+" required autocomplete="off" placeholder="Ex. monpseudo"></label>
                         <button class="button button-primary" type="submit">Créer mon lien TTS</button>
@@ -3414,12 +3414,17 @@
             const response = await fetch('/api/account/live-tts', { credentials: 'same-origin' });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Impossible de vérifier ton TTS.');
-            creatorTtsForm.hidden = result.active || result.revoked;
-            creatorTtsUsername.readOnly = result.active || result.revoked;
+            const submitButton = creatorTtsForm.querySelector('button[type="submit"]');
+            creatorTtsForm.hidden = result.revoked || result.locked;
+            creatorTtsUsername.readOnly = result.revoked || result.locked;
+            creatorTtsUsername.dataset.activeLink = result.active ? 'true' : 'false';
+            submitButton.textContent = result.active ? 'Modifier mon pseudo et renouveler mon lien' : 'Créer mon lien TTS';
             creatorTtsLinkPanel.hidden = true;
             creatorTtsStatus.className = 'checkout-status';
-            creatorTtsStatus.textContent = result.active
-                ? `Ton lien TTS est actif pour @${result.username}. Seul l’administrateur peut le révoquer ou le remplacer.`
+            creatorTtsStatus.textContent = result.locked
+                ? 'Les réglages de ton compte sont verrouillés par l’administrateur. Contacte-le pour les modifier.'
+                : result.active
+                    ? `Ton lien TTS est actif pour @${result.username}. Modifie le pseudo puis renouvelle le lien ici si nécessaire.`
                 : result.revoked
                     ? 'Ton lien TTS a été révoqué par l’administrateur. Contacte-le pour rétablir ton accès.'
                     : 'Aucun lien TTS personnel actif.';
@@ -3433,7 +3438,7 @@
             if ((!result.active || result.revoked) && creatorVoiceEnabled) {
                 stopCreatorVoice('Le lien TTS n’est plus actif. Contacte l’administrateur.');
             }
-            if (result.active) creatorTtsUsername.value = result.username;
+            creatorTtsUsername.value = result.username || '';
             creatorRoomLabel.textContent = result.roomNumber
                 ? `Salon attribué : ${result.roomNumber}`
                 : 'Aucun salon attribué pour le moment.';
@@ -5272,30 +5277,39 @@
         creatorTtsForm.addEventListener('submit', async event => {
             event.preventDefault();
             const button = creatorTtsForm.querySelector('button[type="submit"]');
+            const replacing = creatorTtsUsername.dataset.activeLink === 'true';
+            if (replacing &&
+                !window.confirm('Renouveler le lien invalidera l’ancienne adresse et coupera les connexions TTS en cours. Continuer ?')) return;
             button.disabled = true;
             creatorTtsStatus.className = 'checkout-status';
-            creatorTtsStatus.textContent = 'Création du lien TTS…';
+            creatorTtsStatus.textContent = replacing ? 'Renouvellement du lien TTS…' : 'Création du lien TTS…';
             try {
                 const response = await fetch('/api/account/live-tts', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        action: 'create',
+                        action: replacing ? 'replace' : 'create',
                         username: creatorTtsUsername.value.trim()
                     })
                 });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.message || 'Création du lien impossible.');
+                if (!response.ok) throw new Error(result.message || 'Enregistrement du lien impossible.');
+                if (replacing && creatorVoiceEnabled) {
+                    stopCreatorVoice('Le lien a été renouvelé. Reconnecte la voix avec le nouveau pseudo.');
+                }
                 creatorTtsUrl.value = new URL(result.url, window.location.origin).href;
                 creatorTtsLinkPanel.hidden = false;
-                creatorTtsForm.hidden = true;
-                creatorTtsUsername.readOnly = true;
+                creatorTtsUsername.value = result.username;
+                creatorTtsUsername.dataset.activeLink = 'true';
+                button.textContent = 'Modifier mon pseudo et renouveler mon lien';
                 creatorVoiceUsername.textContent = `@${result.username}`;
                 creatorVoiceEnable.disabled = false;
                 creatorVoiceDisable.disabled = true;
                 creatorTtsStatus.className = 'checkout-status success';
-                creatorTtsStatus.textContent = 'Lien privé créé et pseudonyme associé. Tu peux maintenant activer la voix dans le panneau à droite.';
+                creatorTtsStatus.textContent = replacing
+                    ? 'Pseudo mis à jour et lien privé renouvelé. L’ancien lien est désactivé; copie le nouveau lien pour ta source navigateur.'
+                    : 'Lien privé créé et pseudonyme associé. Tu peux maintenant activer la voix dans le panneau à droite.';
             } catch (error) {
                 creatorTtsStatus.className = 'checkout-status error';
                 creatorTtsStatus.textContent = error.message || 'Une erreur est survenue.';
