@@ -57,6 +57,27 @@ function isGiftAlertEvent(event) {
     return typeof event === 'string' && /^gift(?:_id_\d+|_[a-z0-9_-]+)$/.test(event);
 }
 
+const DEFAULT_OVERLAY_POSITIONS = {
+    likes: { x: 50, y: 80 },
+    chat: { x: 24, y: 78 },
+    leaderboard: { x: 80, y: 22 },
+    stats: { x: 22, y: 18 },
+    timer: { x: 35, y: 50 },
+    wheel: { x: 72, y: 50 }
+};
+const OVERLAY_POSITION_KEYS = Object.keys(DEFAULT_OVERLAY_POSITIONS);
+
+function isValidOverlayPositions(positions) {
+    return Boolean(positions && typeof positions === 'object' && !Array.isArray(positions) &&
+        Object.keys(positions).length === OVERLAY_POSITION_KEYS.length &&
+        OVERLAY_POSITION_KEYS.every(key => {
+            const position = positions[key];
+            return position && typeof position === 'object' && !Array.isArray(position) &&
+                Number.isFinite(position.x) && position.x >= 0 && position.x <= 100 &&
+                Number.isFinite(position.y) && position.y >= 0 && position.y <= 100;
+        }));
+}
+
 function probeVideo(inputPath) {
     if (!ffmpegPath) {
         return Promise.reject(Object.assign(new Error('La vérification vidéo est indisponible sur ce serveur.'), { statusCode: 503 }));
@@ -337,7 +358,15 @@ function createMediaAdmin({
         try {
             content = fs.readFileSync(indexPath(owner), 'utf8');
         } catch (error) {
-            if (error.code === 'ENOENT') return { files: [], alerts: {}, giftCatalog: [] };
+            if (error.code === 'ENOENT') {
+                return {
+                    files: [],
+                    alerts: {},
+                    carouselAlerts: {},
+                    giftCatalog: [],
+                    overlayPositions: structuredClone(DEFAULT_OVERLAY_POSITIONS)
+                };
+            }
             throw error;
         }
         let parsed;
@@ -347,7 +376,10 @@ function createMediaAdmin({
             throw new Error(`Le catalogue des médias de ${owner} est illisible. Aucun média n’a été modifié.`, { cause: error });
         }
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.files) ||
-            (parsed.alerts !== undefined && (!parsed.alerts || typeof parsed.alerts !== 'object' || Array.isArray(parsed.alerts)))) {
+            (parsed.alerts !== undefined && (!parsed.alerts || typeof parsed.alerts !== 'object' || Array.isArray(parsed.alerts))) ||
+            (parsed.carouselAlerts !== undefined &&
+                (!parsed.carouselAlerts || typeof parsed.carouselAlerts !== 'object' || Array.isArray(parsed.carouselAlerts))) ||
+            (parsed.overlayPositions !== undefined && !isValidOverlayPositions(parsed.overlayPositions))) {
             throw new Error(`Le catalogue des médias de ${owner} est invalide. Aucun média n’a été modifié.`);
         }
         const giftCatalog = parsed.giftCatalog === undefined ? [] : parsed.giftCatalog;
@@ -358,7 +390,22 @@ function createMediaAdmin({
         if (normalizedGiftCatalog.some(gift => !gift)) {
             throw new Error(`Le catalogue des cadeaux TikTok de ${owner} est invalide.`);
         }
-        return { files: parsed.files, alerts: parsed.alerts || {}, giftCatalog: normalizedGiftCatalog };
+        const alerts = parsed.alerts || {};
+        const carouselAlerts = parsed.carouselAlerts || {};
+        if (parsed.carouselAlerts === undefined) {
+            for (const [event, alert] of Object.entries(alerts)) {
+                if (!isGiftAlertEvent(event) || typeof alert?.giftName !== 'string') continue;
+                carouselAlerts[event] = alert;
+                delete alerts[event];
+            }
+        }
+        return {
+            files: parsed.files,
+            alerts,
+            carouselAlerts,
+            giftCatalog: normalizedGiftCatalog,
+            overlayPositions: parsed.overlayPositions || structuredClone(DEFAULT_OVERLAY_POSITIONS)
+        };
     }
 
     function writeIndex(owner, index) {
@@ -565,6 +612,10 @@ function createMediaAdmin({
     }
 
     function handleAction(owner, body, carouselOnly = false) {
+        if (!carouselOnly &&
+            ['cache-tiktok-gift-catalog', 'add-tiktok-gifts'].includes(body?.action)) {
+            throw fail('La gestion du catalogue TikTok est réservée à la page Carrousel.');
+        }
         if (carouselOnly) {
             const allowedActions = new Set([
                 'overlay-create', 'overlay-regenerate', 'overlay-revoke',
@@ -579,6 +630,18 @@ function createMediaAdmin({
             }
         }
         const index = readIndex(owner);
+        const alertStore = carouselOnly ? index.carouselAlerts : index.alerts;
+        if (body.action === 'set-overlay-positions') {
+            if (carouselOnly || !isValidOverlayPositions(body.positions)) {
+                throw fail('La disposition des overlays est invalide.');
+            }
+            index.overlayPositions = Object.fromEntries(OVERLAY_POSITION_KEYS.map(key => [
+                key,
+                { x: body.positions[key].x, y: body.positions[key].y }
+            ]));
+            writeIndex(owner, index);
+            return { success: true, overlayPositions: index.overlayPositions };
+        }
         if (body.action === 'upload') {
             throw fail('Actualise la page Médias avant de renvoyer le fichier.');
         }
@@ -637,9 +700,9 @@ function createMediaAdmin({
             let added = 0;
             for (const gift of gifts.values()) {
                 const key = gift.giftId ? `gift_id_${gift.giftId}` : `gift_${gift.giftName.toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/ +/g, '_').slice(0, 53)}`;
-                const previousAlert = index.alerts[key] || {};
+                const previousAlert = index.carouselAlerts[key] || {};
                 if (!previousAlert.giftName) added++;
-                index.alerts[key] = {
+                index.carouselAlerts[key] = {
                     ...previousAlert,
                     ...gift,
                     giftImageUrl: gift.giftImageUrl || previousAlert.giftImageUrl || '',
@@ -653,7 +716,8 @@ function createMediaAdmin({
             if (typeof body.id !== 'string' || !FILE_PATTERN.test(body.id)) throw fail('Fichier invalide.');
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
             // Un média relié à une alerte n'est jamais supprimé en silence : il faut d'abord retirer l'alerte.
-            const usedBy = Object.entries(index.alerts).find(([, alert]) => alert.audio === body.id || alert.video === body.id);
+            const usedBy = Object.entries({ ...index.alerts, ...index.carouselAlerts })
+                .find(([, alert]) => alert.audio === body.id || alert.video === body.id);
             if (usedBy) throw fail(`Ce média est utilisé par l’alerte « ${usedBy[0]} » : change ou réinitialise l’alerte avant de le supprimer.`, 409);
             index.files = index.files.filter(file => file.id !== body.id);
             writeIndex(owner, index);
@@ -669,15 +733,15 @@ function createMediaAdmin({
                 if (!file || file.kind !== kind) throw fail(`Média ${kind} introuvable.`);
                 return value;
             };
-            const previousVolume = Number.isFinite(index.alerts[event]?.videoVolume)
-                ? index.alerts[event].videoVolume
+            const previousVolume = Number.isFinite(alertStore[event]?.videoVolume)
+                ? alertStore[event].videoVolume
                 : 1;
             const videoVolume = body.videoVolume === undefined ? previousVolume : body.videoVolume;
             if (typeof videoVolume !== 'number' || !Number.isFinite(videoVolume) ||
                 videoVolume < 0 || videoVolume > 1) {
                 throw fail('Le volume vidéo doit être compris entre 0 et 100 %.');
             }
-            const previousAlert = index.alerts[event] || {};
+            const previousAlert = alertStore[event] || {};
             const videoFit = body.videoFit === undefined ? previousAlert.videoFit || 'contain' : body.videoFit;
             const videoWidth = body.videoWidth === undefined ? previousAlert.videoWidth ?? 100 : body.videoWidth;
             const videoHeight = body.videoHeight === undefined ? previousAlert.videoHeight ?? 100 : body.videoHeight;
@@ -712,7 +776,7 @@ function createMediaAdmin({
                     giftImageUrl
                 };
             }
-            index.alerts[event] = {
+            alertStore[event] = {
                 audio: pick(body.audio, 'audio'),
                 video: pick(body.video, 'video'),
                 videoVolume,
@@ -725,17 +789,19 @@ function createMediaAdmin({
             return { success: true };
         }
         if (body.action === 'delete-alert') {
-            if (typeof body.event !== 'string' || !index.alerts[body.event]) throw fail('Alerte introuvable.', 404);
-            delete index.alerts[body.event];
+            if (typeof body.event !== 'string' || !alertStore[body.event]) throw fail('Alerte introuvable.', 404);
+            delete alertStore[body.event];
             writeIndex(owner, index);
             return { success: true };
         }
         throw fail('Action inconnue.');
     }
 
-    function publicAlerts(owner) {
+    function publicAlerts(owner, carouselOnly = false) {
         const alerts = {};
-        for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
+        const index = readIndex(owner);
+        const source = carouselOnly ? index.carouselAlerts : index.alerts;
+        for (const [event, alert] of Object.entries(source)) {
             alerts[event] = {
                 audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
                 videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
@@ -794,7 +860,12 @@ function createMediaAdmin({
             const owner = findOverlayOwner(searchParams?.get('token'));
             if (!owner) { send(res, 403, { message: 'Lien overlay invalide ou révoqué.' }); return true; }
             try {
-                send(res, 200, { alerts: publicAlerts(owner) });
+                const carouselOnly = searchParams?.get('mode') === 'carousel';
+                const index = readIndex(owner);
+                send(res, 200, {
+                    alerts: publicAlerts(owner, carouselOnly),
+                    overlayPositions: index.overlayPositions
+                });
             } catch (error) {
                 console.error(`Impossible de lire le catalogue média de ${owner} :`, error.message);
                 send(res, 500, { message: 'Impossible de lire les médias de cet overlay.' });
@@ -853,17 +924,14 @@ function createMediaAdmin({
         if (req.method === 'GET') {
             try {
                 const index = readIndex(user);
-                const alerts = carouselOnly
-                    ? Object.fromEntries(Object.entries(index.alerts)
-                        .filter(([event, alert]) => isGiftAlertEvent(event) && typeof alert?.giftName === 'string'))
-                    : index.alerts;
                 send(res, 200, {
                     user,
                     files: index.files
                         .filter(file => !carouselOnly || file.kind === 'audio' || file.kind === 'video')
                         .map(file => publicFile(user, file)),
-                    alerts,
-                    giftCatalog: index.giftCatalog,
+                    alerts: carouselOnly ? index.carouselAlerts : index.alerts,
+                    giftCatalog: carouselOnly ? index.giftCatalog : [],
+                    overlayPositions: carouselOnly ? undefined : index.overlayPositions,
                     persistent,
                     overlayPath: overlayPath(overlayToken(user, 'get')),
                     limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }

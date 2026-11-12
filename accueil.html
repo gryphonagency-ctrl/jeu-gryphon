@@ -401,6 +401,9 @@
         .creator-media-editor { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.2); }
         .creator-media-editor h3 { margin: 0 0 6px; color: #fff; font-size: 18px; }
         .creator-media-editor iframe { display: block; width: 100%; min-height: 75vh; border: 0; border-radius: 10px; background: rgba(5,11,27,.45); }
+        .creator-overlay-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
+        .creator-overlay-divider::before, .creator-overlay-divider::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg,transparent,rgba(116,220,255,.65),transparent); }
+        .creator-overlay-divider span { padding: 7px 12px; border: 1px solid rgba(116,220,255,.42); border-radius: 999px; background: linear-gradient(100deg,rgba(18,65,112,.86),rgba(58,47,122,.86)); color: #e7f6ff; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
         .stars-leaderboard-wrap { max-height: 420px; overflow: auto; }
         .stars-leaderboard-table th:first-child, .stars-leaderboard-table td:first-child { width: 54px; }
         .stars-leaderboard-table th:last-child, .stars-leaderboard-table td:last-child { text-align: right; }
@@ -804,6 +807,7 @@
                         <div class="creator-overlay-actions">
                             <button id="creator-overlay-generate" class="button button-primary" type="button">Générer mon lien</button>
                         </div>
+                        <div class="creator-overlay-divider" role="separator" aria-label="Séparation entre les réglages du feu d’artifice et ceux des objectifs"></div>
                         <section class="creator-overlay-progress" aria-labelledby="creator-overlay-progress-heading">
                             <strong id="creator-overlay-progress-heading">📊 Barres d’objectifs du LIVE</strong>
                             <p>Crée une source navigateur séparée pour TikTok LIVE Studio ou OBS. Les likes et abonnements reçus pendant le direct font progresser les barres; elles repartent de zéro au prochain LIVE.</p>
@@ -832,6 +836,7 @@
                     </div>
                     <p id="creator-overlay-status" class="checkout-status" role="status" aria-live="polite"></p>
                     <section id="creator-media-editor" class="creator-media-editor" aria-labelledby="creator-media-editor-heading" hidden>
+                        <div class="creator-overlay-divider" role="separator"><span>Sons et vidéos des effets</span></div>
                         <h3 id="creator-media-editor-heading">Sons et vidéos de mes effets</h3>
                         <p>Ajoute ou importe tes médias, puis associe un son ou une vidéo à chaque événement du live. Tous les réglages et ta bibliothèque sont disponibles ici.</p>
                         <iframe id="creator-media-editor-frame" title="Gestion complète des sons et vidéos des effets" loading="eager"></iframe>
@@ -857,7 +862,7 @@
                         <button class="button button-primary" type="submit">Créer mon lien TTS</button>
                     </form>
                     <div id="creator-tts-link-panel" class="creator-url-panel" hidden>
-                        <label class="field"><span class="field-label">Lien privé de source navigateur</span><input id="creator-tts-url" type="url" readonly></label>
+                        <label class="field"><span class="field-label">Lien privé de source navigateur</span><input id="creator-tts-url" type="url" readonly placeholder="Récupère un nouveau lien pour le copier"></label>
                         <button id="creator-tts-copy" class="button button-secondary" type="button">Copier</button>
                     </div>
                     <p id="creator-tts-status" class="checkout-status" role="status" aria-live="polite"></p>
@@ -3419,7 +3424,13 @@
             creatorTtsUsername.readOnly = result.revoked || result.locked;
             creatorTtsUsername.dataset.activeLink = result.active ? 'true' : 'false';
             submitButton.textContent = result.active ? 'Modifier mon pseudo et renouveler mon lien' : 'Créer mon lien TTS';
-            creatorTtsLinkPanel.hidden = true;
+            creatorTtsLinkPanel.hidden = !result.active;
+            creatorTtsUrl.value = '';
+            creatorTtsUrl.placeholder = result.active
+                ? 'Lien masqué par sécurité; renouvelle-le pour afficher et copier la nouvelle adresse'
+                : 'Le lien apparaîtra après sa création';
+            creatorTtsCopy.textContent = result.active ? 'Renouveler et copier le lien' : 'Copier';
+            creatorTtsCopy.disabled = result.locked || result.revoked;
             creatorTtsStatus.className = 'checkout-status';
             creatorTtsStatus.textContent = result.locked
                 ? 'Les réglages de ton compte sont verrouillés par l’administrateur. Contacte-le pour les modifier.'
@@ -5274,13 +5285,24 @@
             }
         });
 
-        creatorTtsForm.addEventListener('submit', async event => {
-            event.preventDefault();
-            const button = creatorTtsForm.querySelector('button[type="submit"]');
+        async function copyCreatorTtsLink() {
+            try {
+                await navigator.clipboard.writeText(creatorTtsUrl.value);
+                creatorTtsStatus.className = 'checkout-status success';
+                creatorTtsStatus.textContent = 'Lien TTS copié.';
+            } catch {
+                creatorTtsStatus.className = 'checkout-status error';
+                creatorTtsStatus.textContent = 'Copie impossible : le lien reste affiché dans la case pour le copier manuellement.';
+            }
+        }
+
+        async function createCreatorTtsLink(copyAfterCreation, triggerButton) {
+            const button = triggerButton;
             const replacing = creatorTtsUsername.dataset.activeLink === 'true';
             if (replacing &&
                 !window.confirm('Renouveler le lien invalidera l’ancienne adresse et coupera les connexions TTS en cours. Continuer ?')) return;
             button.disabled = true;
+            creatorTtsCopy.disabled = true;
             creatorTtsStatus.className = 'checkout-status';
             creatorTtsStatus.textContent = replacing ? 'Renouvellement du lien TTS…' : 'Création du lien TTS…';
             try {
@@ -5300,9 +5322,11 @@
                 }
                 creatorTtsUrl.value = new URL(result.url, window.location.origin).href;
                 creatorTtsLinkPanel.hidden = false;
+                creatorTtsUrl.placeholder = '';
                 creatorTtsUsername.value = result.username;
                 creatorTtsUsername.dataset.activeLink = 'true';
                 button.textContent = 'Modifier mon pseudo et renouveler mon lien';
+                creatorTtsCopy.textContent = 'Copier';
                 creatorVoiceUsername.textContent = `@${result.username}`;
                 creatorVoiceEnable.disabled = false;
                 creatorVoiceDisable.disabled = true;
@@ -5310,23 +5334,27 @@
                 creatorTtsStatus.textContent = replacing
                     ? 'Pseudo mis à jour et lien privé renouvelé. L’ancien lien est désactivé; copie le nouveau lien pour ta source navigateur.'
                     : 'Lien privé créé et pseudonyme associé. Tu peux maintenant activer la voix dans le panneau à droite.';
+                if (copyAfterCreation) await copyCreatorTtsLink();
             } catch (error) {
                 creatorTtsStatus.className = 'checkout-status error';
                 creatorTtsStatus.textContent = error.message || 'Une erreur est survenue.';
             } finally {
                 button.disabled = false;
+                creatorTtsCopy.disabled = false;
             }
+        }
+
+        creatorTtsForm.addEventListener('submit', event => {
+            event.preventDefault();
+            void createCreatorTtsLink(false, creatorTtsForm.querySelector('button[type="submit"]'));
         });
 
-        creatorTtsCopy.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(creatorTtsUrl.value);
-                creatorTtsStatus.className = 'checkout-status success';
-                creatorTtsStatus.textContent = 'Lien TTS copié.';
-            } catch {
-                creatorTtsStatus.className = 'checkout-status error';
-                creatorTtsStatus.textContent = 'Copie impossible : sélectionne et copie le lien manuellement.';
+        creatorTtsCopy.addEventListener('click', () => {
+            if (!creatorTtsUrl.value) {
+                void createCreatorTtsLink(true, creatorTtsCopy);
+                return;
             }
+            void copyCreatorTtsLink();
         });
 
         adminCreatorCopy.addEventListener('click', async () => {
