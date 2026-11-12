@@ -207,6 +207,9 @@ function isAdmin(req) {
 function canAccessGames(req, gameId) {
     if (!isAuthenticated(req)) return false;
     const username = usernameForRequest(req);
+    if (gameId === '/clowns-tomates.html') {
+        return username === PRIMARY_ADMIN_USERNAME;
+    }
     if (isAdminUser(username)) return true;
     return canUseCreatorService(username, 'games') &&
         (gameId === undefined || store.isCreatorGameAllowed(username, gameId));

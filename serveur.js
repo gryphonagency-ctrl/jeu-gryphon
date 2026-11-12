@@ -241,7 +241,6 @@ const freeTrialRoutes = new Set([
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
-    '/clowns-tomates.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -272,7 +271,6 @@ store.grantGameAccessToExistingCreators('/mot-du-live.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/gryphon-blackjack.html');
 store.grantGameAccessToExistingCreators('/telepusher.html');
-store.grantGameAccessToExistingCreators('/clowns-tomates.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
 store.grantGameAccessToExistingCreators('/ile-au-tresor.html');
 store.grantGameAccessToExistingCreators('/course-karts.html');
