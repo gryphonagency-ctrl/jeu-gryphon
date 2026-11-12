@@ -24,9 +24,34 @@ const MEDIA_TYPES = {
 const FILE_PATTERN = /^[a-f0-9-]{36}\.(?:mp3|wav|ogg|m4a|mp4|webm|png|jpe?g|webp|gif)$/;
 const OWNER_PATTERN = /^[a-z0-9._-]{1,64}$/;
 const EVENT_PATTERN = /^[a-z0-9_-]{1,60}$/;
+const MAX_TIKTOK_GIFTS = 2000;
+const MAX_TIKTOK_GIFT_SELECTION = 2048;
 const IMPORT_TIMEOUT_MS = 20000;
 let pendingVideoConversions = 0;
 let videoConversionQueue = Promise.resolve();
+
+function isAllowedGiftImageUrl(value) {
+    if (typeof value !== 'string' || value.length > 2048) return false;
+    if (!value || /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(value)) return true;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && !url.username && !url.password;
+    } catch {
+        return false;
+    }
+}
+
+function normalizeCatalogGift(gift) {
+    const id = gift?.id;
+    const name = typeof gift?.name === 'string' ? gift.name.trim() : '';
+    const coinValue = gift?.coinValue ?? null;
+    const imageUrl = gift?.imageUrl ?? '';
+    if (!Number.isSafeInteger(id) || id < 1 || !name || name.length > 100 ||
+        typeof imageUrl !== 'string' ||
+        (coinValue !== null && (!Number.isSafeInteger(coinValue) || coinValue < 0)) ||
+        !isAllowedGiftImageUrl(imageUrl)) return null;
+    return { id, name, coinValue, imageUrl };
+}
 
 function probeVideo(inputPath) {
     if (!ffmpegPath) {
@@ -300,7 +325,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         try {
             content = fs.readFileSync(indexPath(owner), 'utf8');
         } catch (error) {
-            if (error.code === 'ENOENT') return { files: [], alerts: {} };
+            if (error.code === 'ENOENT') return { files: [], alerts: {}, giftCatalog: [] };
             throw error;
         }
         let parsed;
@@ -313,7 +338,15 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             (parsed.alerts !== undefined && (!parsed.alerts || typeof parsed.alerts !== 'object' || Array.isArray(parsed.alerts)))) {
             throw new Error(`Le catalogue des médias de ${owner} est invalide. Aucun média n’a été modifié.`);
         }
-        return { files: parsed.files, alerts: parsed.alerts || {} };
+        const giftCatalog = parsed.giftCatalog === undefined ? [] : parsed.giftCatalog;
+        if (!Array.isArray(giftCatalog) || giftCatalog.length > MAX_TIKTOK_GIFTS) {
+            throw new Error(`Le catalogue des cadeaux TikTok de ${owner} est invalide.`);
+        }
+        const normalizedGiftCatalog = giftCatalog.map(normalizeCatalogGift);
+        if (normalizedGiftCatalog.some(gift => !gift)) {
+            throw new Error(`Le catalogue des cadeaux TikTok de ${owner} est invalide.`);
+        }
+        return { files: parsed.files, alerts: parsed.alerts || {}, giftCatalog: normalizedGiftCatalog };
     }
 
     function writeIndex(owner, index) {
@@ -528,8 +561,32 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         if (body.action === 'overlay-create') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'create')) };
         if (body.action === 'overlay-regenerate') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'regenerate')) };
         if (body.action === 'overlay-revoke') { revokeOverlay(owner); return { success: true, overlayPath: null }; }
+        if (body.action === 'cache-tiktok-gift-catalog') {
+            if (!Array.isArray(body.gifts) || !body.gifts.length || body.gifts.length > MAX_TIKTOK_GIFTS) {
+                throw fail('Le catalogue des cadeaux TikTok est invalide.');
+            }
+            const incomingGifts = new Map();
+            for (const gift of body.gifts) {
+                const normalizedGift = normalizeCatalogGift(gift);
+                if (!normalizedGift) throw fail('Les informations d’un cadeau TikTok sont invalides.');
+                incomingGifts.set(normalizedGift.id, normalizedGift);
+            }
+            const catalog = new Map(index.giftCatalog.map(gift => [gift.id, gift]));
+            for (const [id, gift] of incomingGifts) {
+                const previousGift = catalog.get(id);
+                catalog.delete(id);
+                catalog.set(id, {
+                    ...previousGift,
+                    ...gift,
+                    imageUrl: gift.imageUrl || previousGift?.imageUrl || ''
+                });
+            }
+            index.giftCatalog = [...catalog.values()].slice(-MAX_TIKTOK_GIFTS);
+            writeIndex(owner, index);
+            return { success: true, cached: incomingGifts.size, total: index.giftCatalog.length };
+        }
         if (body.action === 'add-tiktok-gifts') {
-            if (!Array.isArray(body.gifts) || !body.gifts.length || body.gifts.length > 2000) {
+            if (!Array.isArray(body.gifts) || !body.gifts.length || body.gifts.length > MAX_TIKTOK_GIFT_SELECTION) {
                 throw fail('La liste des cadeaux TikTok est invalide.');
             }
             const gifts = new Map();
@@ -543,16 +600,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                     !giftName || giftName.length > 100 || giftImageUrl.length > 2048) {
                     throw fail('Les informations d’un cadeau TikTok sont invalides.');
                 }
-                if (giftImageUrl) {
-                    let validImage = /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(giftImageUrl);
-                    try {
-                        const imageUrl = new URL(giftImageUrl);
-                        validImage ||= imageUrl.protocol === 'https:' && !imageUrl.username && !imageUrl.password;
-                    } catch {}
-                    if (!validImage) {
-                        throw fail('L’image d’un cadeau TikTok doit utiliser HTTPS.');
-                    }
-                }
+                if (!isAllowedGiftImageUrl(giftImageUrl)) throw fail('L’image d’un cadeau TikTok doit utiliser HTTPS.');
                 if (!hasGiftId && !giftSlug) throw fail('Le nom d’un cadeau TikTok est invalide.');
                 const key = hasGiftId ? `gift_id_${giftId}` : `gift_${giftSlug}`;
                 gifts.set(key, {
@@ -631,16 +679,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                 if (typeof giftImageUrl !== 'string' || giftImageUrl.length > 2048) {
                     throw fail('L’image du cadeau TikTok est invalide.');
                 }
-                if (giftImageUrl) {
-                    let validImage = /^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(giftImageUrl);
-                    try {
-                        const imageUrl = new URL(giftImageUrl);
-                        validImage ||= imageUrl.protocol === 'https:' && !imageUrl.username && !imageUrl.password;
-                    } catch {}
-                    if (!validImage) {
-                        throw fail('L’image du cadeau TikTok doit utiliser HTTPS.');
-                    }
-                }
+                if (!isAllowedGiftImageUrl(giftImageUrl)) throw fail('L’image du cadeau TikTok doit utiliser HTTPS.');
                 giftMetadata = {
                     ...(giftEventId ? { giftId } : {}),
                     giftName,
@@ -789,6 +828,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
                     user,
                     files: index.files.map(file => publicFile(user, file)),
                     alerts: index.alerts,
+                    giftCatalog: index.giftCatalog,
                     persistent,
                     overlayPath: overlayPath(overlayToken(user, 'get')),
                     limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
