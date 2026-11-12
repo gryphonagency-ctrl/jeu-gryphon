@@ -135,7 +135,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
 
     const emitTeamMemberLevelUp = (user, teamMemberKey, teamMemberLevel, messageId, sentAt) => {
         const notifiedLevel = notifiedTeamMemberLevels.get(teamMemberKey) || 0;
-        if (teamMemberLevel <= notifiedLevel) return;
+        if (teamMemberLevel <= notifiedLevel) return false;
         notifiedTeamMemberLevels.set(teamMemberKey, teamMemberLevel);
         const identity = getTikTokIdentity(user);
         const levelMessageId = messageId
@@ -150,9 +150,16 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 teamMemberLevel
             }
         });
+        logDiagnostic('niveau-fan-club', {
+            account: username,
+            level: teamMemberLevel,
+            result: 'transmis',
+            timestamp: new Date().toISOString()
+        });
         if (notifiedTeamMemberLevels.size > 10000) {
             notifiedTeamMemberLevels.delete(notifiedTeamMemberLevels.keys().next().value);
         }
+        return true;
     };
 
     const trackTeamMemberLevel = (user, messageId, sentAt, reportedLevel, explicitUpgrade = false) => {
@@ -163,17 +170,21 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         const identity = getTikTokIdentity(user);
         const teamMemberKey = String(identity.userId || identity.uniqueId || identity.username)
             .trim().toLocaleLowerCase();
-        if (!teamMemberKey || teamMemberLevel === null) return;
+        if (!teamMemberKey) return 'identite-absente';
+        if (teamMemberLevel === null) return 'niveau-absent';
         const previousLevel = teamMemberLevels.get(teamMemberKey);
         if (previousLevel === undefined || teamMemberLevel > previousLevel) {
             teamMemberLevels.set(teamMemberKey, teamMemberLevel);
         }
         if (explicitUpgrade || (previousLevel !== undefined && teamMemberLevel > previousLevel)) {
-            emitTeamMemberLevelUp(user, teamMemberKey, teamMemberLevel, messageId, sentAt);
+            return emitTeamMemberLevelUp(user, teamMemberKey, teamMemberLevel, messageId, sentAt)
+                ? 'transmis'
+                : 'deja-signale';
         }
         if (teamMemberLevels.size > 10000) {
             teamMemberLevels.delete(teamMemberLevels.keys().next().value);
         }
+        return 'reference';
     };
 
     const scheduleReconnect = () => {
@@ -317,20 +328,32 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     });
 
     connection.on('barrage', message => {
-        if (Number(message?.msgType) !== FAN_CLUB_LEVEL_UP_BARRAGE_TYPE) return;
+        const msgType = Number(message?.msgType);
+        const fansLevel = message?.fansLevelParam;
+        const reportedLevel = Number(fansLevel?.currentGrade);
+        const hasReportedLevel = Number.isSafeInteger(reportedLevel) && reportedLevel > 0;
+        if (msgType !== FAN_CLUB_LEVEL_UP_BARRAGE_TYPE && !fansLevel && !hasReportedLevel) return;
         const providerTimestamp = Number(message?.common?.createTime ?? message?.createTime);
         const sentAt = Number.isSafeInteger(providerTimestamp)
             ? providerTimestamp < 1_000_000_000_000 ? providerTimestamp * 1000 : providerTimestamp
             : Date.now();
         const messageId = String(message?.common?.msgId ?? message?.msgId ?? '');
-        const fansLevel = message?.fansLevelParam;
-        trackTeamMemberLevel(
-            fansLevel?.user || message?.user || message,
+        const user = fansLevel?.user || message?.user || message;
+        const result = trackTeamMemberLevel(
+            user,
             messageId,
             sentAt,
-            fansLevel?.currentGrade,
+            reportedLevel,
             true
         );
+        logDiagnostic('barrage-niveau-fan', {
+            account: username,
+            msgType: Number.isFinite(msgType) ? msgType : null,
+            level: hasReportedLevel ? reportedLevel : null,
+            hasUser: Boolean(fansLevel?.user || message?.user),
+            result,
+            timestamp: new Date().toISOString()
+        });
     });
 
     connection.on('chat', message => {
