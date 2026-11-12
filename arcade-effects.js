@@ -1081,7 +1081,10 @@
                 finished = true;
                 clearTimeout(guard);
                 blockedMediaAlerts.delete(mediaAlertVideo);
-                blockedMediaAlerts.delete(mediaAlertAudio);
+                const blockedAudio = mediaAlertAudio && blockedMediaAlerts.has(mediaAlertAudio)
+                    ? mediaAlertAudio
+                    : null;
+                if (!blockedAudio) blockedMediaAlerts.delete(mediaAlertAudio);
                 updateMediaAlertUnlockButton();
                 if (mediaAlertVideo) {
                     mediaAlertVideo.pause();
@@ -1090,7 +1093,14 @@
                     mediaAlertVideo.load();
                 }
                 if (mediaAlertAudio) {
-                    mediaAlertAudio.pause();
+                    if (blockedAudio) {
+                        blockedAudio.onended = blockedAudio.onerror = () => {
+                            blockedMediaAlerts.delete(blockedAudio);
+                            updateMediaAlertUnlockButton();
+                        };
+                    } else {
+                        mediaAlertAudio.pause();
+                    }
                     mediaAlertAudio = null;
                 }
                 resolve();
@@ -1105,8 +1115,14 @@
                 mediaAlertAudio.onended = mediaAlertAudio.onerror = finishItem;
                 mediaAlertAudio.play().catch(error => {
                     if (error.name === 'NotAllowedError') {
-                        blockedMediaAlerts.add(mediaAlertAudio);
+                        const blockedAudio = mediaAlertAudio;
+                        blockedMediaAlerts.add(blockedAudio);
+                        blockedAudio.onended = blockedAudio.onerror = () => {
+                            blockedMediaAlerts.delete(blockedAudio);
+                            updateMediaAlertUnlockButton();
+                        };
                         updateMediaAlertUnlockButton();
+                        finishItem();
                         return;
                     }
                     console.warn('Lecture du son d’alerte impossible :', error);
