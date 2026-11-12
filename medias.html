@@ -682,6 +682,10 @@ function slot(key, label, removable) {
   const videoHeight = el('input', { type: 'range', min: 25, max: 150, step: 5, value: String(alert.videoHeight ?? 100) });
   const videoWidthValue = el('output', { textContent: `${videoWidth.value} %` });
   const videoHeightValue = el('output', { textContent: `${videoHeight.value} %` });
+  const savedOffset = Number.isFinite(alert.videoOffsetY) ? Math.min(50, Math.max(-50, alert.videoOffsetY)) : 0;
+  const videoOffsetY = el('input', { type: 'range', min: -50, max: 50, step: 1, value: String(savedOffset) });
+  const formatVideoOffset = value => `${value > 0 ? '+' : ''}${value} %`;
+  const videoOffsetYValue = el('output', { textContent: formatVideoOffset(savedOffset) });
   const volume = el('input', { type: 'range', min: 0, max: 100, step: 5,
     value: String(Math.round(Math.min(1, Math.max(0, Number(alert.videoVolume ?? 1))) * 100)) });
   const volumeValue = el('span', { textContent: `${volume.value} %` });
@@ -700,6 +704,7 @@ function slot(key, label, removable) {
       if (videoPreview.getAttribute('src') !== file.url) videoPreview.src = file.url;
       videoPreview.style.width = `${Number(videoWidth.value)}%`;
       videoPreview.style.height = `${Number(videoHeight.value)}%`;
+      videoPreview.style.transform = isFullScreenAlert ? `translateY(${videoOffsetY.value}%)` : '';
       videoPreview.style.objectFit = videoFit.value;
       videoPreview.volume = Number(volume.value) / 100;
     } else {
@@ -710,6 +715,10 @@ function slot(key, label, removable) {
   };
   videoWidth.addEventListener('input', () => { videoWidthValue.textContent = `${videoWidth.value} %`; updatePreview(); });
   videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); });
+  videoOffsetY.addEventListener('input', () => {
+    videoOffsetYValue.textContent = formatVideoOffset(Number(videoOffsetY.value));
+    updatePreview();
+  });
   videoFit.addEventListener('change', updatePreview);
   video.addEventListener('change', () => { updatePreview(); updateVideoHint(); });
   videoPreview.addEventListener('error', () => {
@@ -742,6 +751,7 @@ function slot(key, label, removable) {
     onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value,
       videoVolume: Number(volume.value) / 100, videoFit: videoFit.value,
       videoWidth: Number(videoWidth.value), videoHeight: Number(videoHeight.value),
+      videoOffsetY: Number(videoOffsetY.value),
       ...(hasGiftMetadata ? {
         ...(giftIdMatch ? { giftId: Number(giftIdMatch[1]) } : {}),
         giftName: alert.giftName,
@@ -779,7 +789,8 @@ function slot(key, label, removable) {
     ] : [
       el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
       el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight),
-      el('p', { className: 'hint', textContent: 'La vidéo est centrée sur l’écran. Ajuste sa largeur et sa hauteur; 100 % correspond à la taille de l’écran.' })
+      el('label', { className: 'video-size' }, 'Position verticale (− monte, + descend)', videoOffsetYValue, videoOffsetY),
+      el('p', { className: 'hint', textContent: 'La vidéo reste centrée par défaut. Ajuste sa largeur, sa hauteur et sa position verticale; 100 % correspond à la taille de l’écran.' })
     ]),
     videoVolume, actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: hasGiftMetadata

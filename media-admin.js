@@ -777,10 +777,15 @@ function createMediaAdmin({
             const videoFit = body.videoFit === undefined ? previousAlert.videoFit || 'contain' : body.videoFit;
             const videoWidth = body.videoWidth === undefined ? previousAlert.videoWidth ?? 100 : body.videoWidth;
             const videoHeight = body.videoHeight === undefined ? previousAlert.videoHeight ?? 100 : body.videoHeight;
+            const videoOffsetY = body.videoOffsetY === undefined ? previousAlert.videoOffsetY ?? 0 : body.videoOffsetY;
             if (!['contain', 'cover'].includes(videoFit)) throw fail('Le cadrage vidéo est invalide.');
             if (![videoWidth, videoHeight].every(value =>
                 typeof value === 'number' && Number.isFinite(value) && value >= 25 && value <= 150)) {
                 throw fail('La taille de la vidéo doit être comprise entre 25 et 150 %.');
+            }
+            if (typeof videoOffsetY !== 'number' || !Number.isFinite(videoOffsetY) ||
+                videoOffsetY < -50 || videoOffsetY > 50) {
+                throw fail('La position verticale doit être comprise entre -50 et +50 % de l’écran.');
             }
             const giftEventId = /^gift_id_(\d+)$/.exec(event);
             let giftMetadata = {};
@@ -815,6 +820,7 @@ function createMediaAdmin({
                 videoFit,
                 videoWidth,
                 videoHeight,
+                videoOffsetY,
                 ...giftMetadata
             };
             writeIndex(owner, index);
@@ -841,6 +847,7 @@ function createMediaAdmin({
                 videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
                 videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
                 videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100,
+                videoOffsetY: Number.isFinite(alert.videoOffsetY) ? Math.min(50, Math.max(-50, alert.videoOffsetY)) : 0,
                 ...(typeof alert.giftName === 'string' && alert.giftName.length <= 100 ? {
                     ...(Number.isSafeInteger(alert.giftId) && alert.giftId > 0 ? { giftId: alert.giftId } : {}),
                     giftName: String(alert.giftName || '').slice(0, 100),
@@ -915,7 +922,8 @@ function createMediaAdmin({
                         videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
                         videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
                         videoWidth: Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100,
-                        videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100
+                        videoHeight: Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100,
+                        videoOffsetY: Number.isFinite(alert.videoOffsetY) ? Math.min(50, Math.max(-50, alert.videoOffsetY)) : 0
                     };
                 }
             } catch (error) {
