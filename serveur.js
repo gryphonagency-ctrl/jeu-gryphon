@@ -219,8 +219,6 @@ const protectedRoutes = new Set([
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
     '/aquarium-fish-boss.png',
-    '/matter.min.js',
-    '/node_modules/matter-js/build/matter.min.js',
     '/ballon-foot-reel.jpg'
 ]);
 // Jeux d'essai ouverts à tous, sans compte ni abonnement.
