@@ -31,6 +31,16 @@ button.danger{background:#ff6b7a}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
 .tabs a:hover{border-color:var(--accent)}
+.gift-catalog-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:520px;overflow:auto;padding:2px}
+.gift-catalog-item{display:grid;grid-template-rows:80px minmax(2.4em,auto) auto auto;align-content:start;justify-items:center;gap:5px;min-width:0;padding:9px;border:1px solid var(--line);border-radius:10px;background:#07122d;color:#fff;text-align:center}
+.gift-catalog-item:hover:not(:disabled){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.gift-catalog-item:disabled{cursor:default;opacity:.62;background:#10203a;color:#bac9e8}
+.gift-catalog-item img,.gift-catalog-placeholder{width:76px;height:76px;object-fit:contain}
+.gift-catalog-placeholder{display:grid;place-items:center;font-size:42px}
+.gift-catalog-item strong{align-self:center;max-width:100%;font-size:.82rem;line-height:1.2;overflow-wrap:anywhere}
+.gift-catalog-item span{font-size:.75rem;color:#bac9e8}
+.gift-catalog-item .gift-catalog-action{font-weight:700;color:#9dffb0}
+.gift-catalog-empty{grid-column:1/-1;padding:12px;border:1px dashed var(--line);border-radius:8px;color:#bac9e8;text-align:center}
 #alert-sections{display:grid;gap:18px}
 .slot{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
 .slot h3{grid-column:1/-1;margin:0;font-size:1rem}
@@ -84,14 +94,13 @@ html[data-embedded="true"] main{max-width:none}
 <div class="row">
 <label for="gift-catalog-search">Rechercher un cadeau
 <input id="gift-catalog-search" type="search" maxlength="100" placeholder="Ex. rose, cœur, lion"></label>
-<label for="gift-catalog-select">Cadeaux TikTok disponibles
-<select id="gift-catalog-select"><option value="">Charge le catalogue TikTok</option></select></label>
-<button id="gift-catalog-add" type="button" disabled>Ajouter ce cadeau</button>
 <button id="gift-catalog-refresh" type="button">Actualiser le catalogue</button>
 </div>
 <div class="row">
 <button id="gift-catalog-add-all" type="button" disabled>Ajouter tous les cadeaux</button>
 </div>
+<p id="gift-catalog-count" class="hint" aria-live="polite"></p>
+<div id="gift-catalog-list" class="gift-catalog-list" role="region" aria-label="Cadeaux à ajouter au carrousel"></div>
 <p id="gift-catalog-status" class="hint" role="status">Cadeaux Griffon connus disponibles tout de suite. Le catalogue complet de ton direct s’ajoutera automatiquement quand TikTok sera connecté.</p>
 </section>
 <div id="alert-sections"></div>
@@ -265,6 +274,7 @@ const KNOWN_GIFTS = [
 let giftCatalog = [...KNOWN_GIFTS];
 let giftCatalogSocket = null;
 let giftCatalogReconnectTimer = null;
+let giftCatalogAdding = false;
 const DEFAULT_WHEEL_ITEMS = [
   { label: 'Lot 1', color: '#ff6b7a' },
   { label: 'Lot 2', color: '#ffd45a' },
@@ -506,7 +516,7 @@ function slot(key, label, removable) {
   const actionTextLabel = actionText
     ? el('label', { className: 'gift-action-text' }, 'Texte affiché dans le carrousel', actionText)
     : null;
-  const giftPhoto = giftIdMatch && alert.giftImageUrl
+  const giftPhoto = hasGiftMetadata && alert.giftImageUrl
     ? el('img', {
       className: 'gift-photo-preview',
       src: alert.giftImageUrl,
@@ -603,21 +613,97 @@ function renderSections() {
 
 function renderGiftCatalogOptions() {
   const search = $('gift-catalog-search').value.trim().toLocaleLowerCase();
-  const matchingGifts = giftCatalog
-    .filter(gift => !search || gift.name.toLocaleLowerCase().includes(search))
-    .slice(0, 150);
-  const select = $('gift-catalog-select');
-  select.replaceChildren(el('option', {
-    value: '',
-    textContent: giftCatalog.length
-      ? matchingGifts.length ? 'Choisis un cadeau TikTok' : 'Aucun cadeau trouvé'
-      : 'Charge le catalogue TikTok'
-  }), ...matchingGifts.map(gift => el('option', {
-    value: String(gift.id),
-    textContent: `${gift.name}${Number.isSafeInteger(gift.coinValue) ? ` · ${gift.coinValue} pièces` : ''}`
-  })));
-  $('gift-catalog-add').disabled = matchingGifts.length === 0;
-  $('gift-catalog-add-all').disabled = giftCatalog.length === 0;
+  const matchingGifts = giftCatalog.filter(gift =>
+    !search || gift.name.toLocaleLowerCase().includes(search)
+  );
+  const addedCount = giftCatalog.filter(isGiftInCarousel).length;
+  const list = $('gift-catalog-list');
+  const fragment = document.createDocumentFragment();
+  for (const gift of matchingGifts) {
+    const key = giftCatalogKey(gift);
+    const alreadyAdded = isGiftInCarousel(gift);
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'gift-catalog-item';
+    card.dataset.giftKey = key;
+    card.disabled = alreadyAdded || giftCatalogAdding;
+    card.setAttribute('aria-label', `${gift.name}${alreadyAdded ? ', déjà dans le carrousel' : ', ajouter au carrousel'}`);
+
+    const imageUrl = getGiftImageUrl(gift.imageUrl);
+    if (imageUrl) {
+      const image = document.createElement('img');
+      image.src = imageUrl;
+      image.alt = '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      image.referrerPolicy = 'no-referrer';
+      image.addEventListener('error', () => {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'gift-catalog-placeholder';
+        placeholder.textContent = '🎁';
+        image.replaceWith(placeholder);
+      }, { once: true });
+      card.appendChild(image);
+    } else {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'gift-catalog-placeholder';
+      placeholder.textContent = '🎁';
+      card.appendChild(placeholder);
+    }
+
+    const name = document.createElement('strong');
+    name.textContent = gift.name;
+    card.appendChild(name);
+    const value = Number.isSafeInteger(gift.coinValue) && gift.coinValue >= 0
+      ? `${gift.coinValue} pièces`
+      : 'Cadeau TikTok';
+    const details = document.createElement('span');
+    details.textContent = value;
+    card.appendChild(details);
+    const action = document.createElement('span');
+    action.className = 'gift-catalog-action';
+    action.textContent = alreadyAdded ? 'Dans le carrousel' : 'Ajouter';
+    card.appendChild(action);
+    fragment.appendChild(card);
+  }
+  if (!matchingGifts.length) {
+    const empty = document.createElement('p');
+    empty.className = 'gift-catalog-empty';
+    empty.textContent = search
+      ? 'Aucun cadeau ne correspond à cette recherche.'
+      : 'Aucun cadeau disponible pour le moment.';
+    fragment.appendChild(empty);
+  }
+  list.replaceChildren(fragment);
+  $('gift-catalog-count').textContent =
+    `${matchingGifts.length} cadeau${matchingGifts.length > 1 ? 'x' : ''} affiché${matchingGifts.length > 1 ? 's' : ''} · ${addedCount} déjà dans le carrousel.`;
+  $('gift-catalog-add-all').disabled = giftCatalogAdding || addedCount === giftCatalog.length;
+  $('gift-catalog-add-all').textContent = addedCount === giftCatalog.length
+    ? 'Tous les cadeaux sont dans le carrousel'
+    : `Ajouter tous les cadeaux (${giftCatalog.length - addedCount})`;
+}
+
+function giftCatalogKey(gift) {
+  const giftId = Number(gift?.id);
+  if (Number.isSafeInteger(giftId) && giftId > 0) return `gift_id_${giftId}`;
+  const giftSlug = slug(String(gift?.name || ''));
+  return giftSlug ? `gift_${giftSlug}` : '';
+}
+
+function isGiftInCarousel(gift) {
+  const key = giftCatalogKey(gift);
+  return Boolean(key && state.alerts[key]?.giftName);
+}
+
+function getGiftImageUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  if (/^\/images-vitrine\/petit-trot-cadeaux\/[a-z0-9_.-]+\.png$/i.test(value)) return value;
+  try {
+    const url = new URL(value, location.href);
+    return url.protocol === 'https:' || url.origin === location.origin ? url.href : '';
+  } catch {
+    return '';
+  }
 }
 
 function normalizeGiftName(name) {
@@ -692,19 +778,10 @@ function connectGiftCatalog(path = state.overlayPath) {
   });
 }
 
-function addSelectedTikTokGift() {
-  const giftId = Number($('gift-catalog-select').value);
-  const gift = giftCatalog.find(item => item.id === giftId);
-  if (!gift) {
-    say('Choisis un cadeau chargé depuis le catalogue TikTok.', true);
-    return;
-  }
-  addTikTokGifts([gift]);
-}
-
 async function addTikTokGifts(gifts) {
-  $('gift-catalog-add').disabled = true;
-  $('gift-catalog-add-all').disabled = true;
+  if (giftCatalogAdding) return;
+  giftCatalogAdding = true;
+  renderGiftCatalogOptions();
   try {
     const result = await api({
       action: 'add-tiktok-gifts',
@@ -716,6 +793,8 @@ async function addTikTokGifts(gifts) {
       : `Ces ${result.alreadyAdded} cadeau(x) étaient déjà dans le carrousel.`);
   } catch (error) {
     say(error.message, true);
+  } finally {
+    giftCatalogAdding = false;
     renderGiftCatalogOptions();
   }
 }
@@ -727,6 +806,13 @@ function addAllTikTokGifts() {
   }
   addTikTokGifts(giftCatalog);
 }
+
+$('gift-catalog-list').addEventListener('click', event => {
+  const card = event.target.closest('button[data-gift-key]');
+  if (!card || giftCatalogAdding) return;
+  const gift = giftCatalog.find(item => giftCatalogKey(item) === card.dataset.giftKey);
+  if (gift) void addTikTokGifts([gift]);
+});
 
 function render() {
   drafts.clear();
@@ -995,7 +1081,6 @@ $('gift-carousel-test').onclick = () => {
   window.open(url.href, '_blank');
 };
 $('gift-catalog-search').addEventListener('input', renderGiftCatalogOptions);
-$('gift-catalog-add').addEventListener('click', addSelectedTikTokGift);
 $('gift-catalog-add-all').addEventListener('click', addAllTikTokGifts);
 $('gift-catalog-refresh').addEventListener('click', () => connectGiftCatalog());
 async function refresh() {
