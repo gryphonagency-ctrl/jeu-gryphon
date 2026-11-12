@@ -1,6 +1,7 @@
 const { TikTokLiveConnection } = require('tiktok-live-connector');
 
 const MAX_AVATAR_BYTES = 512 * 1024;
+const FAN_CLUB_LEVEL_UP_BARRAGE_TYPE = 10;
 
 function getAvatarUrls(user) {
     const candidates = [
@@ -113,6 +114,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     const connection = new TikTokLiveConnection(username, {});
     const processedGiftMessageIds = new Set();
     const teamMemberLevels = new Map();
+    const notifiedTeamMemberLevels = new Map();
     const avatarLookupTimes = new Map();
     const avatarCache = new Map();
     const logDiagnostic = (event, details) => {
@@ -129,27 +131,43 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         if (active) sendToClients(message);
     };
 
-    const trackTeamMemberLevel = (user, messageId, sentAt) => {
-        const teamMemberLevel = getTeamMemberLevel(user);
+    const emitTeamMemberLevelUp = (user, teamMemberKey, teamMemberLevel, messageId, sentAt) => {
+        const notifiedLevel = notifiedTeamMemberLevels.get(teamMemberKey) || 0;
+        if (teamMemberLevel <= notifiedLevel) return;
+        notifiedTeamMemberLevels.set(teamMemberKey, teamMemberLevel);
+        const identity = getTikTokIdentity(user);
+        const levelMessageId = messageId
+            ? `${messageId}:level:${teamMemberLevel}`
+            : `${teamMemberKey}:level:${teamMemberLevel}:${sentAt}`;
+        send({
+            type: 'level-up',
+            sourceTikTokUsername: username,
+            levelUp: {
+                messageId: levelMessageId,
+                ...identity,
+                teamMemberLevel
+            }
+        });
+        if (notifiedTeamMemberLevels.size > 10000) {
+            notifiedTeamMemberLevels.delete(notifiedTeamMemberLevels.keys().next().value);
+        }
+    };
+
+    const trackTeamMemberLevel = (user, messageId, sentAt, reportedLevel, explicitUpgrade = false) => {
+        const reported = Number(reportedLevel);
+        const teamMemberLevel = Number.isSafeInteger(reported) && reported > 0
+            ? reported
+            : getTeamMemberLevel(user);
         const identity = getTikTokIdentity(user);
         const teamMemberKey = String(identity.userId || identity.uniqueId || identity.username)
             .trim().toLocaleLowerCase();
         if (!teamMemberKey || teamMemberLevel === null) return;
         const previousLevel = teamMemberLevels.get(teamMemberKey);
-        teamMemberLevels.set(teamMemberKey, teamMemberLevel);
-        if (previousLevel !== undefined && teamMemberLevel > previousLevel) {
-            const levelMessageId = messageId
-                ? `${messageId}:level:${teamMemberLevel}`
-                : `${teamMemberKey}:level:${teamMemberLevel}:${sentAt}`;
-            send({
-                type: 'level-up',
-                sourceTikTokUsername: username,
-                levelUp: {
-                    messageId: levelMessageId,
-                    ...identity,
-                    teamMemberLevel
-                }
-            });
+        if (previousLevel === undefined || teamMemberLevel > previousLevel) {
+            teamMemberLevels.set(teamMemberKey, teamMemberLevel);
+        }
+        if (explicitUpgrade || (previousLevel !== undefined && teamMemberLevel > previousLevel)) {
+            emitTeamMemberLevelUp(user, teamMemberKey, teamMemberLevel, messageId, sentAt);
         }
         if (teamMemberLevels.size > 10000) {
             teamMemberLevels.delete(teamMemberLevels.keys().next().value);
@@ -174,6 +192,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     connection.on('streamEnd', event => {
         liveMatchActive = false;
         teamMemberLevels.clear();
+        notifiedTeamMemberLevels.clear();
         send({
             type: 'LIVE_END',
             action: Number(event?.action) || null
@@ -288,6 +307,23 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             : Date.now();
         const messageId = String(message?.common?.msgId ?? message?.msgId ?? '');
         trackTeamMemberLevel(message?.user || message, messageId, sentAt);
+    });
+
+    connection.on('barrage', message => {
+        if (Number(message?.msgType) !== FAN_CLUB_LEVEL_UP_BARRAGE_TYPE) return;
+        const providerTimestamp = Number(message?.common?.createTime ?? message?.createTime);
+        const sentAt = Number.isSafeInteger(providerTimestamp)
+            ? providerTimestamp < 1_000_000_000_000 ? providerTimestamp * 1000 : providerTimestamp
+            : Date.now();
+        const messageId = String(message?.common?.msgId ?? message?.msgId ?? '');
+        const fansLevel = message?.fansLevelParam;
+        trackTeamMemberLevel(
+            fansLevel?.user || message?.user || message,
+            messageId,
+            sentAt,
+            fansLevel?.currentGrade,
+            true
+        );
     });
 
     connection.on('chat', message => {
