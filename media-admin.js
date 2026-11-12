@@ -57,25 +57,21 @@ function isGiftAlertEvent(event) {
     return typeof event === 'string' && /^gift(?:_id_\d+|_[a-z0-9_-]+)$/.test(event);
 }
 
-const DEFAULT_OVERLAY_POSITIONS = {
-    likes: { x: 50, y: 80 },
-    chat: { x: 24, y: 78 },
-    leaderboard: { x: 80, y: 22 },
-    stats: { x: 22, y: 18 },
-    timer: { x: 35, y: 50 },
-    wheel: { x: 72, y: 50 }
-};
-const OVERLAY_POSITION_KEYS = Object.keys(DEFAULT_OVERLAY_POSITIONS);
+const DEFAULT_OVERLAY_TOOL_ORDER = Object.freeze(['likes', 'chat', 'leaderboard', 'stats', 'timer', 'wheel']);
+const OVERLAY_TOOL_IDS = new Set(DEFAULT_OVERLAY_TOOL_ORDER);
 
-function isValidOverlayPositions(positions) {
-    return Boolean(positions && typeof positions === 'object' && !Array.isArray(positions) &&
-        Object.keys(positions).length === OVERLAY_POSITION_KEYS.length &&
-        OVERLAY_POSITION_KEYS.every(key => {
-            const position = positions[key];
-            return position && typeof position === 'object' && !Array.isArray(position) &&
-                Number.isFinite(position.x) && position.x >= 0 && position.x <= 100 &&
-                Number.isFinite(position.y) && position.y >= 0 && position.y <= 100;
-        }));
+function normalizeOverlayToolOrder(order) {
+    const requested = Array.isArray(order)
+        ? order.filter(id => typeof id === 'string' && OVERLAY_TOOL_IDS.has(id))
+        : [];
+    return [...new Set([...requested, ...DEFAULT_OVERLAY_TOOL_ORDER])];
+}
+
+function isValidOverlayToolOrder(order) {
+    return Array.isArray(order) &&
+        order.length === DEFAULT_OVERLAY_TOOL_ORDER.length &&
+        new Set(order).size === DEFAULT_OVERLAY_TOOL_ORDER.length &&
+        order.every(id => OVERLAY_TOOL_IDS.has(id));
 }
 
 function probeVideo(inputPath) {
@@ -364,7 +360,7 @@ function createMediaAdmin({
                     alerts: {},
                     carouselAlerts: {},
                     giftCatalog: [],
-                    overlayPositions: structuredClone(DEFAULT_OVERLAY_POSITIONS)
+                    overlayToolOrder: [...DEFAULT_OVERLAY_TOOL_ORDER]
                 };
             }
             throw error;
@@ -378,8 +374,7 @@ function createMediaAdmin({
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.files) ||
             (parsed.alerts !== undefined && (!parsed.alerts || typeof parsed.alerts !== 'object' || Array.isArray(parsed.alerts))) ||
             (parsed.carouselAlerts !== undefined &&
-                (!parsed.carouselAlerts || typeof parsed.carouselAlerts !== 'object' || Array.isArray(parsed.carouselAlerts))) ||
-            (parsed.overlayPositions !== undefined && !isValidOverlayPositions(parsed.overlayPositions))) {
+                (!parsed.carouselAlerts || typeof parsed.carouselAlerts !== 'object' || Array.isArray(parsed.carouselAlerts)))) {
             throw new Error(`Le catalogue des médias de ${owner} est invalide. Aucun média n’a été modifié.`);
         }
         const giftCatalog = parsed.giftCatalog === undefined ? [] : parsed.giftCatalog;
@@ -404,7 +399,7 @@ function createMediaAdmin({
             alerts,
             carouselAlerts,
             giftCatalog: normalizedGiftCatalog,
-            overlayPositions: parsed.overlayPositions || structuredClone(DEFAULT_OVERLAY_POSITIONS)
+            overlayToolOrder: normalizeOverlayToolOrder(parsed.overlayToolOrder)
         };
     }
 
@@ -631,16 +626,13 @@ function createMediaAdmin({
         }
         const index = readIndex(owner);
         const alertStore = carouselOnly ? index.carouselAlerts : index.alerts;
-        if (body.action === 'set-overlay-positions') {
-            if (carouselOnly || !isValidOverlayPositions(body.positions)) {
-                throw fail('La disposition des overlays est invalide.');
+        if (body.action === 'set-overlay-tool-order') {
+            if (carouselOnly || !isValidOverlayToolOrder(body.order)) {
+                throw fail('L’ordre des panneaux d’overlay est invalide.');
             }
-            index.overlayPositions = Object.fromEntries(OVERLAY_POSITION_KEYS.map(key => [
-                key,
-                { x: body.positions[key].x, y: body.positions[key].y }
-            ]));
+            index.overlayToolOrder = [...body.order];
             writeIndex(owner, index);
-            return { success: true, overlayPositions: index.overlayPositions };
+            return { success: true, overlayToolOrder: index.overlayToolOrder };
         }
         if (body.action === 'upload') {
             throw fail('Actualise la page Médias avant de renvoyer le fichier.');
@@ -863,8 +855,7 @@ function createMediaAdmin({
                 const carouselOnly = searchParams?.get('mode') === 'carousel';
                 const index = readIndex(owner);
                 send(res, 200, {
-                    alerts: publicAlerts(owner, carouselOnly),
-                    overlayPositions: index.overlayPositions
+                    alerts: publicAlerts(owner, carouselOnly)
                 });
             } catch (error) {
                 console.error(`Impossible de lire le catalogue média de ${owner} :`, error.message);
@@ -931,7 +922,7 @@ function createMediaAdmin({
                         .map(file => publicFile(user, file)),
                     alerts: carouselOnly ? index.carouselAlerts : index.alerts,
                     giftCatalog: carouselOnly ? index.giftCatalog : [],
-                    overlayPositions: carouselOnly ? undefined : index.overlayPositions,
+                    overlayToolOrder: carouselOnly ? undefined : index.overlayToolOrder,
                     persistent,
                     overlayPath: overlayPath(overlayToken(user, 'get')),
                     limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }

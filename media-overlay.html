@@ -27,11 +27,7 @@ body.mode-stats #stage, body.mode-stats #live-effects, body.mode-stats #status,
 body.mode-timer #stage, body.mode-timer #live-effects, body.mode-timer #live-stats, body.mode-timer #chat-overlay, body.mode-timer #gift-leaderboard, body.mode-timer #status,
 body.mode-wheel #stage, body.mode-wheel #live-effects, body.mode-wheel #live-stats, body.mode-wheel #chat-overlay, body.mode-wheel #gift-leaderboard, body.mode-wheel #status,
 body.mode-carousel #stage, body.mode-carousel #live-effects, body.mode-carousel #live-stats, body.mode-carousel #chat-overlay, body.mode-carousel #gift-leaderboard, body.mode-carousel #status { display: none !important; }
-body.mode-stats #live-stats.visible { position: fixed; top: var(--overlay-stats-y,18%); left: var(--overlay-stats-x,22%); bottom: auto; display: grid; transform: translate(-50%,-50%); white-space: normal; border-radius: 14px; }
-body.mode-chat .chat-overlay { left: var(--overlay-chat-x,24%); top: var(--overlay-chat-y,78%); right: auto; bottom: auto; transform: translate(-50%,-50%); }
-body.mode-leaderboard #gift-leaderboard { left: var(--overlay-leaderboard-x,80%); top: var(--overlay-leaderboard-y,22%); right: auto; transform: translate(-50%,-50%); }
-body.mode-timer #timer-overlay .tool-card { position: absolute; left: var(--overlay-timer-x,50%); top: var(--overlay-timer-y,50%); transform: translate(-50%,-50%); }
-body.mode-wheel #wheel-overlay .tool-card { position: absolute; left: var(--overlay-wheel-x,50%); top: var(--overlay-wheel-y,50%); transform: translate(-50%,-50%); }
+body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bottom: auto; display: grid; transform: none; white-space: normal; border-radius: 14px; }
 .tool-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 18px; color: #fff; font: 700 20px/1.3 Arial,sans-serif; }
 .tool-overlay[hidden] { display: none; }
 .tool-card { display: grid; justify-items: center; gap: 16px; max-width: min(94vw, 680px); padding: 24px; border: 1px solid rgba(255,255,255,.32); border-radius: 22px; background: rgba(8,12,24,.88); box-shadow: 0 8px 30px rgba(0,0,0,.35); text-align: center; }
@@ -169,27 +165,6 @@ function colorParam(name, fallback) {
 const chatRows = Math.max(3, Math.min(10, Math.floor(Number(params.get('rows')) || 5)));
 const chatDuration = Math.max(3, Math.min(30, Math.floor(Number(params.get('duration')) || 8))) * 1000;
 const leaderboardRows = Math.max(3, Math.min(10, Math.floor(Number(params.get('rows')) || 5)));
-const DEFAULT_OVERLAY_POSITIONS = {
-  likes: { x: 50, y: 80 },
-  chat: { x: 24, y: 78 },
-  leaderboard: { x: 80, y: 22 },
-  stats: { x: 22, y: 18 },
-  timer: { x: 35, y: 50 },
-  wheel: { x: 72, y: 50 }
-};
-let overlayPositions = Object.fromEntries(
-  Object.entries(DEFAULT_OVERLAY_POSITIONS).map(([id, position]) => [id, { ...position }])
-);
-function applyOverlayPositions(positions) {
-  for (const [id, fallback] of Object.entries(DEFAULT_OVERLAY_POSITIONS)) {
-    const position = positions?.[id];
-    const x = Number.isFinite(position?.x) && position.x >= 0 && position.x <= 100 ? position.x : fallback.x;
-    const y = Number.isFinite(position?.y) && position.y >= 0 && position.y <= 100 ? position.y : fallback.y;
-    overlayPositions[id] = { x, y };
-    document.documentElement.style.setProperty(`--overlay-${id}-x`, `${x}%`);
-    document.documentElement.style.setProperty(`--overlay-${id}-y`, `${y}%`);
-  }
-}
 const requestedAvatarSize = Number(params.get('avatarSize'));
 const likeAvatarSize = Number.isFinite(requestedAvatarSize)
   ? Math.max(44, Math.min(180, requestedAvatarSize))
@@ -619,12 +594,7 @@ function showLikeBubble(profile) {
   const bubble = document.createElement('div');
   bubble.className = 'like-bubble';
   const maxX = Math.max(0, window.innerWidth - likeAvatarSize);
-  const centerX = window.innerWidth * overlayPositions.likes.x / 100;
-  const spreadX = Math.min(window.innerWidth * .2, 180);
-  const bubbleX = Math.max(0, Math.min(maxX, centerX - likeAvatarSize / 2 + (Math.random() * 2 - 1) * spreadX));
-  const startY = window.innerHeight * overlayPositions.likes.y / 100;
-  bubble.style.setProperty('--bubble-x', `${bubbleX}px`);
-  bubble.style.bottom = `${window.innerHeight - startY - likeAvatarSize - 25}px`;
+  bubble.style.setProperty('--bubble-x', `${Math.random() * maxX}px`);
   const orb = document.createElement('div');
   orb.className = 'like-avatar';
   if (avatar) {
@@ -770,9 +740,7 @@ async function loadAlerts() {
   try {
     const res = await fetch(`/api/overlay-alerts?token=${encodeURIComponent(token)}&mode=${encodeURIComponent(overlayMode)}`, { cache: 'no-store' });
     if (res.ok) {
-      const result = await res.json();
-      alerts = result.alerts || {};
-      applyOverlayPositions(result.overlayPositions || DEFAULT_OVERLAY_POSITIONS);
+      alerts = (await res.json()).alerts || {};
       if (showGiftCarousel) renderGiftCarousel();
     }
     else setStatus('Lien overlay invalide ou révoqué.');
@@ -1083,9 +1051,6 @@ loadAlerts().then(() => {
   }
   connect();
 });
-setInterval(() => {
-  if (!document.hidden) void loadAlerts();
-}, 15000);
 </script>
 </body>
 </html>
