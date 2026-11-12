@@ -53,6 +53,10 @@ function normalizeCatalogGift(gift) {
     return { id, name, coinValue, imageUrl };
 }
 
+function isGiftAlertEvent(event) {
+    return typeof event === 'string' && /^gift(?:_id_\d+|_[a-z0-9_-]+)$/.test(event);
+}
+
 function probeVideo(inputPath) {
     if (!ffmpegPath) {
         return Promise.reject(Object.assign(new Error('La vérification vidéo est indisponible sur ce serveur.'), { statusCode: 503 }));
@@ -266,7 +270,15 @@ function safeDownload(rawUrl, maxBytes, redirects = 3) {
 }
 
 // Chaque compte autorisé gère ses propres médias dans <mediaDirectory>/users/<compte>/.
-function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManage, canManageUser, readJsonBody }) {
+function createMediaAdmin({
+    mediaDirectory,
+    persistent = true,
+    getUser,
+    canManage,
+    canManageCarousel = canManage,
+    canManageUser,
+    readJsonBody
+}) {
     const usersDir = path.join(mediaDirectory, 'users');
     const tokensPath = path.join(mediaDirectory, 'overlay-tokens.json');
     const activeUploads = new Set();
@@ -552,7 +564,20 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         return storeMedia(owner, name, download.buffer);
     }
 
-    function handleAction(owner, body) {
+    function handleAction(owner, body, carouselOnly = false) {
+        if (carouselOnly) {
+            const allowedActions = new Set([
+                'overlay-create', 'overlay-regenerate', 'overlay-revoke',
+                'cache-tiktok-gift-catalog', 'add-tiktok-gifts', 'set-alert', 'delete-alert'
+            ]);
+            if (!body || typeof body !== 'object' || !allowedActions.has(body.action)) {
+                throw fail('Cette action n’est pas disponible depuis la page Carrousel.');
+            }
+            if ((body.action === 'set-alert' || body.action === 'delete-alert') &&
+                !isGiftAlertEvent(body.event)) {
+                throw fail('Seuls les réglages des cadeaux peuvent être modifiés depuis la page Carrousel.');
+            }
+        }
         const index = readIndex(owner);
         if (body.action === 'upload') {
             throw fail('Actualise la page Médias avant de renvoyer le fichier.');
@@ -806,11 +831,15 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
             return true;
         }
         const isUpload = pathname === '/api/media/upload';
-        if (pathname !== '/api/media' && !isUpload) return false;
+        const carouselOnly = pathname === '/api/gift-carousel';
+        if (pathname !== '/api/media' && !isUpload && !carouselOnly) return false;
         const user = String(getUser(req) || '').trim().toLowerCase();
-        if (!user || !OWNER_PATTERN.test(user) || !canManage(req, user)) {
+        const mayManage = carouselOnly ? canManageCarousel(req, user) : canManage(req, user);
+        if (!user || !OWNER_PATTERN.test(user) || !mayManage) {
             if (req.method === 'POST') req.resume();
-            send(res, 403, { message: 'La gestion des médias est réservée aux abonnés et aux comptes autorisés.' });
+            send(res, 403, { message: carouselOnly
+                ? 'Connecte-toi à ton compte pour gérer ton carrousel.'
+                : 'La gestion des médias est réservée aux abonnés et aux comptes autorisés.' });
             return true;
         }
         if (isUpload) {
@@ -824,10 +853,16 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         if (req.method === 'GET') {
             try {
                 const index = readIndex(user);
+                const alerts = carouselOnly
+                    ? Object.fromEntries(Object.entries(index.alerts)
+                        .filter(([event, alert]) => isGiftAlertEvent(event) && typeof alert?.giftName === 'string'))
+                    : index.alerts;
                 send(res, 200, {
                     user,
-                    files: index.files.map(file => publicFile(user, file)),
-                    alerts: index.alerts,
+                    files: index.files
+                        .filter(file => !carouselOnly || file.kind === 'audio' || file.kind === 'video')
+                        .map(file => publicFile(user, file)),
+                    alerts,
                     giftCatalog: index.giftCatalog,
                     persistent,
                     overlayPath: overlayPath(overlayToken(user, 'get')),
@@ -841,7 +876,7 @@ function createMediaAdmin({ mediaDirectory, persistent = true, getUser, canManag
         }
         if (req.method === 'POST') {
             readJsonBody(req, res, body => {
-                Promise.resolve().then(() => handleAction(user, body)).then(result => send(res, 200, result)).catch(error => {
+                Promise.resolve().then(() => handleAction(user, body, carouselOnly)).then(result => send(res, 200, result)).catch(error => {
                     const status = error.statusCode || 500;
                     if (status === 500) console.error('Échec de la gestion des médias :', error.message);
                     send(res, status, { message: status === 500 ? 'Impossible d’enregistrer le média.' : error.message });

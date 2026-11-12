@@ -1226,7 +1226,8 @@ const handleMedia = createMediaAdmin({
     persistent: mediaStoragePersistent,
     getUser: req => access.usernameForRequest(req),
     canManage: canManageMedia,
-    canManageUser: username => canUseCreatorTts(username),
+    canManageCarousel: req => access.isAuthenticated(req),
+    canManageUser: username => access.canUseCarousel(username),
     readJsonBody: (...args) => readJsonBody(...args)
 });
 
@@ -1312,13 +1313,13 @@ const server = http.createServer((req, res) => {
         });
         return;
     }
-    if (pathname === '/medias.html' && req.method === 'GET') {
+    if ((pathname === '/medias.html' || pathname === '/overlay-carrousel.html') && req.method === 'GET') {
         if (!access.isAuthenticated(req)) {
             res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?connexion=requise' });
             res.end();
             return;
         }
-        if (!canManageMedia(req)) {
+        if (pathname === '/medias.html' && !canManageMedia(req)) {
             res.writeHead(302, { 'Cache-Control': 'no-store', Location: '/?acces=medias' });
             res.end();
             return;

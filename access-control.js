@@ -150,6 +150,16 @@ function canUseCreatorService(username, service) {
     return canUseCreatorServiceFromData(username, service, store.getSessionData(username));
 }
 
+function canUseCarousel(username) {
+    if (typeof username !== 'string') return false;
+    const normalizedUsername = username.trim().toLowerCase();
+    if (!/^[a-z0-9._-]{1,64}$/.test(normalizedUsername)) return false;
+    if (isAdminUser(normalizedUsername)) return true;
+    const data = store.getSessionData(normalizedUsername);
+    return !data.creatorRemoved && !data.userRevoked &&
+        Boolean(data.account || hasConfiguredUser(normalizedUsername));
+}
+
 function canUseCreatorServiceFromData(username, service, data, now = Date.now()) {
     if (isAdminUser(username)) return true;
     if (data.creatorRemoved || data.userRevoked) return false;
@@ -286,6 +296,7 @@ module.exports = {
     hasActiveSubscription,
     hasConfiguredUser,
     canAccessGames,
+    canUseCarousel,
     canUseCreatorService,
     getSessionContext,
     isCreatorRemoved: store.isCreatorRemoved,
