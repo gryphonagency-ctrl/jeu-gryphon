@@ -3237,6 +3237,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/defi-des-questions.png', [path.join(__dirname, 'images-vitrine', 'defi-des-questions.png'), 'image/png']],
         ['/images-vitrine/pendu.png', [path.join(__dirname, 'images-vitrine', 'pendu.png'), 'image/png']],
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
+        ['/images-vitrine/gryphon-tiktok-profile.png', [path.join(__dirname, 'images-vitrine', 'gryphon-tiktok-profile.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],
         ['/images-vitrine/multirou-apercu.png', [path.join(__dirname, 'images-vitrine', 'multirou-apercu.png'), 'image/png']],
