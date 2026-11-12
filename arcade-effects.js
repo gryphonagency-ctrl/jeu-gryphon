@@ -127,9 +127,6 @@
 .ae-bubble .ae-name{max-width:150px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:700 13px/1.4 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ae-treasure{position:absolute;inset:0;pointer-events:none}
 .ae-treasure-zone{position:absolute;box-sizing:border-box;z-index:2;opacity:0;pointer-events:none;user-select:none}
-.ae-treasure-banner{position:absolute;z-index:5;display:none;align-items:center;justify-content:center;gap:8px;min-height:34px;padding:6px 10px;border:1px solid rgba(255,230,157,.85);border-radius:7px 15px 7px 15px;background:radial-gradient(120px 45px at 14% 0,rgba(255,238,172,.35),transparent 80%),linear-gradient(105deg,rgba(69,35,12,.98),rgba(145,91,24,.98) 55%,rgba(53,27,64,.98));color:#fff5d5;box-shadow:0 6px 18px rgba(0,0,0,.5),0 0 16px rgba(255,194,88,.25);font:800 clamp(10px,1.4vw,15px)/1.1 "Trebuchet MS",Arial,sans-serif;letter-spacing:.07em;text-shadow:0 2px 4px rgba(0,0,0,.7);white-space:nowrap;pointer-events:none}
-.ae-treasure-banner.visible{display:flex}
-.ae-treasure-banner-count{padding:3px 7px;border:1px solid rgba(255,239,183,.36);border-radius:999px;background:rgba(32,20,47,.72);color:#e4ffbd;font:800 .85em/1 "Trebuchet MS",Arial,sans-serif;letter-spacing:0}
 .ae-treasure-gifts{position:absolute;inset:0;z-index:3}
 .ae-treasure-gift{position:absolute;display:flex;align-items:center;justify-content:center;
  overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;will-change:transform;filter:drop-shadow(0 3px 4px rgba(0,0,0,.7))}
@@ -258,14 +255,6 @@
         ensureLayer();
         treasureStage = document.createElement('div');
         treasureStage.className = 'ae-treasure';
-        const banner = document.createElement('div');
-        banner.className = 'ae-treasure-banner';
-        banner.setAttribute('aria-hidden', 'true');
-        const bannerTitle = document.createElement('span');
-        bannerTitle.textContent = 'COFFRE AU TRÉSOR';
-        const bannerCount = document.createElement('span');
-        bannerCount.className = 'ae-treasure-banner-count';
-        banner.append(bannerTitle, bannerCount);
         const gifts = document.createElement('div');
         gifts.className = 'ae-treasure-gifts';
         const zone = document.createElement('div');
@@ -285,7 +274,7 @@
         filterSvg.setAttribute('aria-hidden', 'true');
         filterSvg.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
         filterSvg.innerHTML = '<filter id="ae-treasure-cutout" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0.2126 0.7152 0.0722 0 0" result="giftLuminance"/><feComponentTransfer in="giftLuminance" result="giftCutout"><feFuncA type="table" tableValues="0 0 0.02 0.05 0.1 0.2 0.35 0.5 0.65 0.78 0.88 0.94 0.98 1 1 1 1"/></feComponentTransfer><feComposite in="giftCutout" in2="SourceGraphic" operator="in"/></filter>';
-        treasureStage.append(filterSvg, banner, gifts, zone, moveHandle, resizeHandle);
+        treasureStage.append(filterSvg, gifts, zone, moveHandle, resizeHandle);
         layer.appendChild(treasureStage);
         bindTreasureDrag(zone, 'move');
         bindTreasureDrag(moveHandle, 'move');
@@ -299,7 +288,6 @@
         const zone = treasureStage.querySelector('.ae-treasure-zone');
         const moveHandle = treasureStage.querySelector('.ae-treasure-move');
         const resizeHandle = treasureStage.querySelector('.ae-treasure-resize');
-        const banner = treasureStage.querySelector('.ae-treasure-banner');
         const x = `${treasureLayout.x}%`;
         const baseY = Math.max(14, treasureLayout.y);
         const y = `${baseY}%`;
@@ -314,10 +302,6 @@
             moveHandle.style.top = `${zoneBounds.top + 8}px`;
             resizeHandle.style.left = `${zoneBounds.right - 46}px`;
             resizeHandle.style.top = `${zoneBounds.bottom - 46}px`;
-            banner.style.left = `${zoneBounds.left + zoneBounds.width / 2}px`;
-            banner.style.top = `${Math.max(8, zoneBounds.top - 42)}px`;
-            banner.style.width = `${Math.max(156, Math.min(280, zoneBounds.width))}px`;
-            banner.style.transform = 'translateX(-50%)';
         }
         treasureStage.classList.toggle('ae-treasure-edit', treasureEditIsRequested());
         renderTreasureGifts();
@@ -358,10 +342,6 @@
             }
             nextSlot = (nextSlot + count % slots.length) % slots.length;
         }
-        const banner = treasureStage.querySelector('.ae-treasure-banner');
-        banner.classList.toggle('visible', visibleGifts.size > 0);
-        banner.querySelector('.ae-treasure-banner-count').textContent =
-            `${treasureGiftCount.toLocaleString('fr-FR')} CADEAU${treasureGiftCount === 1 ? '' : 'X'}`;
         for (const [slotIndex, pile] of visibleGifts) {
             const item = existingItems.get(slotIndex) || document.createElement('span');
             existingItems.delete(slotIndex);
