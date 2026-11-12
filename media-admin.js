@@ -294,6 +294,7 @@ function createMediaAdmin({
     canManage,
     canManageCarousel = canManage,
     canManageUser,
+    getTikTokUsername = () => '',
     readJsonBody
 }) {
     const usersDir = path.join(mediaDirectory, 'users');
@@ -316,18 +317,41 @@ function createMediaAdmin({
         fs.renameSync(temp, tokensPath);
     }
 
+    function normalizeTikTokUsername(value) {
+        const username = typeof value === 'string' ? value.trim().replace(/^@/, '') : '';
+        return /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : '';
+    }
+
+    function overlayUsername(owner) {
+        const entry = readTokens()[owner];
+        return normalizeTikTokUsername(entry?.username) ||
+            normalizeTikTokUsername(getTikTokUsername(owner));
+    }
+
+    function setOverlayUsername(owner, username) {
+        const normalized = normalizeTikTokUsername(username);
+        if (!normalized) throw fail('Saisis un pseudo TikTok valide, sans espace.');
+        const tokens = readTokens();
+        if (!/^[a-f0-9]{64}$/.test(tokens[owner]?.token || '')) {
+            throw fail('Génère d’abord ton lien overlay.');
+        }
+        tokens[owner] = { ...tokens[owner], username: normalized };
+        writeTokens(tokens);
+        return normalized;
+    }
+
     // Un lien d'overlay secret (64 hex) par compte ; le régénérer invalide l'ancien.
     function overlayToken(owner, mode) {
         const tokens = readTokens();
         const current = tokens[owner]?.token;
         if (mode === 'get' || (mode === 'create' && /^[a-f0-9]{64}$/.test(current || ''))) return current || null;
         const token = crypto.randomBytes(32).toString('hex');
-        tokens[owner] = { token, createdAt: new Date().toISOString() };
+        tokens[owner] = { ...tokens[owner], token, createdAt: new Date().toISOString() };
         writeTokens(tokens);
         return token;
     }
 
-    function findOverlayOwner(token) {
+    function findOverlay(token) {
         if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
         const provided = crypto.createHash('sha256').update(token).digest();
         let found = null;
@@ -335,7 +359,12 @@ function createMediaAdmin({
             const stored = crypto.createHash('sha256').update(String(entry?.token || '')).digest();
             if (crypto.timingSafeEqual(stored, provided) && OWNER_PATTERN.test(owner)) found = owner;
         }
-        return found && canManageUser(found) ? found : null;
+        if (!found || !canManageUser(found)) return null;
+        return { owner: found, username: overlayUsername(found) };
+    }
+
+    function findOverlayOwner(token) {
+        return findOverlay(token)?.owner || null;
     }
 
     function revokeOverlay(owner) {
@@ -638,8 +667,19 @@ function createMediaAdmin({
             throw fail('Actualise la page Médias avant de renvoyer le fichier.');
         }
         if (body.action === 'import-url') return importFromUrl(owner, body.url);
-        if (body.action === 'overlay-create') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'create')) };
-        if (body.action === 'overlay-regenerate') return { success: true, overlayPath: overlayPath(overlayToken(owner, 'regenerate')) };
+        if (body.action === 'overlay-create' || body.action === 'overlay-regenerate') {
+            const username = normalizeTikTokUsername(body.username || overlayUsername(owner));
+            if (!username && !carouselOnly) {
+                throw fail('Saisis ton pseudo TikTok pour connecter les overlays à ton direct.');
+            }
+            const token = overlayToken(owner, body.action === 'overlay-create' ? 'create' : 'regenerate');
+            if (username) setOverlayUsername(owner, username);
+            return { success: true, overlayPath: overlayPath(token), overlayUsername: username };
+        }
+        if (body.action === 'overlay-set-username') {
+            if (carouselOnly) throw fail('Cette action n’est pas disponible depuis la page Carrousel.');
+            return { success: true, overlayUsername: setOverlayUsername(owner, body.username) };
+        }
         if (body.action === 'overlay-revoke') { revokeOverlay(owner); return { success: true, overlayPath: null }; }
         if (body.action === 'cache-tiktok-gift-catalog') {
             if (!Array.isArray(body.gifts) || !body.gifts.length || body.gifts.length > MAX_TIKTOK_GIFTS) {
@@ -925,6 +965,7 @@ function createMediaAdmin({
                     overlayToolOrder: carouselOnly ? undefined : index.overlayToolOrder,
                     persistent,
                     overlayPath: overlayPath(overlayToken(user, 'get')),
+                    overlayUsername: overlayUsername(user),
                     limits: { fileBytes: MEDIA_MAX_BYTES, totalBytes: USER_QUOTA_BYTES, files: USER_MAX_FILES }
                 });
             } catch (error) {
@@ -946,6 +987,7 @@ function createMediaAdmin({
         return false;
     }
 
+    handle.findOverlay = findOverlay;
     handle.findOverlayOwner = findOverlayOwner;
     return handle;
 }

@@ -1227,6 +1227,7 @@ const handleMedia = createMediaAdmin({
     canManage: canManageMedia,
     canManageCarousel: req => access.isAuthenticated(req),
     canManageUser: username => access.canUseCarousel(username),
+    getTikTokUsername: getOverlayTiktokUsername,
     readJsonBody: (...args) => readJsonBody(...args)
 });
 
@@ -3566,11 +3567,12 @@ server.on('upgrade', (req, socket, head) => {
         treasureSettings.arcadeTreasureChestEnabled === true &&
         treasureSettings.arcadeTreasureTikTokUsername);
     const isTtsControlRequest = requestUrl.pathname === '/live-tts-control';
-    const overlayOwner = requestUrl.pathname === '/media-overlay-relay'
-        ? handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'))
+    const overlay = requestUrl.pathname === '/media-overlay-relay'
+        ? handleMedia.findOverlay(requestUrl.searchParams.get('token'))
         : null;
+    const overlayOwner = overlay?.owner || null;
     const isMediaAlertOverlay = requestUrl.searchParams.get('mode') === 'alerts';
-    const overlayUsername = overlayOwner ? getOverlayTiktokUsername(overlayOwner) : '';
+    const overlayUsername = overlay?.username || '';
     const authenticated = access.isAuthenticated(req);
     const accountUsername = authenticated ? access.usernameForRequest(req) : '';
     const canControlTts = isTtsControlRequest &&

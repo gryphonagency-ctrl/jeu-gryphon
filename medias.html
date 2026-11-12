@@ -182,6 +182,12 @@ html:not([data-carousel-only="true"]) #gift-carousel-editor{display:none!importa
 <h2>Mon overlay de live</h2>
 <p>Ajoute les sources navigateur souhaitées dans TikTok Studio. Tous les liens affichés ici sont privés; ne les partage pas.</p>
 <div class="row">
+<label for="overlay-tiktok-username">Pseudo TikTok du direct (sans @)
+<input id="overlay-tiktok-username" maxlength="33" autocomplete="off" placeholder="exemple"></label>
+<button id="overlay-username-save" type="button" hidden>Enregistrer le pseudo</button>
+</div>
+<p>Ce pseudo relie chaque source overlay à ton direct TikTok. Il est enregistré avec ton lien privé.</p>
+<div class="row">
 <input id="overlay-url" readonly aria-label="Lien overlay" placeholder="Aucun lien généré" style="flex:1;min-width:260px">
 <button id="overlay-copy" type="button" hidden>Copier</button>
 <button id="overlay-new" type="button">Générer mon lien</button>
@@ -1097,6 +1103,8 @@ function render() {
 
 function showOverlay(path) {
   $('overlay-url').value = path ? location.origin + path : '';
+  $('overlay-tiktok-username').value = state.overlayUsername || '';
+  $('overlay-username-save').hidden = !path;
   updateLikesOverlayUrl(path);
   updateAdditionalOverlayUrls(path);
   $('overlay-copy').hidden = $('overlay-revoke').hidden = !path;
@@ -1178,11 +1186,26 @@ function updateAdditionalOverlayUrls(path = state.overlayPath) {
 $('overlay-new').onclick = async () => {
   if (state.overlayPath && !confirm('L’ancien lien cessera de fonctionner. Continuer ?')) return;
   try {
-    const result = await api({ action: state.overlayPath ? 'overlay-regenerate' : 'overlay-create' });
+    const result = await api({
+      action: state.overlayPath ? 'overlay-regenerate' : 'overlay-create',
+      username: $('overlay-tiktok-username').value.trim()
+    });
     state.overlayPath = result.overlayPath;
+    state.overlayUsername = result.overlayUsername || '';
     saveToolSettings();
     showOverlay(result.overlayPath);
     say('Lien overlay prêt.');
+  } catch (e) { say(e.message, true); }
+};
+$('overlay-username-save').onclick = async () => {
+  try {
+    const result = await api({
+      action: 'overlay-set-username',
+      username: $('overlay-tiktok-username').value.trim()
+    });
+    state.overlayUsername = result.overlayUsername;
+    showOverlay(state.overlayPath);
+    say('Pseudo TikTok enregistré. Les sources overlay utiliseront ce compte.');
   } catch (e) { say(e.message, true); }
 };
 $('overlay-revoke').onclick = async () => {
@@ -1354,6 +1377,7 @@ $('gift-carousel-catalog-add-all').addEventListener('click', addAllTikTokGifts);
 $('gift-carousel-catalog-refresh').addEventListener('click', refreshGiftCatalog);
 async function refresh() {
   state = await api();
+  state.overlayUsername = state.overlayUsername || '';
   state.overlayToolOrder = normalizeOverlayToolOrder(state.overlayToolOrder);
   savedOverlayToolOrder = [...state.overlayToolOrder];
   applyOverlayToolOrder(savedOverlayToolOrder);

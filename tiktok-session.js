@@ -281,6 +281,15 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         });
     });
 
+    connection.on('member', message => {
+        const providerTimestamp = Number(message?.common?.createTime ?? message?.createTime);
+        const sentAt = Number.isSafeInteger(providerTimestamp)
+            ? providerTimestamp < 1_000_000_000_000 ? providerTimestamp * 1000 : providerTimestamp
+            : Date.now();
+        const messageId = String(message?.common?.msgId ?? message?.msgId ?? '');
+        trackTeamMemberLevel(message?.user || message, messageId, sentAt);
+    });
+
     connection.on('chat', message => {
         const identity = getTikTokIdentity(message.user);
         const username = identity.username;
