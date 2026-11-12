@@ -16,6 +16,7 @@
     const mediaAlerts = new Map();
     const mediaAlertRequests = new Map();
     const mediaAlertQueue = [];
+    const blockedMediaAlerts = new Set();
     const avatars = new Map();
     const liveBubbles = new Map();
     let bigGiftOverlayEnabled = false;
@@ -35,6 +36,7 @@
     let mediaAlertPlaying = false;
     let mediaAlertVideo = null;
     let mediaAlertAudio = null;
+    let mediaAlertUnlockButton = null;
     let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
     let treasureStage = null;
     let layer = null, canvas = null, ctx = null, particles = [], raf = 0;
@@ -1037,6 +1039,37 @@
         return alerts?.[event] || null;
     }
 
+    function updateMediaAlertUnlockButton() {
+        if (!blockedMediaAlerts.size) {
+            mediaAlertUnlockButton?.remove();
+            mediaAlertUnlockButton = null;
+            return;
+        }
+        if (mediaAlertUnlockButton?.isConnected) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = '🔊 Activer le son des alertes';
+        button.style.cssText =
+            'position:fixed;z-index:2147483647;top:max(12px,env(safe-area-inset-top));left:50%;' +
+            'transform:translateX(-50%);padding:10px 16px;border:1px solid rgba(255,255,255,.7);' +
+            'border-radius:999px;background:rgba(8,12,24,.94);color:#fff;font:700 14px Arial,sans-serif;' +
+            'cursor:pointer;pointer-events:auto';
+        button.addEventListener('click', async () => {
+            for (const media of [...blockedMediaAlerts]) {
+                media.muted = false;
+                try {
+                    await media.play();
+                    blockedMediaAlerts.delete(media);
+                } catch (error) {
+                    console.warn('Impossible d’activer le son de cette alerte média.', error);
+                }
+            }
+            updateMediaAlertUnlockButton();
+        });
+        (document.body || document.documentElement).appendChild(button);
+        mediaAlertUnlockButton = button;
+    }
+
     function playMediaAlert(alert) {
         return new Promise(resolve => {
             const pending = Number(Boolean(alert.audioUrl)) + Number(Boolean(alert.videoUrl));
@@ -1047,6 +1080,9 @@
                 if (finished || --remaining > 0) return;
                 finished = true;
                 clearTimeout(guard);
+                blockedMediaAlerts.delete(mediaAlertVideo);
+                blockedMediaAlerts.delete(mediaAlertAudio);
+                updateMediaAlertUnlockButton();
                 if (mediaAlertVideo) {
                     mediaAlertVideo.pause();
                     mediaAlertVideo.removeAttribute('src');
@@ -1068,7 +1104,12 @@
                 mediaAlertAudio = new Audio(alert.audioUrl);
                 mediaAlertAudio.onended = mediaAlertAudio.onerror = finishItem;
                 mediaAlertAudio.play().catch(error => {
-                    console.warn('Lecture du son Niveau Fan Club impossible :', error.message);
+                    if (error.name === 'NotAllowedError') {
+                        blockedMediaAlerts.add(mediaAlertAudio);
+                        updateMediaAlertUnlockButton();
+                        return;
+                    }
+                    console.warn('Lecture du son d’alerte impossible :', error);
                     finishItem();
                 });
             }
@@ -1087,14 +1128,28 @@
                     ? Math.min(1, Math.max(0, alert.videoVolume))
                     : 1;
                 mediaAlertVideo.style.width = `${Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100}vw`;
-                mediaAlertVideo.style.height = `${Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100}dvh`;
+                const viewportHeightUnit = window.CSS?.supports('height', '100dvh') ? 'dvh' : 'vh';
+                mediaAlertVideo.style.height = `${Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100}${viewportHeightUnit}`;
                 mediaAlertVideo.style.objectFit = alert.videoFit === 'cover' ? 'cover' : 'contain';
+                mediaAlertVideo.style.transform = `translate(-50%,-50%) translateY(${Number.isFinite(alert.videoOffsetY) ? Math.min(50, Math.max(-50, alert.videoOffsetY)) : 0}vh)`;
+                mediaAlertVideo.muted = false;
                 mediaAlertVideo.src = alert.videoUrl;
                 mediaAlertVideo.style.display = 'block';
                 mediaAlertVideo.onended = mediaAlertVideo.onerror = finishItem;
                 mediaAlertVideo.play().catch(error => {
-                    console.warn('Lecture de la vidéo Niveau Fan Club impossible :', error.message);
-                    finishItem();
+                    if (error.name !== 'NotAllowedError') {
+                        console.warn('Lecture de la vidéo d’alerte impossible :', error);
+                        finishItem();
+                        return;
+                    }
+                    mediaAlertVideo.muted = true;
+                    mediaAlertVideo.play().then(() => {
+                        blockedMediaAlerts.add(mediaAlertVideo);
+                        updateMediaAlertUnlockButton();
+                    }).catch(retryError => {
+                        console.warn('Lecture de la vidéo d’alerte impossible, même sans son :', retryError);
+                        finishItem();
+                    });
                 });
             }
         });
@@ -1123,7 +1178,7 @@
         if (!firstSeen(eventId)) return;
         const alert = await getMediaAlert(data.sourceTikTokUsername || levelUp.sourceTikTokUsername, 'level_up');
         if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
-        enqueueMediaAlert(alert, 20);
+        enqueueMediaAlert({ ...alert, fullScreen: true }, 20);
     }
 
     async function showBoboComment(data) {
@@ -1134,7 +1189,7 @@
         if (!firstSeen(eventId)) return;
         const alert = await getMediaAlert(data.sourceTikTokUsername, 'comment_bobo');
         if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
-        enqueueMediaAlert(alert);
+        enqueueMediaAlert({ ...alert, fullScreen: true });
     }
 
     function handle(data) {

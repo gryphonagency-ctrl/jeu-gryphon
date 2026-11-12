@@ -235,8 +235,9 @@
     .video-layer { position: fixed; left: -2px; top: -2px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     .gift-video-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow: hidden; padding: 0; background: transparent; }
     .gift-video-overlay[hidden] { display: none; }
-    .gift-video-overlay video { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; mix-blend-mode: screen; }
+    .gift-video-overlay video { position: absolute; top: 50%; left: 50%; width: 100vw; height: 100dvh; max-width: none; max-height: none; transform: translate(-50%, -50%); object-fit: contain; }
     .gift-video-close { position: absolute; z-index: 1; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+    .gift-video-unlock { position: absolute; z-index: 1; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); }
     .range-line { display: flex; justify-content: space-between; gap: 10px; margin: 13px 0 4px; color: var(--muted); font-size: 11px; }
     .range-line output { color: var(--mint); }
     input[type="range"] { width: 100%; accent-color: var(--mint); }
@@ -633,6 +634,7 @@
   <div class="toast" id="toast" role="status"></div>
   <div class="gift-video-overlay" id="heartOfDayVideoOverlay" hidden>
     <button class="button gift-video-close" id="closeHeartOfDayVideo" type="button" aria-label="Fermer la vidéo du cœur du jour">Fermer</button>
+    <button class="button gift-video-unlock" id="unlockHeartOfDayVideo" type="button" hidden>🔊 Activer le son</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -644,6 +646,7 @@
     let heartOfDayVideoLoadFinished = false;
     let heartOfDayVideoPendingPlay = false;
     let heartOfDayVideoUnavailableReason = '';
+    let heartOfDayVideoSettings = {};
     const STORAGE_KEY = 'tiktok-coin-pusher-v1';
     const DEFAULT_PUSHER_TRAVEL = 35;
     const LEGACY_PUSHER_FULL_TRAVEL_CONTROL = 32;
@@ -1447,6 +1450,7 @@
         const media = await mediaResponse.json();
         const heartAlert = media.alerts?.gift_heart_me;
         const videoUrl = heartAlert?.videoUrl;
+        heartOfDayVideoSettings = heartAlert || {};
         clearMediaLayer('heartOfDayVideo');
         if (typeof videoUrl !== 'string' || !videoUrl) {
           heartOfDayVideoUnavailableReason = 'Configure et enregistre la vidéo Heart Me dans Mes médias → Cadeaux.';
@@ -1459,8 +1463,10 @@
         video.preload = 'auto';
         video.controls = true;
         video.src = videoUrl;
+        applyHeartOfDayVideoSettings(video, heartOfDayVideoSettings);
         video.addEventListener('ended', () => {
           document.getElementById('heartOfDayVideoOverlay').hidden = true;
+          document.getElementById('unlockHeartOfDayVideo').hidden = true;
           video.currentTime = 0;
         });
         video.addEventListener('error', () => {
@@ -2960,7 +2966,10 @@
       const video = videoLayers.get(layer);
       video?.pause();
       video?.remove();
-      if (layer === 'heartOfDayVideo') document.getElementById('heartOfDayVideoOverlay').hidden = true;
+      if (layer === 'heartOfDayVideo') {
+        document.getElementById('heartOfDayVideoOverlay').hidden = true;
+        document.getElementById('unlockHeartOfDayVideo').hidden = true;
+      }
       videoLayers.delete(layer);
       const videoUrl = videoUrls.get(layer);
       if (videoUrl) URL.revokeObjectURL(videoUrl);
@@ -2999,8 +3008,10 @@
       video.controls = isGiftVideo;
       video.src = url;
       if (isGiftVideo) {
+        applyHeartOfDayVideoSettings(video, heartOfDayVideoSettings);
         video.addEventListener('ended', () => {
           document.getElementById('heartOfDayVideoOverlay').hidden = true;
+          document.getElementById('unlockHeartOfDayVideo').hidden = true;
           video.currentTime = 0;
         });
         document.getElementById('heartOfDayVideoOverlay').append(video);
@@ -3018,6 +3029,26 @@
       videoLayers.set(layer, video);
       mediaAssets.set(layer, { layer, kind: 'video', name: file.name, mimeType: file.type, blob: file });
       if (notify) showToast(`Vidéo « ${file.name} » chargée · utilise « Sauvegarder médias » pour la conserver.`);
+    }
+
+    function applyHeartOfDayVideoSettings(video, settings = {}) {
+      const clamp = (value, min, max, fallback) =>
+        Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+      const width = clamp(settings.videoWidth, 25, 150, 100);
+      const height = clamp(settings.videoHeight, 25, 150, 100);
+      const offset = clamp(settings.videoOffsetY, -50, 50, 0);
+      const viewportHeightUnit = window.CSS?.supports?.('height', '100dvh') ? 'dvh' : 'vh';
+      video.volume = clamp(settings.videoVolume, 0, 1, 1);
+      video.style.position = 'absolute';
+      video.style.inset = 'auto';
+      video.style.top = '50%';
+      video.style.left = '50%';
+      video.style.width = `${width}vw`;
+      video.style.height = `${height}${viewportHeightUnit}`;
+      video.style.maxWidth = 'none';
+      video.style.maxHeight = 'none';
+      video.style.transform = `translate(-50%, -50%) translateY(${offset}vh)`;
+      video.style.objectFit = settings.videoFit === 'cover' ? 'cover' : 'contain';
     }
 
     function playHeartOfDayVideo() {
@@ -3040,13 +3071,37 @@
         return;
       }
       document.getElementById('heartOfDayVideoOverlay').hidden = false;
+      const unlockButton = document.getElementById('unlockHeartOfDayVideo');
+      unlockButton.hidden = true;
       video.muted = state.controls.effectsMuted;
       video.currentTime = 0;
       video.play().catch(error => {
+        if (error.name === 'NotAllowedError' && !video.muted) {
+          video.muted = true;
+          video.play().then(() => {
+            unlockButton.hidden = false;
+          }).catch(retryError => {
+            console.warn('Lecture de la vidéo du cœur du jour bloquée, même sans son :', retryError);
+            showToast('La lecture de la vidéo du cœur du jour est bloquée par le navigateur.');
+          });
+          return;
+        }
         console.warn('Lecture de la vidéo du cœur du jour bloquée :', error);
-        showToast('La vidéo du cœur du jour est prête · utilise ses commandes pour lancer la lecture.');
+        showToast('La lecture de la vidéo du cœur du jour est bloquée par le navigateur.');
       });
     }
+
+    document.getElementById('unlockHeartOfDayVideo').addEventListener('click', () => {
+      const video = videoLayers.get('heartOfDayVideo');
+      if (!video) return;
+      video.muted = false;
+      video.play().then(() => {
+        document.getElementById('unlockHeartOfDayVideo').hidden = true;
+      }).catch(error => {
+        console.warn('Impossible d’activer le son de la vidéo du cœur du jour :', error);
+        showToast('Impossible d’activer le son de la vidéo du cœur du jour.');
+      });
+    });
 
     function loadImageLayer(layer, file, notify = true) {
       if (layer === 'pusherTopImage') clearMediaLayer('pusherTopVideo');
