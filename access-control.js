@@ -5,7 +5,8 @@ const SESSION_COOKIE = 'gryphon_session';
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LOGIN_ATTEMPTS = 10;
-const ADMIN_USERNAME = 'gryphon.agency';
+const PRIMARY_ADMIN_USERNAME = 'gryphon.agency';
+const ADMIN_USERNAMES = new Set([PRIMARY_ADMIN_USERNAME, 'mrbobo']);
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -195,7 +196,8 @@ function listConfiguredUsers() {
 }
 
 function isAdminUser(username) {
-    return username.trim().toLowerCase() === ADMIN_USERNAME;
+    return typeof username === 'string' &&
+        ADMIN_USERNAMES.has(username.trim().toLowerCase());
 }
 
 function isAdmin(req) {
@@ -211,7 +213,9 @@ function canAccessGames(req, gameId) {
 }
 
 function hasAdminUsers() {
-    return users.has(ADMIN_USERNAME) || Boolean(store.getAccount(ADMIN_USERNAME));
+    return [...ADMIN_USERNAMES].some(username =>
+        users.has(username) || Boolean(store.getAccount(username))
+    );
 }
 
 function login(username, password, req, res) {

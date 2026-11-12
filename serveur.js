@@ -2252,7 +2252,9 @@ const server = http.createServer((req, res) => {
         }
         const username = access.usernameForRequest(req);
         if (req.method === 'GET') {
-            const layout = normalizeAdminDashboardLayout(store.getAdminDashboardLayout(username));
+            const layout = normalizeAdminDashboardLayout(
+                store.getAdminDashboardLayout(username, 'gryphon.agency')
+            );
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ layout }));
             return;

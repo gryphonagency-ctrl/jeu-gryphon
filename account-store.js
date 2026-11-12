@@ -991,8 +991,10 @@ function setCreatorProgressOverlaySettings(username, settings) {
     });
 }
 
-function getAdminDashboardLayout(username) {
-    return readStore().adminDashboardLayouts[username.toLowerCase()] ||
+function getAdminDashboardLayout(username, fallbackUsername) {
+    const layouts = readStore().adminDashboardLayouts;
+    return layouts[username.toLowerCase()] ||
+        (fallbackUsername ? layouts[fallbackUsername.toLowerCase()] : null) ||
         { order: [], pinned: [], hidden: [] };
 }
 
