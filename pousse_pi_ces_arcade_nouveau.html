@@ -377,6 +377,7 @@
     let podiumContextRef = null;
     let podiumTextureRef = null;
     const cardWinners = new Map();
+    let latestCardReward = null;
 
     // Textures des jetons
     function createCoinTextures() {
@@ -620,7 +621,10 @@
       ctx.fillStyle = '#f5d0fe';
       ctx.font = '900 24px Orbitron, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('TOP 3 SPECTATEURS', 640, 44);
+      ctx.fillText('TOP 3 SPECTATEURS', latestCardReward ? 195 : 640, latestCardReward ? 55 : 44);
+      if (latestCardReward) {
+        drawWallCardWinnerBanner(ctx, latestCardReward);
+      }
 
       const places = [
         { x: 245, y: 225, radius: 82, rank: '2', color: '#e2e8f0', crown: false },
@@ -699,6 +703,97 @@
       if (podiumTextureRef) podiumTextureRef.needsUpdate = true;
     }
 
+    function drawWallCardWinnerBanner(ctx, reward) {
+      const { winner, stars } = reward;
+      const left = 420;
+      const top = 12;
+      const width = 840;
+      const height = 78;
+      const avatarX = 468;
+      const avatarY = top + height / 2;
+      const avatarRadius = 27;
+
+      ctx.save();
+      ctx.shadowColor = '#22d3ee';
+      ctx.shadowBlur = 18;
+      const background = ctx.createLinearGradient(left, top, left + width, top + height);
+      background.addColorStop(0, 'rgba(20, 12, 48, 0.98)');
+      background.addColorStop(0.55, 'rgba(9, 18, 42, 0.98)');
+      background.addColorStop(1, 'rgba(27, 8, 52, 0.98)');
+      ctx.fillStyle = background;
+      ctx.beginPath();
+      ctx.roundRect(left, top, width, height, 18);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(232, 121, 249, 0.9)';
+      ctx.beginPath();
+      ctx.roundRect(left + 5, top + 5, width - 10, height - 10, 14);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+      ctx.clip();
+      if (winner.avatarImage && winner.avatarImage.naturalWidth) {
+        const size = Math.min(winner.avatarImage.naturalWidth, winner.avatarImage.naturalHeight);
+        ctx.drawImage(
+          winner.avatarImage,
+          (winner.avatarImage.naturalWidth - size) / 2,
+          (winner.avatarImage.naturalHeight - size) / 2,
+          size,
+          size,
+          avatarX - avatarRadius,
+          avatarY - avatarRadius,
+          avatarRadius * 2,
+          avatarRadius * 2
+        );
+      } else {
+        const avatarBackground = ctx.createLinearGradient(avatarX - avatarRadius, avatarY - avatarRadius, avatarX + avatarRadius, avatarY + avatarRadius);
+        avatarBackground.addColorStop(0, '#d946ef');
+        avatarBackground.addColorStop(1, '#2563eb');
+        ctx.fillStyle = avatarBackground;
+        ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+        ctx.fillStyle = '#fff';
+        ctx.font = '900 28px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(winner.username.charAt(0).toUpperCase(), avatarX, avatarY + 1);
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = '800 14px Orbitron, sans-serif';
+      ctx.fillText('DERNIÈRE CARTE GAGNANTE', 514, 39);
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 25px Inter, sans-serif';
+      ctx.fillText(`@${winner.username}`, 514, 70, 500);
+
+      ctx.fillStyle = 'rgba(3, 7, 18, 0.85)';
+      ctx.beginPath();
+      ctx.roundRect(1040, 27, 200, 48, 14);
+      ctx.fill();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#fde047';
+      ctx.font = '900 21px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${stars.toLocaleString('fr-FR')} ⭐`, 1140, 52, 180);
+      ctx.restore();
+    }
+
     function loadPodiumWinnerAvatar(winner) {
       if (!winner.avatarUrl || winner.loadedAvatarUrl === winner.avatarUrl) return;
       const source = winner.avatarUrl;
@@ -719,6 +814,15 @@
       const topThree = [ranked[1], ranked[0], ranked[2]];
       drawLivePodiumBoard(topThree);
       ranked.slice(0, 3).forEach(loadPodiumWinnerAvatar);
+      if (latestCardReward) loadPodiumWinnerAvatar(latestCardReward.winner);
+    }
+
+    function showWallCardWinner(player, stars) {
+      const key = String(player.key || player.username || '').toLocaleLowerCase('fr-FR');
+      const winner = cardWinners.get(key);
+      if (!winner) return;
+      latestCardReward = { winner, stars };
+      updatePodiumLeaderboard();
     }
 
     function recordStarWinner(player, stars) {
@@ -2425,6 +2529,7 @@
                 awardStarsToPlayer(c.owner, c.rewardStars, () => {
                   setLiveStatus(`Impossible de créditer les ${c.rewardStars} étoiles à @${c.owner ? c.owner.username : 'inconnu'}.`, 'error');
                 }, () => {
+                  showWallCardWinner(c.owner, c.rewardStars);
                   showStarRewardPopup(rewardPosition, c.owner, c.rewardStars);
                 });
               }
