@@ -212,6 +212,7 @@ const protectedRoutes = new Set([
     '/roue-du-cirque.html',
     '/multirou.html',
     '/araignee.html',
+    '/rallye-neon.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -298,6 +299,7 @@ store.grantGameAccessToExistingCreators('/super-mario-live.html');
 store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
 store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
 store.grantGameAccessToExistingCreators('/araignee.html');
+store.grantGameAccessToExistingCreators('/rallye-neon.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -353,6 +355,7 @@ const staticGameTitles = {
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/multirou.html': 'Le Multirou',
     '/araignee.html': 'Araignée Cybernétique',
+    '/rallye-neon.html': 'Rallye Néon',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -419,6 +422,7 @@ const gameRouteIds = new Map([
     ['/roue-du-cirque.html', '/roue-du-cirque.html'],
     ['/multirou.html', '/multirou.html'],
     ['/araignee.html', '/araignee.html'],
+    ['/rallye-neon.html', '/rallye-neon.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3227,6 +3231,7 @@ const server = http.createServer((req, res) => {
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
         ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
         ['/araignee.html', [path.join(__dirname, 'araignee.html'), 'text/html; charset=utf-8']],
+        ['/rallye-neon.html', [path.join(__dirname, 'rallye-neon.html'), 'text/html; charset=utf-8']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/tir-a-la-corde.html', [path.join(__dirname, 'tir-a-la-corde.html'), 'text/html; charset=utf-8']],
@@ -3281,6 +3286,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
         ['/images-vitrine/araignee.png', [path.join(__dirname, 'images-vitrine', 'araignee.png'), 'image/png']],
+        ['/images-vitrine/rallye-neon.png', [path.join(__dirname, 'images-vitrine', 'rallye-neon.png'), 'image/png']],
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
