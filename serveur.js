@@ -100,6 +100,7 @@ const starsGameFile = path.join(__dirname, 'qui-veut-gagner-des-etoiles.html');
 const footballImage = path.join(__dirname, 'ballon-foot-reel.jpg');
 const coinPusherFile = path.join(__dirname, 'coin-pusher-tiktok.html');
 const astraPush3dFile = path.join(__dirname, 'coin-pusher-3d-preview.html');
+const poussePiecesNouveauFile = path.join(__dirname, 'pousse_pi_ces_arcade_nouveau.html');
 const coinPusherDuckFile = path.join(__dirname, 'coin-pusher-canard.html');
 const coinPusher2dOldFile = path.join(__dirname, 'coin-pusher-tiktok-2d-ancien.html');
 const footballV2File = path.join(__dirname, 'jeu-foot-tiktok (1).html');
@@ -172,6 +173,7 @@ const protectedRoutes = new Set([
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
     '/coin-pusher-3d-preview.html',
+    '/pousse-pieces-arcade-nouveau.html',
     '/coin-pusher-canard.html',
     '/coin-pusher-tiktok-2d-ancien.html',
     '/jeu-foot-tiktok-v2.html',
@@ -256,6 +258,7 @@ store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/escape-bunker.html');
 store.grantGameAccessToExistingCreators('/defi-des-questions.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
+store.grantGameAccessToExistingCreators('/pousse-pieces-arcade-nouveau.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
@@ -317,6 +320,7 @@ const staticGameTitles = {
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
     '/coin-pusher-3d-preview.html': 'Astra Push 3D',
+    '/pousse-pieces-arcade-nouveau.html': 'Pousse-Pièces Arcade — Top 3',
     '/coin-pusher-canard.html': 'Queen Pusher Canard',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
     '/coin-pusher-tiktok-2d-ancien.html': 'Coin Pusher 2D (ancien)',
@@ -381,6 +385,7 @@ const gameRouteIds = new Map([
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
     ['/coin-pusher-3d-preview.html', '/coin-pusher-3d-preview.html'],
+    ['/pousse-pieces-arcade-nouveau.html', '/pousse-pieces-arcade-nouveau.html'],
     ['/coin-pusher-canard.html', '/coin-pusher-canard.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
     ['/coin-pusher-tiktok-2d-ancien.html', '/coin-pusher-tiktok-2d-ancien.html'],
@@ -3175,6 +3180,7 @@ const server = http.createServer((req, res) => {
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-3d-preview.html', [astraPush3dFile, 'text/html; charset=utf-8']],
+        ['/pousse-pieces-arcade-nouveau.html', [poussePiecesNouveauFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-canard.html', [coinPusherDuckFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-tiktok-2d-ancien.html', [coinPusher2dOldFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok-v2.html', [footballV2File, 'text/html; charset=utf-8']],
@@ -3254,6 +3260,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/multirou-apercu.png', [path.join(__dirname, 'images-vitrine', 'multirou-apercu.png'), 'image/png']],
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
+        ['/images-vitrine/pousse-pieces-arcade-nouveau.png', [path.join(__dirname, 'images-vitrine', 'pousse-pieces-arcade-nouveau.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
         ['/images-vitrine/wish-lab.png', [path.join(__dirname, 'images-vitrine', 'wish-lab.png'), 'image/png']],
         ['/images-vitrine/coup-de-pied.png', [path.join(__dirname, 'images-vitrine', 'coup-de-pied.png'), 'image/png']],

@@ -1,0 +1,2469 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pousse-Pièces Arcade - Gryphon Top 3</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #05020a;
+      font-family: 'Inter', sans-serif;
+    }
+    #game-canvas {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    #game-background-media {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #05020a;
+      pointer-events: none;
+    }
+    #game-background-media video, #game-background-media img {
+      display: none;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .font-arcade {
+      font-family: 'Orbitron', sans-serif;
+    }
+    .neon-pill {
+      background: rgba(15, 7, 30, 0.85);
+      border: 1.5px solid rgba(217, 70, 239, 0.65);
+      box-shadow: 0 0 18px rgba(192, 38, 211, 0.4), inset 0 0 10px rgba(168, 85, 247, 0.25);
+      backdrop-filter: blur(8px);
+    }
+    @keyframes floatStarReward {
+      0% { opacity: 0; transform: translate(-50%, 8px) scale(0.92); }
+      10%, 78% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -48px) scale(1); }
+    }
+    .star-reward-popup {
+      position: fixed;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      max-width: calc(100vw - 24px);
+      padding: 8px 12px;
+      border: 1px solid rgba(250, 204, 21, 0.8);
+      border-radius: 999px;
+      background: rgba(15, 7, 30, 0.94);
+      box-shadow: 0 0 18px rgba(250, 204, 21, 0.38), 0 4px 14px #0009;
+      pointer-events: none;
+      z-index: 40;
+      animation: floatStarReward 2.4s ease-out forwards;
+    }
+    .star-reward-avatar, .star-reward-initial {
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      border: 2px solid #facc15;
+      border-radius: 50%;
+    }
+    .star-reward-avatar {
+      object-fit: cover;
+    }
+    .star-reward-initial {
+      display: grid;
+      place-items: center;
+      background: #312e81;
+      color: #fff;
+      font-weight: 800;
+    }
+    .star-reward-details {
+      min-width: 0;
+      text-align: left;
+      line-height: 1.15;
+    }
+    .star-reward-name {
+      overflow: hidden;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .star-reward-count {
+      color: #fde047;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .config-panel, .sound-panel, .wheel-overlay {
+      position: fixed;
+      z-index: 50;
+      border: 1px solid rgba(217, 70, 239, .7);
+      border-radius: 14px;
+      background: rgba(13, 7, 26, .97);
+      box-shadow: 0 12px 40px #000b, 0 0 22px #a21caf55;
+      color: #fff;
+    }
+    .config-panel {
+      top: 62px;
+      right: 12px;
+      width: min(440px, calc(100vw - 24px));
+      min-width: min(260px, calc(100vw - 16px));
+      min-height: 180px;
+      max-height: calc(100vh - 76px);
+      overflow: auto;
+      padding: 14px 14px 38px;
+    }
+    #config-panel > .panel-heading { cursor: move; touch-action: none; }
+    #config-panel > .panel-heading button { cursor: pointer; }
+    .config-panel-resize {
+      position: fixed;
+      z-index: 51;
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      padding: 3px;
+      border: 1px solid rgba(217, 70, 239, .8);
+      border-radius: 6px;
+      background: rgba(26, 10, 44, .98);
+      color: #f0abfc;
+      cursor: nesw-resize;
+      touch-action: none;
+    }
+    .config-panel-resize[hidden] { display: none; }
+    .config-panel-resize svg { width: 18px; height: 18px; }
+    .sound-panel { top: 62px; right: 12px; width: min(280px, calc(100vw - 24px)); padding: 14px; }
+    #gift-queue-floating { left: 12px; top: 62px; right: auto; width: min(290px, calc(100vw - 24px)); overflow: auto; }
+    .queue-panel-resize { cursor: nwse-resize; }
+    .config-panel [data-save-key] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+    .config-panel [data-save-key] button { min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #c026d3; border-radius: 8px; background: #211331; color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
+    .config-panel [data-save-key] > div { grid-column: 1 / -1; }
+    .config-panel[hidden], .sound-panel[hidden], .wheel-overlay[hidden] { display: none; }
+    .panel-heading, .panel-row, .volume-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .panel-heading { margin-bottom: 12px; }
+    .panel-heading h2, .panel-section h3 { margin: 0; color: #f0abfc; font-weight: 900; }
+    .panel-heading h2 { font-size: 15px; }
+    .panel-section { border-top: 1px solid #6b21a866; padding: 12px 0; }
+    .panel-section h3 { margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .panel-section p, .panel-status { margin: 6px 0; color: #d8b4fe; font-size: 11px; line-height: 1.4; }
+    .panel-section label { display: grid; gap: 5px; margin: 8px 0; color: #f5d0fe; font-size: 11px; }
+    .panel-section input:not([type=range]) { min-width: 0; width: 100%; padding: 7px; border: 1px solid #7e22ce; border-radius: 7px; background: #10091d; color: #fff; }
+    .panel-section input[type=range] { width: 100%; accent-color: #e879f9; }
+    .panel-button {
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid #c026d3;
+      border-radius: 8px;
+      background: #581c87;
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .panel-button.secondary { background: #211331; }
+    .panel-button:disabled { opacity: .5; cursor: not-allowed; }
+    .panel-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .panel-status.error { color: #fda4af; }
+    .panel-status.online { color: #86efac; }
+    #sound-volume { width: 100%; accent-color: #e879f9; }
+    .card-stock-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .card-stock-table th, .card-stock-table td { padding: 4px; border-bottom: 1px solid #ffffff22; text-align: left; }
+    .wheel-overlay { left: 50%; top: 50%; width: min(250px, calc(100vw - 30px)); padding: 12px; transform: translate(-50%, -50%); text-align: center; }
+    .wheel-overlay h2 { margin: 0 0 8px; color: #fde68a; font-size: 13px; }
+    #prize-wheel { width: 100%; aspect-ratio: 1; border-radius: 50%; }
+    #wheel-status { min-height: 2em; margin: 8px 0 0; color: #fef3c7; font-size: 11px; }
+    @media (max-width: 600px) {
+      .config-panel { right: 8px; top: 58px; max-height: calc(100vh - 66px); }
+      .sound-panel { right: 8px; top: 58px; }
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-white">
+
+  <div id="game-background-media" aria-hidden="true">
+    <video id="game-background-video" muted loop playsinline></video>
+    <img id="game-background-image" alt="">
+  </div>
+
+  <!-- Canevas 3D plein écran -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Compteurs minimalistes en haut de l'écran -->
+  <div class="fixed top-3 left-3 right-3 z-20 flex items-center justify-between pointer-events-none">
+    <div class="neon-pill rounded-full px-4 py-1.5 flex items-center gap-2 pointer-events-auto">
+      <span class="inline-block w-3 h-3 rounded-full bg-fuchsia-400 shadow-[0_0_8px_#e879f9]"></span>
+      <span class="text-xs uppercase tracking-wider text-fuchsia-200 font-bold">Jetons</span>
+      <span id="coin-stock" class="font-arcade text-base sm:text-lg font-black text-white">120</span>
+    </div>
+
+    <div class="neon-pill rounded-full px-4 py-1.5 flex items-center gap-2 pointer-events-auto">
+      <span class="text-xs uppercase tracking-wider text-amber-200 font-bold">Gagnés</span>
+      <span id="coin-score" class="font-arcade text-base sm:text-lg font-black text-amber-300">0</span>
+    </div>
+
+    <div class="flex items-center gap-2 pointer-events-auto">
+    <button id="btn-config" aria-label="Ouvrir les réglages" aria-controls="config-panel" aria-expanded="false" title="Réglages" class="neon-pill rounded-full w-10 h-10 flex items-center justify-center text-fuchsia-200 hover:text-white cursor-pointer">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19.4 15l.1.1a1.8 1.8 0 1 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 1 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 1 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.7a1.8 1.8 0 1 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 1 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 1 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 1 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 1 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3Z"/></svg>
+    </button>
+    <button id="btn-sound" aria-label="Ouvrir le panneau de son" aria-controls="sound-panel" aria-expanded="false" title="Réglages du son" class="neon-pill rounded-full w-10 h-10 flex items-center justify-center text-fuchsia-200 hover:text-white cursor-pointer">
+      <svg id="icon-sound-on" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+      </svg>
+      <svg id="icon-sound-off" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6"/>
+      </svg>
+    </button>
+    </div>
+  </div>
+
+  <aside id="sound-panel" class="sound-panel" aria-label="Panneau de son" hidden>
+    <div class="panel-heading"><h2>Son du jeu</h2><button id="close-sound-panel" class="panel-button secondary" type="button" aria-label="Fermer">×</button></div>
+    <label class="volume-label" for="sound-volume"><span>Volume</span><output id="sound-volume-value">100 %</output></label>
+    <input id="sound-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume du jeu">
+    <button id="sound-mute" class="panel-button secondary" type="button" aria-pressed="false">Couper le son</button>
+  </aside>
+
+  <aside id="config-panel" class="config-panel" aria-label="Panneau de configuration" hidden>
+    <header class="panel-heading"><div><h2>Configuration Griffon Arcade</h2><p class="panel-status">Réglages de la partie et du direct.</p></div><button id="close-config" class="panel-button secondary" type="button" aria-label="Fermer">×</button></header>
+    <section class="panel-section">
+      <h3>Partie</h3><div data-save-key="pousse-pieces-arcade-nouveau-save" data-save-label="💾 Sauvegarder mon setup"></div>
+      <button id="toggle-ranking" class="panel-button secondary" type="button" aria-pressed="true">Masquer le Top 3</button>
+    </section>
+    <section class="panel-section">
+      <h3>Connexion TikTok</h3>
+      <div class="panel-row"><input id="live-username" type="text" maxlength="32" autocomplete="off" placeholder="Pseudo TikTok" aria-label="Pseudo TikTok"><button id="connect-live" class="panel-button" type="button">Connecter</button><button id="disconnect-live" class="panel-button secondary" type="button" hidden>Déconnecter</button></div>
+      <p id="live-status" class="panel-status" role="status" aria-live="polite">Saisis ton pseudo TikTok pour connecter le direct.</p>
+    </section>
+    <section class="panel-section">
+      <h3>Arrière-plan</h3>
+      <input id="background-media-file" type="file" hidden>
+      <div class="panel-actions">
+        <button id="choose-background-media" class="panel-button" type="button">Choisir une photo ou vidéo</button>
+        <button id="remove-background-media" class="panel-button secondary" type="button" hidden>Retirer</button>
+      </div>
+      <p>Visible derrière les éléments du jeu. La lecture dépend des formats pris en charge par le navigateur.</p>
+      <p id="background-media-status" class="panel-status" role="status" aria-live="polite">Aucun média sélectionné.</p>
+    </section>
+    <section class="panel-section">
+      <h3>Réglages du poussoir</h3>
+      <label for="pusher-distance">Course <output id="pusher-distance-value">100 %</output><input id="pusher-distance" type="range" min="20" max="200" step="5" value="100"></label>
+      <label for="pusher-speed">Vitesse <output id="pusher-speed-value">100 %</output><input id="pusher-speed" type="range" min="20" max="300" step="5" value="100"></label>
+    </section>
+    <section class="panel-section">
+      <h3>Tests de lâcher</h3>
+      <label for="drop-test-count">Quantité de pièces de test (1–100 000)<input id="drop-test-count" type="number" min="1" max="100000" step="1" value="1"></label>
+      <p>Une pièce toutes les 36 ms. Aucun gain d’étoiles n’est attribué.</p>
+      <div class="panel-actions"><button id="drop-test-coins" class="panel-button" type="button">Lâcher de test</button><button id="drop-test-pair" class="panel-button" type="button">Lâcher 2 pièces</button><button id="drop-test-burst" class="panel-button" type="button">Lâcher 1 000</button><button id="drop-test-card" class="panel-button secondary" type="button">Simuler une carte</button></div>
+      <p id="drop-test-status" class="panel-status" role="status" aria-live="polite"></p>
+      <button id="detach-queue" class="panel-button secondary" type="button">Détacher la file</button>
+      <p id="gift-queue-status" class="panel-status" role="status" aria-live="polite">File : 0 / 100 000.</p>
+    </section>
+    <section class="panel-section">
+      <h3>Inventaire des cartes récompense</h3>
+      <p>Stock fini : 6 000 objets, dont 5 745 jetons et 255 cartes. Les cartes sorties ne sont pas remplacées.</p>
+      <table class="card-stock-table"><thead><tr><th>Récompense</th><th>Bénéficiaire</th><th>Dispo / jeu / sorties</th></tr></thead><tbody id="card-stock-body"></tbody></table>
+      <label for="card-reward-stars">Étoiles par carte<input id="card-reward-stars" type="number" min="1" max="250000" step="1" value="100"></label>
+      <label for="card-add-count">Nombre de cartes<input id="card-add-count" type="number" min="1" max="6000" step="1" value="1"></label>
+      <label for="card-recipient">Pseudo TikTok bénéficiaire<input id="card-recipient" type="text" maxlength="33" placeholder="@pseudo" autocomplete="off"></label>
+      <p>Le pseudo doit être repéré sur le direct connecté pour recevoir les étoiles.</p>
+      <button id="add-custom-cards" class="panel-button" type="button">Ajouter des cartes</button>
+      <p id="card-inventory-status" class="panel-status" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel-section">
+      <h3>Simulateur</h3><div class="panel-actions"><button id="simulate-big-gift" class="panel-button secondary" type="button">Gros cadeau</button><button id="simulate-share" class="panel-button secondary" type="button">Partage</button><button id="simulate-wheel" class="panel-button secondary" type="button">Tester la roue</button></div><p id="simulator-status" class="panel-status" role="status" aria-live="polite"></p>
+    </section>
+  </aside>
+
+  <button id="config-panel-resize" class="config-panel-resize" type="button" aria-label="Redimensionner le panneau de configuration" title="Tirer pour redimensionner" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M8 6h10v10"/>
+    </svg>
+  </button>
+
+  <aside id="gift-queue-floating" class="sound-panel" aria-label="File d’attente" hidden>
+    <div class="panel-heading"><h2>File d’attente</h2><button id="attach-queue" class="panel-button secondary" type="button">Rattacher</button></div>
+  </aside>
+  <button id="gift-queue-resize" class="config-panel-resize queue-panel-resize" type="button" aria-label="Redimensionner la file d’attente" title="Tirer pour étirer la file" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M8 6h10v10"/>
+    </svg>
+  </button>
+
+  <section id="wheel-overlay" class="wheel-overlay" aria-live="polite" hidden>
+    <h2 id="wheel-player-name">Roue des cadeaux</h2>
+    <canvas id="prize-wheel" width="600" height="600" aria-hidden="true"></canvas>
+    <p id="wheel-status" role="status">La roue tourne…</p>
+  </section>
+
+  <script>
+    // =========================================================================
+    // POUSSE-PIÈCES ARCADE - TOP 3 & GRYPHON AGENCY
+    // =========================================================================
+
+    class ArcadeAudio {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.volume = 1;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playClink(pitchFactor = 1.0, volume = 0.14) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        const baseFreq = (1850 + Math.random() * 550) * pitchFactor;
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.42, now + 0.045);
+        gain.gain.setValueAtTime(volume * this.volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.095);
+      }
+      playWin() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const notes = [587.33, 783.99, 987.77, 1318.51];
+        notes.forEach((freq, idx) => {
+          const now = this.ctx.currentTime + idx * 0.045;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.16 * this.volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.23);
+        });
+      }
+    }
+    const audio = new ArcadeAudio();
+    let podiumCanvasRef = null;
+    let podiumContextRef = null;
+    let podiumTextureRef = null;
+    const cardWinners = new Map();
+
+    // Textures des jetons
+    function createCoinTextures() {
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const cx = size / 2;
+      const cy = size / 2;
+
+      const grad = ctx.createRadialGradient(cx - 28, cy - 28, 12, cx, cy, 124);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.75, '#f3e8ff');
+      grad.addColorStop(1, '#d8b4fe');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 124, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = '#6b21a8';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 116, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#c026d3';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 96, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#581c87';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 58);
+      ctx.lineTo(cx + 46, cy + 28);
+      ctx.lineTo(cx + 22, cy + 28);
+      ctx.lineTo(cx, cy - 14);
+      ctx.lineTo(cx - 22, cy + 28);
+      ctx.lineTo(cx - 46, cy + 28);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#a21caf';
+      ctx.fillRect(cx - 32, cy + 8, 64, 12);
+
+      ctx.fillStyle = '#e879f9';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 68, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      const faceTex = new THREE.CanvasTexture(canvas);
+      faceTex.anisotropy = 4;
+
+      const edgeCanvas = document.createElement('canvas');
+      edgeCanvas.width = 256;
+      edgeCanvas.height = 32;
+      const ectx = edgeCanvas.getContext('2d');
+      ectx.fillStyle = '#6b21a8';
+      ectx.fillRect(0, 0, 256, 32);
+      ectx.fillStyle = '#f5d0fe';
+      for (let x = 0; x < 256; x += 16) {
+        ectx.fillRect(x, 4, 8, 24);
+      }
+      const edgeTex = new THREE.CanvasTexture(edgeCanvas);
+      edgeTex.wrapS = THREE.RepeatWrapping;
+      edgeTex.repeat.set(3, 1);
+
+      return { faceTex, edgeTex };
+    }
+
+    function createPusherFrontTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+
+      ctx.save();
+      ctx.font = '900 50px "Orbitron", "Inter", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fdf4ff';
+      ctx.fillText('GRYPHON AGENCY', 512, 66);
+      ctx.restore();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = 4;
+      return tex;
+    }
+
+    function fillBackdropGradient(ctx, width, height) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#090314');
+      gradient.addColorStop(0.18, '#090314');
+      gradient.addColorStop(0.5, '#190836');
+      gradient.addColorStop(1, '#090314');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(0, 0, width, 64);
+    }
+
+    function strokePodiumFrame(ctx) {
+      ctx.strokeStyle = '#e879f9';
+      ctx.lineWidth = 10;
+      ctx.shadowColor = '#d946ef';
+      ctx.shadowBlur = 24;
+      ctx.beginPath();
+      ctx.moveTo(16, 64);
+      ctx.lineTo(16, 460);
+      ctx.quadraticCurveTo(16, 498, 54, 498);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(1226, 498);
+      ctx.quadraticCurveTo(1264, 498, 1264, 460);
+      ctx.lineTo(1264, 64);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function createTopPodiumTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      podiumCanvasRef = canvas;
+      podiumContextRef = ctx;
+
+      fillBackdropGradient(ctx, canvas.width, canvas.height);
+      strokePodiumFrame(ctx);
+
+      ctx.fillStyle = '#f5d0fe';
+      ctx.font = '900 24px "Orbitron", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('TOP 3 SPECTATEURS', 640, 44);
+
+      const drawBadge = (x, y, radius, rank, name, score, ringColor, avatarTopColor, avatarHairColor, crown = false) => {
+        ctx.save();
+        const glow = ctx.createRadialGradient(x, y, radius * 0.45, x, y, radius * 1.48);
+        glow.addColorStop(0, ringColor + 'bb');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 1.48, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        const avBg = ctx.createLinearGradient(x - radius, y - radius, x + radius, y + radius);
+        avBg.addColorStop(0, avatarTopColor);
+        avBg.addColorStop(1, '#1e1b4b');
+        ctx.fillStyle = avBg;
+        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        ctx.fillStyle = avatarHairColor;
+        ctx.beginPath();
+        ctx.arc(x, y + radius * 0.85, radius * 0.68, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(x, y - radius * 0.1, radius * 0.36, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = avatarHairColor;
+        ctx.beginPath();
+        ctx.arc(x, y - radius * 0.22, radius * 0.38, Math.PI * 1.05, Math.PI * 1.95);
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(x - radius * 0.12, y - radius * 0.1, radius * 0.045, 0, Math.PI * 2);
+        ctx.arc(x + radius * 0.12, y - radius * 0.1, radius * 0.045, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.strokeStyle = ringColor;
+        ctx.lineWidth = crown ? 12 : 10;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (crown) {
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.moveTo(x - 36, y - radius - 10);
+          ctx.lineTo(x - 44, y - radius - 44);
+          ctx.lineTo(x - 16, y - radius - 26);
+          ctx.lineTo(x, y - radius - 54);
+          ctx.lineTo(x + 16, y - radius - 26);
+          ctx.lineTo(x + 44, y - radius - 44);
+          ctx.lineTo(x + 36, y - radius - 10);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.fillStyle = ringColor;
+        ctx.beginPath();
+        ctx.arc(x, y + radius - 2, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#090314';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.fillStyle = '#090314';
+        ctx.font = '900 26px "Orbitron", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(rank, x, y + radius - 1);
+
+        const pillW = 310;
+        const pillH = 46;
+        ctx.fillStyle = 'rgba(10, 6, 24, 0.94)';
+        ctx.beginPath();
+        ctx.roundRect(x - pillW * 0.5, y + radius + 28, pillW, pillH, 16);
+        ctx.fill();
+        ctx.strokeStyle = ringColor;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 25px "Inter", sans-serif';
+        ctx.fillText(name, x, y + radius + 52);
+
+        ctx.fillStyle = '#fde047';
+        ctx.font = '900 28px "Orbitron", sans-serif';
+        ctx.fillText('🪙 ' + score, x, y + radius + 98);
+        ctx.restore();
+      };
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = 4;
+      podiumTextureRef = tex;
+      drawLivePodiumBoard([]);
+      return tex;
+    }
+
+    function drawLivePodiumBoard(winners) {
+      if (!podiumContextRef || !podiumCanvasRef) return;
+      const ctx = podiumContextRef;
+      const canvas = podiumCanvasRef;
+      fillBackdropGradient(ctx, canvas.width, canvas.height);
+      strokePodiumFrame(ctx);
+      ctx.fillStyle = '#f5d0fe';
+      ctx.font = '900 24px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('TOP 3 SPECTATEURS', 640, 44);
+
+      const places = [
+        { x: 245, y: 225, radius: 82, rank: '2', color: '#e2e8f0', crown: false },
+        { x: 640, y: 195, radius: 98, rank: '1', color: '#facc15', crown: true },
+        { x: 1035, y: 225, radius: 82, rank: '3', color: '#fb923c', crown: false }
+      ];
+      places.forEach((place, index) => {
+        const winner = winners[index];
+        const { x, y, radius } = place;
+        ctx.save();
+        const glow = ctx.createRadialGradient(x, y, radius * 0.4, x, y, radius * 1.5);
+        glow.addColorStop(0, `${place.color}bb`);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        const avatar = winner && winner.avatarImage;
+        if (avatar && avatar.naturalWidth) {
+          const size = Math.min(avatar.naturalWidth, avatar.naturalHeight);
+          ctx.drawImage(avatar, (avatar.naturalWidth - size) / 2, (avatar.naturalHeight - size) / 2, size, size, x - radius, y - radius, radius * 2, radius * 2);
+        } else {
+          ctx.fillStyle = '#312e81';
+          ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+          ctx.fillStyle = '#f5d0fe';
+          ctx.font = `900 ${radius}px Inter, sans-serif`;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(winner ? winner.username.charAt(0).toUpperCase() : '•', x, y + 4);
+        }
+        ctx.restore();
+        ctx.strokeStyle = place.color;
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        if (place.crown) {
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.moveTo(x - 36, y - radius - 10);
+          ctx.lineTo(x - 44, y - radius - 44);
+          ctx.lineTo(x - 16, y - radius - 26);
+          ctx.lineTo(x, y - radius - 54);
+          ctx.lineTo(x + 16, y - radius - 26);
+          ctx.lineTo(x + 44, y - radius - 44);
+          ctx.lineTo(x + 36, y - radius - 10);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.fillStyle = place.color;
+        ctx.beginPath();
+        ctx.arc(x, y + radius - 2, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#090314';
+        ctx.font = '900 26px Orbitron, sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(place.rank, x, y + radius - 1);
+        ctx.fillStyle = 'rgba(10, 6, 24, 0.94)';
+        ctx.beginPath();
+        ctx.roundRect(x - 155, y + radius + 28, 310, 46, 16);
+        ctx.fill();
+        ctx.strokeStyle = place.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '800 25px Inter, sans-serif';
+        ctx.fillText(winner ? winner.username.slice(0, 18) : 'En attente', x, y + radius + 52);
+        ctx.fillStyle = '#fde047';
+        ctx.font = '900 28px Orbitron, sans-serif';
+        ctx.fillText(`⭐ ${winner ? winner.stars.toLocaleString('fr-FR') : '0'}`, x, y + radius + 98);
+        ctx.restore();
+      });
+      if (podiumTextureRef) podiumTextureRef.needsUpdate = true;
+    }
+
+    function loadPodiumWinnerAvatar(winner) {
+      if (!winner.avatarUrl || winner.loadedAvatarUrl === winner.avatarUrl) return;
+      const source = winner.avatarUrl;
+      winner.loadedAvatarUrl = source;
+      const image = new Image();
+      if (!source.startsWith('data:')) image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        if (cardWinners.get(winner.key) !== winner || winner.avatarUrl !== source) return;
+        winner.avatarImage = image;
+        updatePodiumLeaderboard();
+      };
+      image.onerror = () => console.warn('Impossible de charger la photo du gagnant', winner.username);
+      image.src = source;
+    }
+
+    function updatePodiumLeaderboard() {
+      const ranked = Array.from(cardWinners.values()).sort((a, b) => b.stars - a.stars || a.username.localeCompare(b.username));
+      const topThree = [ranked[1], ranked[0], ranked[2]];
+      drawLivePodiumBoard(topThree);
+      ranked.slice(0, 3).forEach(loadPodiumWinnerAvatar);
+    }
+
+    function recordStarWinner(player, stars) {
+      if (!player || !Number.isSafeInteger(stars) || stars < 1) return;
+      const key = String(player.key || player.username || '').toLocaleLowerCase('fr-FR');
+      if (!key) return;
+      let winner = cardWinners.get(key);
+      if (!winner) {
+        winner = { key, username: player.username, stars: 0, avatarUrl: '', loadedAvatarUrl: '', avatarImage: null };
+        cardWinners.set(key, winner);
+      }
+      winner.username = player.username || winner.username;
+      winner.stars += stars;
+      if (player.avatarUrl && winner.avatarUrl !== player.avatarUrl) {
+        winner.avatarUrl = player.avatarUrl;
+        winner.loadedAvatarUrl = '';
+        winner.avatarImage = null;
+      }
+      updatePodiumLeaderboard();
+    }
+
+    function createCabinetGradientTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      fillBackdropGradient(ctx, canvas.width, canvas.height);
+      const tex = new THREE.CanvasTexture(canvas);
+      return tex;
+    }
+
+    const canvasEl = document.getElementById('game-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
+
+    const scene = new THREE.Scene();
+    scene.background = null;
+    scene.fog = new THREE.FogExp2(0x06020d, 0.024);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+    let cameraHorizontalViewOffset = 0;
+
+    function updateCameraAspect() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      const isPortrait = h > w;
+      camera.position.set(0, isPortrait ? 13.8 : 12.2, isPortrait ? 13.2 : 11.6);
+      camera.lookAt(0, 1.0, -0.4);
+      camera.clearViewOffset();
+      if (cameraHorizontalViewOffset) camera.setViewOffset(w, h, cameraHorizontalViewOffset, 0, w, h);
+      camera.updateProjectionMatrix();
+    }
+    updateCameraAspect();
+
+    const ambientLight = new THREE.AmbientLight(0xd8b4fe, 0.72);
+    scene.add(ambientLight);
+
+    const topSpot = new THREE.SpotLight(0xffffff, 1.45);
+    topSpot.position.set(0, 16, 4);
+    topSpot.angle = Math.PI / 3.2;
+    topSpot.penumbra = 0.55;
+    topSpot.castShadow = true;
+    scene.add(topSpot);
+
+    const leftNeonLight = new THREE.PointLight(0xd946ef, 1.6, 18);
+    leftNeonLight.position.set(-5.5, 4.5, 1.5);
+    scene.add(leftNeonLight);
+
+    const rightNeonLight = new THREE.PointLight(0xa855f7, 1.6, 18);
+    rightNeonLight.position.set(5.5, 4.5, 1.5);
+    scene.add(rightNeonLight);
+
+    const BOARD_HALF_W = 4.25;
+    const MAIN_DECK_Y = 0.0;
+    const MAIN_DECK_Z_MIN = -4.2;
+    const MAIN_DECK_Z_MAX = 4.65;
+
+    const PUSHER_Y = 0.68;
+    const PUSHER_Z_RETRACTED = -4.1;
+    const PUSHER_Z_EXTENDED = -1.65;
+    const PUSHER_FRONT_OFFSET = 2.6;
+
+    const COIN_RADIUS = 0.44;
+    const COIN_HEIGHT = 0.13;
+
+    const cabinetGroup = new THREE.Group();
+    scene.add(cabinetGroup);
+
+    const cabinetGradientTex = createCabinetGradientTexture();
+    const cabinetGradientMat = new THREE.MeshStandardMaterial({
+      map: cabinetGradientTex,
+      color: 0xffffff,
+      emissive: new THREE.Color(0xffffff),
+      emissiveMap: cabinetGradientTex,
+      emissiveIntensity: 0.52,
+      roughness: 0.25,
+      metalness: 0.1
+    });
+    const darkMetalMat = cabinetGradientMat;
+    const wallMat = cabinetGradientMat;
+    const sideWallMat = new THREE.MeshStandardMaterial({
+      map: cabinetGradientTex,
+      color: 0x73587d,
+      emissive: new THREE.Color(0x4b2359),
+      emissiveMap: cabinetGradientTex,
+      emissiveIntensity: 0.18,
+      roughness: 0.72,
+      metalness: 0.02
+    });
+    const hiddenTopSurfaceMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+
+    const neonRailMat = new THREE.MeshStandardMaterial({
+      color: 0xf0abfc,
+      emissive: 0xd946ef,
+      emissiveIntensity: 2.2,
+      roughness: 0.15
+    });
+    const redWallNeonMat = new THREE.MeshBasicMaterial({ color: 0xff1010, toneMapped: false });
+
+    const goldTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.45,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+
+    const mainDeckDepth = MAIN_DECK_Z_MAX - MAIN_DECK_Z_MIN;
+    const mainDeckGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2 + 0.2, 0.7, mainDeckDepth);
+    const mainDeckMesh = new THREE.Mesh(mainDeckGeo, darkMetalMat);
+    mainDeckMesh.position.set(0, MAIN_DECK_Y - 0.35, (MAIN_DECK_Z_MIN + MAIN_DECK_Z_MAX) * 0.5);
+    mainDeckMesh.receiveShadow = true;
+    cabinetGroup.add(mainDeckMesh);
+
+    const lowerTrayClosureGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2 + 0.2, 0.85, 0.08);
+    const lowerTrayClosureMat = new THREE.MeshBasicMaterial({ color: 0x090314 });
+    const lowerTrayClosureMesh = new THREE.Mesh(lowerTrayClosureGeo, lowerTrayClosureMat);
+    lowerTrayClosureMesh.position.set(0, -1.125, MAIN_DECK_Z_MAX - 0.1);
+    cabinetGroup.add(lowerTrayClosureMesh);
+
+    const troughGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2.15, 0.4, 2.2);
+    const troughMat = new THREE.MeshBasicMaterial({ color: 0x090314 });
+    const troughMesh = new THREE.Mesh(troughGeo, troughMat);
+    troughMesh.position.set(0, -1.75, MAIN_DECK_Z_MAX + 0.85);
+    cabinetGroup.add(troughMesh);
+
+    const sideWallNeonGeo = new THREE.BoxGeometry(0.42, 0.16, mainDeckDepth + 1.4);
+    [-1, 1].forEach((side) => {
+      const wallGroup = new THREE.Group();
+      const sidePanelGeo = new THREE.BoxGeometry(0.34, 3.3, mainDeckDepth + 1.4);
+      const sidePanel = new THREE.Mesh(sidePanelGeo, sideWallMat);
+      sidePanel.position.set(side * (BOARD_HALF_W + 0.24), 1.65, 0.1);
+      wallGroup.add(sidePanel);
+
+      const topNeon = new THREE.Mesh(sideWallNeonGeo, redWallNeonMat);
+      topNeon.position.set(side * (BOARD_HALF_W + 0.24), 3.34, 0.1);
+      wallGroup.add(topNeon);
+
+      const railGeo = new THREE.BoxGeometry(0.16, 0.22, mainDeckDepth + 0.6);
+      const railMesh = new THREE.Mesh(railGeo, neonRailMat);
+      railMesh.position.set(side * (BOARD_HALF_W + 0.03), 1.35, 0.25);
+      railMesh.rotation.x = 0.22;
+      wallGroup.add(railMesh);
+
+      cabinetGroup.add(wallGroup);
+    });
+
+    const pusherGroup = new THREE.Group();
+    const pusherBodyDepth = 5.2;
+    const pusherBodyGeo = new THREE.BoxGeometry(BOARD_HALF_W * 1.98, PUSHER_Y, pusherBodyDepth);
+    const pusherBodyMat = new THREE.MeshStandardMaterial({
+      color: 0x151122,
+      roughness: 0.3,
+      metalness: 0.72
+    });
+    const pusherBodyMesh = new THREE.Mesh(pusherBodyGeo, pusherBodyMat);
+    pusherBodyMesh.position.set(0, PUSHER_Y * 0.5, 0);
+    pusherGroup.add(pusherBodyMesh);
+
+    const frontBannerTex = createPusherFrontTexture();
+    const frontBannerMat = new THREE.MeshStandardMaterial({
+      map: frontBannerTex,
+      transparent: true,
+      emissive: new THREE.Color(0xffffff),
+      emissiveMap: frontBannerTex,
+      emissiveIntensity: 0.3,
+      roughness: 0.2
+    });
+    const frontBannerGeo = new THREE.PlaneGeometry(BOARD_HALF_W * 1.96, PUSHER_Y * 0.96);
+    const frontBannerMesh = new THREE.Mesh(frontBannerGeo, frontBannerMat);
+    frontBannerMesh.position.set(0, PUSHER_Y * 0.5, PUSHER_FRONT_OFFSET + 0.01);
+    pusherGroup.add(frontBannerMesh);
+
+    pusherGroup.position.set(0, 0, PUSHER_Z_RETRACTED);
+    scene.add(pusherGroup);
+
+    const backWallGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2.1, 4.8, 0.6);
+    const backWallMaterials = Array(6).fill(wallMat);
+    backWallMaterials[2] = hiddenTopSurfaceMat;
+    backWallMaterials[4] = new THREE.MeshBasicMaterial({ color: 0x090314 });
+    const backWallMesh = new THREE.Mesh(backWallGeo, backWallMaterials);
+    backWallMesh.position.set(0, 2.6, -4.65);
+    cabinetGroup.add(backWallMesh);
+
+    const rearNeonGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2 + 0.48, 0.16, 0.16);
+    const rearNeonMesh = new THREE.Mesh(rearNeonGeo, redWallNeonMat);
+    rearNeonMesh.position.set(0, 4.28, -3.75);
+    cabinetGroup.add(rearNeonMesh);
+
+    const podiumTex = createTopPodiumTexture();
+    const podiumMat = new THREE.MeshStandardMaterial({
+      map: podiumTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveMap: podiumTex,
+      emissiveIntensity: 0.52,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.25
+    });
+
+    const podiumBackGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2.15, 3.65, 0.35);
+    const podiumMaterials = Array(6).fill(cabinetGradientMat);
+    podiumMaterials[2] = hiddenTopSurfaceMat;
+    podiumMaterials[4] = podiumMat;
+    const podiumBackMesh = new THREE.Mesh(podiumBackGeo, podiumMaterials);
+    podiumBackMesh.position.set(0, 2.55, -4.18);
+    podiumBackMesh.rotation.x = 0.22;
+    cabinetGroup.add(podiumBackMesh);
+
+    const { faceTex, edgeTex } = createCoinTextures();
+    const coinGeometry = new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, COIN_HEIGHT, 28);
+    const coinMaterials = [
+      new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.3, metalness: 0.4 }),
+      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25 }),
+      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25 })
+    ];
+
+    const setupStorageKey = 'pousse-pieces-arcade-nouveau-save';
+    const MAX_MACHINE_CAPACITY = 6000;
+    const MAX_PENDING_GIFT_DROPS = 100000;
+    const CARD_REWARD_TYPES = [
+      { id: 'star-1', stars: 1, initial: 100 },
+      { id: 'star-2', stars: 2, initial: 100 },
+      { id: 'star-10', stars: 10, initial: 25 },
+      { id: 'star-30', stars: 30, initial: 25 },
+      { id: 'star-100', stars: 100, initial: 5 }
+    ];
+    const setupRecord = (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(setupStorageKey) || '{}');
+        return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+      } catch (error) {
+        console.warn('Impossible de lire la sauvegarde du jeu :', error);
+        return {};
+      }
+    })();
+    const cardGeometry = new THREE.BoxGeometry(0.65, COIN_HEIGHT, 0.95);
+    const cardMatsByStars = new Map();
+    function getCardMaterials(stars) {
+      if (cardMatsByStars.has(stars)) return cardMatsByStars.get(stars);
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+      gradient.addColorStop(0, '#312e81');
+      gradient.addColorStop(1, '#1e1b4b');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#93c5fd';
+      ctx.lineWidth = 12;
+      ctx.strokeRect(7, 7, 242, 242);
+      ctx.fillStyle = '#bfdbfe';
+      ctx.font = '900 42px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${stars} ⭐`, 128, 128, 225);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = 4;
+      const side = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.3 });
+      const face = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2 });
+      const materials = [side, face, face, side, side, side];
+      cardMatsByStars.set(stars, materials);
+      return materials;
+    }
+    function normalizeCardInventory(saved) {
+      let remainingCapacity = MAX_MACHINE_CAPACITY;
+      const inventory = CARD_REWARD_TYPES.map(type => {
+        const stored = Array.isArray(saved) ? saved.find(item => item && item.id === type.id) : null;
+        const inPlay = Number.isSafeInteger(stored && stored.inPlay) && stored.inPlay >= 0 ? stored.inPlay : 0;
+        const available = Number.isSafeInteger(stored && stored.available) && stored.available >= 0
+          ? stored.available + inPlay
+          : type.initial;
+        const boundedAvailable = Math.min(remainingCapacity, available);
+        remainingCapacity -= boundedAvailable;
+        return { ...type, recipient: '', custom: false, available: boundedAvailable, inPlay: 0,
+          disappeared: Number.isSafeInteger(stored && stored.disappeared) && stored.disappeared >= 0 ? stored.disappeared : 0 };
+      });
+      const seen = new Set(inventory.map(type => type.id));
+      for (const stored of Array.isArray(saved) ? saved : []) {
+        if (!stored || stored.custom !== true || typeof stored.id !== 'string' ||
+            !/^custom-[a-zA-Z0-9-]{1,64}$/.test(stored.id) || seen.has(stored.id) ||
+            !Number.isSafeInteger(stored.stars) || stored.stars < 1 || stored.stars > 250000 ||
+            typeof stored.recipient !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(stored.recipient)) continue;
+        const inPlay = Number.isSafeInteger(stored.inPlay) && stored.inPlay > 0 ? stored.inPlay : 0;
+        const available = Number.isSafeInteger(stored.available) && stored.available > 0 ? stored.available + inPlay : inPlay;
+        const boundedAvailable = Math.min(remainingCapacity, available);
+        remainingCapacity -= boundedAvailable;
+        inventory.push({ id: stored.id, stars: stored.stars, recipient: stored.recipient, custom: true,
+          initial: 0, available: boundedAvailable, inPlay: 0,
+          disappeared: Number.isSafeInteger(stored.disappeared) && stored.disappeared >= 0 ? stored.disappeared : 0 });
+        seen.add(stored.id);
+      }
+      return inventory;
+    }
+    const cardInventory = normalizeCardInventory(setupRecord.cardInventory);
+    const tokenCapacity = Math.max(0, MAX_MACHINE_CAPACITY - cardInventory.reduce((sum, type) => sum + type.available, 0));
+    const savedTokenTotal = Number.isSafeInteger(setupRecord.remainingTokenCount) && setupRecord.remainingTokenCount >= 0
+      ? Math.min(tokenCapacity, setupRecord.remainingTokenCount)
+      : tokenCapacity;
+    const coins = [];
+    let coinStock = savedTokenTotal;
+    let tokenInPlay = 0;
+    let buildingInitialBoard = false;
+    let coinScore = 0;
+    const stockEl = document.getElementById('coin-stock');
+    const scoreEl = document.getElementById('coin-score');
+
+    function updateHUD() {
+      stockEl.textContent = coinStock + tokenInPlay;
+      scoreEl.textContent = coinScore;
+    }
+
+    function availableCardCount() {
+      return cardInventory.reduce((sum, type) => sum + type.available, 0);
+    }
+
+    function updateCardInventoryTable() {
+      const body = document.getElementById('card-stock-body');
+      body.replaceChildren();
+      cardInventory.forEach(type => {
+        const row = document.createElement('tr');
+        const recipient = type.recipient ? `@${type.recipient}` : 'Pseudo du cadeau';
+        row.innerHTML = `<td>${type.stars} ⭐</td><td></td><td>${type.available} / ${type.inPlay} / ${type.disappeared}</td>`;
+        row.children[1].textContent = recipient;
+        body.append(row);
+      });
+    }
+
+    function drawCardReward() {
+      const total = availableCardCount();
+      if (!total) return null;
+      let ticket = Math.floor(Math.random() * total);
+      const type = cardInventory.find(item => (ticket -= item.available) < 0);
+      if (!type) return null;
+      type.available--;
+      updateCardInventoryTable();
+      scheduleSetupPersistence();
+      return type;
+    }
+
+    function showStarRewardPopup(worldPos, player, stars) {
+      if (!player || !player.username || !Number.isSafeInteger(stars) || stars < 1) return;
+      const vec = worldPos.clone().project(camera);
+      const sx = (vec.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+
+      const popup = document.createElement('div');
+      popup.className = 'star-reward-popup';
+      popup.setAttribute('role', 'status');
+      popup.setAttribute('aria-label', `@${player.username} a gagné ${stars} étoiles`);
+      popup.style.left = `${sx}px`;
+      popup.style.top = `${sy}px`;
+
+      const initial = document.createElement('span');
+      initial.className = 'star-reward-initial';
+      initial.setAttribute('aria-hidden', 'true');
+      initial.textContent = player.username.charAt(0).toUpperCase();
+
+      if (player.avatarUrl) {
+        const avatar = document.createElement('img');
+        avatar.className = 'star-reward-avatar';
+        avatar.alt = '';
+        avatar.addEventListener('error', () => avatar.replaceWith(initial), { once: true });
+        avatar.src = player.avatarUrl;
+        popup.appendChild(avatar);
+      } else {
+        popup.appendChild(initial);
+      }
+
+      const details = document.createElement('div');
+      details.className = 'star-reward-details';
+      const name = document.createElement('div');
+      name.className = 'star-reward-name';
+      name.textContent = `@${player.username}`;
+      const amount = document.createElement('div');
+      amount.className = 'star-reward-count';
+      amount.textContent = `${stars.toLocaleString('fr-FR')} ⭐`;
+      details.append(name, amount);
+      popup.appendChild(details);
+      document.body.appendChild(popup);
+      setTimeout(() => popup.remove(), 2500);
+    }
+
+    function createCoin(x, y, z, vx = 0, vy = 0, vz = 0, isFreshDrop = false, isCard = false, owner = null, rewardStars = 0, isSimulation = false, cardType = null) {
+      if (buildingInitialBoard && coinStock <= 0) return null;
+      const mesh = new THREE.Mesh(isCard ? cardGeometry : coinGeometry, isCard ? getCardMaterials(rewardStars) : coinMaterials);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+
+      const coin = {
+        mesh,
+        x, y, z,
+        vx, vy, vz,
+        rotX: 0,
+        rotZ: 0,
+        vRotX: (Math.random() - 0.5) * 0.6,
+        vRotZ: (Math.random() - 0.5) * 0.6,
+        fallingOverEdge: false,
+        scored: false,
+        clinkCooldown: isFreshDrop ? 0.05 : 0.4,
+        isCard,
+        owner,
+        rewardStars,
+        cardType,
+        isSimulation
+      };
+      if (buildingInitialBoard) {
+        coinStock--;
+        tokenInPlay++;
+      } else if (isCard) {
+        if (cardType) cardType.inPlay++;
+      } else {
+        tokenInPlay++;
+      }
+      coins.push(coin);
+      return coin;
+    }
+
+    function populateInitialBoard() {
+      buildingInitialBoard = true;
+      const pusherFrontZ = PUSHER_Z_RETRACTED + PUSHER_FRONT_OFFSET;
+      for (let row = 0; row < 4; row++) {
+        const z = pusherFrontZ - 0.42 - row * 0.72;
+        const cols = 8;
+        for (let col = 0; col < cols; col++) {
+          const x = -3.1 + col * 0.88 + (row % 2) * 0.22 + (Math.random() - 0.5) * 0.14;
+          if (Math.abs(x) < BOARD_HALF_W - COIN_RADIUS - 0.1) {
+            createCoin(x, PUSHER_Y + COIN_HEIGHT * 0.5, z);
+          }
+        }
+      }
+      for (let i = 0; i < 14; i++) {
+        const x = (Math.random() - 0.5) * 6.4;
+        const z = pusherFrontZ - 0.45 - Math.random() * 1.9;
+        createCoin(x, PUSHER_Y + COIN_HEIGHT * 1.5, z);
+      }
+
+      for (let row = 0; row < 7; row++) {
+        const z = MAIN_DECK_Z_MAX - 0.38 - row * 0.74;
+        const cols = 9;
+        for (let col = 0; col < cols; col++) {
+          const x = -3.45 + col * 0.86 + (row % 2) * 0.18 + (Math.random() - 0.5) * 0.16;
+          if (Math.abs(x) < BOARD_HALF_W - COIN_RADIUS - 0.08) {
+            createCoin(x, MAIN_DECK_Y + COIN_HEIGHT * 0.5, z);
+          }
+        }
+      }
+
+      for (let i = 0; i < 42; i++) {
+        const x = (Math.random() - 0.5) * 7.1;
+        const z = MAIN_DECK_Z_MAX - 0.35 - Math.random() * 4.4;
+        const layer = i < 28 ? 1.5 : 2.5;
+        createCoin(x, MAIN_DECK_Y + COIN_HEIGHT * layer, z);
+      }
+      buildingInitialBoard = false;
+      updateHUD();
+      updateCardInventoryTable();
+    }
+    populateInitialBoard();
+
+    let targetDropX = 0;
+
+    function dropCoinAt(xPos, forceCard = false, owner = null, isSimulation = false) {
+      let isCard = forceCard === true;
+      if (forceCard === null) {
+        const total = coinStock + availableCardCount();
+        if (total < 1) return false;
+        isCard = Math.random() * total >= coinStock;
+      }
+      let cardType = null;
+      if (isCard) {
+        cardType = drawCardReward();
+        if (!cardType) return false;
+        if (cardType.recipient) {
+          const known = livePlayers && livePlayers.get(cardType.recipient.toLocaleLowerCase('fr-FR'));
+          owner = rememberLivePlayer(cardType.recipient, known ? known.avatarUrl : '');
+        }
+      } else {
+        if (coinStock <= 0) return false;
+        coinStock--;
+        tokenInPlay++;
+      }
+      const clampedX = Math.max(-BOARD_HALF_W + 0.65, Math.min(BOARD_HALF_W - 0.65, xPos));
+      const jitterX = clampedX + (Math.random() - 0.5) * 0.18;
+      createCoin(jitterX, 2.25, -3.25, (Math.random() - 0.5) * 0.3, -1.2, 1.35 + Math.random() * 0.4, true, isCard, owner, cardType ? cardType.stars : 0, isSimulation, cardType);
+      updateHUD();
+      scheduleSetupPersistence();
+      audio.playClink(1.15, 0.12);
+      return true;
+    }
+
+    const configPanel = document.getElementById('config-panel');
+    const configButton = document.getElementById('btn-config');
+    const configResizeHandle = document.getElementById('config-panel-resize');
+    const configPanelHeader = configPanel.querySelector('.panel-heading');
+    const soundPanel = document.getElementById('sound-panel');
+    const soundButton = document.getElementById('btn-sound');
+    const liveUsernameInput = document.getElementById('live-username');
+    const liveStatus = document.getElementById('live-status');
+    const dropTestCountInput = document.getElementById('drop-test-count');
+    const dropTestStatus = document.getElementById('drop-test-status');
+    const giftQueueStatus = document.getElementById('gift-queue-status');
+    const cardInventoryStatus = document.getElementById('card-inventory-status');
+    const soundVolumeInput = document.getElementById('sound-volume');
+    const soundVolumeValue = document.getElementById('sound-volume-value');
+    let configPanelBounds = null;
+    let configPanelDrag = null;
+    let configPanelResize = null;
+    function syncConfigResizeHandle() {
+      if (configPanel.hidden) {
+        configResizeHandle.hidden = true;
+        return;
+      }
+      const rect = configPanel.getBoundingClientRect();
+      configResizeHandle.hidden = false;
+      configResizeHandle.style.left = `${rect.left + 5}px`;
+      configResizeHandle.style.top = `${rect.bottom - 31}px`;
+    }
+    function setConfigPanelBounds(bounds) {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const minWidth = Math.min(260, Math.max(180, viewportWidth - 16));
+      const maxWidth = Math.max(minWidth, viewportWidth - 16);
+      const minHeight = Math.min(220, Math.max(120, viewportHeight - 16));
+      const maxHeight = Math.max(minHeight, viewportHeight - 16);
+      const width = Math.min(maxWidth, Math.max(minWidth, bounds.width));
+      const height = Math.min(maxHeight, Math.max(minHeight, bounds.height));
+      const left = Math.min(Math.max(8, bounds.left), Math.max(8, viewportWidth - width - 8));
+      const top = Math.min(Math.max(8, bounds.top), Math.max(8, viewportHeight - height - 8));
+      configPanelBounds = { left, top, width, height };
+      configPanel.style.left = `${left}px`;
+      configPanel.style.top = `${top}px`;
+      configPanel.style.right = 'auto';
+      configPanel.style.width = `${width}px`;
+      configPanel.style.height = `${height}px`;
+      configPanel.style.maxHeight = 'none';
+      syncConfigResizeHandle();
+      updateGameFramingForConfigPanel();
+    }
+    function updateGameFramingForConfigPanel() {
+      if (configPanel.hidden) {
+        cameraHorizontalViewOffset = 0;
+      } else {
+        const panelRect = configPanel.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const panelOnRight = panelRect.left + panelRect.width / 2 > viewportWidth / 2;
+        const freeAreaCenter = panelOnRight
+          ? panelRect.left / 2
+          : (panelRect.right + viewportWidth) / 2;
+        cameraHorizontalViewOffset = viewportWidth / 2 - freeAreaCenter;
+      }
+      updateCameraAspect();
+    }
+    const savedPanelBounds = setupRecord.configPanel;
+    if (savedPanelBounds && ['left', 'top', 'width', 'height'].every(key => Number.isFinite(Number(savedPanelBounds[key]))) &&
+        Number(savedPanelBounds.width) > 0 && Number(savedPanelBounds.height) > 0) {
+      setConfigPanelBounds({
+        left: Number(savedPanelBounds.left),
+        top: Number(savedPanelBounds.top),
+        width: Number(savedPanelBounds.width),
+        height: Number(savedPanelBounds.height)
+      });
+    }
+    let liveSocket = null;
+    const livePlayers = new Map();
+    const giftDropQueue = [];
+    const coinDropLanes = [-2.7, -0.9, 0.9, 2.7];
+    let pendingGiftDropCount = 0;
+    let giftDropTimer = 0;
+    let giftDropLane = 0;
+    let setupPersistTimer = 0;
+    const pusherSpeedInput = document.getElementById('pusher-speed');
+    const pusherDistanceInput = document.getElementById('pusher-distance');
+    const savedSpeed = Number(setupRecord.pusherSpeed);
+    const savedDistance = Number(setupRecord.pusherDistance);
+    let pusherSpeedFactor = Number.isFinite(savedSpeed) ? Math.min(3, Math.max(0.2, savedSpeed / 100)) : 1;
+    let pusherTravelFactor = Number.isFinite(savedDistance) ? Math.min(2, Math.max(0.2, savedDistance / 100)) : 1;
+
+    if (typeof setupRecord.tiktokUsername === 'string') liveUsernameInput.value = setupRecord.tiktokUsername.slice(0, 32);
+    if (Number.isSafeInteger(setupRecord.dropTestCount) && setupRecord.dropTestCount >= 1 && setupRecord.dropTestCount <= MAX_PENDING_GIFT_DROPS) {
+      dropTestCountInput.value = String(setupRecord.dropTestCount);
+    }
+    pusherSpeedInput.value = String(Math.round(pusherSpeedFactor * 100));
+    pusherDistanceInput.value = String(Math.round(pusherTravelFactor * 100));
+    document.getElementById('pusher-speed-value').textContent = `${pusherSpeedInput.value} %`;
+    document.getElementById('pusher-distance-value').textContent = `${pusherDistanceInput.value} %`;
+    const initialVolume = Number.isFinite(Number(setupRecord.soundVolume))
+      ? Math.min(100, Math.max(0, Number(setupRecord.soundVolume)))
+      : 100;
+    soundVolumeInput.value = String(initialVolume);
+    audio.volume = initialVolume / 100;
+    soundVolumeValue.textContent = `${initialVolume} %`;
+    function syncArcadeEffectsSound() {
+      if (window.ArcadeEffects && typeof window.ArcadeEffects.setSound === 'function') {
+        window.ArcadeEffects.setSound(!audio.muted, audio.volume);
+      }
+    }
+    syncArcadeEffectsSound();
+
+    function setLiveStatus(message, state = '') {
+      liveStatus.textContent = message;
+      liveStatus.className = `panel-status ${state}`.trim();
+    }
+    function setDropTestStatus(message, state = '') {
+      dropTestStatus.textContent = message;
+      dropTestStatus.className = `panel-status ${state}`.trim();
+    }
+    function setCardInventoryStatus(message, state = '') {
+      cardInventoryStatus.textContent = message;
+      cardInventoryStatus.className = `panel-status ${state}`.trim();
+    }
+    function persistSetupRecord() {
+      const record = {
+        version: 1,
+        pusherDistance: Number(pusherDistanceInput.value),
+        pusherSpeed: Number(pusherSpeedInput.value),
+        soundVolume: Number(soundVolumeInput.value),
+        dropTestCount: dropTestCountInput.valueAsNumber,
+        remainingTokenCount: coinStock + tokenInPlay,
+        cardInventory: cardInventory.map(({ id, stars, recipient, custom, available, inPlay, disappeared }) =>
+          ({ id, stars, recipient, custom, available, inPlay, disappeared })),
+        tiktokUsername: liveUsernameInput.value.trim().replace(/^@/, ''),
+        configPanel: configPanelBounds ? { ...configPanelBounds } : undefined,
+        queuePanel: queuePanelBounds ? { ...queuePanelBounds } : undefined
+      };
+      try {
+        localStorage.setItem(setupStorageKey, JSON.stringify(record));
+        return true;
+      } catch (error) {
+        console.error('Impossible d’enregistrer la partie :', error);
+        setCardInventoryStatus('Sauvegarde impossible : espace local indisponible.', 'error');
+        return false;
+      }
+    }
+    const saveToolsContainer = document.querySelector('[data-save-key]');
+    if (saveToolsContainer && !window.ArcadeEffects) {
+      saveToolsContainer.dataset.ready = '1';
+      const message = document.createElement('div');
+      message.className = 'panel-status';
+      message.setAttribute('role', 'status');
+      message.setAttribute('aria-live', 'polite');
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'application/json,.json';
+      fileInput.hidden = true;
+      const reportSaveStatus = text => { message.textContent = text; };
+      const makeSaveButton = (label, action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', action);
+        saveToolsContainer.appendChild(button);
+      };
+      const getCurrentSetup = () => {
+        if (!persistSetupRecord()) throw new Error('Impossible d’enregistrer le setup.');
+        const raw = localStorage.getItem(setupStorageKey);
+        if (!raw) throw new Error('Aucun setup à sauvegarder.');
+        return raw;
+      };
+      const saveLocalBackup = () => {
+        const raw = getCurrentSetup();
+        localStorage.setItem(setupStorageKey + '-backup', JSON.stringify({ at: Date.now(), data: raw }));
+      };
+      saveToolsContainer.style.display = 'grid';
+      saveToolsContainer.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+      saveToolsContainer.style.gap = '6px';
+      makeSaveButton('Importer', () => fileInput.click());
+      makeSaveButton('Exporter', () => {
+        try {
+          const data = JSON.parse(getCurrentSetup());
+          const exportFile = JSON.stringify({
+            format: 'griffon-arcade-save',
+            game: setupStorageKey,
+            exportedAt: new Date().toISOString(),
+            data
+          }, null, 2);
+          const url = URL.createObjectURL(new Blob([exportFile], { type: 'application/json' }));
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${setupStorageKey}-${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          reportSaveStatus('Setup exporté.');
+        } catch (error) {
+          reportSaveStatus(`Export impossible : ${error.message}`);
+        }
+      });
+      makeSaveButton('Sauvegarder mon setup', () => {
+        try {
+          saveLocalBackup();
+          reportSaveStatus('Setup sauvegardé localement.');
+        } catch (error) {
+          reportSaveStatus(`Sauvegarde impossible : ${error.message}`);
+        }
+      });
+      makeSaveButton('Restaurer', () => {
+        try {
+          const backup = JSON.parse(localStorage.getItem(setupStorageKey + '-backup') || 'null');
+          if (!backup || typeof backup.data !== 'string') {
+            reportSaveStatus('Aucune sauvegarde locale.');
+            return;
+          }
+          if (!confirm(`Restaurer la sauvegarde du ${new Date(backup.at).toLocaleString('fr-FR')} ?`)) return;
+          localStorage.setItem(setupStorageKey, backup.data);
+          location.reload();
+        } catch (error) {
+          reportSaveStatus(`Restauration impossible : ${error.message}`);
+        }
+      });
+      saveToolsContainer.append(fileInput, message);
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+        try {
+          const text = await file.text();
+          if (text.length > 2000000) throw new Error('Fichier trop volumineux.');
+          const parsed = JSON.parse(text);
+          if (!parsed || parsed.format !== 'griffon-arcade-save' ||
+              parsed.game !== setupStorageKey || !parsed.data ||
+              typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
+            throw new Error('Fichier de setup invalide ou appartenant à un autre jeu.');
+          }
+          const current = localStorage.getItem(setupStorageKey);
+          if (current) localStorage.setItem(setupStorageKey + '-backup', JSON.stringify({ at: Date.now(), data: current }));
+          localStorage.setItem(setupStorageKey, JSON.stringify(parsed.data));
+          reportSaveStatus('Import réussi, rechargement…');
+          setTimeout(() => location.reload(), 600);
+        } catch (error) {
+          reportSaveStatus(`Import impossible : ${error.message}`);
+        }
+      });
+    }
+    function scheduleSetupPersistence() {
+      if (setupPersistTimer) return;
+      setupPersistTimer = setTimeout(() => {
+        setupPersistTimer = 0;
+        persistSetupRecord();
+      }, 700);
+    }
+    window.addEventListener('pagehide', () => {
+      if (setupPersistTimer) clearTimeout(setupPersistTimer);
+      setupPersistTimer = 0;
+      persistSetupRecord();
+    });
+
+    function safeLiveName(value) {
+      return String(value || '').trim().replace(/^@/, '').slice(0, 32) || 'Spectateur';
+    }
+    function getLiveAvatarSource(data) {
+      if (!data || typeof data !== 'object') return '';
+      const candidates = [data.avatarDataUri, data.profilePicture, data.profilePictureUrl, data.avatarUrl, data.avatar,
+        ...(Array.isArray(data.avatarUrls) ? data.avatarUrls : [])];
+      return candidates.find(source => typeof source === 'string' &&
+        /^(?:data:image\/|https?:\/\/|\/(?!\/))/i.test(source.trim()))?.trim() || '';
+    }
+    function rememberLivePlayer(username, avatarUrl = '') {
+      const cleanName = safeLiveName(username);
+      const key = cleanName.toLocaleLowerCase('fr-FR');
+      let player = livePlayers.get(key);
+      if (!player) {
+        player = { key, username: cleanName, avatarUrl: '' };
+        livePlayers.set(key, player);
+      }
+      if (avatarUrl && player.avatarUrl !== avatarUrl) {
+        player.avatarUrl = avatarUrl;
+        const winner = cardWinners.get(key);
+        if (winner) {
+          winner.avatarUrl = avatarUrl;
+          winner.loadedAvatarUrl = '';
+          winner.avatarImage = null;
+          updatePodiumLeaderboard();
+        }
+      }
+      return player;
+    }
+    function awardStarsToPlayer(player, amount, onFailure = null, onSuccess = null) {
+      const fail = error => {
+        console.error('Impossible de créditer les étoiles :', error);
+        if (typeof onFailure === 'function') onFailure(error);
+      };
+      if (!player || !player.username || !Number.isSafeInteger(amount) || amount < 1) {
+        fail(new Error('Joueur ou quantité d’étoiles invalide.'));
+        return false;
+      }
+      if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+        fail(new Error('ArcadeStars.award est indisponible.'));
+        return false;
+      }
+      try {
+        const result = window.ArcadeStars.award({ username: player.username, amount });
+        Promise.resolve(result).then(() => {
+          recordStarWinner(player, amount);
+          if (typeof onSuccess === 'function') onSuccess();
+        }, fail);
+        return true;
+      } catch (error) {
+        fail(error);
+        return false;
+      }
+    }
+
+    function jobHasStock(job) {
+      if (job.forceCard === true) return availableCardCount() > 0;
+      if (job.forceCard === false) return coinStock > 0;
+      return coinStock > 0 || availableCardCount() > 0;
+    }
+    function nextRunnableGiftJobIndex() {
+      return giftDropQueue.findIndex(jobHasStock);
+    }
+    function updateGiftQueueStatus() {
+      const paused = pendingGiftDropCount > 0 && nextRunnableGiftJobIndex() < 0;
+      giftQueueStatus.textContent = `File : ${pendingGiftDropCount.toLocaleString('fr-FR')} / ${MAX_PENDING_GIFT_DROPS.toLocaleString('fr-FR')} chutes${paused ? ' · stock indisponible' : ''}.`;
+    }
+    const wheelOverlay = document.getElementById('wheel-overlay');
+    const wheelCanvas = document.getElementById('prize-wheel');
+    const wheelContext = wheelCanvas.getContext('2d');
+    const wheelPlayerName = document.getElementById('wheel-player-name');
+    const wheelStatus = document.getElementById('wheel-status');
+    const wheelSectors = [
+      { label: '100 ⭐', stars: 100 }, { label: '0', stars: 0 },
+      { label: '200 ⭐', stars: 200 }, { label: '0', stars: 0 },
+      { label: '300 ⭐', stars: 300 }, { label: '0', stars: 0 },
+      { label: 'RETENTER', retry: true }
+    ];
+    const wheelSpinQueue = [];
+    let wheelRotationDegrees = 0;
+    let wheelSpinActive = false;
+    let wheelSpinTimer = 0;
+    let wheelAdvanceTimer = 0;
+    let wheelHideTimer = 0;
+    function setWheelStatus(message, state = '') {
+      wheelStatus.textContent = message;
+      wheelStatus.className = state;
+    }
+    function drawPrizeWheel() {
+      if (!wheelContext) throw new Error('Impossible de créer le dessin de la roue des récompenses.');
+      const center = wheelCanvas.width / 2;
+      const radius = center - 12;
+      const sectorAngle = (Math.PI * 2) / wheelSectors.length;
+      const colors = ['#be123c', '#312e81', '#7c3aed', '#1e3a8a', '#b45309', '#581c87', '#047857'];
+      wheelContext.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+      wheelSectors.forEach((sector, index) => {
+        const start = -Math.PI / 2 + index * sectorAngle;
+        const end = start + sectorAngle;
+        const middle = start + sectorAngle / 2;
+        wheelContext.beginPath();
+        wheelContext.moveTo(center, center);
+        wheelContext.arc(center, center, radius, start, end);
+        wheelContext.closePath();
+        wheelContext.fillStyle = colors[index];
+        wheelContext.fill();
+        wheelContext.lineWidth = 5;
+        wheelContext.strokeStyle = '#fde68a';
+        wheelContext.stroke();
+        wheelContext.save();
+        wheelContext.translate(center + Math.cos(middle) * radius * 0.62, center + Math.sin(middle) * radius * 0.62);
+        let rotation = middle + Math.PI / 2;
+        if (rotation > Math.PI / 2 && rotation < Math.PI * 1.5) rotation += Math.PI;
+        wheelContext.rotate(rotation);
+        wheelContext.fillStyle = '#fff';
+        wheelContext.textAlign = 'center';
+        wheelContext.textBaseline = 'middle';
+        wheelContext.font = sector.retry ? '900 24px Inter, sans-serif' : '900 34px Orbitron, sans-serif';
+        wheelContext.fillText(sector.label, 0, 0);
+        wheelContext.restore();
+      });
+      wheelContext.beginPath();
+      wheelContext.arc(center, center, radius, 0, Math.PI * 2);
+      wheelContext.lineWidth = 8;
+      wheelContext.strokeStyle = '#fef08a';
+      wheelContext.stroke();
+    }
+    function queueWheelSpins(player, count, isSimulation = false) {
+      if (!player || count < 1) return;
+      wheelSpinQueue.push({ player, remaining: count, isSimulation });
+      if (wheelHideTimer) clearTimeout(wheelHideTimer);
+      wheelHideTimer = 0;
+      wheelOverlay.hidden = false;
+      if (!wheelSpinActive && !wheelAdvanceTimer) startNextWheelSpin();
+    }
+    function startNextWheelSpin() {
+      if (wheelSpinActive || wheelAdvanceTimer) return;
+      const job = wheelSpinQueue[0];
+      if (!job) {
+        wheelOverlay.hidden = true;
+        return;
+      }
+      wheelOverlay.hidden = false;
+      wheelPlayerName.textContent = job.isSimulation
+        ? `Test de la roue · @${job.player.username}`
+        : `Roue de @${job.player.username}`;
+      setWheelStatus('La roue tourne…');
+      const sectorIndex = Math.floor(Math.random() * wheelSectors.length);
+      const sector = wheelSectors[sectorIndex];
+      const sectorDegrees = 360 / wheelSectors.length;
+      const targetRemainder = (360 - (sectorIndex + 0.5) * sectorDegrees + 360) % 360;
+      const currentRemainder = ((wheelRotationDegrees % 360) + 360) % 360;
+      const alignment = (targetRemainder - currentRemainder + 360) % 360;
+      const startDegrees = wheelRotationDegrees;
+      const targetDegrees = startDegrees + 360 * 6 + alignment;
+      wheelSpinActive = true;
+      wheelCanvas.style.transition = 'none';
+      wheelCanvas.style.transform = `rotate(${startDegrees}deg)`;
+      void wheelCanvas.offsetWidth;
+      wheelCanvas.style.transition = 'transform 5200ms cubic-bezier(0.12, 0.72, 0.08, 1)';
+      requestAnimationFrame(() => { wheelCanvas.style.transform = `rotate(${targetDegrees}deg)`; });
+      wheelRotationDegrees = targetDegrees;
+      wheelSpinTimer = setTimeout(() => finishWheelSpin(job, sector), 5300);
+    }
+    function finishWheelSpin(job, sector) {
+      wheelSpinTimer = 0;
+      wheelSpinActive = false;
+      if (sector.retry) {
+        setWheelStatus(job.isSimulation
+          ? 'Essai : la roue repart pour une nouvelle chance…'
+          : 'Retenter ! La roue repart pour cette chance…');
+        wheelAdvanceTimer = setTimeout(() => {
+          wheelAdvanceTimer = 0;
+          startNextWheelSpin();
+        }, 850);
+        return;
+      }
+      if (sector.stars > 0) {
+        if (job.isSimulation) {
+          setWheelStatus(`Essai : @${job.player.username} aurait gagné ${sector.stars} étoiles. Aucune étoile attribuée.`);
+        } else {
+          setWheelStatus(`Bravo @${job.player.username} : ${sector.stars} étoiles !`);
+          awardStarsToPlayer(job.player, sector.stars, () => {
+            setWheelStatus('Gain affiché, mais impossible de créditer les étoiles.', 'error');
+          });
+        }
+      } else {
+        setWheelStatus(job.isSimulation
+          ? `Essai : @${job.player.username} aurait gagné 0 étoile.`
+          : `@${job.player.username} : 0 étoile cette fois.`);
+      }
+      job.remaining--;
+      if (job.remaining <= 0) wheelSpinQueue.shift();
+      if (wheelSpinQueue.length) {
+        wheelAdvanceTimer = setTimeout(() => {
+          wheelAdvanceTimer = 0;
+          startNextWheelSpin();
+        }, 1100);
+      } else {
+        wheelHideTimer = setTimeout(() => {
+          wheelHideTimer = 0;
+          if (!wheelSpinActive && !wheelSpinQueue.length) wheelOverlay.hidden = true;
+        }, 2400);
+      }
+    }
+    drawPrizeWheel();
+    function launchNextGiftCoin() {
+      giftDropTimer = 0;
+      const index = nextRunnableGiftJobIndex();
+      if (index >= 0) {
+        const job = giftDropQueue[index];
+        const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], job.forceCard, job.player, job.isSimulation);
+        if (dropped) {
+          job.remaining--;
+          pendingGiftDropCount--;
+          if (job.remaining <= 0) giftDropQueue.splice(index, 1);
+        }
+      }
+      if (nextRunnableGiftJobIndex() >= 0) giftDropTimer = setTimeout(launchNextGiftCoin, 36);
+      updateGiftQueueStatus();
+    }
+    function resumeGiftDropQueue() {
+      if (giftDropQueue.length && !giftDropTimer && nextRunnableGiftJobIndex() >= 0) launchNextGiftCoin();
+    }
+    function queueGiftCoins(player, count, options = {}) {
+      const accepted = Math.min(count, Math.max(0, MAX_PENDING_GIFT_DROPS - pendingGiftDropCount));
+      const rejected = count - accepted;
+      if (accepted > 0) {
+        giftDropQueue.push({
+          player,
+          remaining: accepted,
+          forceCard: options.forceCard === true ? true : options.forceCard === false ? false : null,
+          isSimulation: options.isSimulation === true
+        });
+        pendingGiftDropCount += accepted;
+        resumeGiftDropQueue();
+      }
+      updateGiftQueueStatus();
+      return { accepted, rejected };
+    }
+
+    window.addEventListener('arcade:wallet-run', event => {
+      const detail = event.detail || {};
+      const person = detail.player || {};
+      const username = person.username || person.uniqueId || person.nickname;
+      const count = Math.floor(Number(detail.spent) || 0);
+      if (!username || count < 1) return;
+      const player = rememberLivePlayer(username, getLiveAvatarSource(person));
+      const result = queueGiftCoins(player, count);
+      setLiveStatus(`@${player.username} · ${result.accepted} chute${result.accepted === 1 ? '' : 's'} ajoutée${result.accepted === 1 ? '' : 's'} à la file${result.rejected ? ` · ${result.rejected} refusée${result.rejected === 1 ? '' : 's'}` : ''}.`, result.rejected ? 'error' : 'online');
+    });
+    window.addEventListener('arcade:wallet-run-rejected', event => {
+      setLiveStatus(String(event.detail && event.detail.message || 'RUN refusé : solde insuffisant.'), 'error');
+    });
+
+    function handleLiveMessage(data) {
+      const type = String(data.type || '').toLowerCase();
+      if (type === 'status') {
+        const message = String(data.message || 'Statut TikTok reçu.');
+        setLiveStatus(message, /connecté|connected/i.test(message) ? 'online' : /erreur|échec|failed|déconnecté/i.test(message) ? 'error' : '');
+        return;
+      }
+      if (type === 'viewer') {
+        const viewer = data.viewer || data;
+        rememberLivePlayer(viewer.username || viewer.uniqueId || viewer.nickname, getLiveAvatarSource(viewer));
+        return;
+      }
+      if (type !== 'gift' && type !== 'tiktok-gift') return;
+      const gift = data.gift || data;
+      if (gift.repeatEnd === false) return;
+      const count = Math.floor(Number(gift.coinCount ?? gift.count ?? gift.repeatCount ?? 1));
+      if (!Number.isSafeInteger(count) || count < 1) return;
+      const player = rememberLivePlayer(gift.username || gift.uniqueId || gift.nickname || data.username,
+        getLiveAvatarSource(gift) || getLiveAvatarSource(gift.user) || getLiveAvatarSource(data));
+      const result = queueGiftCoins(player, count);
+      const wheelCount = Math.floor(result.accepted / 1000);
+      if (wheelCount > 0) queueWheelSpins(player, wheelCount);
+      setLiveStatus(`@${player.username} · ${result.accepted} jeton${result.accepted === 1 ? '' : 's'} TikTok ajouté${result.accepted === 1 ? '' : 's'} à la file${wheelCount ? ` · ${wheelCount} tour${wheelCount === 1 ? '' : 's'} de roue` : ''}${result.rejected ? ` · ${result.rejected} refusé${result.rejected === 1 ? '' : 's'}` : ''}.`, result.rejected ? 'error' : 'online');
+    }
+    function closeLiveConnection() {
+      if (!liveSocket) return;
+      const socket = liveSocket;
+      liveSocket = null;
+      socket.onclose = null;
+      socket.close();
+      document.getElementById('disconnect-live').hidden = true;
+      document.getElementById('connect-live').hidden = false;
+      setLiveStatus('Connexion TikTok fermée.');
+    }
+    document.getElementById('connect-live').addEventListener('click', () => {
+      const username = liveUsernameInput.value.trim().replace(/^@/, '');
+      if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+        setLiveStatus('Saisis un pseudo TikTok valide.', 'error');
+        liveUsernameInput.focus();
+        return;
+      }
+      if (liveSocket) closeLiveConnection();
+      setLiveStatus(`Connexion au direct @${username}…`);
+      let socket;
+      try {
+        socket = new WebSocket('wss://jeu6boite.onrender.com');
+      } catch (error) {
+        console.error('Échec de création de la connexion TikTok :', error);
+        setLiveStatus('Impossible de créer la connexion au relais TikTok.', 'error');
+        return;
+      }
+      liveSocket = socket;
+      document.getElementById('connect-live').hidden = true;
+      document.getElementById('disconnect-live').hidden = false;
+      socket.addEventListener('open', () => {
+        if (liveSocket !== socket) return;
+        socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+        setLiveStatus(`Demande envoyée pour @${username} · en attente du bot`);
+      });
+      socket.addEventListener('message', event => {
+        if (liveSocket !== socket) return;
+        try {
+          handleLiveMessage(JSON.parse(event.data));
+        } catch (error) {
+          console.error('Message TikTok invalide :', error);
+          setLiveStatus('Message du relais TikTok illisible.', 'error');
+        }
+      });
+      socket.addEventListener('error', () => {
+        if (liveSocket === socket) setLiveStatus('Connexion au relais TikTok impossible.', 'error');
+      });
+      socket.addEventListener('close', () => {
+        if (liveSocket !== socket) return;
+        liveSocket = null;
+        document.getElementById('disconnect-live').hidden = true;
+        document.getElementById('connect-live').hidden = false;
+        setLiveStatus('Relais déconnecté. Réessaie la connexion.', 'error');
+      });
+    });
+    document.getElementById('disconnect-live').addEventListener('click', closeLiveConnection);
+    liveUsernameInput.addEventListener('change', persistSetupRecord);
+    liveUsernameInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') document.getElementById('connect-live').click();
+    });
+
+    function queueDropTest(count) {
+      if (!Number.isSafeInteger(count) || count < 1 || count > MAX_PENDING_GIFT_DROPS) {
+        setDropTestStatus('Choisis un nombre entier entre 1 et 100 000.', 'error');
+        return;
+      }
+      audio.init();
+      const result = queueGiftCoins(null, count, { forceCard: false, isSimulation: true });
+      setDropTestStatus(`${result.accepted} pièce${result.accepted === 1 ? '' : 's'} de test ajoutée${result.accepted === 1 ? '' : 's'} à la file${result.rejected ? ` · ${result.rejected} refusée${result.rejected === 1 ? '' : 's'}` : ''}.`, result.rejected ? 'error' : 'online');
+      persistSetupRecord();
+      return result.accepted;
+    }
+    document.getElementById('drop-test-coins').addEventListener('click', () => queueDropTest(dropTestCountInput.valueAsNumber));
+    document.getElementById('drop-test-pair').addEventListener('click', () => queueDropTest(2));
+    document.getElementById('drop-test-burst').addEventListener('click', () => {
+      dropTestCountInput.value = '1000';
+      if (queueDropTest(1000) > 0) setDropTestStatus('1 000 pièces de test en file : une pièce toutes les 36 ms.', 'online');
+    });
+    document.getElementById('drop-test-card').addEventListener('click', () => {
+      audio.init();
+      const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], true, null, true);
+      setDropTestStatus(dropped ? 'Carte simulée sans gain réel d’étoiles.' : 'Aucune carte disponible à simuler.', dropped ? 'online' : 'error');
+    });
+    document.getElementById('add-custom-cards').addEventListener('click', () => {
+      const stars = document.getElementById('card-reward-stars').valueAsNumber;
+      const count = document.getElementById('card-add-count').valueAsNumber;
+      const recipient = document.getElementById('card-recipient').value.trim().replace(/^@/, '');
+      if (!Number.isSafeInteger(stars) || stars < 1 || stars > 250000) {
+        setCardInventoryStatus('La récompense doit être un entier de 1 à 250 000 étoiles.', 'error');
+        return;
+      }
+      if (!Number.isSafeInteger(count) || count < 1 || count > MAX_MACHINE_CAPACITY) {
+        setCardInventoryStatus('Le nombre de cartes doit être compris entre 1 et 6 000.', 'error');
+        return;
+      }
+      if (!/^[a-zA-Z0-9._]{1,32}$/.test(recipient)) {
+        setCardInventoryStatus('Saisis un pseudo TikTok valide pour le bénéficiaire.', 'error');
+        return;
+      }
+      if (count > coinStock) {
+        setCardInventoryStatus(`Ajout impossible : il ne reste que ${coinStock} jetons à convertir.`, 'error');
+        return;
+      }
+      let type = cardInventory.find(item => item.custom && item.stars === stars && item.recipient.toLowerCase() === recipient.toLowerCase());
+      if (!type) {
+        const idSuffix = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).replace('.', '').slice(0, 10)}`;
+        type = { id: `custom-${idSuffix}`, stars, recipient, custom: true, initial: 0, available: 0, inPlay: 0, disappeared: 0 };
+        cardInventory.push(type);
+      }
+      type.available += count;
+      coinStock -= count;
+      updateHUD();
+      updateCardInventoryTable();
+      persistSetupRecord();
+      resumeGiftDropQueue();
+      setCardInventoryStatus(`${count} carte${count === 1 ? '' : 's'} de ${stars} étoile${stars === 1 ? '' : 's'} ajoutée${count === 1 ? '' : 's'} pour @${recipient}.`, 'online');
+    });
+    document.getElementById('simulate-big-gift').addEventListener('click', () => {
+      if (!window.ArcadeEffects || typeof window.ArcadeEffects.simulateBigGift !== 'function') {
+        document.getElementById('simulator-status').textContent = 'Simulateur disponible lorsque le jeu est servi par la plateforme.';
+        return;
+      }
+      window.ArcadeEffects.simulateBigGift(liveUsernameInput.value.trim().replace(/^@/, '') || 'Spectateur', 100);
+      document.getElementById('simulator-status').textContent = 'Simulation de gros cadeau lancée.';
+    });
+    document.getElementById('simulate-share').addEventListener('click', () => {
+      if (!window.ArcadeEffects || typeof window.ArcadeEffects.simulateShare !== 'function') {
+        document.getElementById('simulator-status').textContent = 'Simulateur disponible lorsque le jeu est servi par la plateforme.';
+        return;
+      }
+      window.ArcadeEffects.simulateShare();
+      document.getElementById('simulator-status').textContent = 'Simulation de partage lancée.';
+    });
+    document.getElementById('simulate-wheel').addEventListener('click', () => {
+      queueWheelSpins({ key: 'wheel-test', username: 'Testeur', avatarUrl: '' }, 1, true);
+      document.getElementById('simulator-status').textContent = 'Essai de la roue lancé : aucune étoile ne sera attribuée.';
+    });
+
+    configPanelHeader.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || event.target.closest('button')) return;
+      const rect = configPanel.getBoundingClientRect();
+      configPanelDrag = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+      configPanelHeader.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    configPanelHeader.addEventListener('pointermove', event => {
+      if (!configPanelDrag || configPanelDrag.pointerId !== event.pointerId) return;
+      setConfigPanelBounds({
+        left: configPanelDrag.left + event.clientX - configPanelDrag.x,
+        top: configPanelDrag.top + event.clientY - configPanelDrag.y,
+        width: configPanelDrag.width,
+        height: configPanelDrag.height
+      });
+    });
+    configResizeHandle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      const rect = configPanel.getBoundingClientRect();
+      configPanelResize = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+      configResizeHandle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    configResizeHandle.addEventListener('pointermove', event => {
+      if (!configPanelResize || configPanelResize.pointerId !== event.pointerId) return;
+      const minWidth = Math.min(260, Math.max(180, window.innerWidth - 16));
+      const minHeight = Math.min(220, Math.max(120, window.innerHeight - 16));
+      const width = Math.max(minWidth, configPanelResize.width - (event.clientX - configPanelResize.x));
+      const height = Math.max(minHeight, configPanelResize.height + (event.clientY - configPanelResize.y));
+      setConfigPanelBounds({
+        left: configPanelResize.right - width,
+        top: configPanelResize.top,
+        width,
+        height
+      });
+    });
+    function finishConfigPanelAdjustment(event) {
+      const moved = configPanelDrag && configPanelDrag.pointerId === event.pointerId;
+      const resized = configPanelResize && configPanelResize.pointerId === event.pointerId;
+      if (!moved && !resized) return;
+      configPanelDrag = null;
+      configPanelResize = null;
+      persistSetupRecord();
+    }
+    [configPanelHeader, configResizeHandle].forEach(element => {
+      element.addEventListener('pointerup', finishConfigPanelAdjustment);
+      element.addEventListener('pointercancel', finishConfigPanelAdjustment);
+    });
+    window.addEventListener('resize', () => {
+      if (configPanelBounds) setConfigPanelBounds(configPanelBounds);
+      else {
+        syncConfigResizeHandle();
+        updateGameFramingForConfigPanel();
+      }
+    });
+
+    configButton.addEventListener('click', () => {
+      soundPanel.hidden = true;
+      soundButton.setAttribute('aria-expanded', 'false');
+      configPanel.hidden = !configPanel.hidden;
+      configButton.setAttribute('aria-expanded', String(!configPanel.hidden));
+      if (!configPanel.hidden) configPanel.scrollTop = 0;
+      updateGameFramingForConfigPanel();
+      syncConfigResizeHandle();
+    });
+    document.getElementById('close-config').addEventListener('click', () => {
+      configPanel.hidden = true;
+      configButton.setAttribute('aria-expanded', 'false');
+      updateGameFramingForConfigPanel();
+      syncConfigResizeHandle();
+      configButton.focus();
+    });
+    const backgroundMediaInput = document.getElementById('background-media-file');
+    const backgroundMediaVideo = document.getElementById('game-background-video');
+    const backgroundMediaImage = document.getElementById('game-background-image');
+    const removeBackgroundMediaButton = document.getElementById('remove-background-media');
+    const backgroundMediaStatus = document.getElementById('background-media-status');
+    let backgroundMediaUrl = '';
+    function setBackgroundMediaStatus(message, state = '') {
+      backgroundMediaStatus.textContent = message;
+      backgroundMediaStatus.className = `panel-status ${state}`.trim();
+    }
+    function clearBackgroundMedia() {
+      backgroundMediaVideo.pause();
+      backgroundMediaVideo.onloadeddata = null;
+      backgroundMediaVideo.onerror = null;
+      backgroundMediaVideo.removeAttribute('src');
+      backgroundMediaVideo.load();
+      backgroundMediaVideo.style.display = 'none';
+      backgroundMediaImage.onload = null;
+      backgroundMediaImage.onerror = null;
+      backgroundMediaImage.removeAttribute('src');
+      backgroundMediaImage.style.display = 'none';
+      if (backgroundMediaUrl) URL.revokeObjectURL(backgroundMediaUrl);
+      backgroundMediaUrl = '';
+      removeBackgroundMediaButton.hidden = true;
+    }
+    function loadBackgroundVideo(mediaUrl, file, genericError = false) {
+      backgroundMediaVideo.onloadeddata = () => {
+        if (backgroundMediaUrl !== mediaUrl) return;
+        backgroundMediaImage.style.display = 'none';
+        backgroundMediaVideo.style.display = 'block';
+        backgroundMediaVideo.play().then(() => {
+          setBackgroundMediaStatus(`Vidéo affichée : ${file.name}`, 'online');
+        }).catch(error => {
+          console.error('Impossible de lire la vidéo en arrière-plan :', error);
+          setBackgroundMediaStatus('La vidéo est décodable, mais le navigateur a refusé la lecture.', 'error');
+        });
+      };
+      backgroundMediaVideo.onerror = () => {
+        if (backgroundMediaUrl !== mediaUrl) return;
+        console.error('Format vidéo non pris en charge :', backgroundMediaVideo.error);
+        setBackgroundMediaStatus(genericError
+          ? 'Ce fichier n’est pas décodable comme photo ou vidéo par le navigateur.'
+          : 'Ce format ou codec vidéo n’est pas pris en charge par le navigateur. Essayez MP4 (H.264) ou WebM.', 'error');
+      };
+      backgroundMediaVideo.src = mediaUrl;
+      backgroundMediaVideo.load();
+    }
+    function loadBackgroundImage(mediaUrl, file, tryVideoOnError = false) {
+      backgroundMediaImage.onload = () => {
+        if (backgroundMediaUrl !== mediaUrl) return;
+        backgroundMediaVideo.style.display = 'none';
+        backgroundMediaImage.style.display = 'block';
+        setBackgroundMediaStatus(`Photo affichée : ${file.name}`, 'online');
+      };
+      backgroundMediaImage.onerror = () => {
+        if (backgroundMediaUrl !== mediaUrl) return;
+        if (tryVideoOnError) {
+          loadBackgroundVideo(mediaUrl, file, true);
+          return;
+        }
+        console.error('Format de photo non pris en charge :', file.name);
+        setBackgroundMediaStatus('Ce format de photo n’est pas pris en charge par le navigateur.', 'error');
+      };
+      backgroundMediaImage.src = mediaUrl;
+    }
+    document.getElementById('choose-background-media').addEventListener('click', () => backgroundMediaInput.click());
+    backgroundMediaInput.addEventListener('change', () => {
+      const file = backgroundMediaInput.files && backgroundMediaInput.files[0];
+      if (!file) return;
+      clearBackgroundMedia();
+      const mediaUrl = URL.createObjectURL(file);
+      backgroundMediaUrl = mediaUrl;
+      removeBackgroundMediaButton.hidden = false;
+      const videoFile = file.type.startsWith('video/') ||
+        /\.(?:3g2|3gp|asf|avi|flv|m2ts|m2v|m4v|mkv|mov|mp2|mp4|mpe?g|mts|ogv|rm|rmvb|ts|vob|webm|wmv)$/i.test(file.name);
+      const imageFile = file.type.startsWith('image/') ||
+        /\.(?:apng|avif|bmp|gif|heic|heif|ico|jpe?g|jfif|png|svg|tiff?|webp)$/i.test(file.name);
+      if (videoFile) {
+        loadBackgroundVideo(mediaUrl, file);
+      } else if (imageFile) {
+        loadBackgroundImage(mediaUrl, file);
+      } else {
+        loadBackgroundImage(mediaUrl, file, true);
+      }
+      backgroundMediaInput.value = '';
+    });
+    removeBackgroundMediaButton.addEventListener('click', () => {
+      clearBackgroundMedia();
+      setBackgroundMediaStatus('Arrière-plan retiré.');
+    });
+    const queueFloatingPanel = document.getElementById('gift-queue-floating');
+    const queueResizeHandle = document.getElementById('gift-queue-resize');
+    const queueHome = giftQueueStatus.parentElement;
+    let queuePanelBounds = null;
+    let queuePanelResize = null;
+    function syncQueueResizeHandle() {
+      if (queueFloatingPanel.hidden) {
+        queueResizeHandle.hidden = true;
+        return;
+      }
+      const rect = queueFloatingPanel.getBoundingClientRect();
+      queueResizeHandle.hidden = false;
+      queueResizeHandle.style.left = `${rect.right - 31}px`;
+      queueResizeHandle.style.top = `${rect.bottom - 31}px`;
+    }
+    function setQueuePanelBounds(bounds) {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const minWidth = Math.min(220, Math.max(160, viewportWidth - 16));
+      const maxWidth = Math.max(minWidth, viewportWidth - 16);
+      const minHeight = Math.min(140, Math.max(110, viewportHeight - 16));
+      const maxHeight = Math.max(minHeight, viewportHeight - 16);
+      const width = Math.min(maxWidth, Math.max(minWidth, bounds.width));
+      const height = Math.min(maxHeight, Math.max(minHeight, bounds.height));
+      const left = Math.min(Math.max(8, bounds.left), Math.max(8, viewportWidth - width - 8));
+      const top = Math.min(Math.max(8, bounds.top), Math.max(8, viewportHeight - height - 8));
+      queuePanelBounds = { left, top, width, height };
+      queueFloatingPanel.style.left = `${left}px`;
+      queueFloatingPanel.style.top = `${top}px`;
+      queueFloatingPanel.style.right = 'auto';
+      queueFloatingPanel.style.width = `${width}px`;
+      queueFloatingPanel.style.height = `${height}px`;
+      syncQueueResizeHandle();
+    }
+    const savedQueueBounds = setupRecord.queuePanel;
+    if (savedQueueBounds && ['left', 'top', 'width', 'height'].every(key => Number.isFinite(Number(savedQueueBounds[key]))) &&
+        Number(savedQueueBounds.width) > 0 && Number(savedQueueBounds.height) > 0) {
+      setQueuePanelBounds({
+        left: Number(savedQueueBounds.left),
+        top: Number(savedQueueBounds.top),
+        width: Number(savedQueueBounds.width),
+        height: Number(savedQueueBounds.height)
+      });
+    }
+    queueResizeHandle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      const rect = queueFloatingPanel.getBoundingClientRect();
+      queuePanelResize = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top
+      };
+      queueResizeHandle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    queueResizeHandle.addEventListener('pointermove', event => {
+      if (!queuePanelResize || queuePanelResize.pointerId !== event.pointerId) return;
+      setQueuePanelBounds({
+        left: queuePanelResize.left,
+        top: queuePanelResize.top,
+        width: queuePanelResize.width + event.clientX - queuePanelResize.x,
+        height: queuePanelResize.height + event.clientY - queuePanelResize.y
+      });
+    });
+    function finishQueuePanelResize(event) {
+      if (!queuePanelResize || queuePanelResize.pointerId !== event.pointerId) return;
+      queuePanelResize = null;
+      persistSetupRecord();
+    }
+    queueResizeHandle.addEventListener('pointerup', finishQueuePanelResize);
+    queueResizeHandle.addEventListener('pointercancel', finishQueuePanelResize);
+    window.addEventListener('resize', () => {
+      if (queuePanelBounds) setQueuePanelBounds(queuePanelBounds);
+      else syncQueueResizeHandle();
+    });
+    document.getElementById('detach-queue').addEventListener('click', () => {
+      queueFloatingPanel.append(giftQueueStatus);
+      queueFloatingPanel.hidden = false;
+      syncQueueResizeHandle();
+    });
+    document.getElementById('attach-queue').addEventListener('click', () => {
+      queueHome.append(giftQueueStatus);
+      queueFloatingPanel.hidden = true;
+      syncQueueResizeHandle();
+    });
+    document.getElementById('toggle-ranking').addEventListener('click', event => {
+      podiumBackMesh.visible = !podiumBackMesh.visible;
+      event.currentTarget.textContent = podiumBackMesh.visible ? 'Masquer le Top 3' : 'Afficher le Top 3';
+      event.currentTarget.setAttribute('aria-pressed', String(podiumBackMesh.visible));
+    });
+    soundButton.addEventListener('click', () => {
+      configPanel.hidden = true;
+      configButton.setAttribute('aria-expanded', 'false');
+      syncConfigResizeHandle();
+      soundPanel.hidden = !soundPanel.hidden;
+      soundButton.setAttribute('aria-expanded', String(!soundPanel.hidden));
+    });
+    document.getElementById('close-sound-panel').addEventListener('click', () => {
+      soundPanel.hidden = true;
+      soundButton.setAttribute('aria-expanded', 'false');
+    });
+    soundVolumeInput.addEventListener('input', () => {
+      const value = Number(soundVolumeInput.value);
+      audio.volume = value / 100;
+      soundVolumeValue.textContent = `${value} %`;
+      syncArcadeEffectsSound();
+      persistSetupRecord();
+    });
+    document.getElementById('sound-mute').addEventListener('click', event => {
+      audio.muted = !audio.muted;
+      syncArcadeEffectsSound();
+      event.currentTarget.setAttribute('aria-pressed', String(audio.muted));
+      event.currentTarget.textContent = audio.muted ? 'Activer le son' : 'Couper le son';
+      document.getElementById('icon-sound-on').classList.toggle('hidden', audio.muted);
+      document.getElementById('icon-sound-off').classList.toggle('hidden', !audio.muted);
+    });
+    function updatePusherSettings() {
+      pusherSpeedFactor = Number(pusherSpeedInput.value) / 100;
+      pusherTravelFactor = Number(pusherDistanceInput.value) / 100;
+      document.getElementById('pusher-speed-value').textContent = `${pusherSpeedInput.value} %`;
+      document.getElementById('pusher-distance-value').textContent = `${pusherDistanceInput.value} %`;
+      persistSetupRecord();
+    }
+    pusherSpeedInput.addEventListener('input', updatePusherSettings);
+    pusherDistanceInput.addEventListener('input', updatePusherSettings);
+    dropTestCountInput.addEventListener('change', persistSetupRecord);
+    document.getElementById('prize-wheel').getContext('2d').fillStyle = '#581c87';
+    updateCardInventoryTable();
+    updatePodiumLeaderboard();
+    updateGiftQueueStatus();
+    persistSetupRecord();
+
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2();
+    const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
+    const intersectPt = new THREE.Vector3();
+
+    function updateAimFromClientXY(clientX, clientY) {
+      pointerNDC.x = (clientX / window.innerWidth) * 2 - 1;
+      pointerNDC.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointerNDC, camera);
+      if (raycaster.ray.intersectPlane(boardPlane, intersectPt)) {
+        targetDropX = Math.max(-BOARD_HALF_W + 0.65, Math.min(BOARD_HALF_W - 0.65, intersectPt.x));
+      }
+    }
+
+    canvasEl.addEventListener('pointermove', (e) => {
+      updateAimFromClientXY(e.clientX, e.clientY);
+    });
+
+    canvasEl.addEventListener('pointerdown', (e) => {
+      audio.init();
+      updateAimFromClientXY(e.clientX, e.clientY);
+      dropCoinAt(targetDropX);
+    });
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      updateCameraAspect();
+    });
+
+    let pusherPhase = 0;
+    let prevPusherFrontZ = PUSHER_Z_RETRACTED + PUSHER_FRONT_OFFSET;
+    let lastTime = performance.now();
+
+    function stepPhysics(dt) {
+      pusherPhase += dt * 1.95 * pusherSpeedFactor;
+      const pusherMidpoint = (PUSHER_Z_RETRACTED + PUSHER_Z_EXTENDED) * 0.5;
+      const pusherHalfRange = (PUSHER_Z_EXTENDED - PUSHER_Z_RETRACTED) * 0.5 * pusherTravelFactor;
+      const pusherZ = pusherMidpoint + Math.sin(pusherPhase) * pusherHalfRange;
+      pusherGroup.position.z = pusherZ;
+
+      const pusherFrontZ = pusherZ + PUSHER_FRONT_OFFSET;
+      const pusherDeltaZ = pusherFrontZ - prevPusherFrontZ;
+      prevPusherFrontZ = pusherFrontZ;
+
+      const gravity = -24.0;
+      for (let i = 0; i < coins.length; i++) {
+        const c = coins[i];
+        if (c.clinkCooldown > 0) c.clinkCooldown -= dt;
+
+        c.vy += gravity * dt;
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+        c.z += c.vz * dt;
+
+        const friction = Math.pow(0.04, dt);
+        c.vx *= friction;
+        c.vz *= friction;
+
+        let floorY = -99;
+        if (!c.fallingOverEdge) {
+          if (c.z <= pusherFrontZ - 0.05 && c.y >= PUSHER_Y - 0.12) {
+            floorY = PUSHER_Y;
+            if (pusherDeltaZ !== 0) {
+              c.z += pusherDeltaZ * 0.96;
+            }
+          } else if (c.z <= MAIN_DECK_Z_MAX + COIN_RADIUS * 0.32) {
+            floorY = MAIN_DECK_Y;
+          } else {
+            c.fallingOverEdge = true;
+          }
+        }
+
+        const halfH = COIN_HEIGHT * 0.5;
+        if (floorY > -50 && c.y - halfH <= floorY && c.vy <= 0) {
+          if (c.vy < -2.2 && c.clinkCooldown <= 0) {
+            audio.playClink(0.95, 0.09);
+            c.clinkCooldown = 0.25;
+          }
+          c.y = floorY + halfH;
+          c.vy = 0;
+          c.rotX *= 0.8;
+          c.rotZ *= 0.8;
+        }
+
+        if (!c.fallingOverEdge && c.y - halfH < PUSHER_Y - 0.04) {
+          const minAllowedZ = pusherFrontZ + COIN_RADIUS;
+          if (c.z < minAllowedZ) {
+            c.z = minAllowedZ;
+            if (pusherDeltaZ > 0) {
+              c.vz = Math.max(c.vz, (pusherDeltaZ / dt) * 0.95);
+            }
+          }
+        }
+
+        const maxSideX = BOARD_HALF_W - COIN_RADIUS - 0.04;
+        if (c.x < -maxSideX) {
+          c.x = -maxSideX;
+          c.vx = Math.abs(c.vx) * 0.45;
+        } else if (c.x > maxSideX) {
+          c.x = maxSideX;
+          c.vx = -Math.abs(c.vx) * 0.45;
+        }
+
+        if (c.z < MAIN_DECK_Z_MIN + COIN_RADIUS) {
+          c.z = MAIN_DECK_Z_MIN + COIN_RADIUS;
+          c.vz = Math.abs(c.vz) * 0.3;
+        }
+
+        if (c.z > MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25 && c.y <= MAIN_DECK_Y + COIN_HEIGHT * 1.2) {
+          const overhang = (c.z - (MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25)) / (COIN_RADIUS * 0.6);
+          c.rotX = Math.min(Math.PI * 0.48, overhang * 0.85);
+          c.vz += overhang * 3.8 * dt;
+        }
+
+        if (c.fallingOverEdge) {
+          c.rotX += 4.5 * dt;
+          c.rotZ += c.vRotZ * dt;
+        }
+      }
+
+      const minDist = COIN_RADIUS * 1.94;
+      const minDistSq = minDist * minDist;
+
+      for (let iter = 0; iter < 3; iter++) {
+        for (let i = 0; i < coins.length; i++) {
+          const a = coins[i];
+          if (a.fallingOverEdge) continue;
+
+          for (let j = i + 1; j < coins.length; j++) {
+            const b = coins[j];
+            if (b.fallingOverEdge) continue;
+
+            const dy = a.y - b.y;
+            if (Math.abs(dy) >= COIN_HEIGHT * 1.05) continue;
+
+            const dx = b.x - a.x;
+            const dz = b.z - a.z;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < minDistSq) {
+              if (Math.abs(dy) > COIN_HEIGHT * 0.68) {
+                const topCoin = a.y > b.y ? a : b;
+                const botCoin = a.y > b.y ? b : a;
+                if (topCoin.vy <= 0) {
+                  topCoin.y = botCoin.y + COIN_HEIGHT;
+                  topCoin.vy = 0;
+                  topCoin.z += (botCoin.vz * dt) * 0.45;
+                  topCoin.x += (botCoin.vx * dt) * 0.45;
+                }
+                continue;
+              }
+
+              const dist = Math.sqrt(distSq) || 0.001;
+              const overlap = (minDist - dist) * 0.5;
+              const nx = dx / dist;
+              const nz = dz / dist;
+
+              a.x -= nx * overlap;
+              a.z -= nz * overlap;
+              b.x += nx * overlap;
+              b.z += nz * overlap;
+
+              const relVz = a.vz - b.vz;
+              if (relVz > 0 && nz > 0) {
+                b.vz += relVz * 0.62;
+                a.vz -= relVz * 0.25;
+              }
+              const relVx = a.vx - b.vx;
+              b.vx += relVx * 0.35;
+              a.vx -= relVx * 0.35;
+            }
+          }
+        }
+      }
+
+      for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        c.mesh.position.set(c.x, c.y, c.z);
+        c.mesh.rotation.x = c.rotX;
+        c.mesh.rotation.z = c.rotZ;
+
+        if (!c.scored && c.y < -1.1) {
+          c.scored = true;
+          coinScore++;
+          if (c.isCard) {
+            const type = c.cardType;
+            if (type) {
+              type.inPlay = Math.max(0, type.inPlay - 1);
+              if (c.isSimulation) {
+                type.available++;
+              } else {
+                type.disappeared++;
+                const rewardPosition = c.mesh.position.clone();
+                awardStarsToPlayer(c.owner, c.rewardStars, () => {
+                  setLiveStatus(`Impossible de créditer les ${c.rewardStars} étoiles à @${c.owner ? c.owner.username : 'inconnu'}.`, 'error');
+                }, () => {
+                  showStarRewardPopup(rewardPosition, c.owner, c.rewardStars);
+                });
+              }
+            }
+            updateCardInventoryTable();
+          } else {
+            tokenInPlay = Math.max(0, tokenInPlay - 1);
+            if (c.isSimulation) coinStock++;
+          }
+          scheduleSetupPersistence();
+          updateHUD();
+          audio.playWin();
+          resumeGiftDropQueue();
+        }
+
+        if (c.y < -3.2) {
+          scene.remove(c.mesh);
+          coins.splice(i, 1);
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now();
+      const dt = Math.min(0.033, (now - lastTime) / 1000);
+      lastTime = now;
+
+      neonRailMat.emissiveIntensity = 1.9 + Math.sin(now * 0.004) * 0.35;
+
+      stepPhysics(dt);
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      syncArcadeEffectsSound();
+      updateHUD();
+      animate();
+    };
+  </script>
+</body>
+</html>

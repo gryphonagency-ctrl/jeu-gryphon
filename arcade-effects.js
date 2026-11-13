@@ -1317,7 +1317,7 @@
         });
         make('💾 Exporter', () => say(exportSave(key) ? 'Sauvegarde exportée.' : 'Rien à exporter pour le moment.'));
         make('📂 Importer', () => file.click());
-        make('🛟 Sauvegarder', () => say(backupNow(key) ? 'Sauvegarde locale faite.' : 'Rien à sauvegarder.'));
+        make(box.dataset.saveLabel || '🛟 Sauvegarder', () => say(backupNow(key) ? 'Sauvegarde locale faite.' : 'Rien à sauvegarder.'));
         make('↩ Restaurer', () => {
             let b = null; try { b = JSON.parse(localStorage.getItem(key + '-backup')); } catch (e) { }
             if (!b || typeof b.data !== 'string') { say('Aucune sauvegarde locale.'); return; }
