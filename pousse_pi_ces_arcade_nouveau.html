@@ -271,7 +271,7 @@
     <section class="panel-section">
       <h3>Tests de lâcher</h3>
       <label for="drop-test-count">Quantité de pièces de test (1–100 000)<input id="drop-test-count" type="number" min="1" max="100000" step="1" value="1"></label>
-      <p>Une pièce toutes les 36 ms. Aucun gain d’étoiles n’est attribué.</p>
+      <p>Le débit ralentit et se met en pause si le plateau est trop chargé. Aucun gain d’étoiles n’est attribué.</p>
       <div class="panel-actions"><button id="drop-test-coins" class="panel-button" type="button">Lâcher de test</button><button id="drop-test-pair" class="panel-button" type="button">Lâcher 2 pièces</button><button id="drop-test-burst" class="panel-button" type="button">Lâcher 1 000</button><button id="drop-test-card" class="panel-button secondary" type="button">Simuler une carte</button></div>
       <p id="drop-test-status" class="panel-status" role="status" aria-live="polite"></p>
       <button id="detach-queue" class="panel-button secondary" type="button">Détacher la file</button>
@@ -906,6 +906,7 @@
     const MAIN_DECK_Y = 0.0;
     const MAIN_DECK_Z_MIN = -4.2;
     const MAIN_DECK_Z_MAX = 4.65;
+    const COIN_COLLECTION_ZONE_Z_MIN = 1.25;
 
     const PUSHER_Y = 0.68;
     const PUSHER_Z_RETRACTED = -4.1;
@@ -914,6 +915,8 @@
 
     const COIN_RADIUS = 0.44;
     const COIN_HEIGHT = 0.13;
+    const MAX_COIN_STACK_HEIGHT = 4;
+    const MAX_UPPER_DECK_STACK_HEIGHT = 4;
 
     const cabinetGroup = new THREE.Group();
     scene.add(cabinetGroup);
@@ -957,8 +960,9 @@
       metalness: 0.85
     });
 
+    const mainDeckWidth = BOARD_HALF_W * 2 + 0.2;
     const mainDeckDepth = MAIN_DECK_Z_MAX - MAIN_DECK_Z_MIN;
-    const mainDeckGeo = new THREE.BoxGeometry(BOARD_HALF_W * 2 + 0.2, 0.7, mainDeckDepth);
+    const mainDeckGeo = new THREE.BoxGeometry(mainDeckWidth, 0.7, mainDeckDepth);
     const mainDeckMesh = new THREE.Mesh(mainDeckGeo, darkMetalMat);
     mainDeckMesh.position.set(0, MAIN_DECK_Y - 0.35, (MAIN_DECK_Z_MIN + MAIN_DECK_Z_MAX) * 0.5);
     mainDeckMesh.receiveShadow = true;
@@ -1039,6 +1043,68 @@
     rearNeonMesh.position.set(0, 4.28, -3.75);
     cabinetGroup.add(rearNeonMesh);
 
+    const movingDropSlotsGroup = new THREE.Group();
+    movingDropSlotsGroup.position.y = 9;
+    const DROP_COIN_EXIT_Y = 3.76;
+    const movingDropSlotInitialPhases = [-Math.PI / 2, 0, Math.PI / 2];
+    const dropSlotBaseGeo = new THREE.BoxGeometry(2, 0.07, 0.32);
+    const dropSlotOpeningGeo = new THREE.BoxGeometry(1.65, 0.012, 0.09);
+    const dropSlotRailGeo = new THREE.BoxGeometry(2, 0.04, 0.03);
+    const dropSlotEndGeo = new THREE.BoxGeometry(0.03, 0.04, 0.32);
+    const dropTubeBottomY = -0.96;
+    const dropTubeRailGeo = new THREE.BoxGeometry(0.035, -dropTubeBottomY, 0.035);
+    const dropSlotBaseMat = new THREE.MeshStandardMaterial({
+      color: 0x100b1d,
+      roughness: 0.28,
+      metalness: 0.72
+    });
+    const dropSlotOpeningMat = new THREE.MeshBasicMaterial({ color: 0x020106 });
+    const dropSlotGlowMat = new THREE.MeshBasicMaterial({ color: 0xf0abfc, toneMapped: false });
+    [-3.4, -2.65, -1.9].forEach((z) => {
+      const slot = new THREE.Group();
+      slot.position.z = z;
+
+      const base = new THREE.Mesh(dropSlotBaseGeo, dropSlotBaseMat);
+      base.receiveShadow = true;
+      slot.add(base);
+
+      const opening = new THREE.Mesh(dropSlotOpeningGeo, dropSlotOpeningMat);
+      opening.position.y = 0.041;
+      slot.add(opening);
+
+      [-0.14, 0.14].forEach((railZ) => {
+        const rail = new THREE.Mesh(dropSlotRailGeo, dropSlotGlowMat);
+        rail.position.set(0, 0.05, railZ);
+        slot.add(rail);
+      });
+      [-0.98, 0.98].forEach((endX) => {
+        const end = new THREE.Mesh(dropSlotEndGeo, dropSlotGlowMat);
+        end.position.set(endX, 0.05, 0);
+        slot.add(end);
+      });
+      [-0.88, 0.88].forEach((tubeX) => {
+        [-0.12, 0.12].forEach((tubeZ) => {
+          const tubeRail = new THREE.Mesh(dropTubeRailGeo, dropSlotGlowMat);
+          tubeRail.position.set(tubeX, dropTubeBottomY * 0.5, tubeZ);
+          slot.add(tubeRail);
+        });
+      });
+
+      movingDropSlotsGroup.add(slot);
+    });
+    scene.add(movingDropSlotsGroup);
+    const movingDropSlotTravel = BOARD_HALF_W - 1.05;
+    const movingDropSlotStartTime = performance.now();
+    const movingDropSlotAngularSpeeds = [0.00062, 0.0007, 0.00056];
+    let nextMovingDropSlotIndex = 0;
+    function updateMovingDropSlots(now) {
+      movingDropSlotsGroup.children.forEach((slot, index) => {
+        const phase = movingDropSlotInitialPhases[index] +
+          (now - movingDropSlotStartTime) * movingDropSlotAngularSpeeds[index];
+        slot.position.x = Math.sin(phase) * movingDropSlotTravel;
+      });
+    }
+
     const podiumTex = createTopPodiumTexture();
     const podiumMat = new THREE.MeshStandardMaterial({
       map: podiumTex,
@@ -1070,6 +1136,9 @@
     const setupStorageKey = 'pousse-pieces-arcade-nouveau-save';
     const MAX_MACHINE_CAPACITY = 6000;
     const MAX_PENDING_GIFT_DROPS = 100000;
+    const MAX_ACTIVE_BOARD_COINS = 185;
+    const RESUME_ACTIVE_BOARD_COINS = 160;
+    const GIFT_DROP_INTERVAL_MS = 38;
     const CARD_REWARD_TYPES = [
       { id: 'star-1', stars: 1, initial: 100 },
       { id: 'star-2', stars: 2, initial: 100 },
@@ -1153,7 +1222,6 @@
     const coins = [];
     let coinStock = savedTokenTotal;
     let tokenInPlay = 0;
-    let buildingInitialBoard = false;
     let coinScore = 0;
     const stockEl = document.getElementById('coin-stock');
     const scoreEl = document.getElementById('coin-score');
@@ -1235,10 +1303,11 @@
     }
 
     function createCoin(x, y, z, vx = 0, vy = 0, vz = 0, isFreshDrop = false, isCard = false, owner = null, rewardStars = 0, isSimulation = false, cardType = null) {
-      if (buildingInitialBoard && coinStock <= 0) return null;
       const mesh = new THREE.Mesh(isCard ? cardGeometry : coinGeometry, isCard ? getCardMaterials(rewardStars) : coinMaterials);
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
+      const uprightOnEdge = isFreshDrop && !isCard;
+      if (uprightOnEdge) mesh.rotation.x = Math.PI / 2;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
@@ -1247,72 +1316,37 @@
         mesh,
         x, y, z,
         vx, vy, vz,
-        rotX: 0,
+        rotX: uprightOnEdge ? Math.PI / 2 : 0,
         rotZ: 0,
-        vRotX: (Math.random() - 0.5) * 0.6,
+        vRotX: uprightOnEdge ? 0 : (Math.random() - 0.5) * 0.6,
         vRotZ: (Math.random() - 0.5) * 0.6,
+        uprightOnEdge,
+        tippingFlat: false,
+        stackLevel: 1,
         fallingOverEdge: false,
         scored: false,
         clinkCooldown: isFreshDrop ? 0.05 : 0.4,
+        stackChaosCooldown: 0,
         isCard,
         owner,
         rewardStars,
         cardType,
         isSimulation
       };
-      if (buildingInitialBoard) {
-        coinStock--;
-        tokenInPlay++;
-      } else if (isCard) {
+      if (isCard) {
         if (cardType) cardType.inPlay++;
-      } else {
+      } else if (!isSimulation) {
         tokenInPlay++;
       }
       coins.push(coin);
       return coin;
     }
 
-    function populateInitialBoard() {
-      buildingInitialBoard = true;
-      const pusherFrontZ = PUSHER_Z_RETRACTED + PUSHER_FRONT_OFFSET;
-      for (let row = 0; row < 4; row++) {
-        const z = pusherFrontZ - 0.42 - row * 0.72;
-        const cols = 8;
-        for (let col = 0; col < cols; col++) {
-          const x = -3.1 + col * 0.88 + (row % 2) * 0.22 + (Math.random() - 0.5) * 0.14;
-          if (Math.abs(x) < BOARD_HALF_W - COIN_RADIUS - 0.1) {
-            createCoin(x, PUSHER_Y + COIN_HEIGHT * 0.5, z);
-          }
-        }
-      }
-      for (let i = 0; i < 14; i++) {
-        const x = (Math.random() - 0.5) * 6.4;
-        const z = pusherFrontZ - 0.45 - Math.random() * 1.9;
-        createCoin(x, PUSHER_Y + COIN_HEIGHT * 1.5, z);
-      }
-
-      for (let row = 0; row < 7; row++) {
-        const z = MAIN_DECK_Z_MAX - 0.38 - row * 0.74;
-        const cols = 9;
-        for (let col = 0; col < cols; col++) {
-          const x = -3.45 + col * 0.86 + (row % 2) * 0.18 + (Math.random() - 0.5) * 0.16;
-          if (Math.abs(x) < BOARD_HALF_W - COIN_RADIUS - 0.08) {
-            createCoin(x, MAIN_DECK_Y + COIN_HEIGHT * 0.5, z);
-          }
-        }
-      }
-
-      for (let i = 0; i < 42; i++) {
-        const x = (Math.random() - 0.5) * 7.1;
-        const z = MAIN_DECK_Z_MAX - 0.35 - Math.random() * 4.4;
-        const layer = i < 28 ? 1.5 : 2.5;
-        createCoin(x, MAIN_DECK_Y + COIN_HEIGHT * layer, z);
-      }
-      buildingInitialBoard = false;
-      updateHUD();
-      updateCardInventoryTable();
+    function coinHalfHeight(coin) {
+      if (coin.isCard) return COIN_HEIGHT * 0.5;
+      return Math.abs(Math.sin(coin.rotX)) * COIN_RADIUS +
+        Math.abs(Math.cos(coin.rotX)) * COIN_HEIGHT * 0.5;
     }
-    populateInitialBoard();
 
     let targetDropX = 0;
 
@@ -1332,13 +1366,26 @@
           owner = rememberLivePlayer(cardType.recipient, known ? known.avatarUrl : '');
         }
       } else {
-        if (coinStock <= 0) return false;
-        coinStock--;
-        tokenInPlay++;
+        if (!isSimulation) {
+          if (coinStock <= 0) return false;
+          coinStock--;
+        }
       }
-      const clampedX = Math.max(-BOARD_HALF_W + 0.65, Math.min(BOARD_HALF_W - 0.65, xPos));
-      const jitterX = clampedX + (Math.random() - 0.5) * 0.18;
-      createCoin(jitterX, 2.25, -3.25, (Math.random() - 0.5) * 0.3, -1.2, 1.35 + Math.random() * 0.4, true, isCard, owner, cardType ? cardType.stars : 0, isSimulation, cardType);
+      const dropSlotIndex = nextMovingDropSlotIndex++ % movingDropSlotsGroup.children.length;
+      const dropSlot = movingDropSlotsGroup.children[dropSlotIndex];
+      const now = performance.now();
+      updateMovingDropSlots(now);
+      const angularSpeed = movingDropSlotAngularSpeeds[dropSlotIndex];
+      const phase = movingDropSlotInitialPhases[dropSlotIndex] +
+        (now - movingDropSlotStartTime) * angularSpeed;
+      const slotVelocityX = Math.cos(phase) * movingDropSlotTravel * angularSpeed * 1000;
+      const dropY = DROP_COIN_EXIT_Y;
+      const dropVy = -1.2;
+      const dropVz = 1.35 + Math.random() * 0.5;
+      const xOffset = Math.max(-0.18, Math.min(0.18, xPos * 0.05));
+      const jitterX = dropSlot.position.x + xOffset + (Math.random() - 0.5) * 0.24;
+      const dropZ = dropSlot.position.z;
+      createCoin(jitterX, dropY, dropZ, slotVelocityX + (Math.random() - 0.5) * 0.18, dropVy, dropVz, true, isCard, owner, cardType ? cardType.stars : 0, isSimulation, cardType);
       updateHUD();
       scheduleSetupPersistence();
       audio.playClink(1.15, 0.12);
@@ -1424,6 +1471,7 @@
     let pendingGiftDropCount = 0;
     let giftDropTimer = 0;
     let giftDropLane = 0;
+    let giftQueuePausedForCrowding = false;
     let setupPersistTimer = 0;
     const pusherSpeedInput = document.getElementById('pusher-speed');
     const pusherDistanceInput = document.getElementById('pusher-distance');
@@ -1659,6 +1707,7 @@
     }
 
     function jobHasStock(job) {
+      if (job.isSimulation) return true;
       if (job.forceCard === true) return availableCardCount() > 0;
       if (job.forceCard === false) return coinStock > 0;
       return coinStock > 0 || availableCardCount() > 0;
@@ -1666,9 +1715,22 @@
     function nextRunnableGiftJobIndex() {
       return giftDropQueue.findIndex(jobHasStock);
     }
+    function activeBoardCoinCount() {
+      return coins.reduce((count, coin) => count + (coin.fallingOverEdge ? 0 : 1), 0);
+    }
+    function giftDropIntervalMs() {
+      return GIFT_DROP_INTERVAL_MS;
+    }
     function updateGiftQueueStatus() {
-      const paused = pendingGiftDropCount > 0 && nextRunnableGiftJobIndex() < 0;
-      giftQueueStatus.textContent = `File : ${pendingGiftDropCount.toLocaleString('fr-FR')} / ${MAX_PENDING_GIFT_DROPS.toLocaleString('fr-FR')} chutes${paused ? ' · stock indisponible' : ''}.`;
+      const activeCount = activeBoardCoinCount();
+      const pausedForStock = pendingGiftDropCount > 0 && nextRunnableGiftJobIndex() < 0;
+      const pausedForCrowding = pendingGiftDropCount > 0 && (giftQueuePausedForCrowding || activeCount >= MAX_ACTIVE_BOARD_COINS);
+      const pauseReason = pausedForStock
+        ? ' · stock indisponible'
+        : pausedForCrowding
+          ? ' · pause : plateau chargé'
+          : '';
+      giftQueueStatus.textContent = `File : ${pendingGiftDropCount.toLocaleString('fr-FR')} / ${MAX_PENDING_GIFT_DROPS.toLocaleString('fr-FR')} · plateau : ${activeCount}/${MAX_ACTIVE_BOARD_COINS}${pauseReason}.`;
     }
     const wheelOverlay = document.getElementById('wheel-overlay');
     const wheelCanvas = document.getElementById('prize-wheel');
@@ -1810,6 +1872,12 @@
     drawPrizeWheel();
     function launchNextGiftCoin() {
       giftDropTimer = 0;
+      if (activeBoardCoinCount() >= MAX_ACTIVE_BOARD_COINS) {
+        giftQueuePausedForCrowding = true;
+        updateGiftQueueStatus();
+        return;
+      }
+      giftQueuePausedForCrowding = false;
       const index = nextRunnableGiftJobIndex();
       if (index >= 0) {
         const job = giftDropQueue[index];
@@ -1820,11 +1888,30 @@
           if (job.remaining <= 0) giftDropQueue.splice(index, 1);
         }
       }
-      if (nextRunnableGiftJobIndex() >= 0) giftDropTimer = setTimeout(launchNextGiftCoin, 36);
+      if (pendingGiftDropCount === 0) giftQueuePausedForCrowding = false;
+      if (nextRunnableGiftJobIndex() >= 0) {
+        if (activeBoardCoinCount() >= MAX_ACTIVE_BOARD_COINS) {
+          giftQueuePausedForCrowding = true;
+        } else {
+          giftDropTimer = setTimeout(launchNextGiftCoin, giftDropIntervalMs());
+        }
+      }
       updateGiftQueueStatus();
     }
     function resumeGiftDropQueue() {
-      if (giftDropQueue.length && !giftDropTimer && nextRunnableGiftJobIndex() >= 0) launchNextGiftCoin();
+      if (!giftDropQueue.length || giftDropTimer || nextRunnableGiftJobIndex() < 0) return;
+      const activeCount = activeBoardCoinCount();
+      if (giftQueuePausedForCrowding && activeCount > RESUME_ACTIVE_BOARD_COINS) {
+        updateGiftQueueStatus();
+        return;
+      }
+      if (activeCount >= MAX_ACTIVE_BOARD_COINS) {
+        giftQueuePausedForCrowding = true;
+        updateGiftQueueStatus();
+        return;
+      }
+      giftQueuePausedForCrowding = false;
+      launchNextGiftCoin();
     }
     function queueGiftCoins(player, count, options = {}) {
       const accepted = Math.min(count, Math.max(0, MAX_PENDING_GIFT_DROPS - pendingGiftDropCount));
@@ -1957,10 +2044,14 @@
     document.getElementById('drop-test-pair').addEventListener('click', () => queueDropTest(2));
     document.getElementById('drop-test-burst').addEventListener('click', () => {
       dropTestCountInput.value = '1000';
-      if (queueDropTest(1000) > 0) setDropTestStatus('1 000 pièces de test en file : une pièce toutes les 36 ms.', 'online');
+      if (queueDropTest(1000) > 0) setDropTestStatus('1 000 pièces en file : le débit s’adapte à la charge du plateau.', 'online');
     });
     document.getElementById('drop-test-card').addEventListener('click', () => {
       audio.init();
+      if (activeBoardCoinCount() >= MAX_ACTIVE_BOARD_COINS) {
+        setDropTestStatus('Plateau chargé : la carte attendra que des pièces tombent.', 'error');
+        return;
+      }
       const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], true, null, true);
       setDropTestStatus(dropped ? 'Carte simulée sans gain réel d’étoiles.' : 'Aucune carte disponible à simuler.', dropped ? 'online' : 'error');
     });
@@ -2354,6 +2445,10 @@
     canvasEl.addEventListener('pointerdown', (e) => {
       audio.init();
       updateAimFromClientXY(e.clientX, e.clientY);
+      if (activeBoardCoinCount() >= MAX_ACTIVE_BOARD_COINS) {
+        setLiveStatus('Plateau chargé : attends que des pièces tombent avant un nouveau lâcher.', 'error');
+        return;
+      }
       dropCoinAt(targetDropX);
     });
 
@@ -2362,9 +2457,57 @@
       updateCameraAspect();
     });
 
-    let pusherPhase = 0;
+    let pusherPhase = -Math.PI / 2;
     let prevPusherFrontZ = PUSHER_Z_RETRACTED + PUSHER_FRONT_OFFSET;
     let lastTime = performance.now();
+
+    function pushLowerDeckCoins(deltaZ, previousFrontZ, currentFrontZ) {
+      if (deltaZ <= 0) return;
+
+      const candidates = coins.filter(coin =>
+        !coin.fallingOverEdge && coin.y < PUSHER_Y - COIN_HEIGHT * 0.5
+      );
+      const cellSize = COIN_RADIUS * 2;
+      const cells = new Map();
+      const cellKey = (x, z) => `${Math.floor(x / cellSize)}:${Math.floor(z / cellSize)}`;
+      for (const coin of candidates) {
+        const key = cellKey(coin.x, coin.z);
+        const cell = cells.get(key) || [];
+        cell.push(coin);
+        cells.set(key, cell);
+      }
+
+      const minDistSq = Math.pow(COIN_RADIUS * 2, 2);
+      const pushed = new Set(candidates.filter(coin =>
+        coin.z + COIN_RADIUS >= previousFrontZ &&
+        coin.z - COIN_RADIUS <= currentFrontZ
+      ));
+      const queue = Array.from(pushed);
+      for (let cursor = 0; cursor < queue.length; cursor++) {
+        const coin = queue[cursor];
+        const cellX = Math.floor(coin.x / cellSize);
+        const cellZ = Math.floor(coin.z / cellSize);
+        for (let dxCell = -1; dxCell <= 1; dxCell++) {
+          for (let dzCell = -1; dzCell <= 1; dzCell++) {
+            const nearby = cells.get(`${cellX + dxCell}:${cellZ + dzCell}`) || [];
+            for (const other of nearby) {
+              if (pushed.has(other) ||
+                  other.z < coin.z - COIN_RADIUS * 0.2 ||
+                  Math.abs(other.y - coin.y) >= COIN_HEIGHT * 1.05) continue;
+              const dx = other.x - coin.x;
+              const dz = other.z - coin.z;
+              if (dx * dx + dz * dz >= minDistSq) continue;
+              pushed.add(other);
+              queue.push(other);
+            }
+          }
+        }
+      }
+
+      for (const coin of pushed) {
+        coin.z += deltaZ * 0.35;
+      }
+    }
 
     function stepPhysics(dt) {
       pusherPhase += dt * 1.95 * pusherSpeedFactor;
@@ -2374,13 +2517,20 @@
       pusherGroup.position.z = pusherZ;
 
       const pusherFrontZ = pusherZ + PUSHER_FRONT_OFFSET;
+      const previousPusherFrontZ = prevPusherFrontZ;
       const pusherDeltaZ = pusherFrontZ - prevPusherFrontZ;
       prevPusherFrontZ = pusherFrontZ;
+      for (const coin of coins) {
+        coin.frameStartX = coin.x;
+        coin.frameStartZ = coin.z;
+      }
+      pushLowerDeckCoins(pusherDeltaZ, previousPusherFrontZ, pusherFrontZ);
 
       const gravity = -24.0;
       for (let i = 0; i < coins.length; i++) {
         const c = coins[i];
         if (c.clinkCooldown > 0) c.clinkCooldown -= dt;
+        if (c.stackChaosCooldown > 0) c.stackChaosCooldown -= dt;
 
         c.vy += gravity * dt;
         c.x += c.vx * dt;
@@ -2395,7 +2545,7 @@
         if (!c.fallingOverEdge) {
           if (c.z <= pusherFrontZ - 0.05 && c.y >= PUSHER_Y - 0.12) {
             floorY = PUSHER_Y;
-            if (pusherDeltaZ !== 0) {
+            if (pusherDeltaZ > 0) {
               c.z += pusherDeltaZ * 0.96;
             }
           } else if (c.z <= MAIN_DECK_Z_MAX + COIN_RADIUS * 0.32) {
@@ -2405,7 +2555,7 @@
           }
         }
 
-        const halfH = COIN_HEIGHT * 0.5;
+        const halfH = coinHalfHeight(c);
         if (floorY > -50 && c.y - halfH <= floorY && c.vy <= 0) {
           if (c.vy < -2.2 && c.clinkCooldown <= 0) {
             audio.playClink(0.95, 0.09);
@@ -2413,8 +2563,24 @@
           }
           c.y = floorY + halfH;
           c.vy = 0;
-          c.rotX *= 0.8;
-          c.rotZ *= 0.8;
+          if (c.uprightOnEdge) {
+            c.uprightOnEdge = false;
+            c.tippingFlat = true;
+          } else if (!c.tippingFlat) {
+            c.rotX *= 0.8;
+            c.rotZ *= 0.8;
+          }
+        }
+
+        if (c.tippingFlat) {
+          const tipDamping = Math.exp(-5 * dt);
+          c.rotX *= tipDamping;
+          c.rotZ *= tipDamping;
+          if (Math.abs(c.rotX) < 0.025 && Math.abs(c.rotZ) < 0.025) {
+            c.rotX = 0;
+            c.rotZ = 0;
+            c.tippingFlat = false;
+          }
         }
 
         if (!c.fallingOverEdge && c.y - halfH < PUSHER_Y - 0.04) {
@@ -2441,7 +2607,7 @@
           c.vz = Math.abs(c.vz) * 0.3;
         }
 
-        if (c.z > MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25 && c.y <= MAIN_DECK_Y + COIN_HEIGHT * 1.2) {
+        if (!c.tippingFlat && c.z > MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25 && c.y <= MAIN_DECK_Y + COIN_HEIGHT * 1.2) {
           const overhang = (c.z - (MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25)) / (COIN_RADIUS * 0.6);
           c.rotX = Math.min(Math.PI * 0.48, overhang * 0.85);
           c.vz += overhang * 3.8 * dt;
@@ -2453,8 +2619,9 @@
         }
       }
 
-      const minDist = COIN_RADIUS * 1.94;
+      const minDist = COIN_RADIUS * 2;
       const minDistSq = minDist * minDist;
+      const chaoticUpperStackCoins = new Set();
 
       for (let iter = 0; iter < 3; iter++) {
         for (let i = 0; i < coins.length; i++) {
@@ -2466,7 +2633,9 @@
             if (b.fallingOverEdge) continue;
 
             const dy = a.y - b.y;
-            if (Math.abs(dy) >= COIN_HEIGHT * 1.05) continue;
+            const aHalfHeight = coinHalfHeight(a);
+            const bHalfHeight = coinHalfHeight(b);
+            if (Math.abs(dy) >= aHalfHeight + bHalfHeight) continue;
 
             const dx = b.x - a.x;
             const dz = b.z - a.z;
@@ -2477,10 +2646,41 @@
                 const topCoin = a.y > b.y ? a : b;
                 const botCoin = a.y > b.y ? b : a;
                 if (topCoin.vy <= 0) {
-                  topCoin.y = botCoin.y + COIN_HEIGHT;
-                  topCoin.vy = 0;
-                  topCoin.z += (botCoin.vz * dt) * 0.45;
-                  topCoin.x += (botCoin.vx * dt) * 0.45;
+                  const botCoinOnPusher = botCoin.z <= pusherFrontZ - 0.05 && botCoin.y >= PUSHER_Y - 0.12;
+                  const botCoinInCollectionZone = botCoin.z >= COIN_COLLECTION_ZONE_Z_MIN;
+                  const supportFloorY = botCoinOnPusher
+                    ? PUSHER_Y
+                    : MAIN_DECK_Y;
+                  const maxStackHeight = botCoinInCollectionZone ? MAX_COIN_STACK_HEIGHT : MAX_UPPER_DECK_STACK_HEIGHT;
+                  const supportLevel = botCoin.stackLevel;
+                  if (supportLevel >= maxStackHeight) {
+                    topCoin.vz = Math.max(topCoin.vz, 0.9);
+                  } else {
+                    topCoin.y = botCoin.y + coinHalfHeight(botCoin) + coinHalfHeight(topCoin);
+                    topCoin.vy = 0;
+                    topCoin.stackLevel = supportLevel + 1;
+                    if (topCoin.uprightOnEdge) {
+                      topCoin.uprightOnEdge = false;
+                      topCoin.tippingFlat = true;
+                    }
+                    const supportDeltaX = botCoin.x - botCoin.frameStartX;
+                    const supportDeltaZ = botCoin.z - botCoin.frameStartZ;
+                    const topDeltaX = topCoin.x - topCoin.frameStartX;
+                    const topDeltaZ = topCoin.z - topCoin.frameStartZ;
+                    topCoin.x += supportDeltaX - topDeltaX;
+                    topCoin.z += supportDeltaZ - topDeltaZ;
+                    if (botCoinInCollectionZone) {
+                      topCoin.vx = botCoin.vx;
+                      topCoin.vz = botCoin.vz;
+                    } else if (topCoin.stackChaosCooldown <= 0) {
+                      topCoin.vx += (Math.random() - 0.5) * 0.2;
+                      topCoin.vz += (Math.random() - 0.5) * 0.2;
+                      topCoin.rotX += (Math.random() - 0.5) * 0.04;
+                      topCoin.rotZ += (Math.random() - 0.5) * 0.04;
+                      topCoin.stackChaosCooldown = 0.16 + Math.random() * 0.16;
+                      chaoticUpperStackCoins.add(topCoin);
+                    }
+                  }
                 }
                 continue;
               }
@@ -2495,17 +2695,24 @@
               b.x += nx * overlap;
               b.z += nz * overlap;
 
-              const relVz = a.vz - b.vz;
-              if (relVz > 0 && nz > 0) {
-                b.vz += relVz * 0.62;
-                a.vz -= relVz * 0.25;
-              }
               const relVx = a.vx - b.vx;
-              b.vx += relVx * 0.35;
-              a.vx -= relVx * 0.35;
+              const relVz = a.vz - b.vz;
+              const closingSpeed = relVx * nx + relVz * nz;
+              if (closingSpeed > 0) {
+                const impulse = closingSpeed * 0.62;
+                a.vx -= nx * impulse;
+                a.vz -= nz * impulse;
+                b.vx += nx * impulse;
+                b.vz += nz * impulse;
+              }
             }
           }
         }
+      }
+
+      for (const coin of chaoticUpperStackCoins) {
+        coin.x += (Math.random() - 0.5) * 0.03;
+        coin.z += (Math.random() - 0.5) * 0.03;
       }
 
       for (let i = coins.length - 1; i >= 0; i--) {
@@ -2516,7 +2723,7 @@
 
         if (!c.scored && c.y < -1.1) {
           c.scored = true;
-          coinScore++;
+          if (!c.isSimulation) coinScore++;
           if (c.isCard) {
             const type = c.cardType;
             if (type) {
@@ -2535,9 +2742,8 @@
               }
             }
             updateCardInventoryTable();
-          } else {
+          } else if (!c.isSimulation) {
             tokenInPlay = Math.max(0, tokenInPlay - 1);
-            if (c.isSimulation) coinStock++;
           }
           scheduleSetupPersistence();
           updateHUD();
@@ -2559,6 +2765,7 @@
       lastTime = now;
 
       neonRailMat.emissiveIntensity = 1.9 + Math.sin(now * 0.004) * 0.35;
+      updateMovingDropSlots(now);
 
       stepPhysics(dt);
       renderer.render(scene, camera);
