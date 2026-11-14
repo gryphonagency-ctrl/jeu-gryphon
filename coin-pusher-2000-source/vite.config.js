@@ -28,7 +28,9 @@ export default defineConfig(() => {
         }],
         base: "./",
         build: {
-            outDir: "build",
+            outDir: "../coin-pusher-2000",
+            emptyOutDir: false,
+            copyPublicDir: false,
             target: "esnext"
         },
         server: {

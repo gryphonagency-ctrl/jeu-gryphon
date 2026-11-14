@@ -542,10 +542,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         renderStarLeaderboard();
     }
 
-    function showPrizeBanner({ username, avatarUrl, amount, kind, globalStars }) {
+    function showPrizeBanner({ username, avatarUrl, amount, earned = false }) {
         prizeBannerName.textContent = `@${username}`;
-        const rewardName = kind === "lingot" ? "Lingot" : "Carte";
-        prizeBannerMessage.textContent = `${rewardName} : +${Number(amount).toLocaleString("fr-FR")} étoiles · solde tous jeux : ${Number(globalStars).toLocaleString("fr-FR")}`;
+        const earnedPrefix = earned ? "+" : "";
+        prizeBannerMessage.textContent = `${earnedPrefix}${Number(amount).toLocaleString("fr-FR")} ⭐`;
         const safeAvatar = getAvatarSource({ avatarUrl });
         if (safeAvatar) {
             prizeBannerAvatar.src = safeAvatar;
@@ -729,7 +729,13 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         starWinners = sortedStarWinners().slice(0, 100);
         saveStarWinners();
         renderStarLeaderboard();
-        showPrizeBanner({ ...detail, username, amount });
+        showPrizeBanner({
+            ...detail,
+            username,
+            amount,
+            avatarUrl: avatarUrl || winner.avatarUrl,
+            earned: true
+        });
         setPrizeStatus(`Gain confirmé : @${username} reçoit ${amount.toLocaleString("fr-FR")} étoiles.`);
     });
     window.addEventListener("coin-pusher-prize-error", event => {
@@ -743,21 +749,11 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
         if (/^Solde global/.test(String(detail.message || "")) && detail.player) {
             const player = detail.player;
-            prizeBannerName.textContent = `@${player.username || player.uniqueId || "Spectateur"}`;
-            prizeBannerMessage.textContent = `Solde global tous jeux : ${Number(player.stars || 0).toLocaleString("fr-FR")} étoiles`;
-            const avatarUrl = getAvatarSource(player);
-            if (avatarUrl) {
-                prizeBannerAvatar.src = avatarUrl;
-                prizeBannerAvatar.hidden = false;
-            } else {
-                prizeBannerAvatar.removeAttribute("src");
-                prizeBannerAvatar.hidden = true;
-            }
-            prizeBanner.hidden = false;
-            window.clearTimeout(prizeBannerTimer);
-            prizeBannerTimer = window.setTimeout(() => {
-                prizeBanner.hidden = true;
-            }, 8000);
+            showPrizeBanner({
+                username: player.username || player.uniqueId || "Spectateur",
+                avatarUrl: getAvatarSource(player),
+                amount: Number(player.stars) || 0
+            });
         }
     });
     window.addEventListener("arcade:wallet-run", event => {
