@@ -119,6 +119,7 @@ const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.ht
 const mayaIslandDirectory = path.join(__dirname, 'maya-island');
 const mayaIslandFile = path.join(mayaIslandDirectory, 'index.html');
 const squidStormDirectory = path.join(__dirname, 'squid-storm');
+const coinPusher2000Directory = path.join(__dirname, 'coin-pusher-2000');
 const towerUpFile = path.join(__dirname, 'tower-up.html');
 const mayaIslandScriptFile = path.join(mayaIslandDirectory, 'assets', 'index-D2suOsh3.js');
 const mayaIslandStylesheetFile = path.join(mayaIslandDirectory, 'assets', 'index-B0kkXLGt.css');
@@ -173,6 +174,7 @@ const protectedRoutes = new Set([
     '/gemini-code-1792321382503.js',
     '/coin-pusher-tiktok.html',
     '/coin-pusher-3d-preview.html',
+    '/coin-pusher-2000.html',
     '/pousse-pieces-arcade-nouveau.html',
     '/bobo-pusher.html',
     '/coin-pusher-canard.html',
@@ -261,6 +263,7 @@ store.grantGameAccessToExistingCreators('/escape-bunker.html');
 store.grantGameAccessToExistingCreators('/defi-des-questions.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
 store.grantGameAccessToExistingCreators('/bobo-pusher.html');
+store.grantGameAccessToExistingCreators('/coin-pusher-2000.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
@@ -322,6 +325,7 @@ const staticGameTitles = {
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
+    '/coin-pusher-2000.html': 'Coin Pusher 2000',
     '/coin-pusher-3d-preview.html': 'Astra Push 3D',
     '/pousse-pieces-arcade-nouveau.html': 'Bobo Pusher',
     '/bobo-pusher.html': 'Bobo Pusher',
@@ -389,6 +393,7 @@ const gameRouteIds = new Map([
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
+    ['/coin-pusher-2000.html', '/coin-pusher-2000.html'],
     ['/coin-pusher-3d-preview.html', '/coin-pusher-3d-preview.html'],
     ['/bobo-pusher.html', '/bobo-pusher.html'],
     ['/pousse-pieces-arcade-nouveau.html', '/bobo-pusher.html'],
@@ -3186,6 +3191,7 @@ const server = http.createServer((req, res) => {
         ['/inedexd.html', [path.join(__dirname, 'inedexd.html'), 'text/html; charset=utf-8']],
         ['/gemini-code-1792321382503.js', [sixBoxesScript, 'text/javascript; charset=utf-8']],
         ['/coin-pusher-tiktok.html', [coinPusherFile, 'text/html; charset=utf-8']],
+        ['/coin-pusher-2000.html', [path.join(coinPusher2000Directory, 'index.html'), 'text/html; charset=utf-8']],
         ['/coin-pusher-3d-preview.html', [astraPush3dFile, 'text/html; charset=utf-8']],
         ['/bobo-pusher.html', [boboPusherFile, 'text/html; charset=utf-8']],
         ['/pousse-pieces-arcade-nouveau.html', [boboPusherFile, 'text/html; charset=utf-8']],
@@ -3271,6 +3277,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/bobo-pusher.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
+        ['/images-vitrine/coin-pusher-2000.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-2000.png'), 'image/png']],
         ['/images-vitrine/pousse-pieces-arcade-nouveau.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
         ['/images-vitrine/wish-lab.png', [path.join(__dirname, 'images-vitrine', 'wish-lab.png'), 'image/png']],
@@ -3349,6 +3356,30 @@ const server = http.createServer((req, res) => {
             !contentType) {
             res.writeHead(404);
             res.end('Ressource SQUID STORM introuvable.');
+            return;
+        }
+        route = [resolvedFile, contentType];
+    }
+    if (!route && pathname.startsWith('/coin-pusher-2000/')) {
+        const relativeFile = pathname.slice('/coin-pusher-2000/'.length);
+        const resolvedFile = path.resolve(coinPusher2000Directory, relativeFile);
+        const allowedExtensions = new Map([
+            ['.css', 'text/css; charset=utf-8'],
+            ['.exr', 'application/octet-stream'],
+            ['.glb', 'model/gltf-binary'],
+            ['.html', 'text/html; charset=utf-8'],
+            ['.js', 'text/javascript; charset=utf-8'],
+            ['.png', 'image/png'],
+            ['.txt', 'text/plain; charset=utf-8'],
+            ['.woff2', 'font/woff2']
+        ]);
+        const contentType = allowedExtensions.get(path.extname(resolvedFile).toLowerCase());
+        if (!/^(?:assets|views|rapier3d-f64)\/[a-zA-Z0-9._/-]+$/.test(relativeFile) ||
+            relativeFile.split('/').includes('..') ||
+            !resolvedFile.startsWith(`${coinPusher2000Directory}${path.sep}`) ||
+            !contentType) {
+            res.writeHead(404);
+            res.end('Ressource Coin Pusher 2000 introuvable.');
             return;
         }
         route = [resolvedFile, contentType];
@@ -3485,6 +3516,8 @@ const server = http.createServer((req, res) => {
                     ? 'private, max-age=300'
                     : 'public, max-age=300';
             } else if (contentType.startsWith('image/')) {
+                headers['Cache-Control'] = 'public, max-age=3600';
+            } else if (pathname.startsWith('/coin-pusher-2000/')) {
                 headers['Cache-Control'] = 'public, max-age=3600';
             }
             if (pathname === '/live-alerts-sw.js') {

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Coin Pusher 2000</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .scene-brand {
+            position: fixed;
+            z-index: 5;
+            top: clamp(10px, 2vh, 18px);
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: calc(100vw - 24px);
+            color: #fff;
+            font: 900 clamp(18px, 3vw, 40px)/1.1 system-ui, sans-serif;
+            letter-spacing: clamp(.08em, .55vw, .18em);
+            text-align: center;
+            white-space: nowrap;
+            -webkit-text-stroke: .5px rgb(22 11 67 / 85%);
+            text-shadow:
+                0 0 4px #fff,
+                0 0 10px #34eaff,
+                0 0 20px #00c8ff,
+                0 0 34px #ee27ff;
+            pointer-events: none;
+            animation: brand-neon-pulse 2.4s ease-in-out infinite alternate;
+        }
+
+        @keyframes brand-neon-pulse {
+            from {
+                filter: brightness(.9);
+                text-shadow:
+                    0 0 4px #fff,
+                    0 0 8px #34eaff,
+                    0 0 16px #00c8ff,
+                    0 0 26px #ee27ff;
+            }
+
+            to {
+                filter: brightness(1.2);
+                text-shadow:
+                    0 0 5px #fff,
+                    0 0 12px #34eaff,
+                    0 0 24px #00c8ff,
+                    0 0 40px #ee27ff;
+            }
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .live-panel {
+            position: fixed;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            z-index: 10;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            width: min(310px, calc(100vw - 24px));
+            min-width: min(240px, calc(100vw - 16px));
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow: hidden;
+            padding: 14px 14px 38px;
+            color: #fff;
+            font: 14px/1.4 system-ui, sans-serif;
+            background: rgb(16 19 29 / 92%);
+            border: 1px solid rgb(255 255 255 / 20%);
+            border-radius: 12px;
+            box-shadow: 0 8px 28px rgb(0 0 0 / 35%);
+        }
+
+        .live-panel[hidden],
+        .show-live-panel[hidden] {
+            display: none;
+        }
+
+        .live-panel h1 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .panel-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            touch-action: none;
+            user-select: none;
+            cursor: move;
+        }
+
+        .panel-heading button {
+            width: auto !important;
+            min-height: 30px;
+            margin: 0;
+            padding: 4px 8px;
+            color: #fff;
+            font-size: 12px;
+            background: #374151;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        #live-panel-content {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            overscroll-behavior: contain;
+            padding-bottom: 12px;
+        }
+
+        .live-panel label {
+            display: block;
+            margin: 8px 0 4px;
+        }
+
+        .live-panel input,
+        .live-panel button {
+            width: 100%;
+            min-height: 38px;
+            border: 1px solid rgb(255 255 255 / 25%);
+            border-radius: 7px;
+            font: inherit;
+        }
+
+        .live-panel input {
+            padding: 7px 9px;
+            color: #fff;
+            background: #222938;
+        }
+
+        .live-panel input[type="range"] {
+            min-height: 24px;
+            padding: 0;
+            accent-color: #a7f3d0;
+            cursor: pointer;
+        }
+
+        .live-panel button {
+            margin-top: 8px;
+            color: #141821;
+            font-weight: 700;
+            background: #a7f3d0;
+            cursor: pointer;
+        }
+
+        .live-panel button:disabled {
+            cursor: not-allowed;
+            opacity: .6;
+        }
+
+        .live-panel .secondary-button {
+            color: #fff;
+            background: #374151;
+        }
+
+        .setup-tools {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid rgb(255 255 255 / 16%);
+        }
+
+        .setup-tools h2,
+        .setup-status {
+            grid-column: 1 / -1;
+        }
+
+        .setup-tools h2 {
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .setup-tools button {
+            min-width: 0;
+            min-height: 34px;
+            margin: 0;
+            padding: 5px 7px;
+            font-size: 12px;
+        }
+
+        .setup-tools .secondary-button {
+            color: #fff;
+            background: #374151;
+        }
+
+        .setup-status {
+            min-height: 18px;
+            margin: 2px 0 0;
+            color: #cbd5e1;
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .setup-status[data-state="error"] {
+            color: #fca5a5;
+        }
+
+        .setup-status[data-state="warning"] {
+            color: #fcd34d;
+        }
+
+        .panel-resize-handle {
+            position: absolute;
+            right: 4px;
+            bottom: 4px;
+            z-index: 2;
+            display: grid;
+            place-items: center;
+            width: 26px !important;
+            height: 26px;
+            min-height: 26px !important;
+            padding: 3px !important;
+            border: 1px solid rgb(167 243 208 / 55%) !important;
+            border-radius: 6px !important;
+            color: #a7f3d0 !important;
+            background: #222938 !important;
+            cursor: nwse-resize !important;
+            touch-action: none;
+        }
+
+        .panel-resize-handle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .show-live-panel {
+            position: fixed;
+            z-index: 10;
+            bottom: max(12px, env(safe-area-inset-bottom));
+            left: max(12px, env(safe-area-inset-left));
+            width: auto !important;
+            min-height: 32px !important;
+            margin: 0 !important;
+            padding: 6px 10px;
+            border: 1px solid rgb(255 255 255 / 25%);
+            border-radius: 8px;
+            color: #fff !important;
+            background: rgb(16 19 29 / 82%) !important;
+            font-size: 12px !important;
+        }
+
+        .live-status {
+            min-height: 38px;
+            margin: 10px 0 0;
+            color: #cbd5e1;
+            overflow-wrap: anywhere;
+        }
+
+        .live-status[data-state="error"] {
+            color: #fca5a5;
+        }
+
+        .pending-count {
+            margin: 0;
+            color: #a7f3d0;
+        }
+
+        @media (max-width: 480px) {
+            .live-panel {
+                padding: 10px;
+                font-size: 13px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .scene-brand {
+                animation: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="scene-brand" aria-label="Gryphon Agency">GRYPHON AGENCY</div>
+    <section id="live-panel" class="live-panel" aria-label="Connexion TikTok">
+        <div id="live-panel-header" class="panel-heading">
+            <h1>Griffon Arcade · Coin Pusher</h1>
+            <button id="toggle-live-panel" type="button" aria-expanded="true" aria-controls="live-panel-content">Masquer</button>
+        </div>
+        <div id="live-panel-content">
+            <label for="tiktok-username">Pseudo TikTok du direct</label>
+            <input id="tiktok-username" type="text" autocomplete="off" placeholder="ex. griffonarcade">
+            <button id="connect-tiktok" type="button">Connecter le direct</button>
+            <p id="live-status" class="live-status" role="status" aria-live="polite">Connexion au relais TikTok…</p>
+            <p class="pending-count">Pièces en attente : <span id="pending-coins">0</span></p>
+            <label for="screen-video">Vidéo sur l’écran de droite</label>
+            <input id="screen-video" type="file" accept="video/*">
+            <button id="clear-screen-video" class="secondary-button" type="button" disabled>Retirer la vidéo</button>
+            <p id="video-status" class="live-status" role="status" aria-live="polite"></p>
+            <label for="character-scale">Taille du personnage dans le bac : <output id="character-scale-value">100 %</output></label>
+            <input id="character-scale" type="range" min="50" max="250" step="5" value="100" aria-label="Taille du personnage dans le bac">
+            <p id="character-status" class="live-status" role="status" aria-live="polite">Chargement du personnage animé…</p>
+            <label for="demo-count">Tester une arrivée (pièces)</label>
+            <input id="demo-count" type="number" min="1" max="44000" step="1" value="10">
+            <button id="test-gift" type="button">Simuler un cadeau</button>
+            <section class="setup-tools" aria-labelledby="setup-tools-title">
+                <h2 id="setup-tools-title">Mon setup</h2>
+                <button id="save-setup" type="button">Sauvegarder</button>
+                <button id="restore-setup" class="secondary-button" type="button">Restaurer</button>
+                <button id="export-setup" class="secondary-button" type="button">Exporter</button>
+                <button id="import-setup" class="secondary-button" type="button">Importer</button>
+                <input id="setup-import-file" type="file" accept="application/json,.json" hidden>
+                <p id="setup-status" class="setup-status" role="status" aria-live="polite"></p>
+            </section>
+        </div>
+        <button id="panel-resize-handle" class="panel-resize-handle" type="button" aria-label="Redimensionner le panneau de configuration" title="Tirer pour redimensionner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7 17 17 7M10 7h7v7"/>
+            </svg>
+        </button>
+    </section>
+    <button id="show-live-panel" class="show-live-panel" type="button" aria-controls="live-panel" aria-expanded="false" hidden>⚙ Commandes</button>
+    <script src="index.js" type="module"></script>
+</body>
+
+</html>
