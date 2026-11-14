@@ -32,10 +32,9 @@ body{margin:0;height:100%;min-height:100dvh;background:#05060d;color:#fff;font-f
 #timerAdjust{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:5px}
 #timerAdjust input{min-width:0;text-align:center}
 #panel input{width:100%;box-sizing:border-box;padding:6px;border-radius:7px;border:1px solid #445;background:#000a;color:#fff;font-size:11px}
-#panel input[type=file]{padding:4px;font-size:9px}
 #panel input[type=range]{padding:0;accent-color:var(--gd)}
-#st,#bgSt{min-height:14px;color:#9fe;margin:4px 0 0;font-size:10px}
-#bgSt,#soundSt{color:#ffd54a}
+#st,#soundSt{min-height:14px;color:#9fe;margin:4px 0 0;font-size:10px}
+#soundSt{color:#ffd54a}
 @media(max-width:700px){#panelWrap{width:170px}}
 </style>
 </head>
@@ -71,15 +70,11 @@ body{margin:0;height:100%;min-height:100dvh;background:#05060d;color:#fff;font-f
   <button class="btn" id="applyTimer" type="button" style="width:100%;margin-top:5px">APPLIQUER AU DUEL</button>
   <button class="btn" id="addTimer" type="button" style="width:100%;margin-top:5px">AJOUTER AU CHRONO</button>
   <p id="timerStatus" aria-live="polite"></p>
-  <p style="margin:8px 0 4px">Arrière-plan (image ou vidéo)</p>
-  <input id="bgFile" type="file" accept="image/*,video/*">
-  <button class="btn" id="bgReset" type="button" style="width:100%;margin-top:5px" hidden>RÉTABLIR L’ORIGINAL</button>
-  <p id="bgSt"></p>
   <p style="margin:8px 0 4px">Live TikTok (WebSocket)</p>
   <input id="tiktokUser" type="text" autocomplete="off" maxlength="32" placeholder="Pseudo TikTok (sans @)">
   <button class="btn" id="con" style="width:100%;margin-top:5px">CONNECTER</button>
   <p id="st"></p>
-  <p style="opacity:.6;font-size:10px;margin:6px 0 0">Dans le chat : écris « loup » ou « reine » pour choisir ton camp. Cadeaux d’attaque : 1, 10 ou 30 pièces.</p>
+  <p style="opacity:.6;font-size:10px;margin:6px 0 0">Dans le chat : écris « loup » ou « reine » pour choisir ton camp. Tous les cadeaux sont décomposés en attaques de 30, 10 et 1 pièce.</p>
   <p style="opacity:.6;font-size:10px;margin:6px 0 0">Clavier : A = Loup, L = Reine. Clic sur la moitié gauche ou droite du jeu.</p>
 </details>
 </div>
@@ -91,7 +86,6 @@ cv.width=W;cv.height=H;
 const BL='#00f3ff',RD='#ff2d6f',GD='#ffd54a',F='Orbitron,Arial,sans-serif';
 let S,intro=true;
 let roundDuration=90;
-let backgroundMedia=null,backgroundObjectUrl='';
 let audioContext=null,audioMaster=null,soundEnabled=true,soundVolume=.55;
 const stars=Array.from({length:180},()=>({
   x:Math.random()*W,y:Math.random()*(H-125),r:Math.random()*1.3+.25,
@@ -432,25 +426,16 @@ function update(dt){
 function draw(now){
   x.save();x.clearRect(0,0,W,H);
   if(S.shake>0)x.translate((Math.random()-.5)*S.shake,(Math.random()-.5)*S.shake);
-  const mediaReady=backgroundMedia&&(backgroundMedia.tagName==='VIDEO'?backgroundMedia.readyState>=2:backgroundMedia.complete&&backgroundMedia.naturalWidth>0);
-  if(mediaReady){
-    const mediaW=backgroundMedia.videoWidth||backgroundMedia.naturalWidth;
-    const mediaH=backgroundMedia.videoHeight||backgroundMedia.naturalHeight;
-    const scale=Math.max(W/mediaW,H/mediaH),dw=mediaW*scale,dh=mediaH*scale;
-    x.drawImage(backgroundMedia,(W-dw)/2,(H-dh)/2,dw,dh);
-    x.fillStyle='rgba(5,6,13,.38)';x.fillRect(0,0,W,H);
-  }else{
-    const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#04050e');g.addColorStop(.6,'#0b1236');g.addColorStop(1,'#140a2a');
-    x.fillStyle=g;x.fillRect(-20,-20,W+40,H+40);
-    for(const s of stars){x.globalAlpha=.35+.65*Math.abs(Math.sin(now/700+s.phase));x.fillStyle='#fff';x.beginPath();x.arc(s.x,s.y,s.r,0,6.28);x.fill()}
-  }
+  const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#04050e');g.addColorStop(.6,'#0b1236');g.addColorStop(1,'#140a2a');
+  x.fillStyle=g;x.fillRect(-20,-20,W+40,H+40);
+  for(const s of stars){x.globalAlpha=.35+.65*Math.abs(Math.sin(now/700+s.phase));x.fillStyle='#fff';x.beginPath();x.arc(s.x,s.y,s.r,0,6.28);x.fill()}
   x.globalAlpha=1;
   /* Lueurs d’équipe */
   for(const [cx,col,a] of [[90,'0,243,255',S.p],[870,'255,45,111',1-S.p]]){
     const rg=x.createRadialGradient(cx,350,10,cx,350,400);rg.addColorStop(0,`rgba(${col},${.15+.5*a})`);rg.addColorStop(1,`rgba(${col},0)`);
     x.fillStyle=rg;x.fillRect(0,0,W,H)}
   drawMoon();
-  if(!mediaReady){x.drawImage(city.canvas,0,0);drawCityLights(now)}
+  x.drawImage(city.canvas,0,0);drawCityLights(now);
   fighter('L',150,420,58,now);fighter('R',810,420,58,now);
   /* Projectiles et particules */
   for(const s of S.shots){const px=s.x+(s.tx-s.x)*s.t,py=s.y+(s.ty-s.y)*s.t-Math.sin(Math.PI*s.t)*75,col=s.team==='L'?BL:RD;
@@ -616,37 +601,12 @@ document.getElementById('soundTest').addEventListener('click',()=>{
   soundSt.textContent='Effet de test : attaque puissante.';
   playAttackSound('L',30);
 });
-const bgFile=document.getElementById('bgFile'),bgReset=document.getElementById('bgReset'),bgSt=document.getElementById('bgSt');
-function clearCustomBackground(){
-  if(backgroundMedia?.tagName==='VIDEO'){backgroundMedia.pause();backgroundMedia.removeAttribute('src');backgroundMedia.load()}
-  if(backgroundObjectUrl)URL.revokeObjectURL(backgroundObjectUrl);
-  backgroundMedia=null;backgroundObjectUrl='';bgFile.value='';bgReset.hidden=true;
-}
-bgFile.addEventListener('change',()=>{
-  const file=bgFile.files&&bgFile.files[0];
-  if(!file)return;
-  const isVideo=file.type.startsWith('video/')||/\.(mp4|webm|mov|m4v|ogv|ogg|mkv|avi)$/i.test(file.name);
-  const isImage=file.type.startsWith('image/')||/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(file.name);
-  if(!isVideo&&!isImage){bgSt.textContent='Choisis une image ou une vidéo.';bgFile.value='';return}
-  clearCustomBackground();
-  const url=URL.createObjectURL(file);backgroundObjectUrl=url;bgReset.hidden=false;
-  if(isVideo){
-    const video=document.createElement('video');video.muted=true;video.loop=true;video.playsInline=true;video.src=url;video.addEventListener('loadeddata',()=>bgSt.textContent=`Vidéo active : ${file.name}`);
-    video.addEventListener('error',()=>bgSt.textContent='Ce format vidéo n’est pas pris en charge par ce navigateur.');
-    backgroundMedia=video;video.play().catch(()=>{bgSt.textContent='Lecture vidéo bloquée par le navigateur.'});
-  }else{
-    const image=new Image();image.onload=()=>bgSt.textContent=`Image active : ${file.name}`;
-    image.onerror=()=>bgSt.textContent='Impossible de lire cette image.';
-    image.src=url;backgroundMedia=image;
-  }
-});
-bgReset.addEventListener('click',()=>{clearCustomBackground();bgSt.textContent='Arrière-plan original rétabli.'});
 document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>fire(b.dataset.t,+b.dataset.p,'Régie'));
 cv.addEventListener('click',e=>{if(S.end){reset();return}const r=cv.getBoundingClientRect();fire((e.clientX-r.left)<r.width/2?'L':'R',1,'')});
 document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(k==='r')reset();else if(k==='a'||k==='q')fire('L',e.shiftKey?10:1,'');else if(k==='l'||k==='m')fire('R',e.shiftKey?10:1,'')});
 
-/* Live TikTok : les commentaires choisissent le camp, les cadeaux de 1, 10 ou 30 pièces attaquent. */
+/* Live TikTok : chaque cadeau est converti en attaques de 30, 10 et 1 pièce. */
 const WS_URL='wss://jeu6boite.onrender.com';
 const teams=new Map();let ws;
 function getGiftAvatarUrl(event,envelope){
@@ -695,8 +655,15 @@ document.getElementById('con').onclick=()=>{
       const team=teams.get(userKey);
       const coinCount=Number(event.coinCount??event.diamonds??event.diamondCount??d.diamonds);
       if(!team){st.textContent=`@${user||'Spectateur'} : écris « loup » ou « reine » avant d’envoyer un cadeau.`;return}
-      if(![1,10,30].includes(coinCount))return;
-      fire(team,coinCount,user,{userKey,avatarUrl:getGiftAvatarUrl(event,d)})}};
+      if(!Number.isSafeInteger(coinCount)||coinCount<1){console.warn('Valeur de cadeau TikTok invalide :',coinCount);return}
+      const giftDetails={userKey,avatarUrl:getGiftAvatarUrl(event,d)};
+      let remaining=coinCount;
+      for(const attackValue of [30,10,1]){
+        const attackCount=Math.floor(remaining/attackValue);
+        for(let i=0;i<attackCount;i++)fire(team,attackValue,user,giftDetails);
+        remaining-=attackCount*attackValue;
+      }
+    }};
 };
 </script>
 </body>
