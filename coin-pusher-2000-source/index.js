@@ -24,6 +24,8 @@ window.CoinPusher2000 = {
     updateTikTokGiftAvatar: (avatarKey, avatarDataUri) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
+    setCharacterPosition: position => Game.setCharacterPosition(position),
+    dropPrizeCard: username => Game.dropPrizeCard(username),
     setPrizeConfig: config => Game.setPrizeConfig(config),
     get pendingCoins() {
         return Game.pendingCoins;
@@ -36,6 +38,8 @@ initializeTikTokBridge({
     startGame: () => Game.startGame(),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
+    setCharacterPosition: position => Game.setCharacterPosition(position),
+    dropPrizeCard: username => Game.dropPrizeCard(username),
     setPrizeConfig: config => Game.setPrizeConfig(config)
 });
 let checkingPrizeCredits = false;

@@ -550,6 +550,19 @@ export default class {
         this.#character.setScale(scale);
     }
 
+    setCharacterPosition(position) {
+        this.#character.setPosition(position);
+    }
+
+    dropPrizeCard(username) {
+        const target = String(username || "").trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(target)) {
+            this.#dispatchPrizeStatus("Indique un pseudo TikTok valide pour la carte.", "error");
+            return false;
+        }
+        return this.#deliverPrize({ username: target }, true);
+    }
+
     setPrizeConfig({ cards, ingotFrequency }) {
         if (
             !Array.isArray(cards) ||
@@ -735,20 +748,20 @@ export default class {
         }
     }
 
-    #deliverPrize(player) {
+    #deliverPrize(player, manual = false) {
         const username = String(player?.username || "").trim().replace(/^@/, "");
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
-            return;
+            return false;
         }
         if (!this.#creditQueue || this.#unstoredPrizes.length) {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
-            return;
+            return false;
         }
         const availableCards = this.#prizeDeck.filter(card => card.count > 0);
         const totalCards = availableCards.reduce((sum, card) => sum + card.count, 0);
         if (!totalCards) {
             this.#dispatchPrizeStatus("Le stock de cartes est vide ou toutes les cartes sont déjà sur le plateau.", "warning");
-            return;
+            return false;
         }
         let selection = Math.floor(Math.random() * totalCards);
         const selected = availableCards.find(card => {
@@ -756,12 +769,12 @@ export default class {
             return selection < 0;
         });
         if (!selected) {
-            return;
+            return false;
         }
         const cardType = this.#cardTypeForStars(selected.stars);
         if (!Cards.hasAvailableInstance(cardType)) {
             this.#dispatchPrizeStatus("Toutes les cartes de cette couleur sont sur le plateau; réessaie au prochain bonus.", "warning");
-            return;
+            return false;
         }
         const cardObject = Cards.deposit({ type: cardType });
         selected.count--;
@@ -773,6 +786,10 @@ export default class {
         });
         this.#dispatchPrizeDeck();
         this.#deliverPendingIngots();
+        if (manual) {
+            this.#dispatchPrizeStatus(`Carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée pour @${username} ; crédit à la sortie du plateau.`);
+        }
+        return true;
     }
 
     #cardTypeForStars(stars) {

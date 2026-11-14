@@ -31,6 +31,7 @@ export default class {
         this.#css3DRenderer.setSize(window.innerWidth, window.innerHeight);
         this.#css3DRenderer.domElement.style.position = "absolute";
         this.#css3DRenderer.domElement.style.top = 0;
+        this.#css3DRenderer.domElement.style.zIndex = "7";
         scene.containerElement.appendChild(this.#css3DRenderer.domElement);
     }
 

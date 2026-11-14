@@ -8,6 +8,8 @@ const MAX_SETUP_FILE_BYTES = 2000000;
 const MAX_SETUP_VIDEO_BYTES = 1300000;
 const MAX_SETUP_VIDEO_DATA_URL_LENGTH = 1800000;
 const IS_LOCAL_PREVIEW = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+const DEFAULT_CHARACTER_HORIZONTAL_PERCENT = 15;
+const DEFAULT_CHARACTER_DEPTH_PERCENT = 30;
 const DEFAULT_PRIZE_CARDS = [
     { stars: 1, count: 100 },
     { stars: 2, count: 100 },
@@ -22,7 +24,7 @@ const MAX_CARDS_PER_DENOMINATION = 10000;
 const MAX_TOTAL_CARDS = 100000;
 const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
 
-export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, setScreenVideo, setCharacterScale, setPrizeConfig }) {
+export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
@@ -34,6 +36,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const videoStatusElement = document.getElementById("video-status");
     const characterScaleInput = document.getElementById("character-scale");
     const characterScaleValue = document.getElementById("character-scale-value");
+    const characterHorizontalInput = document.getElementById("character-horizontal");
+    const characterHorizontalValue = document.getElementById("character-horizontal-value");
+    const characterDepthInput = document.getElementById("character-depth");
+    const characterDepthValue = document.getElementById("character-depth-value");
     const toggleButton = document.getElementById("toggle-live-panel");
     const panel = document.getElementById("live-panel");
     const panelHeader = document.getElementById("live-panel-header");
@@ -47,6 +53,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const setupStatusElement = document.getElementById("setup-status");
     const prizeTableBody = document.getElementById("prize-card-table");
     const prizeStockTotalElement = document.getElementById("prize-stock-total");
+    const manualCardUsernameInput = document.getElementById("manual-card-username");
+    const dropPrizeCardButton = document.getElementById("drop-prize-card");
     const newCardStarsInput = document.getElementById("new-card-stars");
     const newCardCountInput = document.getElementById("new-card-count");
     const addPrizeCardsButton = document.getElementById("add-prize-cards");
@@ -157,12 +165,15 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             username: "",
             demoCount: 10,
             characterScalePercent: 100,
+            characterHorizontalPercent: DEFAULT_CHARACTER_HORIZONTAL_PERCENT,
+            characterDepthPercent: DEFAULT_CHARACTER_DEPTH_PERCENT,
             panel: null,
             panelVisible: true,
             video: null,
             prizeCards: DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
             ingotFrequency: 10,
-            showStarLeaderboard: true
+            showStarLeaderboard: true,
+            manualCardUsername: ""
         };
         if (record.username !== undefined) {
             if (typeof record.username !== "string" || record.username.length > 32) {
@@ -181,6 +192,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 throw new Error("Taille du personnage invalide dans le setup.");
             }
             normalized.characterScalePercent = record.characterScalePercent;
+        }
+        for (const [key, label] of [
+            ["characterHorizontalPercent", "Position horizontale du personnage"],
+            ["characterDepthPercent", "Profondeur du personnage"]
+        ]) {
+            if (record[key] !== undefined) {
+                if (!Number.isSafeInteger(record[key]) || record[key] < 0 || record[key] > 100) {
+                    throw new Error(`${label} invalide dans le setup.`);
+                }
+                normalized[key] = record[key];
+            }
         }
         if (record.panel !== undefined && record.panel !== null) {
             const keys = ["left", "top", "width", "height"];
@@ -239,6 +261,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 throw new Error("État du classement invalide.");
             }
             normalized.showStarLeaderboard = record.showStarLeaderboard;
+        }
+        if (record.manualCardUsername !== undefined) {
+            if (typeof record.manualCardUsername !== "string" || record.manualCardUsername.length > 33) {
+                throw new Error("Pseudo bénéficiaire invalide dans le setup.");
+            }
+            normalized.manualCardUsername = record.manualCardUsername.trim().replace(/^@/, "");
         }
         return normalized;
     }
@@ -310,11 +338,14 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             username: usernameInput.value.trim().replace(/^@/, "").slice(0, 32),
             demoCount,
             characterScalePercent,
+            characterHorizontalPercent: Number(characterHorizontalInput.value),
+            characterDepthPercent: Number(characterDepthInput.value),
             panel: { ...panelBounds },
             panelVisible: !panel.hidden,
             prizeCards: prizeCards.map(card => ({ ...card })),
             ingotFrequency,
             showStarLeaderboard: showStarLeaderboardInput.checked,
+            manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
             video: activeVideoName
                 ? { name: activeVideoName, dataUrl: activeVideoDataUrl || null }
                 : null
@@ -556,17 +587,26 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     demoCountInput.value = String(setupRecord.demoCount);
     characterScaleInput.value = String(setupRecord.characterScalePercent);
     characterScaleValue.value = `${setupRecord.characterScalePercent} %`;
+    characterHorizontalInput.value = String(setupRecord.characterHorizontalPercent);
+    characterHorizontalValue.value = `${setupRecord.characterHorizontalPercent} %`;
+    characterDepthInput.value = String(setupRecord.characterDepthPercent);
+    characterDepthValue.value = `${setupRecord.characterDepthPercent} %`;
     starWinners = readStarWinners();
     renderStarLeaderboard();
     showStarLeaderboardInput.checked = setupRecord.showStarLeaderboard;
     starLeaderboard.hidden = !setupRecord.showStarLeaderboard;
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
+    manualCardUsernameInput.value = setupRecord.manualCardUsername;
     ingotFrequencyInput.value = String(ingotFrequency);
     ingotFrequencyValue.textContent = String(ingotFrequency);
     renderPrizeCards();
     setPrizeConfig({ cards: prizeCards, ingotFrequency });
     setCharacterScale(setupRecord.characterScalePercent / 100);
+    setCharacterPosition({
+        horizontalPercent: setupRecord.characterHorizontalPercent,
+        depthPercent: setupRecord.characterDepthPercent
+    });
     if (setupRecord.panel) {
         setPanelBounds(setupRecord.panel);
     } else {
@@ -621,6 +661,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     retryPrizeCreditsButton.addEventListener("click", () => {
         setPrizeStatus("Vérification des gains en attente…");
         window.dispatchEvent(new Event("coin-pusher-retry-credits"));
+    });
+    dropPrizeCardButton.addEventListener("click", () => {
+        const username = manualCardUsernameInput.value.trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            setPrizeStatus("Indique un pseudo TikTok valide pour la carte.", "error");
+            manualCardUsernameInput.focus();
+            return;
+        }
+        manualCardUsernameInput.value = username;
+        persistSetupRecord();
+        dropPrizeCard(username);
     });
     showStarLeaderboardInput.addEventListener("change", () => {
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
@@ -850,6 +901,16 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         setCharacterScale(percent / 100);
         scheduleSetupPersistence();
     });
+    const updateCharacterPosition = () => {
+        const horizontalPercent = Number(characterHorizontalInput.value);
+        const depthPercent = Number(characterDepthInput.value);
+        characterHorizontalValue.value = `${horizontalPercent} %`;
+        characterDepthValue.value = `${depthPercent} %`;
+        setCharacterPosition({ horizontalPercent, depthPercent });
+        scheduleSetupPersistence();
+    };
+    characterHorizontalInput.addEventListener("input", updateCharacterPosition);
+    characterDepthInput.addEventListener("input", updateCharacterPosition);
     videoInput.addEventListener("change", () => {
         const file = videoInput.files[0];
         videoInput.value = "";

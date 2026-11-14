@@ -137,6 +137,14 @@ export default class {
         return this.#cabinet.setCharacterScale(scale);
     }
 
+    static setCharacterPosition(position) {
+        return this.#cabinet.setCharacterPosition(position);
+    }
+
+    static dropPrizeCard(username) {
+        return this.#cabinet.dropPrizeCard(username);
+    }
+
     static setPrizeConfig(config) {
         return this.#cabinet.setPrizeConfig(config);
     }
