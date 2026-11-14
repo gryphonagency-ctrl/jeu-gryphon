@@ -1,4 +1,5 @@
 const { TikTokLiveConnection } = require('tiktok-live-connector');
+const getCachedAvatar = require('./tiktok-avatar-cache');
 
 const MAX_AVATAR_BYTES = 512 * 1024;
 const FAN_CLUB_LEVEL_UP_BARRAGE_TYPE = 10;
@@ -86,22 +87,19 @@ async function getAvatarData(user, cache) {
     const avatarUrls = getAvatarUrls(user);
     try {
         const avatarDataUri = await Promise.any(avatarUrls.map(async url => {
-            if (!cache.has(url)) {
-                cache.set(url, fetch(url, { signal: AbortSignal.timeout(4000) })
-                    .then(async response => {
-                        if (!response.ok || !(response.headers.get('content-type') || '')
-                            .toLowerCase().startsWith('image/')) return null;
-                        const length = Number(response.headers.get('content-length'));
-                        if (Number.isFinite(length) && length > MAX_AVATAR_BYTES) return null;
-                        const image = Buffer.from(await response.arrayBuffer());
-                        if (!image.length || image.length > MAX_AVATAR_BYTES) return null;
-                        return `data:${response.headers.get('content-type').split(';', 1)[0]};base64,${image.toString('base64')}`;
-                    }));
-                if (cache.size > 32) cache.delete(cache.keys().next().value);
-            }
-            const image = await cache.get(url);
-            if (!image) throw new Error('Réponse image invalide.');
-            return image;
+            const imageRequest = getCachedAvatar(cache, url, async () => {
+                const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+                if (!response.ok || !(response.headers.get('content-type') || '')
+                    .toLowerCase().startsWith('image/')) return null;
+                const contentType = response.headers.get('content-type');
+                const length = Number(response.headers.get('content-length'));
+                if (Number.isFinite(length) && length > MAX_AVATAR_BYTES) return null;
+                const image = Buffer.from(await response.arrayBuffer());
+                if (!image.length || image.length > MAX_AVATAR_BYTES) return null;
+                return `data:${contentType.split(';', 1)[0]};base64,${image.toString('base64')}`;
+            }, 1);
+            if (cache.size > 32) cache.delete(cache.keys().next().value);
+            return imageRequest;
         }));
         return { avatarDataUri, avatarUrls };
     } catch (error) {

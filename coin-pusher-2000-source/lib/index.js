@@ -4,6 +4,7 @@ import Cabinet from "./components/cabinet.js";
 import Pointer from "./util/pointer.js";
 import Camera from "./util/camera.js";
 import Runs from "./business/runs.js";
+import CoinSounds from "./components/coin-sounds.js";
 
 import initialState from "./data/initial-state.json" with { type: "json" };
 
@@ -121,8 +122,12 @@ export default class {
         return this.#cabinet.receiveTikTokGift(count, avatar);
     }
 
-    static updateTikTokGiftAvatar(avatarKey, avatarDataUri) {
-        return this.#cabinet.updateTikTokGiftAvatar(avatarKey, avatarDataUri);
+    static updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl) {
+        return this.#cabinet.updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl);
+    }
+
+    static setCoinVolume(volume) {
+        return CoinSounds.setVolume(volume);
     }
 
     static startGame() {

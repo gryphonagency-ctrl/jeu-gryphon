@@ -1,6 +1,7 @@
-import { DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader } from "three";
+import { CanvasTexture, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from "three";
+import { createGifAnimation } from "../gif-animation.js";
 
-const IMAGE_URL = "https://i.giphy.com/cCbM9ESE21PRbngTFj.webp";
+const IMAGE_URL = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWY5NjViMDQzdTFnOGM5czhrOWxvYXU5OXF4NmR1OHoxYW5jbHJzOCZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/cCbM9ESE21PRbngTFj/giphy.gif";
 const BASE_HEIGHT = 0.24;
 const PLATE_MIN_X = -0.72;
 const PLATE_MAX_X = 0.72;
@@ -11,7 +12,6 @@ const DEFAULT_HORIZONTAL_PERCENT = 15;
 const DEFAULT_DEPTH_PERCENT = 30;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2.5;
-const TEXTURE_REFRESH_INTERVAL = 1000 / 24;
 
 export default class {
 
@@ -19,10 +19,10 @@ export default class {
     #onStatus;
     #mesh;
     #texture;
+    #animation;
     #scale = 1;
     #horizontalPercent = DEFAULT_HORIZONTAL_PERCENT;
     #depthPercent = DEFAULT_DEPTH_PERCENT;
-    #lastTextureRefresh = 0;
 
     constructor({ scene, onStatus }) {
         this.#scene = scene;
@@ -32,8 +32,10 @@ export default class {
     async initialize() {
         this.#onStatus("Chargement du personnage animé dans le bac…");
         try {
-            const loader = new TextureLoader().setCrossOrigin("anonymous");
-            this.#texture = await loader.loadAsync(IMAGE_URL);
+            const response = await fetch(IMAGE_URL);
+            if (!response.ok) throw new Error(`Giphy HTTP ${response.status}`);
+            this.#animation = createGifAnimation(await response.arrayBuffer());
+            this.#texture = new CanvasTexture(this.#animation.canvas);
         } catch (error) {
             console.error("Impossible de charger le personnage Giphy :", error);
             this.#onStatus("Personnage indisponible : vérifie la connexion à Giphy.");
@@ -62,9 +64,8 @@ export default class {
     }
 
     update(time) {
-        if (this.#texture?.image && time - this.#lastTextureRefresh >= TEXTURE_REFRESH_INTERVAL) {
+        if (this.#animation?.update(time)) {
             this.#texture.needsUpdate = true;
-            this.#lastTextureRefresh = time;
         }
     }
 

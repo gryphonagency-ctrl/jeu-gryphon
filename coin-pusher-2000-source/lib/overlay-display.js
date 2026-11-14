@@ -9,8 +9,7 @@ export function setOverlayPosition(element, x, y) {
 
 export function renderSpectatorLeaderboard(list, winners) {
     const document = list.ownerDocument;
-    const rows = Array.from({ length: 3 }, (_, index) => {
-        const winner = winners[index];
+    const rows = winners.slice(0, 3).map(winner => {
         const row = document.createElement("li");
         const avatar = document.createElement("div");
         avatar.className = "leaderboard-avatar";
@@ -18,7 +17,7 @@ export function renderSpectatorLeaderboard(list, winners) {
         placeholder.textContent = "●";
         placeholder.setAttribute("aria-hidden", "true");
         avatar.append(placeholder);
-        if (winner?.avatarUrl) {
+        if (winner.avatarUrl) {
             const image = document.createElement("img");
             image.alt = `Photo de profil de @${winner.username}`;
             image.addEventListener("load", () => { placeholder.hidden = true; });
@@ -29,16 +28,12 @@ export function renderSpectatorLeaderboard(list, winners) {
             image.src = winner.avatarUrl;
             avatar.append(image);
         }
-        const rank = document.createElement("span");
-        rank.className = "leaderboard-rank";
-        rank.textContent = String(index + 1);
-        avatar.append(rank);
         const name = document.createElement("span");
         name.className = "leaderboard-name";
-        name.textContent = winner ? `@${winner.username}` : "—";
+        name.textContent = `@${winner.username}`;
         const score = document.createElement("span");
         score.className = "leaderboard-score";
-        score.textContent = winner ? `${winner.stars.toLocaleString("fr-FR")} ⭐` : "—";
+        score.textContent = `${winner.stars.toLocaleString("fr-FR")} ⭐`;
         row.append(avatar, name, score);
         return row;
     });

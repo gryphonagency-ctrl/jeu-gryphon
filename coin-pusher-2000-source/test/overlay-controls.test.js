@@ -37,17 +37,34 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
 
     let machineState;
     const machinePresses = [];
+    const prizeConfigs = [];
+    const soundVolumes = [];
     function start() {
         machineState = { buttons: { start: true }, coins: 0 };
         const document = { createElement: tag => new Element(tag, document) };
         const elements = Object.fromEntries(ids.map(id => [id, new Element(id, document)]));
+        for (const [id, value] of Object.entries({
+            "demo-count": "10",
+            "character-scale": "100",
+            "character-horizontal": "15",
+            "character-depth": "30",
+            "coin-volume": "45",
+            "scene-brand-x": "5",
+            "scene-brand-y": "75",
+            "leaderboard-x": "5",
+            "leaderboard-y": "55"
+        })) {
+            elements[id].value = value;
+        }
         document.getElementById = id => {
             assert.ok(elements[id], `Missing HTML control: ${id}`);
             return elements[id];
         };
+        document.addEventListener = () => {};
         globalThis.document = document;
         globalThis.window = {
             innerWidth: 1200, innerHeight: 800, listeners: {},
+            CoinPusher2000: { setCoinVolume(volume) { soundVolumes.push(volume); } },
             addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); },
             dispatch(type, detail) { for (const listener of this.listeners[type] || []) listener({ detail }); },
             setTimeout() { return 1; }, clearTimeout() {}, setInterval() {}
@@ -60,12 +77,18 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
                 machineState = { buttons: { left: true, center: true, right: true }, coins: 100 };
                 return true;
             }, setScreenVideo() {}, setCharacterScale() {},
-            setCharacterPosition() {}, dropPrizeCard() {}, setPrizeConfig() {}
+            setCharacterPosition() {}, dropPrizeCard() {},
+            setPrizeConfig(config) { prizeConfigs.push(config); }
         });
         return elements;
     }
 
     let elements = start();
+    assert.deepEqual(prizeConfigs[0].cards, [
+        { stars: 1, count: 200 }, { stars: 2, count: 125 },
+        { stars: 10, count: 25 }, { stars: 30, count: 35 },
+        { stars: 100, count: 8 }, { stars: 300, count: 2 }
+    ]);
     assert.equal(elements["machine-start"].disabled, false);
     assert.equal(elements["machine-left"].disabled, true);
     elements["machine-start"].dispatch("click");
@@ -73,6 +96,11 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(elements["machine-start"].disabled, true);
     assert.equal(elements["machine-left"].disabled, false);
     assert.equal(elements["machine-coins"].textContent, "100");
+    elements["coin-volume"].value = "72";
+    elements["coin-volume"].dispatch("input");
+    assert.equal(elements["coin-volume-value"].value, "72 %");
+    assert.equal(soundVolumes.at(-1), 0.72);
+    assert.equal(storage.get("coin-pusher-2000-coin-volume-v1"), "72");
     assert.equal(elements["scene-brand"].textContent, "GRYPHON AGENCY");
     elements["scene-brand-text"].value = "MON TEXTE";
     elements["scene-brand-text"].dispatch("input");
@@ -105,4 +133,23 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     elements["show-scene-brand"].checked = true;
     elements["show-scene-brand"].dispatch("change");
     assert.equal(elements["scene-brand"].hidden, false);
+
+    storage.set("coin-pusher-2000-live-panel-v1", JSON.stringify({
+        version: 1,
+        prizeCards: [
+            { stars: 1, count: 5 }, { stars: 2, count: 7 }, { stars: 10, count: 3 },
+            { stars: 30, count: 4 }, { stars: 100, count: 1 }, { stars: 300, count: 1 }
+        ]
+    }));
+    elements = start();
+    const migratedCards = [
+        { stars: 1, count: 105 }, { stars: 2, count: 32 }, { stars: 10, count: 3 },
+        { stars: 30, count: 14 }, { stars: 100, count: 4 }, { stars: 300, count: 2 }
+    ];
+    assert.deepEqual(prizeConfigs.at(-1).cards, migratedCards);
+    const savedSetup = JSON.parse(storage.get("coin-pusher-2000-live-panel-v1"));
+    assert.equal(savedSetup.prizeStockAdditionVersion, 1);
+    assert.deepEqual(savedSetup.prizeCards, migratedCards);
+    start();
+    assert.deepEqual(prizeConfigs.at(-1).cards, migratedCards);
 });

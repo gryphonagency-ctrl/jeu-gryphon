@@ -10,6 +10,7 @@ import Coins from "./objects/coins.js";
 import Tokens from "./objects/tokens.js";
 import Cards from "./objects/cards.js";
 import Ingots from "./objects/ingots.js";
+import CoinSounds from "./coin-sounds.js";
 import SensorGate from "./gadgets/sensor-gate.js";
 import Excavator from "./gadgets/excavator.js";
 import Tower from "./gadgets/tower.js";
@@ -26,12 +27,12 @@ const MIN_POSITION_Y_OBJECTS = -1;
 const MODEL_PATH = "./assets/cabinet.glb";
 const SENSOR_HEIGHT = 0.2;
 const DEFAULT_PRIZE_DECK = [
-    { stars: 1, count: 100 },
-    { stars: 2, count: 100 },
+    { stars: 1, count: 200 },
+    { stars: 2, count: 125 },
     { stars: 10, count: 25 },
-    { stars: 30, count: 25 },
-    { stars: 100, count: 5 },
-    { stars: 300, count: 1 }
+    { stars: 30, count: 35 },
+    { stars: 100, count: 8 },
+    { stars: 300, count: 2 }
 ];
 const INGOT_STARS = 50;
 const HIDDEN_CABINET_LABELS = new Set([
@@ -122,6 +123,11 @@ export default class {
         this.#scene = scene;
         this.#Runs = Runs;
         this.#onCharacterStatus = onCharacterStatus;
+        scene.setCollisionHandler((first, second) => {
+            if (first?.objectType === Coins.TYPE || second?.objectType === Coins.TYPE) {
+                CoinSounds.playImpact();
+            }
+        });
     }
 
     #scene;
@@ -445,6 +451,7 @@ export default class {
         this.#character.update(time);
         Cards.update();
         Coins.update();
+        this.#scene.checkCollisionStarts(Coins.TYPE);
         Tokens.update();
         Buttons.update();
         Ingots.update();
@@ -630,8 +637,8 @@ export default class {
         return queuedCoins;
     }
 
-    updateTikTokGiftAvatar(avatarKey, avatarDataUri) {
-        return Coins.setAvatar({ key: avatarKey, dataUri: avatarDataUri });
+    updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl) {
+        return Coins.setAvatar({ key: avatarKey, dataUri: avatarDataUri, avatarUrl });
     }
 
     get dynamicBodies() {
@@ -795,7 +802,18 @@ export default class {
             this.#dispatchPrizeStatus("Toutes les cartes de cette couleur sont sur le plateau; réessaie au prochain bonus.", "warning");
             return false;
         }
-        const cardObject = Cards.deposit({ type: cardType });
+        const reportAvatarError = error => {
+            console.warn("Photo de profil indisponible sur la carte de récompense :", error);
+            this.#dispatchPrizeStatus(`Photo de profil indisponible pour @${username} ; le pseudo et les étoiles restent affichés.`, "warning");
+        };
+        const cardObject = Cards.deposit({
+            type: cardType,
+            prize: { username, amount: selected.stars, avatarUrl: player.avatarUrl || "" },
+            onAvatarError: reportAvatarError
+        });
+        if (!player.avatarUrl) {
+            void Cards.loadPrizeAvatar(cardObject, username).catch(reportAvatarError);
+        }
         selected.count--;
         this.#prizeAssignments.set(cardObject, {
             username,

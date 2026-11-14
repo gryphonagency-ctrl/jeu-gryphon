@@ -93,3 +93,14 @@ test("les effets du jeu restent sous la télévision sans intercepter les comman
         globalThis.window = previousWindow;
     }
 });
+
+test("le canvas transparent révèle un fond arcade au lieu du noir uni", () => {
+    const html = read("../index.html");
+    const scene = read("../lib/util/scene.js");
+    assert.match(html, /radial-gradient\(ellipse at 50% 42%/);
+    assert.match(html, /repeating-linear-gradient\(45deg/);
+    assert.match(html, /body\s*>\s*canvas\s*\{[^}]*background-color:\s*transparent/s);
+    assert.match(scene, /alpha:\s*true/);
+    assert.match(scene, /this\.#scene\.background\s*=\s*null/);
+    assert.match(scene, /setClearColor\(0x000000,\s*0\)/);
+});

@@ -1,9 +1,8 @@
-import { Quaternion, Vector3, Euler, Scene, Color, WebGLRenderer, PMREMGenerator, DirectionalLight, AmbientLight, SRGBColorSpace, ACESFilmicToneMapping, VSMShadowMap } from "three";
+import { Quaternion, Vector3, Euler, Scene, WebGLRenderer, PMREMGenerator, DirectionalLight, AmbientLight, SRGBColorSpace, ACESFilmicToneMapping, VSMShadowMap } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-const BACKGROUND_COLOR = 0x222222;
 const NUM_SOLVER_ITERATIONS = 2;
 const NUM_ADDITIONAL_FRICTION_ITERATIONS = 1;
 const NUM_INTERNAL_PGS_ITERATIONS = 3;
@@ -68,18 +67,22 @@ export default class {
     #css3DScene = new Scene();
     #renderer = new WebGLRenderer({
         antialias: ANTIALIAS,
-        powerPreference: POWER_PREFERENCE
+        powerPreference: POWER_PREFERENCE,
+        alpha: true
     });
     #world;
     #camera = null;
+    #collisionHandler;
+    #previousCollisionPairs = new Set();
 
     async initialize(width, height, pixelRatio) {
         const pmremGenerator = new PMREMGenerator(this.#renderer);
         pmremGenerator.compileEquirectangularShader();
         this.#scene.environment = await new Promise((resolve, reject) => new EXRLoader().load(EXR_ASSET_PATH,
             texture => resolve(pmremGenerator.fromEquirectangular(texture).texture), undefined, reject));
-        this.#scene.background = new Color(BACKGROUND_COLOR);
+        this.#scene.background = null;
         this.#scene.environmentIntensity = ENVIRONMENT_INTENSITY;
+        this.#renderer.setClearColor(0x000000, 0);
         this.#renderer.toneMapping = ACESFilmicToneMapping;
         this.#renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE;
         this.#renderer.outputColorSpace = SRGBColorSpace;
@@ -261,6 +264,31 @@ export default class {
 
     step() {
         this.#world.step();
+    }
+
+    setCollisionHandler(handler) {
+        this.#collisionHandler = handler;
+    }
+
+    checkCollisionStarts(objectType) {
+        const currentPairs = new Set();
+        this.#world.forEachCollider(collider => {
+            if (!collider.isEnabled() || collider.userData?.objectType !== objectType) {
+                return;
+            }
+            this.#world.contactPairsWith(collider, otherCollider => {
+                const handles = [collider.handle, otherCollider.handle].sort((a, b) => a - b);
+                const pair = `${handles[0]}:${handles[1]}`;
+                if (currentPairs.has(pair)) {
+                    return;
+                }
+                currentPairs.add(pair);
+                if (!this.#previousCollisionPairs.has(pair) && this.#collisionHandler) {
+                    this.#collisionHandler(collider.userData, otherCollider.userData);
+                }
+            });
+        });
+        this.#previousCollisionPairs = currentPairs;
     }
 
     resize(width, height, pixelRatio) {

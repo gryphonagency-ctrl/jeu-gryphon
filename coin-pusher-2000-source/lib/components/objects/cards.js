@@ -1,4 +1,5 @@
 import { Vector3, Quaternion, Matrix4, Euler, InstancedMesh } from "three";
+import { createPrizeCardLabel, lookupPrizeAvatar } from "../../prize-card-label.js";
 
 const TYPE = "card";
 const MAX_INSTANCES = 8;
@@ -58,6 +59,17 @@ export default class {
         return this.#instances[type]?.some(instance => !instance.used) === true;
     }
 
+    static async loadPrizeAvatar(instance, username) {
+        const label = instance.prizeLabel;
+        if (!instance.used || !label) return false;
+        const avatarUrl = await lookupPrizeAvatar(username);
+        if (instance.used && instance.prizeLabel === label) {
+            label.setAvatarUrl(avatarUrl);
+            return true;
+        }
+        return false;
+    }
+
     static update() {
         for (let type = 0; type < TYPES; type++) {
             for (const instance of this.#instances[type]) {
@@ -85,9 +97,21 @@ export default class {
         };
     }
 
-    static deposit({ type, position, rotation }) {
+    static deposit({ type, position, rotation, prize, onAvatarError }) {
         const instance = this.#instances[type].find(instance => !instance.used);
         instance.used = true;
+        if (prize) {
+            instance.prizeLabel = createPrizeCardLabel({
+                ...prize, width: WIDTH, height: HEIGHT, depth: DEPTH, onAvatarError
+            });
+            this.#scene.addObject(instance.prizeLabel.group);
+            instance.prizeLabel.group.traverse(object => {
+                if (object.isMesh) {
+                    object.castShadow = false;
+                    object.receiveShadow = false;
+                }
+            });
+        }
         initializePosition({ instance, position, rotation });
         instance.body.setEnabled(true);
         update({ instance, meshes: this.#meshes[type] });
@@ -95,6 +119,8 @@ export default class {
     }
 
     static recycle(instance) {
+        instance.prizeLabel?.dispose();
+        instance.prizeLabel = null;
         instance.used = false;
         instance.body.setEnabled(false);
         initializePosition({ instance, hidden: true });
@@ -134,6 +160,8 @@ export default class {
             type.forEach((instance, instanceIndex) => {
                 const body = this.#scene.worldBodies.get(instance.bodyHandle);
                 const card = this.#instances[indexType][instanceIndex];
+                card.prizeLabel?.dispose();
+                card.prizeLabel = null;
                 this.#instances[indexType][instanceIndex] = {
                     ...card,
                     position: new Vector3().fromArray(instance.position),
@@ -263,4 +291,8 @@ function update({ instance, meshes }) {
     instance.rotation.copy(instance.body.rotation());
     instance.matrix.compose(instance.position, instance.rotation, instance.used ? DEFAULT_SCALE : INITIAL_SCALE);
     meshes.forEach(mesh => mesh.setMatrixAt(instance.index, instance.matrix));
+    if (instance.prizeLabel) {
+        instance.prizeLabel.group.position.copy(instance.position);
+        instance.prizeLabel.group.quaternion.copy(instance.rotation);
+    }
 }

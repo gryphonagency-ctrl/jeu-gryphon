@@ -75,7 +75,7 @@ export default class {
     static #avatarTiles = new Map();
     static #avatarFreeTiles = [];
     static #avatarImages = new Map();
-    static #avatarLoading = new Set();
+    static #avatarLoading = new Map();
 
     static async initialize({ scene, onSpawnedCoin, groups }) {
         this.#scene = scene;
@@ -208,32 +208,54 @@ export default class {
             username: String(username || "").trim().replace(/^@/, "").slice(0, 32),
             avatarUrl: String(avatarUrl || "").slice(0, 2000)
         });
-        if (normalizedAvatarKey && avatarDataUri) {
-            this.setAvatar({ key: normalizedAvatarKey, dataUri: avatarDataUri });
+        if (normalizedAvatarKey && (avatarDataUri || avatarUrl)) {
+            this.setAvatar({ key: normalizedAvatarKey, dataUri: avatarDataUri, avatarUrl });
         }
         return count;
     }
 
-    static setAvatar({ key, dataUri }) {
+    static setAvatar({ key, dataUri = "", avatarUrl = "" }) {
         const normalizedKey = String(key || "").trim().toLocaleLowerCase().slice(0, 128);
+        const validDataUri = typeof dataUri === "string" &&
+            dataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
+            /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(dataUri);
+        let safeAvatarUrl = "";
+        if (typeof avatarUrl === "string" && avatarUrl.trim()) {
+            try {
+                const url = new URL(avatarUrl, location.href);
+                if (url.origin === location.origin && /^https?:$/.test(url.protocol)) {
+                    safeAvatarUrl = url.href;
+                }
+            } catch {
+                safeAvatarUrl = "";
+            }
+        }
+        const imageSource = validDataUri ? dataUri : safeAvatarUrl;
         if (
             !normalizedKey ||
-            typeof dataUri !== "string" ||
-            dataUri.length > MAX_AVATAR_DATA_URI_LENGTH ||
-            !/^data:image\/(?:jpeg|png|webp);base64,/i.test(dataUri)
+            !imageSource
         ) {
-            console.warn("Photo de profil TikTok ignorée : format non valide ou trop volumineux.");
+            console.warn("Photo de profil TikTok ignorée : source absente ou non valide.");
             return false;
         }
         if (!this.#hasAvatarReferences(normalizedKey)) {
             return false;
         }
-        if (this.#avatarImages.has(normalizedKey) || this.#avatarLoading.has(normalizedKey)) {
+        if (this.#avatarImages.has(normalizedKey)) {
+            return true;
+        }
+        const priority = validDataUri ? 2 : 1;
+        const currentRequest = this.#avatarLoading.get(normalizedKey);
+        if (currentRequest && currentRequest.priority >= priority) {
             return true;
         }
         const image = new Image();
-        this.#avatarLoading.add(normalizedKey);
+        const request = { image, priority };
+        this.#avatarLoading.set(normalizedKey, request);
         image.addEventListener("load", () => {
+            if (this.#avatarLoading.get(normalizedKey) !== request) {
+                return;
+            }
             this.#avatarLoading.delete(normalizedKey);
             if (!this.#hasAvatarReferences(normalizedKey)) {
                 return;
@@ -242,10 +264,13 @@ export default class {
             this.#assignAvatarTile(normalizedKey);
         }, { once: true });
         image.addEventListener("error", () => {
+            if (this.#avatarLoading.get(normalizedKey) !== request) {
+                return;
+            }
             this.#avatarLoading.delete(normalizedKey);
             console.warn("Photo de profil TikTok illisible pour une pièce.");
         }, { once: true });
-        image.src = dataUri;
+        image.src = imageSource;
         return true;
     }
 
@@ -402,6 +427,7 @@ export default class {
             this.#avatarContext.clearRect(x, y, AVATAR_ATLAS_TILE_SIZE, AVATAR_ATLAS_TILE_SIZE);
             this.#avatarTexture.needsUpdate = true;
         }
+        this.#avatarLoading.delete(key);
         this.#avatarImages.delete(key);
         this.#activateWaitingAvatars();
     }

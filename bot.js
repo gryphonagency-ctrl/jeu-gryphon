@@ -1,4 +1,5 @@
 const { TikTokLiveConnection } = require('tiktok-live-connector');
+const getCachedAvatar = require('./tiktok-avatar-cache');
 const WebSocket = require('ws');
 
 const tiktokUsername = (process.env.TIKTOK_USERNAME || 'gryphon.agency').trim().replace(/^@/, '');
@@ -140,20 +141,11 @@ async function getAvatarData(user) {
     const avatarUrls = getAvatarUrls(user);
     try {
         const avatarDataUri = await Promise.any(avatarUrls.map(async url => {
-            if (!avatarCache.has(url)) {
-                avatarCache.set(url, fetchAvatarData(url));
-                if (avatarCache.size > 500) {
-                    avatarCache.delete(avatarCache.keys().next().value);
-                }
+            const imageRequest = getCachedAvatar(avatarCache, url, () => fetchAvatarData(url), 1);
+            if (avatarCache.size > 500) {
+                avatarCache.delete(avatarCache.keys().next().value);
             }
-            try {
-                const image = await avatarCache.get(url);
-                if (!image) throw new Error('Réponse image invalide.');
-                return image;
-            } catch (error) {
-                avatarCache.delete(url);
-                throw error;
-            }
+            return imageRequest;
         }));
         return { avatarDataUri, avatarUrls };
     } catch (error) {

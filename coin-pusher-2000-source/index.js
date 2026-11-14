@@ -21,7 +21,8 @@ await Game.initialize({
 window.CoinPusher2000 = {
     startGame: () => Game.startGame(),
     receiveTikTokGift: (count, avatar) => Game.receiveTikTokGift(count, avatar),
-    updateTikTokGiftAvatar: (avatarKey, avatarDataUri) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri),
+    updateTikTokGiftAvatar: (avatarKey, avatarDataUri, avatarUrl) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl),
+    setCoinVolume: volume => Game.setCoinVolume(volume),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
     setCharacterPosition: position => Game.setCharacterPosition(position),
@@ -33,7 +34,8 @@ window.CoinPusher2000 = {
 };
 initializeTikTokBridge({
     receiveGift: (count, avatar) => Game.receiveTikTokGift(count, avatar),
-    updateGiftAvatar: (avatarKey, avatarDataUri) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri),
+    updateGiftAvatar: (avatarKey, avatarDataUri, avatarUrl) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl),
+    setCoinVolume: volume => Game.setCoinVolume(volume),
     getPendingCoins: () => Game.pendingCoins,
     startGame: () => Game.startGame(),
     getMachineControls: () => Game.getMachineControls(),

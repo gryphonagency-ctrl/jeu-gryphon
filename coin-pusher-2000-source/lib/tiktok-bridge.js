@@ -12,19 +12,29 @@ const MAX_SETUP_VIDEO_DATA_URL_LENGTH = 1800000;
 const IS_LOCAL_PREVIEW = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const DEFAULT_CHARACTER_HORIZONTAL_PERCENT = 15;
 const DEFAULT_CHARACTER_DEPTH_PERCENT = 30;
-const DEFAULT_PRIZE_CARDS = [
+const PRIZE_STOCK_ADDITION_VERSION = 1;
+const PRIZE_STOCK_ADDITIONS = [
     { stars: 1, count: 100 },
-    { stars: 2, count: 100 },
-    { stars: 10, count: 25 },
-    { stars: 30, count: 25 },
-    { stars: 100, count: 5 },
+    { stars: 2, count: 25 },
+    { stars: 30, count: 10 },
+    { stars: 100, count: 3 },
     { stars: 300, count: 1 }
+];
+const DEFAULT_PRIZE_CARDS = [
+    { stars: 1, count: 200 },
+    { stars: 2, count: 125 },
+    { stars: 10, count: 25 },
+    { stars: 30, count: 35 },
+    { stars: 100, count: 8 },
+    { stars: 300, count: 2 }
 ];
 const MAX_CARD_DENOMINATIONS = 50;
 const MAX_CARD_STARS = 250000;
 const MAX_CARDS_PER_DENOMINATION = 10000;
 const MAX_TOTAL_CARDS = 100000;
 const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
+const COIN_VOLUME_STORAGE_KEY = "coin-pusher-2000-coin-volume-v1";
+const MAX_AVATAR_DATA_URI_LENGTH = 700000;
 
 export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
@@ -33,6 +43,9 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const pendingElement = document.getElementById("pending-coins");
     const machineCoinsElement = document.getElementById("machine-coins");
     const machineStatusElement = document.getElementById("machine-status");
+    const coinVolumeInput = document.getElementById("coin-volume");
+    const coinVolumeValue = document.getElementById("coin-volume-value");
+    const avatarLookupRequests = new Map();
     const machineButtons = Object.fromEntries(
         ["start", "hold", "shoot", "left", "center", "right", "a", "b"]
             .map(name => [name, document.getElementById(`machine-${name}`)])
@@ -99,6 +112,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     let setupPersistTimer = 0;
     let setupReloadPending = false;
     let prizeCards = DEFAULT_PRIZE_CARDS.map(card => ({ ...card }));
+    let prizeStockAdditionVersion = PRIZE_STOCK_ADDITION_VERSION;
     let ingotFrequency = 10;
     let prizeBannerTimer;
     let starWinners = [];
@@ -172,6 +186,19 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         return normalized;
     }
 
+    function addPrizeStock(cards) {
+        const updated = cards.map(card => ({ ...card }));
+        for (const addition of PRIZE_STOCK_ADDITIONS) {
+            const existing = updated.find(card => card.stars === addition.stars);
+            if (existing) {
+                existing.count += addition.count;
+            } else {
+                updated.push({ ...addition });
+            }
+        }
+        return validatePrizeCards(updated);
+    }
+
     function getAvatarKey(profile) {
         const identity = profile.userId || profile.uniqueId || profile.username || profile.nickname;
         return String(identity || "").trim().replace(/^@/, "").toLocaleLowerCase().slice(0, 128);
@@ -182,13 +209,111 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             profile?.avatarDataUri,
             profile?.avatarUrl,
             profile?.profilePicture,
-            profile?.profilePictureUrl
+            profile?.profilePictureUrl,
+            ...(Array.isArray(profile?.avatarUrls) ? profile.avatarUrls : [])
         ];
         return candidates.find(source =>
             typeof source === "string" &&
-            /^(?:data:image\/(?:jpeg|png|webp);base64,|https?:\/\/|\/(?!\/))/i.test(source.trim())
+            /^(?:data:image\/(?:jpeg|png|webp|gif|avif);base64,|https?:\/\/|\/(?!\/))/i.test(source.trim())
         )?.trim() || "";
     }
+
+    function isLocalAvatarUrl(source) {
+        if (!source) return false;
+        try {
+            return new URL(source, location.href).origin === location.origin;
+        } catch {
+            return false;
+        }
+    }
+
+    function lookupWalletAvatar(avatarKey, username) {
+        if (avatarLookupRequests.has(avatarKey)) {
+            return avatarLookupRequests.get(avatarKey);
+        }
+        const request = (async () => {
+            try {
+                const response = await fetch(`/api/tiktok-stars?player=${encodeURIComponent(username)}`, {
+                    credentials: "same-origin",
+                    cache: "no-store"
+                });
+                if (!response.ok) {
+                    throw new Error(`Profil TikTok indisponible (HTTP ${response.status}).`);
+                }
+                const data = await response.json();
+                const avatarUrl = getAvatarSource(data.player);
+                if (!isLocalAvatarUrl(avatarUrl)) {
+                    throw new Error("Aucune photo TikTok sauvegardée pour ce pseudo.");
+                }
+                updateGiftAvatar(avatarKey, "", avatarUrl);
+            } catch (error) {
+                console.warn(`Photo TikTok de secours indisponible pour @${username} :`, error);
+            } finally {
+                avatarLookupRequests.delete(avatarKey);
+            }
+        })();
+        avatarLookupRequests.set(avatarKey, request);
+        return request;
+    }
+
+    function receiveGiftWithAvatar(count, profile) {
+        const username = String(profile.uniqueId || profile.username || "").trim().replace(/^@/, "");
+        const avatarKey = getAvatarKey(profile) || username.toLowerCase();
+        const avatarDataUri = typeof profile.avatarDataUri === "string" &&
+            profile.avatarDataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
+            /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(profile.avatarDataUri)
+            ? profile.avatarDataUri
+            : "";
+        const avatarUrl = getAvatarSource(profile);
+        const queued = receiveGift(count, {
+            ...profile,
+            avatarKey,
+            username,
+            avatarDataUri,
+            avatarUrl
+        });
+        if (
+            queued > 0 &&
+            avatarKey &&
+            /^[a-zA-Z0-9._]{1,32}$/.test(username) &&
+            !avatarDataUri &&
+            !isLocalAvatarUrl(avatarUrl)
+        ) {
+            void lookupWalletAvatar(avatarKey, username);
+        }
+        return queued;
+    }
+
+    function setCoinVolumeFromInput() {
+        const volume = Number(coinVolumeInput.value);
+        coinVolumeValue.value = `${volume} %`;
+        window.CoinPusher2000.setCoinVolume(volume / 100);
+        try {
+            localStorage.setItem(COIN_VOLUME_STORAGE_KEY, String(volume));
+        } catch (error) {
+            console.warn("Impossible d’enregistrer le volume des pièces :", error);
+        }
+    }
+
+    try {
+        const storedVolume = localStorage.getItem(COIN_VOLUME_STORAGE_KEY);
+        if (storedVolume !== null) {
+            const savedVolume = Number(storedVolume);
+            if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 100) {
+                coinVolumeInput.value = String(savedVolume);
+            }
+        }
+    } catch (error) {
+        console.warn("Impossible de lire le volume enregistré des pièces :", error);
+    }
+    coinVolumeValue.value = `${coinVolumeInput.value} %`;
+    window.CoinPusher2000.setCoinVolume(Number(coinVolumeInput.value) / 100);
+    coinVolumeInput.addEventListener("input", setCoinVolumeFromInput);
+    const unlockCoinAudio = () => {
+        window.CoinPusher2000.setCoinVolume(Number(coinVolumeInput.value) / 100);
+    };
+    document.addEventListener("pointerdown", unlockCoinAudio, { once: true });
+    document.addEventListener("keydown", unlockCoinAudio, { once: true });
 
     function validateSetupRecord(record) {
         if (!record || typeof record !== "object" || Array.isArray(record) || record.version !== 1) {
@@ -215,6 +340,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             leaderboardY: 55,
             manualCardUsername: ""
         };
+        if (record.prizeStockAdditionVersion !== undefined &&
+            (!Number.isSafeInteger(record.prizeStockAdditionVersion) ||
+                record.prizeStockAdditionVersion < 0 ||
+                record.prizeStockAdditionVersion > PRIZE_STOCK_ADDITION_VERSION)) {
+            throw new Error("Version de stock des cartes invalide.");
+        }
         if (record.username !== undefined) {
             if (typeof record.username !== "string" || record.username.length > 32) {
                 throw new Error("Pseudo TikTok invalide dans le setup.");
@@ -294,6 +425,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         if (record.prizeCards !== undefined) {
             normalized.prizeCards = validatePrizeCards(record.prizeCards);
         }
+        normalized.prizeStockAdditionVersion = record.prizeStockAdditionVersion ??
+            (record.prizeCards === undefined ? PRIZE_STOCK_ADDITION_VERSION : 0);
         if (record.ingotFrequency !== undefined) {
             if (!Number.isSafeInteger(record.ingotFrequency) || record.ingotFrequency < 0 || record.ingotFrequency > 1000) {
                 throw new Error("Fréquence des lingots invalide.");
@@ -399,6 +532,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             panel: { ...panelBounds },
             panelVisible: !panel.hidden,
             prizeCards: prizeCards.map(card => ({ ...card })),
+            prizeStockAdditionVersion,
             ingotFrequency,
             showStarLeaderboard: showStarLeaderboardInput.checked,
             showSceneBrand: showSceneBrandInput.checked,
@@ -650,6 +784,20 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         height: Math.min(initialPanelRect.height, window.innerHeight * 0.8)
     };
     const setupRecord = readSetupRecord();
+    const originalPrizeCards = setupRecord.prizeCards.map(card => ({ ...card }));
+    let prizeStockAdditionApplied = false;
+    let prizeStockMigrationMessage = "";
+    if (setupRecord.prizeStockAdditionVersion < PRIZE_STOCK_ADDITION_VERSION) {
+        try {
+            setupRecord.prizeCards = addPrizeStock(setupRecord.prizeCards);
+            setupRecord.prizeStockAdditionVersion = PRIZE_STOCK_ADDITION_VERSION;
+            prizeStockAdditionApplied = true;
+        } catch (error) {
+            console.error("Impossible d’ajouter le nouveau stock de cartes :", error);
+            prizeStockMigrationMessage = `Lot de cartes non ajouté : ${error.message}`;
+        }
+    }
+    prizeStockAdditionVersion = setupRecord.prizeStockAdditionVersion;
     usernameInput.value = setupRecord.username;
     demoCountInput.value = String(setupRecord.demoCount);
     characterScaleInput.value = String(setupRecord.characterScalePercent);
@@ -677,7 +825,6 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     ingotFrequencyInput.value = String(ingotFrequency);
     ingotFrequencyValue.textContent = String(ingotFrequency);
     renderPrizeCards();
-    setPrizeConfig({ cards: prizeCards, ingotFrequency });
     setCharacterScale(setupRecord.characterScalePercent / 100);
     setCharacterPosition({
         horizontalPercent: setupRecord.characterHorizontalPercent,
@@ -700,6 +847,23 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         } else {
             setVideoStatus(`« ${activeVideoName} » devra être re-sélectionnée après rechargement.`);
         }
+    }
+    if (prizeStockAdditionApplied) {
+        if (persistSetupRecord()) {
+            prizeStockMigrationMessage = "Nouveau lot ajouté au stock existant et sauvegardé.";
+        } else {
+            prizeCards = originalPrizeCards;
+            prizeStockAdditionVersion = 0;
+            renderPrizeCards();
+            prizeStockMigrationMessage = "Lot non ajouté : impossible de sauvegarder le stock mis à jour.";
+        }
+    }
+    setPrizeConfig({ cards: prizeCards, ingotFrequency });
+    if (prizeStockMigrationMessage) {
+        setPrizeStatus(
+            prizeStockMigrationMessage,
+            prizeStockAdditionApplied && prizeStockAdditionVersion === PRIZE_STOCK_ADDITION_VERSION ? "" : "error"
+        );
     }
 
     addPrizeCardsButton.addEventListener("click", () => {
@@ -731,7 +895,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         commitPrizeConfig(
             DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
             10,
-            "Les 256 cartes par défaut sont rétablies."
+            "Les 395 cartes par défaut sont rétablies."
         );
     });
     retryPrizeCreditsButton.addEventListener("click", () => {
@@ -854,13 +1018,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username) || count < 1 || count > MAX_TIKTOK_GIFT_COINS) {
             return;
         }
-        const avatarKey = getAvatarKey(player) || username.toLowerCase();
-        const queued = receiveGift(count, {
-            username,
-            avatarKey,
-            avatarDataUri: typeof player.avatarDataUri === "string" ? player.avatarDataUri : "",
-            avatarUrl: getAvatarSource(player)
-        });
+        const queued = receiveGiftWithAvatar(count, { ...player, username });
         setStatus(`RUN de @${username} · ${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"} ajoutée${queued === 1 ? "" : "s"} à la file.`);
     });
     window.addEventListener("arcade:wallet-run-rejected", event => {
@@ -908,14 +1066,11 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setStatus(`Cadeau ignoré : nombre de pièces invalide (maximum ${MAX_TIKTOK_GIFT_COINS.toLocaleString("fr-FR")}).`, "error");
             return;
         }
-        const avatarKey = getAvatarKey(gift);
         const username = String(gift.uniqueId || gift.username || "")
             .trim()
             .replace(/^@/, "");
-        const queued = receiveGift(count, {
-            avatarKey,
-            avatarDataUri: typeof gift.avatarDataUri === "string" ? gift.avatarDataUri : "",
-            avatarUrl: getAvatarSource(gift),
+        const queued = receiveGiftWithAvatar(count, {
+            ...gift,
             username: /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : ""
         });
         setStatus(`@${username || "Spectateur"} · ${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"} ajoutée${queued === 1 ? "" : "s"} à la file.`);
