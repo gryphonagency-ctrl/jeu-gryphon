@@ -22,6 +22,7 @@ import CardReader from "./gadgets/card-reader.js";
 import TokenSlot from "./gadgets/token-slot.js";
 import GiphyCharacter from "./giphy-character.js";
 import PrizeCreditQueue from "../prize-credit-queue.js";
+import { selectPrizeCard } from "../prize-card-selection.js";
 
 const MIN_POSITION_Y_OBJECTS = -1;
 const MODEL_PATH = "./assets/cabinet.glb";
@@ -580,13 +581,17 @@ export default class {
         this.#character.setPosition(position);
     }
 
-    dropPrizeCard(username) {
+    dropPrizeCard(username, stars) {
         const target = String(username || "").trim().replace(/^@/, "");
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(target)) {
             this.#dispatchPrizeStatus("Indique un pseudo TikTok valide pour la carte.", "error");
             return false;
         }
-        return this.#deliverPrize({ username: target }, true);
+        if (!Number.isSafeInteger(stars) || stars < 1 || stars > 250000) {
+            this.#dispatchPrizeStatus("Indique une valeur de carte valide entre 1 et 250 000 étoiles.", "error");
+            return false;
+        }
+        return this.#deliverPrize({ username: target }, true, stars);
     }
 
     setPrizeConfig({ cards, ingotFrequency }) {
@@ -774,7 +779,7 @@ export default class {
         }
     }
 
-    #deliverPrize(player, manual = false) {
+    #deliverPrize(player, manual = false, requestedStars = null) {
         const username = String(player?.username || "").trim().replace(/^@/, "");
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
             return false;
@@ -789,11 +794,14 @@ export default class {
             this.#dispatchPrizeStatus("Le stock de cartes est vide ou toutes les cartes sont déjà sur le plateau.", "warning");
             return false;
         }
-        let selection = Math.floor(Math.random() * totalCards);
-        const selected = availableCards.find(card => {
-            selection -= card.count;
-            return selection < 0;
-        });
+        const selected = selectPrizeCard(availableCards, requestedStars);
+        if (!selected && requestedStars !== null) {
+            this.#dispatchPrizeStatus(
+                `Aucune carte à ${requestedStars.toLocaleString("fr-FR")} étoile${requestedStars === 1 ? "" : "s"} n’est disponible dans le stock.`,
+                "warning"
+            );
+            return false;
+        }
         if (!selected) {
             return false;
         }

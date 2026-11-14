@@ -38,6 +38,7 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     let machineState;
     const machinePresses = [];
     const prizeConfigs = [];
+    const droppedCards = [];
     const soundVolumes = [];
     function start() {
         machineState = { buttons: { start: true }, coins: 0 };
@@ -77,7 +78,7 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
                 machineState = { buttons: { left: true, center: true, right: true }, coins: 100 };
                 return true;
             }, setScreenVideo() {}, setCharacterScale() {},
-            setCharacterPosition() {}, dropPrizeCard() {},
+            setCharacterPosition() {}, dropPrizeCard(username, stars) { droppedCards.push({ username, stars }); },
             setPrizeConfig(config) { prizeConfigs.push(config); }
         });
         return elements;
@@ -89,6 +90,11 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
         { stars: 10, count: 25 }, { stars: 30, count: 35 },
         { stars: 100, count: 8 }, { stars: 300, count: 2 }
     ]);
+    assert.equal(elements["manual-card-stars"].value, "300");
+    elements["manual-card-username"].value = "alice";
+    elements["drop-prize-card"].dispatch("click");
+    assert.deepEqual(droppedCards, [{ username: "alice", stars: 300 }]);
+    assert.equal(JSON.parse(storage.get("coin-pusher-2000-live-panel-v1")).manualCardStars, 300);
     assert.equal(elements["machine-start"].disabled, false);
     assert.equal(elements["machine-left"].disabled, true);
     elements["machine-start"].dispatch("click");
@@ -125,6 +131,7 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(rows[0].children[2].textContent, "25 ⭐");
 
     elements = start();
+    assert.equal(elements["manual-card-stars"].value, "300");
     assert.equal(elements["scene-brand-text"].value, "MON TEXTE");
     assert.equal(elements["scene-brand"].hidden, true);
     assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%)");

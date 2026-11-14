@@ -75,6 +75,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const prizeTableBody = document.getElementById("prize-card-table");
     const prizeStockTotalElement = document.getElementById("prize-stock-total");
     const manualCardUsernameInput = document.getElementById("manual-card-username");
+    const manualCardStarsInput = document.getElementById("manual-card-stars");
     const dropPrizeCardButton = document.getElementById("drop-prize-card");
     const newCardStarsInput = document.getElementById("new-card-stars");
     const newCardCountInput = document.getElementById("new-card-count");
@@ -200,13 +201,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     }
 
     function getAvatarKey(profile) {
-        const identity = profile.userId || profile.uniqueId || profile.username || profile.nickname;
-        return String(identity || "").trim().replace(/^@/, "").toLocaleLowerCase().slice(0, 128);
+        return getAvatarKeys(profile)[0] || "";
     }
 
-    function getAvatarSource(profile) {
+    function getAvatarKeys(profile) {
+        return [...new Set([profile?.userId, profile?.uniqueId, profile?.username, profile?.nickname]
+            .map(identity => String(identity || "").trim().replace(/^@/, "").toLocaleLowerCase().slice(0, 128))
+            .filter(Boolean))];
+    }
+
+    function getAvatarUrl(profile) {
         const candidates = [
-            profile?.avatarDataUri,
             profile?.avatarUrl,
             profile?.profilePicture,
             profile?.profilePictureUrl,
@@ -214,8 +219,15 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         ];
         return candidates.find(source =>
             typeof source === "string" &&
-            /^(?:data:image\/(?:jpeg|png|webp|gif|avif);base64,|https?:\/\/|\/(?!\/))/i.test(source.trim())
+            /^(?:https?:\/\/|\/(?!\/))/i.test(source.trim())
         )?.trim() || "";
+    }
+
+    function getAvatarSource(profile) {
+        const dataUri = String(profile?.avatarDataUri || "").trim();
+        return /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(dataUri)
+            ? dataUri
+            : getAvatarUrl(profile);
     }
 
     function isLocalAvatarUrl(source) {
@@ -227,9 +239,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
     }
 
-    function lookupWalletAvatar(avatarKey, username) {
-        if (avatarLookupRequests.has(avatarKey)) {
-            return avatarLookupRequests.get(avatarKey);
+    function lookupWalletAvatar(avatarKeys, username) {
+        const requestKey = avatarKeys[0] || username.toLowerCase();
+        if (avatarLookupRequests.has(requestKey)) {
+            return avatarLookupRequests.get(requestKey);
         }
         const request = (async () => {
             try {
@@ -241,30 +254,33 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                     throw new Error(`Profil TikTok indisponible (HTTP ${response.status}).`);
                 }
                 const data = await response.json();
-                const avatarUrl = getAvatarSource(data.player);
+                const avatarUrl = getAvatarUrl(data.player);
                 if (!isLocalAvatarUrl(avatarUrl)) {
                     throw new Error("Aucune photo TikTok sauvegardée pour ce pseudo.");
                 }
-                updateGiftAvatar(avatarKey, "", avatarUrl);
+                for (const avatarKey of avatarKeys) {
+                    updateGiftAvatar(avatarKey, "", avatarUrl);
+                }
             } catch (error) {
                 console.warn(`Photo TikTok de secours indisponible pour @${username} :`, error);
             } finally {
-                avatarLookupRequests.delete(avatarKey);
+                avatarLookupRequests.delete(requestKey);
             }
         })();
-        avatarLookupRequests.set(avatarKey, request);
+        avatarLookupRequests.set(requestKey, request);
         return request;
     }
 
     function receiveGiftWithAvatar(count, profile) {
         const username = String(profile.uniqueId || profile.username || "").trim().replace(/^@/, "");
-        const avatarKey = getAvatarKey(profile) || username.toLowerCase();
+        const avatarKeys = getAvatarKeys(profile);
+        const avatarKey = avatarKeys[0] || username.toLowerCase();
         const avatarDataUri = typeof profile.avatarDataUri === "string" &&
             profile.avatarDataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
             /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(profile.avatarDataUri)
             ? profile.avatarDataUri
             : "";
-        const avatarUrl = getAvatarSource(profile);
+        const avatarUrl = getAvatarUrl(profile);
         const queued = receiveGift(count, {
             ...profile,
             avatarKey,
@@ -274,12 +290,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         });
         if (
             queued > 0 &&
-            avatarKey &&
+            avatarKeys.length &&
             /^[a-zA-Z0-9._]{1,32}$/.test(username) &&
             !avatarDataUri &&
             !isLocalAvatarUrl(avatarUrl)
         ) {
-            void lookupWalletAvatar(avatarKey, username);
+            void lookupWalletAvatar(avatarKeys, username);
         }
         return queued;
     }
@@ -338,7 +354,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             sceneBrandY: 75,
             leaderboardX: 5,
             leaderboardY: 55,
-            manualCardUsername: ""
+            manualCardUsername: "",
+            manualCardStars: 300
         };
         if (record.prizeStockAdditionVersion !== undefined &&
             (!Number.isSafeInteger(record.prizeStockAdditionVersion) ||
@@ -457,6 +474,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             }
             normalized.manualCardUsername = record.manualCardUsername.trim().replace(/^@/, "");
         }
+        if (record.manualCardStars !== undefined) {
+            if (!Number.isSafeInteger(record.manualCardStars) || record.manualCardStars < 1 || record.manualCardStars > MAX_CARD_STARS) {
+                throw new Error("Valeur de carte invalide dans le setup.");
+            }
+            normalized.manualCardStars = record.manualCardStars;
+        }
         return normalized;
     }
 
@@ -522,6 +545,11 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setSetupStatus("La taille du personnage doit être comprise entre 50 % et 250 %.", "error");
             return false;
         }
+        const manualCardStars = Number(manualCardStarsInput.value);
+        if (!Number.isSafeInteger(manualCardStars) || manualCardStars < 1 || manualCardStars > MAX_CARD_STARS) {
+            setPrizeStatus("La valeur de la carte doit être comprise entre 1 et 250 000 étoiles.", "error");
+            return false;
+        }
         const record = {
             version: 1,
             username: usernameInput.value.trim().replace(/^@/, "").slice(0, 32),
@@ -542,6 +570,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             leaderboardX: Number(leaderboardXInput.value),
             leaderboardY: Number(leaderboardYInput.value),
             manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
+            manualCardStars,
             video: activeVideoName
                 ? { name: activeVideoName, dataUrl: activeVideoDataUrl || null }
                 : null
@@ -822,6 +851,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
     manualCardUsernameInput.value = setupRecord.manualCardUsername;
+    manualCardStarsInput.value = String(setupRecord.manualCardStars);
     ingotFrequencyInput.value = String(ingotFrequency);
     ingotFrequencyValue.textContent = String(ingotFrequency);
     renderPrizeCards();
@@ -910,9 +940,16 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             return;
         }
         manualCardUsernameInput.value = username;
+        const stars = Number(manualCardStarsInput.value);
+        if (!Number.isSafeInteger(stars) || stars < 1 || stars > MAX_CARD_STARS) {
+            setPrizeStatus("La valeur de la carte doit être comprise entre 1 et 250 000 étoiles.", "error");
+            manualCardStarsInput.focus();
+            return;
+        }
         persistSetupRecord();
-        dropPrizeCard(username);
+        dropPrizeCard(username, stars);
     });
+    manualCardStarsInput.addEventListener("change", persistSetupRecord);
     showStarLeaderboardInput.addEventListener("change", () => {
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
         persistSetupRecord();
@@ -1051,9 +1088,24 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
         if (type === "viewer") {
             const viewer = data.viewer || data;
-            const avatarKey = getAvatarKey(viewer);
-            if (avatarKey && typeof viewer.avatarDataUri === "string") {
-                updateGiftAvatar(avatarKey, viewer.avatarDataUri);
+            const avatarKeys = getAvatarKeys(viewer);
+            const avatarDataUri = typeof viewer.avatarDataUri === "string" &&
+                viewer.avatarDataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
+                /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(viewer.avatarDataUri)
+                ? viewer.avatarDataUri
+                : "";
+            const avatarUrl = getAvatarUrl(viewer);
+            for (const avatarKey of avatarKeys) {
+                updateGiftAvatar(avatarKey, avatarDataUri, avatarUrl);
+            }
+            const username = String(viewer.uniqueId || viewer.username || "").trim().replace(/^@/, "");
+            if (
+                !avatarDataUri &&
+                avatarKeys.length &&
+                /^[a-zA-Z0-9._]{1,32}$/.test(username) &&
+                !isLocalAvatarUrl(avatarUrl)
+            ) {
+                void lookupWalletAvatar(avatarKeys, username);
             }
             return;
         }

@@ -11,6 +11,7 @@ import {
     Vector3,
     Euler
 } from "three";
+import CoinSpawnQueue from "../../coin-spawn-queue.js";
 
 const TYPE = "coin";
 const MAX_INSTANCES = 1024;
@@ -34,6 +35,7 @@ const LINEAR_DAMPING = 0.5;
 const RESTITUTION = 0;
 const MODEL_PATH = "./assets/coin.glb";
 const SPAWN_TIME_DURATION = 8;
+const MAX_SPAWNS_PER_INTERVAL = 3;
 const AVATAR_ATLAS_GRID = 32;
 const AVATAR_ATLAS_TILE_SIZE = 32;
 const AVATAR_ATLAS_SIZE = AVATAR_ATLAS_GRID * AVATAR_ATLAS_TILE_SIZE;
@@ -65,7 +67,7 @@ export default class {
     static #scene;
     static #meshes = [];
     static #instances = [];
-    static #spawnedCoins = [];
+    static #spawnQueue = new CoinSpawnQueue();
     static #frameLastSpawn = 0;
     static #onSpawnedCoin;
     static #avatarMeshes = [];
@@ -80,6 +82,8 @@ export default class {
     static async initialize({ scene, onSpawnedCoin, groups }) {
         this.#scene = scene;
         this.#onSpawnedCoin = onSpawnedCoin;
+        this.#spawnQueue = new CoinSpawnQueue();
+        this.#frameLastSpawn = 0;
         const { materials, geometries } = await initializeModel({ scene });
         this.#meshes = initializeInstancedMeshes({ scene, materials, geometries });
         const avatarLayer = initializeAvatarMeshes({ scene });
@@ -103,23 +107,13 @@ export default class {
     }
 
     static update() {
-        if (this.#spawnedCoins.length) {
+        if (this.#spawnQueue.pending) {
             this.#frameLastSpawn++;
             if (this.#frameLastSpawn >= SPAWN_TIME_DURATION) {
-                const instance = this.#instances.find(instance => !instance.used);
-                if (instance) {
-                    const batch = this.#spawnedCoins[0];
-                    let slot = batch.slot;
-                    if (slot === null) {
-                        do {
-                            slot = Math.floor(Math.random() * 3);
-                        } while (slot === batch.lastSlot);
-                        batch.lastSlot = slot;
-                    }
-                    batch.remaining--;
-                    if (batch.remaining === 0) {
-                        this.#spawnedCoins.shift();
-                    }
+                const availableInstances = this.#instances.filter(instance => !instance.used);
+                const drops = this.#spawnQueue.takeNext(Math.min(MAX_SPAWNS_PER_INTERVAL, availableInstances.length));
+                drops.forEach(({ batch, slot }, index) => {
+                    const instance = availableInstances[index];
                     instance.used = true;
                     instance.username = batch.username || null;
                     instance.avatarUrl = batch.avatarUrl || "";
@@ -142,8 +136,8 @@ export default class {
                     instance.body.setEnabled(true);
                     instance.pendingImpulse = SPAWN_IMPULSE;
                     this.#onSpawnedCoin(instance);
-                    this.#frameLastSpawn = 0;
-                }
+                });
+                if (drops.length) this.#frameLastSpawn = 0;
             }
         }
         for (const instance of this.#instances) {
@@ -192,7 +186,7 @@ export default class {
     }
 
     static dropCoin({ slot }) {
-        this.#spawnedCoins.push({ remaining: 1, slot, lastSlot: null });
+        this.#spawnQueue.enqueue({ remaining: 1, slot });
     }
 
     static dropCoins({ count, avatarKey = "", avatarDataUri = "", username = "", avatarUrl = "" }) {
@@ -200,10 +194,9 @@ export default class {
             return 0;
         }
         const normalizedAvatarKey = String(avatarKey || "").trim().toLocaleLowerCase().slice(0, 128);
-        this.#spawnedCoins.push({
+        this.#spawnQueue.enqueue({
             remaining: count,
             slot: null,
-            lastSlot: null,
             avatarKey: normalizedAvatarKey,
             username: String(username || "").trim().replace(/^@/, "").slice(0, 32),
             avatarUrl: String(avatarUrl || "").slice(0, 2000)
@@ -250,7 +243,11 @@ export default class {
             return true;
         }
         const image = new Image();
-        const request = { image, priority };
+        const request = {
+            image,
+            priority,
+            fallbackSource: validDataUri && safeAvatarUrl !== imageSource ? safeAvatarUrl : ""
+        };
         this.#avatarLoading.set(normalizedKey, request);
         image.addEventListener("load", () => {
             if (this.#avatarLoading.get(normalizedKey) !== request) {
@@ -267,15 +264,21 @@ export default class {
             if (this.#avatarLoading.get(normalizedKey) !== request) {
                 return;
             }
+            if (request.fallbackSource) {
+                const fallbackSource = request.fallbackSource;
+                request.fallbackSource = "";
+                image.src = fallbackSource;
+                return;
+            }
             this.#avatarLoading.delete(normalizedKey);
             console.warn("Photo de profil TikTok illisible pour une pièce.");
-        }, { once: true });
+        });
         image.src = imageSource;
         return true;
     }
 
     static get pendingCoins() {
-        return this.#spawnedCoins.reduce((total, batch) => total + batch.remaining, 0);
+        return this.#spawnQueue.pending;
     }
 
     static recycle(instance) {
@@ -352,7 +355,7 @@ export default class {
     }
 
     static #hasAvatarReferences(key) {
-        return this.#spawnedCoins.some(batch => batch.avatarKey === key && batch.remaining > 0) ||
+        return this.#spawnQueue.hasBatch(batch => batch.avatarKey === key && batch.remaining > 0) ||
             this.#instances.some(instance => instance.used && instance.avatarKey === key);
     }
 
@@ -547,6 +550,7 @@ function initializeAvatarMeshes({ scene }) {
         mesh.castShadow = false;
         mesh.receiveShadow = false;
         mesh.renderOrder = 1;
+        mesh.frustumCulled = false;
         scene.addObject(mesh);
         meshes.push(mesh);
     }

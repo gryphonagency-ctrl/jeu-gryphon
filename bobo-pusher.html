@@ -1118,9 +1118,8 @@
     function nextMachineCoinStock(stock) {
       return stock <= 1 ? MAX_MACHINE_CAPACITY : stock - 1;
     }
-    function calculateGiftWheelProgress(progress, acceptedCoins) {
-      const total = progress + acceptedCoins;
-      return { wheelCount: Math.floor(total / 1000), remainder: total % 1000 };
+    function wheelSpinsForGift(coinCount) {
+      return Math.floor(coinCount / 1000);
     }
     const MAX_PENDING_GIFT_DROPS = 100000;
     const MAX_ACTIVE_BOARD_COINS = 185;
@@ -1223,10 +1222,6 @@
       : MAX_MACHINE_CAPACITY;
     const coins = [];
     let coinStock = savedTokenTotal;
-    let giftCoinsSinceLastWheel = Number.isSafeInteger(setupRecord.giftCoinsSinceLastWheel) &&
-      setupRecord.giftCoinsSinceLastWheel >= 0 && setupRecord.giftCoinsSinceLastWheel < 1000
-      ? setupRecord.giftCoinsSinceLastWheel
-      : 0;
     function availableCardCount() {
       return cardInventory.reduce((sum, type) => sum + type.available, 0);
     }
@@ -1614,7 +1609,6 @@
         dropTestCount: dropTestCountInput.valueAsNumber,
         coinStockCycleRemaining: coinStock,
         remainingTokenCount: coinStock,
-        giftCoinsSinceLastWheel,
         cardInventory: cardInventory.map(({ id, stars, recipient, custom, available, inPlay, disappeared }) =>
           ({ id, stars, recipient, custom, available, inPlay, disappeared })),
         starWinners: Array.from(starWinners.values())
@@ -2077,11 +2071,10 @@
       const player = rememberLivePlayer(gift.username || gift.uniqueId || gift.nickname || data.username,
         getLiveAvatarSource(gift) || getLiveAvatarSource(gift.user) || getLiveAvatarSource(data));
       const result = queueGiftCoins(player, count);
-      const progress = calculateGiftWheelProgress(giftCoinsSinceLastWheel, result.accepted);
-      giftCoinsSinceLastWheel = progress.remainder;
-      if (progress.wheelCount > 0) queueWheelSpins(player, progress.wheelCount);
+      const wheelCount = wheelSpinsForGift(count);
+      if (wheelCount > 0) queueWheelSpins(player, wheelCount);
       scheduleSetupPersistence();
-      setLiveStatus(`@${player.username} · ${result.accepted} jeton${result.accepted === 1 ? '' : 's'} TikTok ajouté${result.accepted === 1 ? '' : 's'} à la file${progress.wheelCount ? ` · ${progress.wheelCount} tour${progress.wheelCount === 1 ? '' : 's'} de roue` : ''}${result.rejected ? ` · ${result.rejected} refusé${result.rejected === 1 ? '' : 's'}` : ''}.`, result.rejected ? 'error' : 'online');
+      setLiveStatus(`@${player.username} · ${result.accepted} jeton${result.accepted === 1 ? '' : 's'} TikTok ajouté${result.accepted === 1 ? '' : 's'} à la file${wheelCount ? ` · ${wheelCount} tour${wheelCount === 1 ? '' : 's'} de roue` : ''}${result.rejected ? ` · ${result.rejected} refusé${result.rejected === 1 ? '' : 's'}` : ''}.`, result.rejected ? 'error' : 'online');
     }
     function closeLiveConnection() {
       if (!liveSocket) return;
