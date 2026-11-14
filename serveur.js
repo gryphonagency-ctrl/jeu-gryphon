@@ -215,6 +215,7 @@ const protectedRoutes = new Set([
     '/multirou.html',
     '/araignee.html',
     '/rallye-neon.html',
+    '/city-hunter-tiktok.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -303,6 +304,7 @@ store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
 store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
 store.grantGameAccessToExistingCreators('/araignee.html');
 store.grantGameAccessToExistingCreators('/rallye-neon.html');
+store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -360,6 +362,7 @@ const staticGameTitles = {
     '/multirou.html': 'Le Multirou',
     '/araignee.html': 'Araignée Cybernétique',
     '/rallye-neon.html': 'Rallye Néon',
+    '/city-hunter-tiktok.html': 'City Hunter — TikTok Live Battle',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -428,6 +431,7 @@ const gameRouteIds = new Map([
     ['/multirou.html', '/multirou.html'],
     ['/araignee.html', '/araignee.html'],
     ['/rallye-neon.html', '/rallye-neon.html'],
+    ['/city-hunter-tiktok.html', '/city-hunter-tiktok.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3238,6 +3242,8 @@ const server = http.createServer((req, res) => {
         ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
         ['/araignee.html', [path.join(__dirname, 'araignee.html'), 'text/html; charset=utf-8']],
         ['/rallye-neon.html', [path.join(__dirname, 'rallye-neon.html'), 'text/html; charset=utf-8']],
+        ['/city-hunter-tiktok.html', [path.join(__dirname, 'city-hunter-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
         ['/tir-a-la-corde.html', [path.join(__dirname, 'tir-a-la-corde.html'), 'text/html; charset=utf-8']],
