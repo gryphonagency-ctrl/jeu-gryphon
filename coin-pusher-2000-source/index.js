@@ -24,6 +24,7 @@ window.CoinPusher2000 = {
     updateTikTokGiftAvatar: (avatarKey, avatarDataUri) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
+    setPrizeConfig: config => Game.setPrizeConfig(config),
     get pendingCoins() {
         return Game.pendingCoins;
     }
@@ -35,6 +36,32 @@ initializeTikTokBridge({
     startGame: () => Game.startGame(),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
-    setCharacterScale: scale => Game.setCharacterScale(scale)
+    setPrizeConfig: config => Game.setPrizeConfig(config)
 });
+let checkingPrizeCredits = false;
+async function retryPrizeCredits() {
+    if (checkingPrizeCredits) return;
+    checkingPrizeCredits = true;
+    try {
+        const response = await fetch("/api/session", { credentials: "same-origin", cache: "no-store" });
+        if (!response.ok) throw new Error("Impossible de vérifier le compte Griffon Arcade.");
+        const session = await response.json();
+        if (!session.authenticated || !session.username) {
+            throw new Error("Connecte-toi à Griffon Arcade pour activer les récompenses.");
+        }
+        Game.configurePrizeCredits(session.username);
+        Game.retryPrizeCredits();
+    } catch (error) {
+        console.error("Récompenses indisponibles :", error);
+        window.dispatchEvent(new CustomEvent("coin-pusher-prize-status", {
+            detail: { message: error.message, state: "error" }
+        }));
+    } finally {
+        checkingPrizeCredits = false;
+    }
+}
+window.addEventListener("coin-pusher-retry-credits", retryPrizeCredits);
+window.addEventListener("online", retryPrizeCredits);
+window.setInterval(retryPrizeCredits, 30000);
+void retryPrizeCredits();
 Game.run();

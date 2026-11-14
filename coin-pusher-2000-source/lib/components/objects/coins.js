@@ -121,6 +121,8 @@ export default class {
                         this.#spawnedCoins.shift();
                     }
                     instance.used = true;
+                    instance.username = batch.username || null;
+                    instance.avatarUrl = batch.avatarUrl || "";
                     instance.avatarKey = batch.avatarKey || null;
                     instance.avatarTile = instance.avatarKey
                         ? this.#avatarTiles.get(instance.avatarKey) ?? null
@@ -176,6 +178,8 @@ export default class {
         const instance = this.#instances.find(instance => !instance.used);
         const previousAvatarKey = instance.avatarKey;
         instance.used = true;
+        instance.username = null;
+        instance.avatarUrl = "";
         instance.avatarKey = null;
         instance.avatarTile = null;
         this.#releaseAvatarIfUnused(previousAvatarKey);
@@ -191,7 +195,7 @@ export default class {
         this.#spawnedCoins.push({ remaining: 1, slot, lastSlot: null });
     }
 
-    static dropCoins({ count, avatarKey = "", avatarDataUri = "" }) {
+    static dropCoins({ count, avatarKey = "", avatarDataUri = "", username = "", avatarUrl = "" }) {
         if (!Number.isSafeInteger(count) || count < 1) {
             return 0;
         }
@@ -200,7 +204,9 @@ export default class {
             remaining: count,
             slot: null,
             lastSlot: null,
-            avatarKey: normalizedAvatarKey
+            avatarKey: normalizedAvatarKey,
+            username: String(username || "").trim().replace(/^@/, "").slice(0, 32),
+            avatarUrl: String(avatarUrl || "").slice(0, 2000)
         });
         if (normalizedAvatarKey && avatarDataUri) {
             this.setAvatar({ key: normalizedAvatarKey, dataUri: avatarDataUri });
@@ -250,6 +256,8 @@ export default class {
     static recycle(instance) {
         const previousAvatarKey = instance.avatarKey;
         instance.used = false;
+        instance.username = null;
+        instance.avatarUrl = "";
         instance.avatarKey = null;
         instance.avatarTile = null;
         instance.body.setEnabled(false);
@@ -272,6 +280,8 @@ export default class {
                 position: instance.position.toArray(),
                 rotation: instance.rotation.toArray(),
                 used: instance.used,
+                username: instance.username || null,
+                avatarUrl: instance.avatarUrl || "",
                 avatarKey: instance.avatarKey,
                 bodyHandle: this.#instances[instance.index].body.handle,
                 pendingImpulse: instance.pendingImpulse ? instance.pendingImpulse.toArray() : undefined
@@ -287,6 +297,8 @@ export default class {
                 position: new Vector3().fromArray(instance.position),
                 rotation: new Quaternion().fromArray(instance.rotation),
                 used: instance.used,
+                username: typeof instance.username === "string" ? instance.username : null,
+                avatarUrl: typeof instance.avatarUrl === "string" ? instance.avatarUrl : "",
                 avatarKey: typeof instance.avatarKey === "string" ? instance.avatarKey : null,
                 avatarTile: this.#avatarTiles.get(instance.avatarKey) ?? null,
                 body,

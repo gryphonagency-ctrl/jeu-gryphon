@@ -48,6 +48,10 @@ export default class {
         return this.#instances[index];
     }
 
+    static hasAvailableInstance() {
+        return this.#instances.some(instance => !instance.used);
+    }
+
     static update() {
         for (const instance of this.#instances) {
             if (instance.used) {

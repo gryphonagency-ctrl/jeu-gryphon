@@ -8,8 +8,21 @@ const MAX_SETUP_FILE_BYTES = 2000000;
 const MAX_SETUP_VIDEO_BYTES = 1300000;
 const MAX_SETUP_VIDEO_DATA_URL_LENGTH = 1800000;
 const IS_LOCAL_PREVIEW = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+const DEFAULT_PRIZE_CARDS = [
+    { stars: 1, count: 100 },
+    { stars: 2, count: 100 },
+    { stars: 10, count: 25 },
+    { stars: 30, count: 25 },
+    { stars: 100, count: 5 },
+    { stars: 300, count: 1 }
+];
+const MAX_CARD_DENOMINATIONS = 50;
+const MAX_CARD_STARS = 250000;
+const MAX_CARDS_PER_DENOMINATION = 10000;
+const MAX_TOTAL_CARDS = 100000;
+const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
 
-export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, setScreenVideo, setCharacterScale }) {
+export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, setScreenVideo, setCharacterScale, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
@@ -32,6 +45,24 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const importSetupButton = document.getElementById("import-setup");
     const setupImportInput = document.getElementById("setup-import-file");
     const setupStatusElement = document.getElementById("setup-status");
+    const prizeTableBody = document.getElementById("prize-card-table");
+    const prizeStockTotalElement = document.getElementById("prize-stock-total");
+    const newCardStarsInput = document.getElementById("new-card-stars");
+    const newCardCountInput = document.getElementById("new-card-count");
+    const addPrizeCardsButton = document.getElementById("add-prize-cards");
+    const resetPrizeCardsButton = document.getElementById("reset-prize-cards");
+    const retryPrizeCreditsButton = document.getElementById("retry-prize-credits");
+    const ingotFrequencyInput = document.getElementById("ingot-frequency");
+    const ingotFrequencyValue = document.getElementById("ingot-frequency-value");
+    const prizeStatusElement = document.getElementById("prize-status");
+    const starLeaderboard = document.getElementById("star-leaderboard");
+    const showStarLeaderboardInput = document.getElementById("show-star-leaderboard");
+    const starLeaderboardList = document.getElementById("star-leaderboard-list");
+    const panelStarLeaderboard = document.getElementById("panel-star-leaderboard");
+    const prizeBanner = document.getElementById("starcard");
+    const prizeBannerAvatar = prizeBanner.querySelector("img");
+    const prizeBannerName = prizeBanner.querySelector("strong");
+    const prizeBannerMessage = prizeBanner.querySelector("span");
     let socket;
     let reconnectTimer;
     let activeVideoUrl = null;
@@ -43,6 +74,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     let panelResize;
     let setupPersistTimer = 0;
     let setupReloadPending = false;
+    let prizeCards = DEFAULT_PRIZE_CARDS.map(card => ({ ...card }));
+    let ingotFrequency = 10;
+    let prizeBannerTimer;
+    let starWinners = [];
 
     function setStatus(message, state = "") {
         statusElement.textContent = message;
@@ -59,9 +94,58 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         setupStatusElement.dataset.state = state;
     }
 
+    function setPrizeStatus(message, state = "") {
+        prizeStatusElement.textContent = message;
+        prizeStatusElement.dataset.state = state;
+    }
+
+    function validatePrizeCards(cards) {
+        if (!Array.isArray(cards) || cards.length > MAX_CARD_DENOMINATIONS) {
+            throw new Error("La liste doit contenir au maximum 50 valeurs de cartes.");
+        }
+        const merged = new Map();
+        for (const card of cards) {
+            if (
+                !card ||
+                !Number.isSafeInteger(card.stars) ||
+                card.stars < 1 ||
+                card.stars > MAX_CARD_STARS ||
+                !Number.isSafeInteger(card.count) ||
+                card.count < 0 ||
+                card.count > MAX_CARDS_PER_DENOMINATION
+            ) {
+                throw new Error("Valeur ou quantité de carte invalide.");
+            }
+            merged.set(card.stars, (merged.get(card.stars) || 0) + card.count);
+            if (merged.get(card.stars) > MAX_CARDS_PER_DENOMINATION) {
+                throw new Error("Maximum de 10 000 cartes par valeur.");
+            }
+        }
+        const normalized = [...merged.entries()]
+            .map(([stars, count]) => ({ stars, count }))
+            .sort((a, b) => a.stars - b.stars);
+        if (normalized.reduce((total, card) => total + card.count, 0) > MAX_TOTAL_CARDS) {
+            throw new Error("Le stock total ne peut pas dépasser 100 000 cartes.");
+        }
+        return normalized;
+    }
+
     function getAvatarKey(profile) {
         const identity = profile.userId || profile.uniqueId || profile.username || profile.nickname;
         return String(identity || "").trim().replace(/^@/, "").toLocaleLowerCase().slice(0, 128);
+    }
+
+    function getAvatarSource(profile) {
+        const candidates = [
+            profile?.avatarDataUri,
+            profile?.avatarUrl,
+            profile?.profilePicture,
+            profile?.profilePictureUrl
+        ];
+        return candidates.find(source =>
+            typeof source === "string" &&
+            /^(?:data:image\/(?:jpeg|png|webp);base64,|https?:\/\/|\/(?!\/))/i.test(source.trim())
+        )?.trim() || "";
     }
 
     function validateSetupRecord(record) {
@@ -75,7 +159,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             characterScalePercent: 100,
             panel: null,
             panelVisible: true,
-            video: null
+            video: null,
+            prizeCards: DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
+            ingotFrequency: 10,
+            showStarLeaderboard: true
         };
         if (record.username !== undefined) {
             if (typeof record.username !== "string" || record.username.length > 32) {
@@ -137,6 +224,21 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 name: record.video.name,
                 dataUrl: dataUrl || null
             };
+        }
+        if (record.prizeCards !== undefined) {
+            normalized.prizeCards = validatePrizeCards(record.prizeCards);
+        }
+        if (record.ingotFrequency !== undefined) {
+            if (!Number.isSafeInteger(record.ingotFrequency) || record.ingotFrequency < 0 || record.ingotFrequency > 1000) {
+                throw new Error("Fréquence des lingots invalide.");
+            }
+            normalized.ingotFrequency = record.ingotFrequency;
+        }
+        if (record.showStarLeaderboard !== undefined) {
+            if (typeof record.showStarLeaderboard !== "boolean") {
+                throw new Error("État du classement invalide.");
+            }
+            normalized.showStarLeaderboard = record.showStarLeaderboard;
         }
         return normalized;
     }
@@ -210,6 +312,9 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             characterScalePercent,
             panel: { ...panelBounds },
             panelVisible: !panel.hidden,
+            prizeCards: prizeCards.map(card => ({ ...card })),
+            ingotFrequency,
+            showStarLeaderboard: showStarLeaderboardInput.checked,
             video: activeVideoName
                 ? { name: activeVideoName, dataUrl: activeVideoDataUrl || null }
                 : null
@@ -248,6 +353,197 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             : "";
     }
 
+    function renderPrizeCards() {
+        prizeTableBody.replaceChildren();
+        let total = 0;
+        prizeCards.forEach((card, index) => {
+            total += card.count;
+            const row = document.createElement("tr");
+            const valueCell = document.createElement("td");
+            valueCell.textContent = `${card.stars.toLocaleString("fr-FR")} ⭐`;
+            const countCell = document.createElement("td");
+            const countInput = document.createElement("input");
+            countInput.type = "number";
+            countInput.min = "0";
+            countInput.max = String(MAX_CARDS_PER_DENOMINATION);
+            countInput.step = "1";
+            countInput.value = String(card.count);
+            countInput.setAttribute("aria-label", `Nombre de cartes à ${card.stars} étoiles`);
+            countInput.addEventListener("change", () => {
+                const count = Number(countInput.value);
+                if (!Number.isSafeInteger(count) || count < 0 || count > MAX_CARDS_PER_DENOMINATION) {
+                    setPrizeStatus("Le stock doit être un nombre entier entre 0 et 10 000.", "error");
+                    countInput.value = String(card.count);
+                    return;
+                }
+                const updated = prizeCards.map(entry => ({ ...entry }));
+                updated[index].count = count;
+                commitPrizeConfig(updated, ingotFrequency, "Stock des cartes mis à jour.");
+            });
+            countCell.append(countInput);
+            const removeCell = document.createElement("td");
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "secondary-button";
+            removeButton.textContent = "×";
+            removeButton.setAttribute("aria-label", `Supprimer les cartes à ${card.stars} étoiles`);
+            removeButton.addEventListener("click", () => {
+                const updated = prizeCards.filter((_, entryIndex) => entryIndex !== index);
+                commitPrizeConfig(updated, ingotFrequency, `Valeur ${card.stars} étoiles supprimée.`);
+            });
+            removeCell.append(removeButton);
+            row.append(valueCell, countCell, removeCell);
+            prizeTableBody.append(row);
+        });
+        prizeStockTotalElement.textContent = `Stock de cartes : ${total.toLocaleString("fr-FR")}`;
+        ingotFrequencyValue.textContent = String(ingotFrequency);
+    }
+
+    function commitPrizeConfig(cards, frequency, message) {
+        try {
+            prizeCards = validatePrizeCards(cards);
+            if (!Number.isSafeInteger(frequency) || frequency < 0 || frequency > 1000) {
+                throw new Error("La fréquence des lingots doit être comprise entre 0 et 1 000.");
+            }
+            ingotFrequency = frequency;
+            ingotFrequencyInput.value = String(ingotFrequency);
+            setPrizeConfig({ cards: prizeCards, ingotFrequency });
+            renderPrizeCards();
+            if (persistSetupRecord()) {
+                setPrizeStatus(message);
+            }
+            return true;
+        } catch (error) {
+            console.error("Configuration des récompenses refusée :", error);
+            setPrizeStatus(error.message, "error");
+            return false;
+        }
+    }
+
+    function readStarWinners() {
+        try {
+            const stored = JSON.parse(localStorage.getItem(STAR_WINNERS_STORAGE_KEY) || "[]");
+            if (!Array.isArray(stored)) {
+                return [];
+            }
+            return stored
+                .filter(entry =>
+                    entry &&
+                    typeof entry.username === "string" &&
+                    /^[a-zA-Z0-9._]{1,32}$/.test(entry.username) &&
+                    Number.isSafeInteger(entry.stars) &&
+                    entry.stars > 0
+                )
+                .map(entry => ({
+                    username: entry.username,
+                    stars: entry.stars,
+                    globalStars: Number.isSafeInteger(entry.globalStars) && entry.globalStars >= 0
+                        ? entry.globalStars
+                        : null,
+                    avatarUrl: getAvatarSource({ avatarUrl: entry.avatarUrl }).startsWith("data:")
+                        ? ""
+                        : getAvatarSource({ avatarUrl: entry.avatarUrl })
+                }))
+                .slice(0, 100);
+        } catch (error) {
+            console.error("Classement local des étoiles illisible :", error);
+            return [];
+        }
+    }
+
+    function saveStarWinners() {
+        try {
+            localStorage.setItem(STAR_WINNERS_STORAGE_KEY, JSON.stringify(starWinners.slice(0, 100)));
+        } catch (error) {
+            console.error("Impossible d’enregistrer le classement local des étoiles :", error);
+            setPrizeStatus("Le gain est crédité, mais le classement local ne peut pas être sauvegardé.", "warning");
+        }
+    }
+
+    function sortedStarWinners() {
+        return [...starWinners].sort((a, b) =>
+            b.stars - a.stars || a.username.localeCompare(b.username, "fr")
+        );
+    }
+
+    function renderStarLeaderboard() {
+        const winners = sortedStarWinners().slice(0, 3);
+        for (const list of [starLeaderboardList, panelStarLeaderboard]) {
+            list.replaceChildren();
+            if (!winners.length) {
+                const empty = document.createElement("li");
+                empty.textContent = "En attente des premiers gains";
+                list.append(empty);
+                continue;
+            }
+            winners.forEach((winner, index) => {
+                const row = document.createElement("li");
+                const name = document.createElement("span");
+                name.textContent = `${index + 1}. @${winner.username}`;
+                const score = document.createElement("span");
+                score.textContent = list === starLeaderboardList
+                    ? `${winner.stars.toLocaleString("fr-FR")} ⭐`
+                    : `${winner.stars.toLocaleString("fr-FR")} ⭐ jeu · ${winner.globalStars === null ? "—" : winner.globalStars.toLocaleString("fr-FR")} ⭐ tous jeux`;
+                row.append(name, score);
+                list.append(row);
+            });
+        }
+    }
+
+    function updateGlobalStars(player) {
+        const username = String(player?.username || player?.uniqueId || "").trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            return;
+        }
+        const winner = starWinners.find(entry => entry.username.toLowerCase() === username.toLowerCase());
+        if (!winner) {
+            return;
+        }
+        const stars = Number(player.stars);
+        if (Number.isSafeInteger(stars) && stars >= 0) {
+            winner.globalStars = stars;
+        }
+        const avatarUrl = getAvatarSource(player);
+        if (avatarUrl && !avatarUrl.startsWith("data:")) {
+            winner.avatarUrl = avatarUrl;
+        }
+        saveStarWinners();
+        renderStarLeaderboard();
+    }
+
+    function showPrizeBanner({ username, avatarUrl, amount, kind, globalStars }) {
+        prizeBannerName.textContent = `@${username}`;
+        const rewardName = kind === "lingot" ? "Lingot" : "Carte";
+        prizeBannerMessage.textContent = `${rewardName} : +${Number(amount).toLocaleString("fr-FR")} étoiles · solde tous jeux : ${Number(globalStars).toLocaleString("fr-FR")}`;
+        const safeAvatar = getAvatarSource({ avatarUrl });
+        if (safeAvatar) {
+            prizeBannerAvatar.src = safeAvatar;
+            prizeBannerAvatar.hidden = false;
+        } else {
+            prizeBannerAvatar.removeAttribute("src");
+            prizeBannerAvatar.hidden = true;
+        }
+        prizeBanner.hidden = false;
+        window.clearTimeout(prizeBannerTimer);
+        prizeBannerTimer = window.setTimeout(() => {
+            prizeBanner.hidden = true;
+        }, 8000);
+    }
+
+    async function refreshLeaderboardBalances() {
+        if (!window.ArcadeStars || typeof window.ArcadeStars.getBalance !== "function") {
+            return;
+        }
+        for (const winner of sortedStarWinners().slice(0, 3)) {
+            try {
+                const player = await window.ArcadeStars.getBalance(winner.username);
+                updateGlobalStars(player);
+            } catch (error) {
+                console.error(`Impossible de lire le solde de @${winner.username} :`, error);
+            }
+        }
+    }
+
     const initialPanelRect = panel.getBoundingClientRect();
     panelBounds = {
         left: initialPanelRect.left,
@@ -260,6 +556,16 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     demoCountInput.value = String(setupRecord.demoCount);
     characterScaleInput.value = String(setupRecord.characterScalePercent);
     characterScaleValue.value = `${setupRecord.characterScalePercent} %`;
+    starWinners = readStarWinners();
+    renderStarLeaderboard();
+    showStarLeaderboardInput.checked = setupRecord.showStarLeaderboard;
+    starLeaderboard.hidden = !setupRecord.showStarLeaderboard;
+    prizeCards = setupRecord.prizeCards;
+    ingotFrequency = setupRecord.ingotFrequency;
+    ingotFrequencyInput.value = String(ingotFrequency);
+    ingotFrequencyValue.textContent = String(ingotFrequency);
+    renderPrizeCards();
+    setPrizeConfig({ cards: prizeCards, ingotFrequency });
     setCharacterScale(setupRecord.characterScalePercent / 100);
     if (setupRecord.panel) {
         setPanelBounds(setupRecord.panel);
@@ -279,6 +585,150 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setVideoStatus(`« ${activeVideoName} » devra être re-sélectionnée après rechargement.`);
         }
     }
+
+    addPrizeCardsButton.addEventListener("click", () => {
+        const stars = Number(newCardStarsInput.value);
+        const count = Number(newCardCountInput.value);
+        if (
+            !Number.isSafeInteger(stars) ||
+            stars < 1 ||
+            stars > MAX_CARD_STARS ||
+            !Number.isSafeInteger(count) ||
+            count < 1 ||
+            count > MAX_CARDS_PER_DENOMINATION
+        ) {
+            setPrizeStatus("Indique une valeur de 1 à 250 000 étoiles et un stock de 1 à 10 000 cartes.", "error");
+            return;
+        }
+        const updated = prizeCards.map(card => ({ ...card }));
+        const existing = updated.find(card => card.stars === stars);
+        if (existing) {
+            existing.count += count;
+        } else {
+            updated.push({ stars, count });
+        }
+        if (commitPrizeConfig(updated, ingotFrequency, `${count.toLocaleString("fr-FR")} carte${count === 1 ? "" : "s"} à ${stars.toLocaleString("fr-FR")} étoiles ajoutée${count === 1 ? "" : "s"}.`)) {
+            newCardCountInput.value = "1";
+        }
+    });
+    resetPrizeCardsButton.addEventListener("click", () => {
+        commitPrizeConfig(
+            DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
+            10,
+            "Les 256 cartes par défaut sont rétablies."
+        );
+    });
+    retryPrizeCreditsButton.addEventListener("click", () => {
+        setPrizeStatus("Vérification des gains en attente…");
+        window.dispatchEvent(new Event("coin-pusher-retry-credits"));
+    });
+    showStarLeaderboardInput.addEventListener("change", () => {
+        starLeaderboard.hidden = !showStarLeaderboardInput.checked;
+        persistSetupRecord();
+    });
+    ingotFrequencyInput.addEventListener("change", () => {
+        const frequency = Number(ingotFrequencyInput.value);
+        if (!Number.isSafeInteger(frequency) || frequency < 0 || frequency > 1000) {
+            setPrizeStatus("La fréquence doit être un nombre entier entre 0 et 1 000.", "error");
+            ingotFrequencyInput.value = String(ingotFrequency);
+            return;
+        }
+        commitPrizeConfig(prizeCards, frequency, frequency
+            ? `Un lingot de 50 étoiles sera ajouté après chaque tranche de ${frequency} cartes créditées.`
+            : "Les lingots automatiques sont désactivés.");
+    });
+
+    window.addEventListener("coin-pusher-prize-deck-change", event => {
+        try {
+            prizeCards = validatePrizeCards(event.detail.cards);
+            ingotFrequency = Number(event.detail.ingotFrequency);
+            ingotFrequencyInput.value = String(ingotFrequency);
+            renderPrizeCards();
+            if (persistSetupRecord()) {
+                setPrizeStatus("Carte réservée · stock mis à jour.");
+            }
+        } catch (error) {
+            console.error("Impossible de mettre à jour le stock des cartes :", error);
+            setPrizeStatus(error.message, "error");
+        }
+    });
+    window.addEventListener("coin-pusher-prize-status", event => {
+        setPrizeStatus(String(event.detail?.message || ""), event.detail?.state || "");
+    });
+    window.addEventListener("coin-pusher-prize-awarded", event => {
+        const detail = event.detail || {};
+        const username = String(detail.username || "").trim().replace(/^@/, "");
+        const amount = Number(detail.amount);
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username) || !Number.isSafeInteger(amount) || amount < 1) {
+            console.error("Événement de gain d’étoiles invalide :", detail);
+            setPrizeStatus("Le portefeuille a confirmé un gain avec des données invalides.", "error");
+            return;
+        }
+        let winner = starWinners.find(entry => entry.username.toLowerCase() === username.toLowerCase());
+        if (!winner) {
+            winner = { username, stars: 0, globalStars: 0, avatarUrl: "" };
+            starWinners.push(winner);
+        }
+        winner.stars += amount;
+        winner.globalStars = Number.isSafeInteger(detail.globalStars) ? detail.globalStars : winner.globalStars;
+        const avatarUrl = getAvatarSource({ avatarUrl: detail.avatarUrl });
+        if (avatarUrl && !avatarUrl.startsWith("data:")) {
+            winner.avatarUrl = avatarUrl;
+        }
+        starWinners = sortedStarWinners().slice(0, 100);
+        saveStarWinners();
+        renderStarLeaderboard();
+        showPrizeBanner({ ...detail, username, amount });
+        setPrizeStatus(`Gain confirmé : @${username} reçoit ${amount.toLocaleString("fr-FR")} étoiles.`);
+    });
+    window.addEventListener("coin-pusher-prize-error", event => {
+        const detail = event.detail || {};
+        setPrizeStatus(`Gain non crédité${detail.username ? ` pour @${detail.username}` : ""} : ${detail.message || "portefeuille indisponible"}`, "error");
+    });
+    window.addEventListener("arcade:wallet", event => {
+        const detail = event.detail || {};
+        if (!/non confirmée/i.test(String(detail.message || ""))) {
+            updateGlobalStars(detail.player);
+        }
+        if (/^Solde global/.test(String(detail.message || "")) && detail.player) {
+            const player = detail.player;
+            prizeBannerName.textContent = `@${player.username || player.uniqueId || "Spectateur"}`;
+            prizeBannerMessage.textContent = `Solde global tous jeux : ${Number(player.stars || 0).toLocaleString("fr-FR")} étoiles`;
+            const avatarUrl = getAvatarSource(player);
+            if (avatarUrl) {
+                prizeBannerAvatar.src = avatarUrl;
+                prizeBannerAvatar.hidden = false;
+            } else {
+                prizeBannerAvatar.removeAttribute("src");
+                prizeBannerAvatar.hidden = true;
+            }
+            prizeBanner.hidden = false;
+            window.clearTimeout(prizeBannerTimer);
+            prizeBannerTimer = window.setTimeout(() => {
+                prizeBanner.hidden = true;
+            }, 8000);
+        }
+    });
+    window.addEventListener("arcade:wallet-run", event => {
+        const detail = event.detail || {};
+        const player = detail.player || {};
+        const username = String(player.uniqueId || player.username || "").trim().replace(/^@/, "");
+        const count = Math.floor(Number(detail.spent) || 0);
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username) || count < 1 || count > MAX_TIKTOK_GIFT_COINS) {
+            return;
+        }
+        const avatarKey = getAvatarKey(player) || username.toLowerCase();
+        const queued = receiveGift(count, {
+            username,
+            avatarKey,
+            avatarDataUri: typeof player.avatarDataUri === "string" ? player.avatarDataUri : "",
+            avatarUrl: getAvatarSource(player)
+        });
+        setStatus(`RUN de @${username} · ${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"} ajoutée${queued === 1 ? "" : "s"} à la file.`);
+    });
+    window.addEventListener("arcade:wallet-run-rejected", event => {
+        setStatus(String(event.detail?.message || "RUN refusé : solde insuffisant."), "error");
+    });
 
     function sendTikTokConnection(connection, username) {
         connection.send(JSON.stringify({ action: "CONNECT_TIKTOK", username }));
@@ -322,12 +772,16 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             return;
         }
         const avatarKey = getAvatarKey(gift);
+        const username = String(gift.uniqueId || gift.username || "")
+            .trim()
+            .replace(/^@/, "");
         const queued = receiveGift(count, {
             avatarKey,
-            avatarDataUri: typeof gift.avatarDataUri === "string" ? gift.avatarDataUri : ""
+            avatarDataUri: typeof gift.avatarDataUri === "string" ? gift.avatarDataUri : "",
+            avatarUrl: getAvatarSource(gift),
+            username: /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : ""
         });
-        const username = String(gift.username || gift.nickname || "Spectateur");
-        setStatus(`@${username} · ${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"} ajoutée${queued === 1 ? "" : "s"} à la file.`);
+        setStatus(`@${username || "Spectateur"} · ${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"} ajoutée${queued === 1 ? "" : "s"} à la file.`);
     }
 
     function connectRelay() {
@@ -678,6 +1132,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     window.setInterval(() => {
         pendingElement.textContent = getPendingCoins().toLocaleString("fr-FR");
     }, 250);
+    window.setTimeout(refreshLeaderboardBalances, 3000);
     if (IS_LOCAL_PREVIEW) {
         setStatus("Aperçu local · utilise la simulation; le live se connecte depuis Griffon Arcade.");
     } else {

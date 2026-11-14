@@ -20,10 +20,20 @@ import Sweepers from "./gadgets/sweepers.js";
 import CardReader from "./gadgets/card-reader.js";
 import TokenSlot from "./gadgets/token-slot.js";
 import GiphyCharacter from "./giphy-character.js";
+import PrizeCreditQueue from "../prize-credit-queue.js";
 
 const MIN_POSITION_Y_OBJECTS = -1;
 const MODEL_PATH = "./assets/cabinet.glb";
 const SENSOR_HEIGHT = 0.2;
+const DEFAULT_PRIZE_DECK = [
+    { stars: 1, count: 100 },
+    { stars: 2, count: 100 },
+    { stars: 10, count: 25 },
+    { stars: 30, count: 25 },
+    { stars: 100, count: 5 },
+    { stars: 300, count: 1 }
+];
+const INGOT_STARS = 50;
 const HIDDEN_CABINET_LABELS = new Set([
     "label-coins-in-play",
     "coins-in-play",
@@ -128,6 +138,12 @@ export default class {
         "left-trap": userData => this.recycleObject(userData),
         "right-trap": userData => this.recycleObject(userData),
         "gutter": (userData) => {
+            const object = this.getObject(userData);
+            const prize = object && this.#prizeAssignments.get(object);
+            if (prize) {
+                this.#prizeAssignments.delete(object);
+                this.#awardPrize(prize);
+            }
             this.recycleObject(userData);
             if (this.#runs.started) {
                 if (userData.objectType === Coins.TYPE) {
@@ -145,6 +161,14 @@ export default class {
         }
     };
     #floorAccessRules = new Map();
+    #prizeAssignments = new WeakMap();
+    #prizeDeck = DEFAULT_PRIZE_DECK.map(card => ({ ...card }));
+    #creditQueue;
+    #creditOwner = "";
+    #unstoredPrizes = [];
+    #pendingIngots = [];
+    #ingotFrequency = 10;
+    #prizeCardsWon = 0;
     #controlPanel;
     #pusher;
     #sensorGate;
@@ -215,7 +239,8 @@ export default class {
             scene,
             Coins,
             onFallenCoin: instance => Coins.enableCcd(instance, false),
-            onBonusWon: () => {
+            onBonusWon: player => {
+                this.#deliverPrize(player);
                 const random = Math.random();
                 if (this.DEBUG_AUTOPLAY) {
                     const tokens = [];
@@ -442,7 +467,9 @@ export default class {
         this.dynamicBodies.forEach(({ object, objects }) => {
             if (object.position.y < MIN_POSITION_Y_OBJECTS) {
                 console.warn("object recycled", object, structuredClone(object.position), structuredClone(object.rotation));
+                this.#returnPrize(object);
                 objects.recycle(object);
+                this.#deliverPendingIngots();
             }
         });
         if (this.DEBUG_AUTOPLAY) {
@@ -502,6 +529,15 @@ export default class {
         return Coins.pendingCoins;
     }
 
+    clearInitialUnownedPrizes() {
+        for (const { object } of Cards.dynamicBodies) {
+            Cards.recycle(object);
+        }
+        for (const { object } of Ingots.dynamicBodies) {
+            Ingots.recycle(object);
+        }
+    }
+
     startGame() {
         this.#startGame();
     }
@@ -514,11 +550,44 @@ export default class {
         this.#character.setScale(scale);
     }
 
+    setPrizeConfig({ cards, ingotFrequency }) {
+        if (
+            !Array.isArray(cards) ||
+            cards.length > 50 ||
+            !Number.isSafeInteger(ingotFrequency) ||
+            ingotFrequency < 0 ||
+            ingotFrequency > 1000
+        ) {
+            throw new Error("Configuration des récompenses invalide.");
+        }
+        const total = cards.reduce((sum, card) => {
+            if (
+                !card ||
+                !Number.isSafeInteger(card.stars) ||
+                card.stars < 1 ||
+                card.stars > 250000 ||
+                !Number.isSafeInteger(card.count) ||
+                card.count < 0 ||
+                card.count > 10000
+            ) {
+                throw new Error("Valeur ou stock de carte invalide.");
+            }
+            return sum + card.count;
+        }, 0);
+        if (total > 100000) {
+            throw new Error("Le stock de cartes ne peut pas dépasser 100 000.");
+        }
+        this.#prizeDeck = cards.map(card => ({ stars: card.stars, count: card.count }));
+        this.#ingotFrequency = ingotFrequency;
+    }
+
     receiveTikTokGift(count, avatar) {
         const queuedCoins = Coins.dropCoins({
             count,
             avatarKey: avatar?.avatarKey,
-            avatarDataUri: avatar?.avatarDataUri
+            avatarDataUri: avatar?.avatarDataUri,
+            username: avatar?.username,
+            avatarUrl: avatar?.avatarUrl
         });
         if (queuedCoins === 0) {
             return 0;
@@ -537,7 +606,8 @@ export default class {
         return [
             ...Coins.dynamicBodies,
             ...Tokens.dynamicBodies,
-            ...Cards.dynamicBodies
+            ...Cards.dynamicBodies,
+            ...Ingots.dynamicBodies
         ];
     }
 
@@ -648,6 +718,7 @@ export default class {
     recycleObject(userData) {
         const object = this.getObject(userData);
         if (object) {
+            this.#returnPrize(object);
             if (object.objectType === Coins.TYPE) {
                 Coins.recycle(object);
             }
@@ -659,8 +730,204 @@ export default class {
             }
             if (object.objectType === Ingots.TYPE) {
                 Ingots.recycle(object);
+                this.#deliverPendingIngots();
             }
         }
+    }
+
+    #deliverPrize(player) {
+        const username = String(player?.username || "").trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            return;
+        }
+        if (!this.#creditQueue || this.#unstoredPrizes.length) {
+            this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
+            return;
+        }
+        const availableCards = this.#prizeDeck.filter(card => card.count > 0);
+        const totalCards = availableCards.reduce((sum, card) => sum + card.count, 0);
+        if (!totalCards) {
+            this.#dispatchPrizeStatus("Le stock de cartes est vide ou toutes les cartes sont déjà sur le plateau.", "warning");
+            return;
+        }
+        let selection = Math.floor(Math.random() * totalCards);
+        const selected = availableCards.find(card => {
+            selection -= card.count;
+            return selection < 0;
+        });
+        if (!selected) {
+            return;
+        }
+        const cardType = this.#cardTypeForStars(selected.stars);
+        if (!Cards.hasAvailableInstance(cardType)) {
+            this.#dispatchPrizeStatus("Toutes les cartes de cette couleur sont sur le plateau; réessaie au prochain bonus.", "warning");
+            return;
+        }
+        const cardObject = Cards.deposit({ type: cardType });
+        selected.count--;
+        this.#prizeAssignments.set(cardObject, {
+            username,
+            avatarUrl: player.avatarUrl || "",
+            amount: selected.stars,
+            kind: "carte"
+        });
+        this.#dispatchPrizeDeck();
+        this.#deliverPendingIngots();
+    }
+
+    #cardTypeForStars(stars) {
+        return this.#prizeDeck
+            .slice()
+            .sort((a, b) => a.stars - b.stars)
+            .findIndex(card => card.stars === stars) % Cards.TYPES;
+    }
+
+    #deliverPendingIngots() {
+        while (this.#pendingIngots.length && Ingots.hasAvailableInstance()) {
+            const player = this.#pendingIngots.shift();
+            const ingot = Ingots.deposit({});
+            this.#prizeAssignments.set(ingot, {
+                username: player.username,
+                avatarUrl: player.avatarUrl,
+                amount: INGOT_STARS,
+                kind: "lingot"
+            });
+        }
+    }
+
+    #returnPrize(object) {
+        const prize = this.#prizeAssignments.get(object);
+        if (!prize) {
+            return;
+        }
+        this.#prizeAssignments.delete(object);
+        if (prize.kind === "carte") {
+            this.#restoreCard(prize.amount);
+        } else if (prize.kind === "lingot") {
+            this.#pendingIngots.unshift({ username: prize.username, avatarUrl: prize.avatarUrl });
+        }
+    }
+
+    #dispatchPrizeDeck() {
+        window.dispatchEvent(new CustomEvent("coin-pusher-prize-deck-change", {
+            detail: {
+                cards: this.#prizeDeck.map(card => ({ ...card })),
+                ingotFrequency: this.#ingotFrequency
+            }
+        }));
+    }
+
+    #dispatchPrizeStatus(message, state = "") {
+        window.dispatchEvent(new CustomEvent("coin-pusher-prize-status", {
+            detail: { message, state }
+        }));
+    }
+
+    configurePrizeCredits(owner) {
+        const account = String(owner || "").trim().toLowerCase();
+        if (!account) throw new Error("Compte Griffon Arcade non connecté.");
+        if (this.#creditQueue) {
+            if (this.#creditOwner !== account) {
+                throw new Error("Le compte a changé : recharge le jeu avant de continuer.");
+            }
+            return;
+        }
+        const queue = new PrizeCreditQueue({
+            storage: localStorage,
+            key: `coin-pusher-2000-prize-credits:${account}`,
+            award: async prize => {
+                const response = await fetch("/api/session", { credentials: "same-origin", cache: "no-store" });
+                if (!response.ok) throw new Error("Impossible de vérifier le compte Griffon Arcade.");
+                const session = await response.json();
+                if (!session.authenticated || String(session.username || "").toLowerCase() !== account) {
+                    throw new Error("Reconnecte le compte Griffon Arcade qui a enregistré ce gain.");
+                }
+                if (typeof window.ArcadeStars?.award !== "function") {
+                    throw new Error("Portefeuille Griffon Arcade indisponible.");
+                }
+                return window.ArcadeStars.award({
+                    username: prize.username,
+                    amount: prize.amount,
+                    transactionId: prize.transactionId
+                });
+            },
+            onConfirmed: (prize, player) => {
+                if (prize.kind === "carte") {
+                    this.#prizeCardsWon++;
+                    if (this.#ingotFrequency > 0 && this.#prizeCardsWon % this.#ingotFrequency === 0) {
+                        this.#pendingIngots.push({ username: prize.username, avatarUrl: prize.avatarUrl });
+                        this.#deliverPendingIngots();
+                    }
+                }
+                window.dispatchEvent(new CustomEvent("coin-pusher-prize-awarded", {
+                    detail: {
+                        username: prize.username,
+                        avatarUrl: player.avatarUrl || prize.avatarUrl,
+                        amount: prize.amount,
+                        kind: prize.kind,
+                        globalStars: Number(player.stars) || 0
+                    }
+                }));
+            },
+            onError: (prize, error) => this.#reportCreditError(prize, error)
+        });
+        this.#creditOwner = account;
+        this.#creditQueue = queue;
+    }
+
+    retryPrizeCredits() {
+        if (!this.#creditQueue) return;
+        while (this.#unstoredPrizes.length) {
+            const prize = this.#unstoredPrizes[0];
+            try {
+                this.#creditQueue.enqueue(prize);
+                this.#unstoredPrizes.shift();
+            } catch (error) {
+                this.#reportCreditError(prize, error);
+                return;
+            }
+        }
+        void this.#creditQueue.flush();
+    }
+
+    #reportCreditError(prize, error) {
+        console.error("Récompense en attente :", error);
+        window.dispatchEvent(new CustomEvent("coin-pusher-prize-error", {
+            detail: {
+                username: prize.username,
+                message: `${error.message || "Portefeuille indisponible."} Gain en attente ; ne ferme pas la page si le stockage est indisponible.`
+            }
+        }));
+    }
+
+    #awardPrize(prize) {
+        const pending = {
+            ...prize,
+            avatarUrl: /^https?:\/\/|^\/(?!\/)/i.test(prize.avatarUrl || "")
+                ? prize.avatarUrl.slice(0, 2000)
+                : ""
+        };
+        this.#unstoredPrizes.push(pending);
+        if (!this.#creditQueue) {
+            this.#reportCreditError(pending, new Error("Portefeuille non connecté."));
+            return;
+        }
+        this.retryPrizeCredits();
+    }
+
+    #restoreCard(stars) {
+        let card = this.#prizeDeck.find(entry => entry.stars === stars);
+        const total = this.#prizeDeck.reduce((sum, entry) => sum + entry.count, 0);
+        if (!card && this.#prizeDeck.length < 50) {
+            card = { stars, count: 0 };
+            this.#prizeDeck.push(card);
+        }
+        if (!card || card.count >= 10000 || total >= 100000) {
+            this.#dispatchPrizeStatus("Impossible de remettre la carte au stock après l’échec du portefeuille.", "error");
+            return;
+        }
+        card.count++;
+        this.#dispatchPrizeDeck();
     }
 
     canActivate(caller) {

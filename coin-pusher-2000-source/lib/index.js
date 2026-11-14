@@ -44,6 +44,7 @@ export default class {
         await this.#cabinet.initialize();
         if (!this.DEBUG_EMPTY_POOL) {
             await this.load(initialState);
+            this.#cabinet.clearInitialUnownedPrizes();
         }
         this.#pointer = new Pointer({
             scene: this.#scene,
@@ -71,6 +72,7 @@ export default class {
             if ((event.key === "l" || event.key === "L") && event.ctrlKey) {
                 event.preventDefault();
                 await this.load(initialState);
+                this.#cabinet.clearInitialUnownedPrizes();
             }
         };
     }
@@ -133,6 +135,18 @@ export default class {
 
     static setCharacterScale(scale) {
         return this.#cabinet.setCharacterScale(scale);
+    }
+
+    static setPrizeConfig(config) {
+        return this.#cabinet.setPrizeConfig(config);
+    }
+
+    static configurePrizeCredits(owner) {
+        return this.#cabinet.configurePrizeCredits(owner);
+    }
+
+    static retryPrizeCredits() {
+        return this.#cabinet.retryPrizeCredits();
     }
 
     static get pendingCoins() {

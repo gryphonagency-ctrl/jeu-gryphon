@@ -56,37 +56,17 @@ export default class {
         nextState: null,
         frameFlashStart: -1,
         flashCount: 0,
-        letters: [{
+        letterSequence: 0,
+        bonusPlayer: null,
+        letters: Array.from({ length: LETTERS_COUNT }, () => ({
             state: LETTER_STATES.OFF,
             nextState: null,
             frameFlashStart: -1,
-            flashCount: 0
-        }, {
-            state: LETTER_STATES.OFF,
-            nextState: null,
-            frameFlashStart: -1,
-            flashCount: 0
-        }, {
-            state: LETTER_STATES.OFF,
-            nextState: null,
-            frameFlashStart: -1,
-            flashCount: 0
-        }, {
-            state: LETTER_STATES.OFF,
-            nextState: null,
-            frameFlashStart: -1,
-            flashCount: 0
-        }, {
-            state: LETTER_STATES.OFF,
-            nextState: null,
-            frameFlashStart: -1,
-            flashCount: 0
-        }, {
-            state: LETTER_STATES.OFF,
-            nextState: null,
-            frameFlashStart: -1,
-            flashCount: 0
-        }]
+            flashCount: 0,
+            pendingPlayer: null,
+            player: null,
+            sequence: 0
+        }))
     };
 
     async initialize() {
@@ -120,15 +100,20 @@ export default class {
                 letter.nextState = null;
             }
         });
-        this.#sensor.letters.forEach(letter => updateLetterState({ letter }));
+        this.#sensor.letters.forEach(letter => updateLetterState({ letter, sensor: this.#sensor }));
         if (this.#sensor.state === SENSOR_STATES.IDLE &&
             this.#sensor.letters.every(letter => letter.state === LETTER_STATES.LOCKED_ON)) {
+            const lastLetter = this.#sensor.letters.reduce((latest, letter) =>
+                letter.sequence > latest.sequence ? letter : latest
+            );
+            this.#sensor.bonusPlayer = lastLetter.player;
             this.#sensor.state = SENSOR_STATES.ACTIVATING;
         }
         updateSensorState({ sensor: this.#sensor });
         if (this.#sensor.state === SENSOR_STATES.AWAITING_BONUS_DELIVERED) {
             this.#sensor.letters.forEach(letter => letter.state = LETTER_STATES.OFF);
-            this.#onBonusWon();
+            this.#onBonusWon(this.#sensor.bonusPlayer);
+            this.#sensor.bonusPlayer = null;
         }
     }
 
@@ -155,11 +140,16 @@ export default class {
         this.#sensor.nextState = null;
         this.#sensor.frameFlashStart = -1;
         this.#sensor.flashCount = 0;
+        this.#sensor.letterSequence = 0;
+        this.#sensor.bonusPlayer = null;
         this.#sensor.letters.forEach(letter => {
             letter.state = LETTER_STATES.OFF;
             letter.nextState = null;
             letter.frameFlashStart = -1;
             letter.flashCount = 0;
+            letter.pendingPlayer = null;
+            letter.player = null;
+            letter.sequence = 0;
         });
     }
 
@@ -175,11 +165,16 @@ export default class {
                 nextState: this.#sensor.nextState ? this.#sensor.nextState.description : null,
                 frameFlashStart: this.#sensor.frameFlashStart,
                 flashCount: this.#sensor.flashCount,
+                letterSequence: this.#sensor.letterSequence,
+                bonusPlayer: this.#sensor.bonusPlayer,
                 letters: this.#sensor.letters.map(letter => ({
                     state: letter.state.description,
                     nextState: letter.nextState ? letter.nextState.description : null,
                     frameFlashStart: letter.frameFlashStart,
-                    flashCount: letter.flashCount
+                    flashCount: letter.flashCount,
+                    pendingPlayer: letter.pendingPlayer,
+                    player: letter.player,
+                    sequence: letter.sequence
                 }))
             }
         };
@@ -200,11 +195,16 @@ export default class {
         this.#sensor.nextState = sensorGate.sensor.nextState ? Symbol.for(sensorGate.sensor.nextState) : null;
         this.#sensor.frameFlashStart = sensorGate.sensor.frameFlashStart;
         this.#sensor.flashCount = sensorGate.sensor.flashCount;
+        this.#sensor.letterSequence = sensorGate.sensor.letterSequence || 0;
+        this.#sensor.bonusPlayer = sensorGate.sensor.bonusPlayer || null;
         this.#sensor.letters.forEach((letter, indexLetter) => {
             letter.state = Symbol.for(sensorGate.sensor.letters[indexLetter].state);
             letter.nextState = sensorGate.sensor.letters[indexLetter].nextState ? Symbol.for(sensorGate.sensor.letters[indexLetter].nextState) : null;
             letter.frameFlashStart = sensorGate.sensor.letters[indexLetter].frameFlashStart;
             letter.flashCount = sensorGate.sensor.letters[indexLetter].flashCount;
+            letter.pendingPlayer = sensorGate.sensor.letters[indexLetter].pendingPlayer || null;
+            letter.player = sensorGate.sensor.letters[indexLetter].player || null;
+            letter.sequence = sensorGate.sensor.letters[indexLetter].sequence || 0;
         });
     }
 }
@@ -219,6 +219,9 @@ function onCoinIntersect({ sensor, userData, onFallenCoin, Coins }) {
                 const indexLetter = Math.floor((positionX + MAX_POSITION_X) / SLOT_WIDTH);
                 const letter = sensor.letters[indexLetter];
                 if (sensor.state === SENSOR_STATES.IDLE && letter.state === LETTER_STATES.OFF) {
+                    letter.pendingPlayer = coin.username
+                        ? { username: coin.username, avatarUrl: coin.avatarUrl || "" }
+                        : null;
                     letter.state = LETTER_STATES.ACTIVATING;
                 }
             }
@@ -262,15 +265,20 @@ function updateSensorState({ sensor }) {
     }
 }
 
-function updateLetterState({ letter }) {
+function updateLetterState({ letter, sensor }) {
     switch (letter.state) {
         case LETTER_STATES.OFF:
             break;
         case LETTER_STATES.ACTIVATING:
             if (Math.random() < PROBABILITY_LETTER_WIN) {
+                letter.player = letter.pendingPlayer;
+                letter.pendingPlayer = null;
+                letter.sequence = ++sensor.letterSequence;
                 letter.nextState = LETTER_STATES.FLASHING_ON;
                 letter.frameFlashStart = 0;
             } else {
+                letter.pendingPlayer = null;
+                letter.player = null;
                 letter.nextState = LETTER_STATES.OFF;
             }
             break;

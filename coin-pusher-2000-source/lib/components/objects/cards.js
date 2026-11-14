@@ -54,6 +54,10 @@ export default class {
         return this.#instances[type][index];
     }
 
+    static hasAvailableInstance(type) {
+        return this.#instances[type]?.some(instance => !instance.used) === true;
+    }
+
     static update() {
         for (let type = 0; type < TYPES; type++) {
             for (const instance of this.#instances[type]) {
