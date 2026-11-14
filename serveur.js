@@ -615,7 +615,8 @@ function getPublicTikTokPlayer(player, owner) {
     };
 }
 
-function injectArcadeScripts(html) {
+function injectArcadeScripts(html, pathname) {
+    if (pathname === '/coin-pusher-2000/views/index.html') return html;
     const insertBeforeDocumentEnd = (content, script) => {
         if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${script}</body>`);
         if (/<\/html>/i.test(content)) return content.replace(/<\/html>/i, `${script}</html>`);
@@ -638,7 +639,9 @@ function injectArcadeScripts(html) {
     );
     const walletScript = '<script src="/arcade-stars.js" defer></script>';
     const presenceScript = '<script src="/arcade-presence.js" defer></script>';
-    const effectsScript = '<script src="/arcade-effects.js"></script>';
+    const effectsScript = pathname === '/coin-pusher-2000.html'
+        ? '<script src="/arcade-effects.js?v=coin-pusher-screen-clean"></script>'
+        : '<script src="/arcade-effects.js"></script>';
     content = /<head\b[^>]*>/i.test(content)
         ? content.replace(/<head\b[^>]*>/i, match => `${match}${effectsScript}`)
         : /<script\b/i.test(content)
@@ -3427,7 +3430,7 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'no-store',
                 'Content-Type': 'text/html; charset=utf-8'
             });
-            res.end(injectArcadeScripts(content.toString('utf8')));
+            res.end(injectArcadeScripts(content.toString('utf8'), pathname));
         });
         return;
     }
@@ -3527,7 +3530,7 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, headers);
             res.end(contentType.startsWith('text/html;')
-                ? injectArcadeScripts(content.toString('utf8'))
+                ? injectArcadeScripts(content.toString('utf8'), pathname)
                 : content);
         });
     } else {

@@ -36,6 +36,8 @@ initializeTikTokBridge({
     updateGiftAvatar: (avatarKey, avatarDataUri) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri),
     getPendingCoins: () => Game.pendingCoins,
     startGame: () => Game.startGame(),
+    getMachineControls: () => Game.getMachineControls(),
+    pressMachineButton: name => Game.pressMachineButton(name),
     setScreenVideo: url => Game.setScreenVideo(url),
     setCharacterScale: scale => Game.setCharacterScale(scale),
     setCharacterPosition: position => Game.setCharacterPosition(position),

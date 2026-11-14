@@ -1048,6 +1048,7 @@
         if (mediaAlertUnlockButton?.isConnected) return;
         const button = document.createElement('button');
         button.type = 'button';
+        button.className = 'ae-media-alert-unlock';
         button.textContent = '🔊 Activer le son des alertes';
         button.style.cssText =
             'position:fixed;z-index:2147483647;top:max(12px,env(safe-area-inset-top));left:50%;' +
@@ -1132,6 +1133,7 @@
             if (alert.videoUrl) {
                 if (!mediaAlertVideo) {
                     mediaAlertVideo = document.createElement('video');
+                    mediaAlertVideo.className = 'ae-media-alert-video';
                     mediaAlertVideo.playsInline = true;
                     mediaAlertVideo.setAttribute('aria-hidden', 'true');
                     mediaAlertVideo.style.cssText =

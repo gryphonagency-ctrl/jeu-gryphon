@@ -1,3 +1,5 @@
+import { renderSpectatorLeaderboard, setOverlayPosition } from "./overlay-display.js";
+
 const RELAY_URL = "wss://jeu6boite.onrender.com";
 const RECONNECT_DELAY = 3000;
 const MAX_DEMO_COINS = 44000;
@@ -24,11 +26,17 @@ const MAX_CARDS_PER_DENOMINATION = 10000;
 const MAX_TOTAL_CARDS = 100000;
 const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
 
-export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, setPrizeConfig }) {
+export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
     const pendingElement = document.getElementById("pending-coins");
+    const machineCoinsElement = document.getElementById("machine-coins");
+    const machineStatusElement = document.getElementById("machine-status");
+    const machineButtons = Object.fromEntries(
+        ["start", "hold", "shoot", "left", "center", "right", "a", "b"]
+            .map(name => [name, document.getElementById(`machine-${name}`)])
+    );
     const demoCountInput = document.getElementById("demo-count");
     const testGiftButton = document.getElementById("test-gift");
     const videoInput = document.getElementById("screen-video");
@@ -63,6 +71,14 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const ingotFrequencyInput = document.getElementById("ingot-frequency");
     const ingotFrequencyValue = document.getElementById("ingot-frequency-value");
     const prizeStatusElement = document.getElementById("prize-status");
+    const sceneBrand = document.getElementById("scene-brand");
+    const showSceneBrandInput = document.getElementById("show-scene-brand");
+    const sceneBrandTextInput = document.getElementById("scene-brand-text");
+    const sceneBrandXInput = document.getElementById("scene-brand-x");
+    const sceneBrandYInput = document.getElementById("scene-brand-y");
+    const leaderboardXInput = document.getElementById("leaderboard-x");
+    const leaderboardYInput = document.getElementById("leaderboard-y");
+    const overlayPositionInputs = [sceneBrandXInput, sceneBrandYInput, leaderboardXInput, leaderboardYInput];
     const starLeaderboard = document.getElementById("star-leaderboard");
     const showStarLeaderboardInput = document.getElementById("show-star-leaderboard");
     const starLeaderboardList = document.getElementById("star-leaderboard-list");
@@ -91,6 +107,24 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         statusElement.textContent = message;
         statusElement.dataset.state = state;
     }
+
+    function refreshMachineControls() {
+        const { buttons, coins } = getMachineControls();
+        machineCoinsElement.textContent = coins.toLocaleString("fr-FR");
+        for (const [name, button] of Object.entries(machineButtons)) {
+            button.disabled = !buttons[name];
+        }
+    }
+
+    for (const [name, button] of Object.entries(machineButtons)) {
+        button.addEventListener("click", () => {
+            if (!pressMachineButton(name)) {
+                machineStatusElement.textContent = "Ce bouton n’est pas disponible pour le moment.";
+            }
+            refreshMachineControls();
+        });
+    }
+    refreshMachineControls();
 
     function setVideoStatus(message, state = "") {
         videoStatusElement.textContent = message;
@@ -173,6 +207,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             prizeCards: DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
             ingotFrequency: 10,
             showStarLeaderboard: true,
+            showSceneBrand: true,
+            sceneBrandText: "GRYPHON AGENCY",
+            sceneBrandX: 5,
+            sceneBrandY: 75,
+            leaderboardX: 5,
+            leaderboardY: 55,
             manualCardUsername: ""
         };
         if (record.username !== undefined) {
@@ -195,7 +235,11 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
         for (const [key, label] of [
             ["characterHorizontalPercent", "Position horizontale du personnage"],
-            ["characterDepthPercent", "Profondeur du personnage"]
+            ["characterDepthPercent", "Profondeur du personnage"],
+            ["sceneBrandX", "Position horizontale du texte"],
+            ["sceneBrandY", "Position verticale du texte"],
+            ["leaderboardX", "Position horizontale du Top 3"],
+            ["leaderboardY", "Position verticale du Top 3"]
         ]) {
             if (record[key] !== undefined) {
                 if (!Number.isSafeInteger(record[key]) || record[key] < 0 || record[key] > 100) {
@@ -261,6 +305,18 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 throw new Error("État du classement invalide.");
             }
             normalized.showStarLeaderboard = record.showStarLeaderboard;
+        }
+        if (record.showSceneBrand !== undefined) {
+            if (typeof record.showSceneBrand !== "boolean") {
+                throw new Error("État du texte invalide dans le setup.");
+            }
+            normalized.showSceneBrand = record.showSceneBrand;
+        }
+        if (record.sceneBrandText !== undefined) {
+            if (typeof record.sceneBrandText !== "string" || record.sceneBrandText.length > 80) {
+                throw new Error("Texte affiché invalide dans le setup.");
+            }
+            normalized.sceneBrandText = record.sceneBrandText;
         }
         if (record.manualCardUsername !== undefined) {
             if (typeof record.manualCardUsername !== "string" || record.manualCardUsername.length > 33) {
@@ -345,6 +401,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             prizeCards: prizeCards.map(card => ({ ...card })),
             ingotFrequency,
             showStarLeaderboard: showStarLeaderboardInput.checked,
+            showSceneBrand: showSceneBrandInput.checked,
+            sceneBrandText: sceneBrandTextInput.value,
+            sceneBrandX: Number(sceneBrandXInput.value),
+            sceneBrandY: Number(sceneBrandYInput.value),
+            leaderboardX: Number(leaderboardXInput.value),
+            leaderboardY: Number(leaderboardYInput.value),
             manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
             video: activeVideoName
                 ? { name: activeVideoName, dataUrl: activeVideoDataUrl || null }
@@ -499,26 +561,31 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
 
     function renderStarLeaderboard() {
         const winners = sortedStarWinners().slice(0, 3);
-        for (const list of [starLeaderboardList, panelStarLeaderboard]) {
-            list.replaceChildren();
-            if (!winners.length) {
-                const empty = document.createElement("li");
-                empty.textContent = "En attente des premiers gains";
-                list.append(empty);
-                continue;
-            }
-            winners.forEach((winner, index) => {
-                const row = document.createElement("li");
-                const name = document.createElement("span");
-                name.textContent = `${index + 1}. @${winner.username}`;
-                const score = document.createElement("span");
-                score.textContent = list === starLeaderboardList
-                    ? `${winner.stars.toLocaleString("fr-FR")} ⭐`
-                    : `${winner.stars.toLocaleString("fr-FR")} ⭐ jeu · ${winner.globalStars === null ? "—" : winner.globalStars.toLocaleString("fr-FR")} ⭐ tous jeux`;
-                row.append(name, score);
-                list.append(row);
-            });
+        renderSpectatorLeaderboard(starLeaderboardList, winners);
+        panelStarLeaderboard.replaceChildren();
+        if (!winners.length) {
+            const empty = document.createElement("li");
+            empty.textContent = "En attente des premiers gains";
+            panelStarLeaderboard.append(empty);
+            return;
         }
+        winners.forEach((winner, index) => {
+            const row = document.createElement("li");
+            const name = document.createElement("span");
+            name.textContent = `${index + 1}. @${winner.username}`;
+            const score = document.createElement("span");
+            score.textContent = `${winner.stars.toLocaleString("fr-FR")} ⭐ jeu · ${winner.globalStars === null ? "—" : winner.globalStars.toLocaleString("fr-FR")} ⭐ tous jeux`;
+            row.append(name, score);
+            panelStarLeaderboard.append(row);
+        });
+    }
+
+    function updateOverlayPositions() {
+        for (const input of overlayPositionInputs) {
+            document.getElementById(`${input.id}-value`).value = `${input.value} %`;
+        }
+        setOverlayPosition(sceneBrand, Number(sceneBrandXInput.value), Number(sceneBrandYInput.value));
+        setOverlayPosition(starLeaderboard, Number(leaderboardXInput.value), Number(leaderboardYInput.value));
     }
 
     function updateGlobalStars(player) {
@@ -595,6 +662,15 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     renderStarLeaderboard();
     showStarLeaderboardInput.checked = setupRecord.showStarLeaderboard;
     starLeaderboard.hidden = !setupRecord.showStarLeaderboard;
+    showSceneBrandInput.checked = setupRecord.showSceneBrand;
+    sceneBrand.hidden = !setupRecord.showSceneBrand;
+    sceneBrandTextInput.value = setupRecord.sceneBrandText;
+    sceneBrand.textContent = setupRecord.sceneBrandText;
+    sceneBrandXInput.value = String(setupRecord.sceneBrandX);
+    sceneBrandYInput.value = String(setupRecord.sceneBrandY);
+    leaderboardXInput.value = String(setupRecord.leaderboardX);
+    leaderboardYInput.value = String(setupRecord.leaderboardY);
+    updateOverlayPositions();
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
     manualCardUsernameInput.value = setupRecord.manualCardUsername;
@@ -677,6 +753,20 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
         persistSetupRecord();
     });
+    showSceneBrandInput.addEventListener("change", () => {
+        sceneBrand.hidden = !showSceneBrandInput.checked;
+        persistSetupRecord();
+    });
+    sceneBrandTextInput.addEventListener("input", () => {
+        sceneBrand.textContent = sceneBrandTextInput.value;
+        scheduleSetupPersistence();
+    });
+    for (const input of overlayPositionInputs) {
+        input.addEventListener("input", () => {
+            updateOverlayPositions();
+            scheduleSetupPersistence();
+        });
+    }
     ingotFrequencyInput.addEventListener("change", () => {
         const frequency = Number(ingotFrequencyInput.value);
         if (!Number.isSafeInteger(frequency) || frequency < 0 || frequency > 1000) {
@@ -1188,6 +1278,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
 
     window.setInterval(() => {
         pendingElement.textContent = getPendingCoins().toLocaleString("fr-FR");
+        refreshMachineControls();
     }, 250);
     window.setTimeout(refreshLeaderboardBalances, 3000);
     if (IS_LOCAL_PREVIEW) {

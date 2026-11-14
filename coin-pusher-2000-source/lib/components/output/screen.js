@@ -2,7 +2,7 @@ import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRe
 import { Vector3 } from "three";
 
 const MODEL_PATH = "./assets/screen.glb";
-const INDEX_VIEW_PATH = "./views/index.html?v=screen-video";
+const INDEX_VIEW_PATH = "./views/index.html?v=screen-video-clean";
 
 const DISPLAY_MATERIAL_NAME = "display";
 const SCREEN_WIDTH = 0.442;
@@ -32,6 +32,7 @@ export default class {
         this.#css3DRenderer.domElement.style.position = "absolute";
         this.#css3DRenderer.domElement.style.top = 0;
         this.#css3DRenderer.domElement.style.zIndex = "7";
+        this.#css3DRenderer.domElement.style.pointerEvents = "none";
         scene.containerElement.appendChild(this.#css3DRenderer.domElement);
     }
 

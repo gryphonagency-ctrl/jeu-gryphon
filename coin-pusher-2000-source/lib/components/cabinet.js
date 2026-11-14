@@ -542,6 +542,25 @@ export default class {
         this.#startGame();
     }
 
+    getMachineControls() {
+        const coins = this.#cabinet.state.coins;
+        const buttons = this.#controlPanel.getButtonStates();
+        if (coins <= 0) {
+            buttons.left = false;
+            buttons.center = false;
+            buttons.right = false;
+        }
+        return { buttons, coins };
+    }
+
+    pressMachineButton(name) {
+        const { buttons } = this.getMachineControls();
+        if (!Object.hasOwn(buttons, name)) {
+            throw new RangeError("Bouton de la machine inconnu.");
+        }
+        return buttons[name] && this.#controlPanel.pressButton(name);
+    }
+
     setScreenVideo(url) {
         this.#screen.setVideo(url);
     }

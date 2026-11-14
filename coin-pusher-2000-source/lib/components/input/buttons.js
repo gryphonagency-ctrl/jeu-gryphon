@@ -44,9 +44,7 @@ export default class {
                 if (!instance.isPressing) {
                     instance.isPressing = true;
                 }
-                if (instance.enabled) {
-                    this.onPress(instance);
-                }
+                this.press(instance);
             }
         });
         this.#instances = [];
@@ -176,6 +174,14 @@ export default class {
     static enable({ type, color, index }, enabled) {
         const instance = this.#instances[color][type].find(instance => instance.index === index);
         instance.enabled = enabled;
+    }
+
+    static press(instance) {
+        if (!instance.enabled) {
+            return false;
+        }
+        this.onPress(instance);
+        return true;
     }
 
     static blink({ type, color, index }, active) {

@@ -129,6 +129,14 @@ export default class {
         return this.#cabinet.startGame();
     }
 
+    static getMachineControls() {
+        return this.#cabinet.getMachineControls();
+    }
+
+    static pressMachineButton(name) {
+        return this.#cabinet.pressMachineButton(name);
+    }
+
     static setScreenVideo(url) {
         return this.#cabinet.setScreenVideo(url);
     }

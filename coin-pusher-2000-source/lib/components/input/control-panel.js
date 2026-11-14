@@ -87,12 +87,45 @@ export default class {
                 this.#onPressShootButton();
             } else if (instance === this.#holdButton) {
                 this.#onPressHoldButton();
-            } else if (instance === this.#aButton) {
+            } else if (instance === this.#aButton && this.#onPressAButton) {
                 this.#onPressAButton();
-            } else if (instance === this.#bButton) {
+            } else if (instance === this.#bButton && this.#onPressBButton) {
                 this.#onPressBButton();
             }
         };
+    }
+
+    getButtonStates() {
+        return {
+            start: this.#startButton.enabled,
+            left: this.#dropButtons[0].enabled,
+            center: this.#dropButtons[1].enabled,
+            right: this.#dropButtons[2].enabled,
+            shoot: this.#shootButton.enabled,
+            hold: this.#holdButton.enabled,
+            a: this.#aButton.enabled && typeof this.#onPressAButton === "function",
+            b: this.#bButton.enabled && typeof this.#onPressBButton === "function"
+        };
+    }
+
+    pressButton(name) {
+        const buttons = {
+            start: this.#startButton,
+            left: this.#dropButtons[0],
+            center: this.#dropButtons[1],
+            right: this.#dropButtons[2],
+            shoot: this.#shootButton,
+            hold: this.#holdButton,
+            a: this.#aButton,
+            b: this.#bButton
+        };
+        if (!Object.hasOwn(buttons, name)) {
+            throw new RangeError("Bouton de la machine inconnu.");
+        }
+        if (!this.getButtonStates()[name]) {
+            return false;
+        }
+        return Buttons.press(buttons[name]);
     }
 
     update() {
