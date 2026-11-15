@@ -1,6 +1,7 @@
 import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 import { DoubleSide, Euler, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, WebGLRenderTarget } from "three";
 import createUpperDeckCamera from "./upper-deck-camera.js";
+import { getUpperDeckRenderInterval } from "./upper-deck-render-interval.js";
 
 const MODEL_PATH = "./assets/screen.glb";
 const INDEX_VIEW_PATH = "./views/index.html?v=screen-video-clean";
@@ -24,6 +25,7 @@ export default class {
     #upperDeckRenderTarget;
     #upperDeckDisplay;
     #upperDeckRenderFailed = false;
+    #upperDeckRenderFrame = 0;
     #cameraPosition = new Vector3();
     #screenNormal = new Vector3();
     #screenVisible;
@@ -106,8 +108,13 @@ export default class {
             .dot(this.#screenNormal) > 0;
     }
 
-    refresh() {
-        if (!this.#upperDeckRenderFailed) {
+    refresh(activePrizeObjects = 0) {
+        this.#upperDeckRenderFrame++;
+        const renderInterval = getUpperDeckRenderInterval(activePrizeObjects);
+        if (
+            !this.#upperDeckRenderFailed &&
+            this.#upperDeckRenderFrame % renderInterval === 0
+        ) {
             this.#upperDeckDisplay.visible = false;
             try {
                 this.#scene.renderToTarget(this.#upperDeckCamera, this.#upperDeckRenderTarget);

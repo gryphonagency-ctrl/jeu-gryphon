@@ -1,9 +1,23 @@
 import { Vector3 } from "three";
+import {
+    BONUS_OBJECTS_PER_FRAME,
+    MAX_ACTIVE_PRIZE_OBJECTS,
+    MAX_PENDING_BONUS_OBJECTS,
+    getActivePrizeObjectCount
+} from "./prize-object-capacity.js";
 
 export default class {
     #objectTypesOrder;
+    #Cards;
+    #Ingots;
+    #pendingPrizeObjects = [];
+    #onPendingLimitReached;
+    #pendingLimitReported = false;
 
-    constructor({ Coins, Tokens, Cards, Ingots }) {
+    constructor({ Coins, Tokens, Cards, Ingots, onPendingLimitReached = () => {} }) {
+        this.#Cards = Cards;
+        this.#Ingots = Ingots;
+        this.#onPendingLimitReached = onPendingLimitReached;
         this.#objectTypesOrder = [
             { Type: Cards, size: Cards.getSize() },
             { Type: Ingots, size: Ingots.getSize() },
@@ -45,7 +59,18 @@ export default class {
                         currentY,
                         currentZ + (Math.random() / 100 - 0.005)
                     ) : new Vector3(currentX, currentY, currentZ);
-                    objects.push(Type.deposit({ position, type, rotation }));
+                    if (Type === this.#Cards || Type === this.#Ingots) {
+                        if (this.#pendingPrizeObjects.length >= MAX_PENDING_BONUS_OBJECTS) {
+                            if (!this.#pendingLimitReported) {
+                                this.#pendingLimitReported = true;
+                                this.#onPendingLimitReached();
+                            }
+                        } else {
+                            this.#pendingPrizeObjects.push({ Type, position, type, rotation });
+                        }
+                    } else {
+                        objects.push(Type.deposit({ position, type, rotation }));
+                    }
                     objectsInCurrentRowX++;
                     currentX += size.width;
                     if (objectsInCurrentRowX >= objectsPerRowX) {
@@ -66,5 +91,62 @@ export default class {
             }
         }
         return objects;
+    }
+
+    update() {
+        let delivered = 0;
+        while (
+            this.#pendingPrizeObjects.length &&
+            delivered < BONUS_OBJECTS_PER_FRAME &&
+            getActivePrizeObjectCount(this.#Cards, this.#Ingots) < MAX_ACTIVE_PRIZE_OBJECTS
+        ) {
+            const { Type, position, type, rotation } = this.#pendingPrizeObjects.shift();
+            Type.deposit({ position, type, rotation });
+            delivered++;
+        }
+        if (this.#pendingPrizeObjects.length < MAX_PENDING_BONUS_OBJECTS) {
+            this.#pendingLimitReported = false;
+        }
+    }
+
+    save() {
+        return this.#pendingPrizeObjects.map(({ Type, position, type, rotation }) => ({
+            objectType: Type.TYPE,
+            position: position.toArray(),
+            type,
+            rotation: rotation.toArray()
+        }));
+    }
+
+    load(pending) {
+        const types = new Map([
+            [this.#Cards.TYPE, this.#Cards],
+            [this.#Ingots.TYPE, this.#Ingots]
+        ]);
+        this.#pendingPrizeObjects = [];
+        if (!Array.isArray(pending)) return;
+        for (const item of pending.slice(0, MAX_PENDING_BONUS_OBJECTS)) {
+            const Type = types.get(item?.objectType);
+            if (
+                !Type ||
+                !Array.isArray(item.position) ||
+                item.position.length !== 3 ||
+                !item.position.every(Number.isFinite) ||
+                !Array.isArray(item.rotation) ||
+                item.rotation.length !== 3 ||
+                !item.rotation.every(Number.isFinite) ||
+                !Number.isSafeInteger(item.type) ||
+                item.type < 0 ||
+                item.type >= (Type.TYPES || 1)
+            ) {
+                continue;
+            }
+            this.#pendingPrizeObjects.push({
+                Type,
+                position: new Vector3().fromArray(item.position),
+                type: item.type,
+                rotation: new Vector3().fromArray(item.rotation)
+            });
+        }
     }
 }

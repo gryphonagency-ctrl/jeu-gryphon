@@ -25,6 +25,10 @@ import PrizeCreditQueue from "../prize-credit-queue.js";
 import { resolveManualPrizeCard, selectPrizeCard } from "../prize-card-selection.js";
 import { shouldPlayCoinImpact } from "../coin-impact-filter.js";
 import { getPrizeDropPosition } from "../prize-drop-position.js";
+import {
+    MAX_ACTIVE_PRIZE_OBJECTS,
+    getActivePrizeObjectCount
+} from "./util/prize-object-capacity.js";
 
 const MIN_POSITION_Y_OBJECTS = -1;
 const MANUAL_PRIZE_DROP_HEIGHT = 1.5;
@@ -410,7 +414,16 @@ export default class {
                 this.#controlPanel.disableHoldButton();
             }
         });
-        this.#objectsDistributor = new ObjectsDistributor({ Coins, Tokens, Cards, Ingots });
+        this.#objectsDistributor = new ObjectsDistributor({
+            Coins,
+            Tokens,
+            Cards,
+            Ingots,
+            onPendingLimitReached: () => this.#dispatchPrizeStatus(
+                "File bonus pleine : les objets dépassant la limite de 500 ne tomberont pas; pièces et runs continuent.",
+                "warning"
+            )
+        });
         this.#floorAccessRules.set(this.#leftStacker, new Set([this.#sweepers]));
         this.#floorAccessRules.set(this.#rightStacker, new Set([this.#sweepers]));
         this.#floorAccessRules.set(this.#stacker, new Set([this.#sweepers, this.#excavator]));
@@ -495,6 +508,7 @@ export default class {
                 this.#deliverPendingIngots();
             }
         });
+        this.#objectsDistributor.update();
         if (this.DEBUG_AUTOPLAY) {
             this.#autoplay();
         }
@@ -517,7 +531,7 @@ export default class {
         this.#stacker.refresh();
         this.#leftStacker.refresh();
         this.#rightStacker.refresh();
-        this.#screen.refresh();
+        this.#screen.refresh(getActivePrizeObjectCount(Cards, Ingots));
         this.#cardReader.refresh();
         this.#tokenSlot.refresh();
         this.#runs.refresh();
@@ -619,9 +633,15 @@ export default class {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
         }
+        const queued = getActivePrizeObjectCount(Cards, Ingots) >= MAX_ACTIVE_PRIZE_OBJECTS ||
+            this.#pendingIngots.length > 0;
         this.#pendingIngots.push({ username: target, avatarUrl: "", manual: true });
         this.#deliverPendingIngots();
-        this.#dispatchPrizeStatus(`Lingot de ${INGOT_STARS} étoiles lâché immédiatement pour @${target} ; crédit à la sortie du plateau.`);
+        this.#dispatchPrizeStatus(queued
+            ? `Lingot de ${INGOT_STARS} étoiles en attente pour @${target} ; il tombera dès qu’une place se libérera.`
+            : `Lingot de ${INGOT_STARS} étoiles lâché immédiatement pour @${target} ; crédit à la sortie du plateau.`,
+            queued ? "warning" : ""
+        );
         return true;
     }
 
@@ -696,6 +716,7 @@ export default class {
         data.buttons = Buttons.save();
         data.ingots = Ingots.save();
         data.pendingClawPrizePlayers = this.#pendingClawPrizePlayers.map(player => ({ ...player }));
+        data.pendingBonusObjects = this.#objectsDistributor.save();
         Object.assign(data, {
             state: this.#cabinet.state,
             sensorCollidersHandles,
@@ -724,6 +745,7 @@ export default class {
         Tokens.load(cabinet.tokens);
         Buttons.load(cabinet.buttons);
         Ingots.load(cabinet.ingots);
+        this.#objectsDistributor.load(cabinet.pendingBonusObjects);
         this.#pendingClawPrizePlayers = Array.isArray(cabinet.pendingClawPrizePlayers)
             ? cabinet.pendingClawPrizePlayers.filter(player =>
                 player &&
@@ -817,8 +839,8 @@ export default class {
             }
             if (object.objectType === Ingots.TYPE) {
                 Ingots.recycle(object);
-                this.#deliverPendingIngots();
             }
+            this.#deliverPendingIngots();
         }
     }
 
@@ -884,7 +906,10 @@ export default class {
     }
 
     #deliverPendingIngots() {
-        while (this.#pendingIngots.length) {
+        while (
+            this.#pendingIngots.length &&
+            getActivePrizeObjectCount(Cards, Ingots) < MAX_ACTIVE_PRIZE_OBJECTS
+        ) {
             const player = this.#pendingIngots[0];
             const ingot = Ingots.deposit({
                 position: getPrizeDropPosition(this.#pusher.deliveryPosition, Ingots.getSize(), {
