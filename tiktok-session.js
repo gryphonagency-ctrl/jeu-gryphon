@@ -3,6 +3,8 @@ const getCachedAvatar = require('./tiktok-avatar-cache');
 
 const MAX_AVATAR_BYTES = 512 * 1024;
 const FAN_CLUB_LEVEL_UP_BARRAGE_TYPE = 10;
+const WEBSOCKET_IDLE_TIMEOUT_MS = 90_000;
+const WEBSOCKET_WATCHDOG_INTERVAL_MS = 30_000;
 
 function getAvatarUrls(user) {
     const candidates = [
@@ -125,11 +127,32 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     let active = true;
     let connecting = false;
     let retryTimer = null;
+    let watchdogTimer = null;
+    let lastWebSocketDataAt = 0;
+    let streamEnded = false;
+    let watchdogInProgress = false;
     let liveMatchActive = false;
 
     const send = message => {
         if (active) sendToClients(message);
     };
+
+    connection.on('websocketConnected', () => {
+        streamEnded = false;
+        lastWebSocketDataAt = Date.now();
+    });
+
+    connection.on('websocketData', () => {
+        lastWebSocketDataAt = Date.now();
+    });
+
+    connection.on('error', error => {
+        logDiagnostic('erreur-transport', {
+            account: username,
+            errorType: String(error?.exception?.name || error?.name || 'Error'),
+            timestamp: new Date().toISOString()
+        });
+    });
 
     const emitTeamMemberLevelUp = (user, teamMemberKey, teamMemberLevel, messageId, sentAt) => {
         const notifiedLevel = notifiedTeamMemberLevels.get(teamMemberKey) || 0;
@@ -194,6 +217,31 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         retryTimer.unref?.();
     };
 
+    watchdogTimer = setInterval(() => {
+        if (!active || connecting || streamEnded || watchdogInProgress || !lastWebSocketDataAt) return;
+        const inactiveMs = Date.now() - lastWebSocketDataAt;
+        if (inactiveMs < WEBSOCKET_IDLE_TIMEOUT_MS) return;
+
+        watchdogInProgress = true;
+        lastWebSocketDataAt = 0;
+        logDiagnostic('connexion', {
+            account: username,
+            state: 'flux-inactif',
+            inactiveMs,
+            timestamp: new Date().toISOString()
+        });
+        send({ type: 'STATUS', message: `Flux TikTok silencieux · reconnexion en cours · @${username}` });
+        connection.disconnect()
+            .catch(error => {
+                console.warn(`Reconnexion du flux TikTok impossible pour @${username} :`, error.message);
+            })
+            .finally(() => {
+                watchdogInProgress = false;
+                scheduleReconnect();
+            });
+    }, WEBSOCKET_WATCHDOG_INTERVAL_MS);
+    watchdogTimer.unref?.();
+
     connection.on('linkMicBattle', battle => {
         const action = Number(battle.action);
         if (action === 4 || action === 7) liveMatchActive = true;
@@ -202,6 +250,8 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
 
     connection.on('streamEnd', event => {
         liveMatchActive = false;
+        streamEnded = true;
+        lastWebSocketDataAt = 0;
         teamMemberLevels.clear();
         notifiedTeamMemberLevels.clear();
         send({
@@ -365,6 +415,10 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 comment: message.comment || message.content || ''
             }
         });
+        logDiagnostic('commentaire', {
+            result: 'transmis',
+            timestamp: new Date().toISOString()
+        });
 
         const viewerKey = String(identity.userId || identity.uniqueId || username).toLocaleLowerCase();
         const lastLookup = avatarLookupTimes.get(viewerKey) || 0;
@@ -439,9 +493,28 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         });
     });
 
+    connection.on('roomUser', message => {
+        const viewerCount = Number(message.viewerCount);
+        if (!Number.isSafeInteger(viewerCount) || viewerCount < 0) return;
+        send({ type: 'viewerCount', viewerCount });
+        logDiagnostic('spectateurs', {
+            account: username,
+            viewerCount,
+            result: 'transmis',
+            timestamp: new Date().toISOString()
+        });
+    });
+
     connection.on('like', async message => {
         const likeCount = Math.floor(Number(message.likeCount ?? message.count) || 0);
-        if (likeCount < 1) return;
+        if (likeCount < 1) {
+            logDiagnostic('like', {
+                account: username,
+                result: 'valeur-invalide',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
         const identity = getTikTokIdentity(message.user);
         let avatarDataUri = null;
         try {
@@ -462,10 +535,17 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 avatarUrls: identity.avatarUrls
             }
         });
+        logDiagnostic('like', {
+            account: username,
+            likeCount,
+            result: 'transmis',
+            timestamp: new Date().toISOString()
+        });
     });
 
     connection.on('disconnected', () => {
         liveMatchActive = false;
+        lastWebSocketDataAt = 0;
         logDiagnostic('connexion', {
             account: username,
             state: 'interrompue',
@@ -482,6 +562,8 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         connection.connect()
             .then(state => {
                 if (!active) return;
+                streamEnded = false;
+                lastWebSocketDataAt = Date.now();
                 onRoomState({ connected: true, roomId: String(state.roomId || '') });
                 logDiagnostic('connexion', {
                     account: username,
@@ -543,6 +625,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     return async () => {
         active = false;
         if (retryTimer) clearTimeout(retryTimer);
+        if (watchdogTimer) clearInterval(watchdogTimer);
         try {
             await connection.disconnect();
         } catch (error) {

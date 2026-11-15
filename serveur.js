@@ -3623,6 +3623,7 @@ function sendTreasureLiveState(session, socket) {
         sourceTikTokUsername: session.username,
         isLive: session.isLive === true,
         roomId: session.roomId || '',
+        viewerCount: Number.isSafeInteger(session.viewerCount) ? session.viewerCount : null,
         lastEndedRoomId: session.lastEndedRoomId || ''
     }));
 }
@@ -3942,22 +3943,30 @@ function startTikTokSession(session) {
     }, session.username, ({ connected, roomId }) => {
         session.isLive = connected;
         session.roomId = roomId;
+        if (!connected) session.viewerCount = null;
         deliverTikTokMessage(session, {
             type: 'LIVE_STATE',
             isLive: connected,
             roomId: roomId || '',
+            viewerCount: Number.isSafeInteger(session.viewerCount) ? session.viewerCount : null,
             lastEndedRoomId: session.lastEndedRoomId || ''
         });
-    });
+    }, { diagnostics: true });
 }
 
 function deliverTikTokMessage(session, messageData) {
     if (messageData.type === 'STATUS') session.statusMessage = messageData.message;
     if (messageData.type === 'AVAILABLE_GIFTS') session.availableGifts = messageData.gifts;
+    if (messageData.type === 'viewerCount' &&
+        Number.isSafeInteger(messageData.viewerCount) &&
+        messageData.viewerCount >= 0) {
+        session.viewerCount = messageData.viewerCount;
+    }
     if (messageData.type === 'LIVE_END') {
         session.lastEndedRoomId = session.roomId || session.lastEndedRoomId || '';
         session.isLive = false;
         session.roomId = null;
+        session.viewerCount = null;
     }
     if (session.walletCommandsEnabled) {
         let player = null;
@@ -3991,6 +4000,7 @@ function deliverTikTokMessage(session, messageData) {
         )
         ? JSON.stringify({ ...sourceMessage, suppressInGameMediaAlert: true })
         : encoded;
+    let recipients = 0;
     for (const client of session.clients) {
         const treasureSource = treasureOverlaySocketTikTokUsernames.get(client);
         if (treasureSource && treasureSource !== session.username.toLocaleLowerCase()) continue;
@@ -4002,7 +4012,20 @@ function deliverTikTokMessage(session, messageData) {
             client.send(overlaySockets.has(client) || treasureOverlaySocketOwners.has(client)
                 ? overlayEncoded
                 : gameEncoded);
+            recipients++;
         }
+    }
+    if (liveTikTokDiagnostics &&
+        ['gift', 'comment', 'like', 'share', 'follow', 'subscribe', 'viewerCount'].includes(messageData.type)) {
+        console.info(`[TikTok diagnostic] routage ${JSON.stringify({
+            account: session.username,
+            type: messageData.type,
+            connected: session.isLive,
+            roomId: session.roomId,
+            clients: session.clients.size,
+            recipients,
+            timestamp: new Date().toISOString()
+        })}`);
     }
 }
 
@@ -4016,11 +4039,13 @@ function updateCentralTikTokRoomState({ connected, roomId }) {
     if (session) {
         session.isLive = connected;
         session.roomId = centralTikTokRoomId;
+        if (!connected) session.viewerCount = null;
         deliverTikTokMessage(session, { type: 'STATUS', message: centralTikTokStatusMessage });
         deliverTikTokMessage(session, {
             type: 'LIVE_STATE',
             isLive: connected,
             roomId: centralTikTokRoomId || '',
+            viewerCount: Number.isSafeInteger(session.viewerCount) ? session.viewerCount : null,
             lastEndedRoomId: session.lastEndedRoomId || ''
         });
     }

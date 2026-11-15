@@ -203,7 +203,7 @@ let reconnectDelay = 3000;
 let hideTimer = null;
 const viewerAvatars = new Map();
 const seenLiveEvents = new Set();
-const liveStats = { followers: 0, likes: 0, gifts: 0, shares: 0, subscribers: 0 };
+const liveStats = { followers: 0, likes: 0, gifts: 0, shares: 0, subscribers: 0, viewers: 0 };
 const giftLeaderboard = new Map();
 
 function viewerKey(profile) {
@@ -319,13 +319,25 @@ function updateLiveStats(type, amount) {
   const count = Math.floor(Number(amount) || 0);
   if (!Number.isSafeInteger(count) || count < 1) return;
   liveStats[type] = Math.min(Number.MAX_SAFE_INTEGER, liveStats[type] + count);
+  renderLiveStats();
+}
+
+function updateLiveViewerCount(amount) {
+  const count = Math.floor(Number(amount));
+  if (!Number.isSafeInteger(count) || count < 0) return;
+  liveStats.viewers = count;
+  renderLiveStats();
+}
+
+function renderLiveStats() {
   liveStatsEl.replaceChildren();
   for (const [key, label, icon] of [
     ['followers', 'Abonnés', '👥'],
     ['likes', 'J’aime', '❤️'],
     ['gifts', 'Pièces reçues', '🎁'],
     ['shares', 'Partages', '📣'],
-    ['subscribers', 'Abonnements', '⭐']
+    ['subscribers', 'Abonnements', '⭐'],
+    ['viewers', 'Spectateurs', '👁']
   ]) {
     const item = document.createElement('span');
     item.className = 'live-stat';
@@ -962,6 +974,10 @@ function connect() {
           updateLiveStats('shares', 1);
         } else if (data.type === 'subscribe' && firstLiveEvent('subscribe', data.subscribeData || {})) {
           updateLiveStats('subscribers', 1);
+        } else if (data.type === 'viewerCount') {
+          updateLiveViewerCount(data.viewerCount);
+        } else if (data.type === 'LIVE_STATE' && Number.isSafeInteger(data.viewerCount)) {
+          updateLiveViewerCount(data.viewerCount);
         }
       }
       if (showLiveEffects && data.type === 'follow' &&
@@ -1029,6 +1045,7 @@ if (overlayMode === 'chat' && params.get('test') === '1') {
   updateLiveStats('gifts', 1250);
   updateLiveStats('shares', 8);
   updateLiveStats('subscribers', 3);
+  updateLiveViewerCount(27);
 } else if (showTimerOverlay && params.get('test') === '1') {
   startTimer();
 } else if (showWheelOverlay && params.get('test') === '1') {
