@@ -218,6 +218,7 @@ const protectedRoutes = new Set([
     '/multirou.html',
     '/araignee.html',
     '/rallye-neon.html',
+    '/apex-formula.html',
     '/city-hunter-tiktok.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
@@ -308,6 +309,7 @@ store.grantGameAccessToExistingCreators('/showdown-tiktok.html');
 store.grantGameAccessToExistingCreators('/quartier-des-veilleurs.html');
 store.grantGameAccessToExistingCreators('/araignee.html');
 store.grantGameAccessToExistingCreators('/rallye-neon.html');
+store.grantGameAccessToExistingCreators('/apex-formula.html');
 store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
@@ -368,6 +370,7 @@ const staticGameTitles = {
     '/multirou.html': 'Le Multirou',
     '/araignee.html': 'Araignée Cybernétique',
     '/rallye-neon.html': 'Rallye Néon',
+    '/apex-formula.html': 'Apex Formula',
     '/city-hunter-tiktok.html': 'City Hunter — TikTok Live Battle',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
@@ -439,6 +442,7 @@ const gameRouteIds = new Map([
     ['/multirou.html', '/multirou.html'],
     ['/araignee.html', '/araignee.html'],
     ['/rallye-neon.html', '/rallye-neon.html'],
+    ['/apex-formula.html', '/apex-formula.html'],
     ['/city-hunter-tiktok.html', '/city-hunter-tiktok.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -448,6 +452,16 @@ const gameRouteIds = new Map([
     ['/inedexd.html', '/inedexd.html']
 ]);
 const staticGameIds = [...new Set(gameRouteIds.values())];
+const apexFormulaAssetsDirectory = path.join(__dirname, 'apex-formula', 'assets');
+const apexFormulaAssetRoutes = fs.readdirSync(apexFormulaAssetsDirectory, { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => [
+        `/apex-formula/assets/${entry.name}`,
+        [
+            path.join(apexFormulaAssetsDirectory, entry.name),
+            entry.name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'application/octet-stream'
+        ]
+    ]);
 const defaultHomepageNotice = Object.freeze({
     label: 'Nouveautés de l’arcade',
     text: 'Bienvenue dans l’univers de Griffon Arcade 🐉🎮 Découvrez nos jeux déjà disponibles : de nouvelles aventures arrivent bientôt ! 🚀 Une idée de jeu à créer ensemble ? Écrivez-moi en privé sur Snapchat 💬 L’abonnement inclut aussi le TTS : faites lire gratuitement tous vos commentaires en direct et donnez vie à vos lives 🎙️✨',
@@ -3261,7 +3275,10 @@ const server = http.createServer((req, res) => {
         ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
         ['/araignee.html', [path.join(__dirname, 'araignee.html'), 'text/html; charset=utf-8']],
         ['/rallye-neon.html', [path.join(__dirname, 'rallye-neon.html'), 'text/html; charset=utf-8']],
+        ['/apex-formula.html', [path.join(__dirname, 'apex-formula', 'index.html'), 'text/html; charset=utf-8']],
+        ...apexFormulaAssetRoutes,
         ['/city-hunter-tiktok.html', [path.join(__dirname, 'city-hunter-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
         ['/tower-up.html', [towerUpFile, 'text/html; charset=utf-8']],
