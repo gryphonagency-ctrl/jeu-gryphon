@@ -94,7 +94,7 @@ export const KINGSMERE: TrackDefinition = {
     { cp: 32, name: 'Paddock' },
   ],
   poleSide: 1,
-  defaultLaps: 10,
+  defaultLaps: 5,
   referenceLapTime: 87.5,
   environment: {
     theme: 'permanent',

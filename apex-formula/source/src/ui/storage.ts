@@ -3,6 +3,7 @@ import type { Assists, CameraMode, GameMode, GameSettings, GridOrderRule, Weathe
 
 export const SETTINGS_KEY = 'apex-formula.settings';
 export const LAST_CONFIG_KEY = 'apex-formula.lastConfig';
+const LAP_DEFAULT_MIGRATION_KEY = 'apex-formula.lap-default-v1';
 
 /** Everything the session-setup screens remember between runs. */
 export interface LastConfig {
@@ -50,7 +51,7 @@ export const defaultLastConfig = (): LastConfig => ({
   mode: 'quick-race',
   circuitId: '',
   playerDriverId: '',
-  laps: 0,
+  laps: 5,
   aiDifficulty: 0.6,
   aiCount: 19,
   weather: 'dry',
@@ -120,8 +121,11 @@ export function saveSettings(s: GameSettings): void {
 export function loadLastConfig(): LastConfig {
   const d = defaultLastConfig();
   const v = read(LAST_CONFIG_KEY);
-  if (!isRecord(v)) return d;
-  return {
+  if (!isRecord(v)) {
+    if (read(LAP_DEFAULT_MIGRATION_KEY) !== true) write(LAP_DEFAULT_MIGRATION_KEY, true);
+    return d;
+  }
+  const config: LastConfig = {
     mode: oneOf(v.mode, ['quick-race', 'grand-prix', 'time-trial'] as const, d.mode),
     circuitId: typeof v.circuitId === 'string' ? v.circuitId : d.circuitId,
     playerDriverId: typeof v.playerDriverId === 'string' ? v.playerDriverId : d.playerDriverId,
@@ -134,6 +138,12 @@ export function loadLastConfig(): LastConfig {
     startingCompound: oneOf(v.startingCompound, TYRE_COMPOUNDS, d.startingCompound),
     randomEvents: bool(v.randomEvents, d.randomEvents),
   };
+  if (read(LAP_DEFAULT_MIGRATION_KEY) !== true) {
+    if (config.laps === 0 || config.laps === 10 || config.laps === 12) config.laps = 5;
+    write(LAST_CONFIG_KEY, config);
+    write(LAP_DEFAULT_MIGRATION_KEY, true);
+  }
+  return config;
 }
 
 export function saveLastConfig(c: LastConfig): void {

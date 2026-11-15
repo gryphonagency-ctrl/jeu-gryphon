@@ -1,7 +1,7 @@
 import type { World } from '../../core/types';
 import { hintRow, type Screen, type UIContext } from '../context';
 import { div, setText } from '../dom';
-import { Navigator } from '../nav';
+import { Navigator, type NavItem } from '../nav';
 import { buildButton } from '../widgets';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -12,6 +12,7 @@ export class PauseScreen implements Screen {
   private readonly menuEl: HTMLElement;
   private readonly settingsEl: HTMLElement;
   private readonly sub: HTMLElement;
+  private readonly shortenRaceButton: NavItem;
   private view: 'menu' | 'settings' = 'menu';
 
   constructor(private readonly ctx: UIContext) {
@@ -22,8 +23,12 @@ export class PauseScreen implements Screen {
     const head = div('af-pause-head');
     head.append(div('af-pause-title', 'PAUSED'), (this.sub = div('af-pause-sub', '')));
     this.menuEl.appendChild(head);
+    this.shortenRaceButton = buildButton('PASSER À 5 TOURS', () => ctx.emit({ type: 'shorten-race-to-five-laps' }));
+    this.shortenRaceButton.disabled = true;
+    this.shortenRaceButton.el.classList.add('disabled');
     const items = [
       buildButton('RESUME', () => ctx.emit({ type: 'resume' }), 'af-btn-primary'),
+      this.shortenRaceButton,
       buildButton('RESTART SESSION', () => ctx.emit({ type: 'restart-session' })),
       buildButton('SETTINGS', () => this.showSettings()),
       buildButton('INSTANT REPLAY', () => ctx.emit({ type: 'replay-start' })),
@@ -45,6 +50,10 @@ export class PauseScreen implements Screen {
   }
 
   setContext(world: World | null): void {
+    const canShortenRace = !!world && world.race.sessionType === 'race' && world.race.totalLaps > 5;
+    this.shortenRaceButton.disabled = !canShortenRace;
+    this.shortenRaceButton.el.classList.toggle('disabled', !canShortenRace);
+    if (!canShortenRace && this.nav.current === this.shortenRaceButton) this.nav.focus(0, true);
     if (!world) return;
     const r = world.race;
     const label = r.sessionType === 'race' ? `LAP ${Math.min(r.leaderLap, r.totalLaps)} / ${r.totalLaps}` : r.sessionType.toUpperCase();

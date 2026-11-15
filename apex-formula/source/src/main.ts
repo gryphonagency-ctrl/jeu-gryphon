@@ -125,6 +125,7 @@ class Game {
       uiRoot,
       (participants) => this.startLiveRace(participants),
       (userId, username, coinCount) => this.applyLiveGift(userId, username, coinCount),
+      (screenIndex) => this.unstickLivePlayer(screenIndex),
       settings.masterVolume,
       (delta) => {
         settings.masterVolume = clamp(settings.masterVolume + delta, 0, 1);
@@ -512,6 +513,13 @@ class Game {
       case 'skip-to-end':
         this.race?.endSession();
         break;
+      case 'shorten-race-to-five-laps':
+        if (this.world?.race.sessionType === 'race' && this.world.race.totalLaps > 5) {
+          this.world.race.totalLaps = 5;
+          this.world.config.laps = 5;
+          this.ui.notify('La course en cours est réduite à 5 tours.', 'info');
+        }
+        break;
       case 'set-quality':
         this.render.setQuality(cmd.quality);
         this.track?.setQuality(cmd.quality);
@@ -604,6 +612,19 @@ class Game {
     const nextLimit = Math.min(300, previousLimit + coinCount);
     this.liveSpeedLimits.set(carId, nextLimit);
     return `Merci @${username} · vitesse maximale ${nextLimit} km/h${nextLimit === 300 ? ' (plafond atteint)' : ''}.`;
+  }
+
+  private unstickLivePlayer(screenIndex: number): string {
+    if (!this.liveSession || (this.phase !== 'session' && this.phase !== 'paused')) {
+      return 'Aucune course TikTok active à débloquer.';
+    }
+    const car = this.world?.cars[screenIndex];
+    const username = this.liveNameByCar.get(screenIndex);
+    if (!car || !username || !this.physics) {
+      return `Aucun joueur actif sur l’écran ${screenIndex + 1}.`;
+    }
+    this.physics.resetCar(screenIndex);
+    return `@${username} a été replacé au centre de la piste · écran ${screenIndex + 1}.`;
   }
 
   private limitParticipantSpeed(carId: number, input: DriverInput): void {

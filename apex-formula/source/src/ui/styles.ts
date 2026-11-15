@@ -26,6 +26,7 @@ export const CSS = /* css */ `
 .af-btn::before{content:'';position:absolute;inset:0;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);transform:skewX(-12deg);z-index:-1;transition:background .15s,border-color .15s,box-shadow .15s}
 .af-btn.focus{transform:translateX(.3em)}
 .af-btn.focus::before{background:var(--red);border-color:var(--red);box-shadow:0 .4em 1.6em rgba(225,6,0,.45)}
+.af-pause-list .af-btn.disabled{opacity:.35;pointer-events:none}
 .af-btn-primary::before{background:var(--red);border-color:var(--red)}
 .af-btn-primary.focus::before{background:#ff2b1f;box-shadow:0 .4em 2em rgba(255,43,31,.6)}
 .af-btn-ghost::before{background:transparent}

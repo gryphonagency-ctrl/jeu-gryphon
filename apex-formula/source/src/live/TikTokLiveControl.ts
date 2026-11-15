@@ -33,6 +33,7 @@ export class TikTokLiveControl {
   private readonly connectButton: HTMLButtonElement;
   private readonly disconnectButton: HTMLButtonElement;
   private readonly volumeLabel: HTMLElement;
+  private readonly recoveryButtons: HTMLButtonElement[] = [];
   private readonly participants = new Map<string, LiveParticipant>();
   private readonly seenMessages = new Set<string>();
   private socket: WebSocket | null = null;
@@ -49,6 +50,7 @@ export class TikTokLiveControl {
     root: HTMLElement,
     private readonly onRaceStart: (participants: LiveParticipant[]) => void,
     private readonly onGift: (userId: string, username: string, coinCount: number) => string,
+    private readonly onUnstickPlayer: (screenIndex: number) => string,
     initialVolume: number,
     private readonly onVolumeChange: (delta: number) => number,
   ) {
@@ -67,6 +69,10 @@ export class TikTokLiveControl {
         <div class="apex-live-status" role="status" aria-live="polite">Connecte le compte TikTok de ton direct.</div>
         <div class="apex-live-race" role="status" aria-live="polite">En attente du mot « go ».</div>
         <div class="apex-live-players">0 / ${MAX_LIVE_PLAYERS} joueurs</div>
+        <div class="apex-live-recovery">
+          <div>Débloquer un joueur et le remettre au centre</div>
+          <div class="apex-live-recovery-grid"></div>
+        </div>
         <div class="apex-live-volume">
           <span>Volume du jeu</span>
           <button type="button" class="apex-live-volume-down" aria-label="Diminuer le volume">−</button>
@@ -101,6 +107,9 @@ export class TikTokLiveControl {
       .apex-live-status,.apex-live-race{margin-top:7px;color:#c5d1e4}
       .apex-live-race{color:#8ee4ff}
       .apex-live-players{margin:5px 0;color:#d4dbea}
+      .apex-live-recovery{margin-top:8px;color:#d4dbea}
+      .apex-live-recovery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:5px}
+      .apex-live-recovery-grid button{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .apex-live-volume{display:flex;align-items:center;gap:8px;margin-top:8px}
       .apex-live-volume span{margin-right:auto}
       .apex-live-volume-value{min-width:42px;text-align:center;font-variant-numeric:tabular-nums}
@@ -118,6 +127,15 @@ export class TikTokLiveControl {
     this.connectButton = panel.querySelector('.apex-live-connect') as HTMLButtonElement;
     this.disconnectButton = panel.querySelector('.apex-live-disconnect') as HTMLButtonElement;
     this.volumeLabel = panel.querySelector('.apex-live-volume-value') as HTMLElement;
+    const recoveryGrid = panel.querySelector('.apex-live-recovery-grid') as HTMLElement;
+    for (let screenIndex = 0; screenIndex < MAX_LIVE_PLAYERS; screenIndex++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.addEventListener('click', () => this.setRaceStatus(this.onUnstickPlayer(screenIndex)));
+      this.recoveryButtons.push(button);
+      recoveryGrid.appendChild(button);
+    }
+    this.updateRecoveryButtons();
 
     eyeButton.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
@@ -302,6 +320,7 @@ export class TikTokLiveControl {
   private startRace(): void {
     this.clearJoinTimers();
     this.raceLocked = true;
+    this.updateRecoveryButtons();
     const participants = [...this.participants.values()];
     this.setRaceStatus(`Départ automatique · ${participants.length} joueur${participants.length > 1 ? 's' : ''}.`);
     this.onRaceStart(participants);
@@ -315,6 +334,22 @@ export class TikTokLiveControl {
 
   private updatePlayerCount(): void {
     this.playersLabel.textContent = `${this.participants.size} / ${MAX_LIVE_PLAYERS} joueurs`;
+    this.updateRecoveryButtons();
+  }
+
+  private updateRecoveryButtons(): void {
+    const participants = [...this.participants.values()];
+    this.recoveryButtons.forEach((button, screenIndex) => {
+      const participant = participants[screenIndex];
+      button.disabled = !this.raceLocked || !participant;
+      button.textContent = participant
+        ? `Débloquer écran ${screenIndex + 1} · @${participant.username}`
+        : `Écran ${screenIndex + 1} · libre`;
+      button.title = participant
+        ? `Remettre @${participant.username} au centre de l’écran ${screenIndex + 1}`
+        : `Aucun joueur sur l’écran ${screenIndex + 1}`;
+      button.setAttribute('aria-label', button.title);
+    });
   }
 
   private changeVolume(delta: number): void {

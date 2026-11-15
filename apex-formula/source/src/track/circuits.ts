@@ -111,7 +111,7 @@ export const PORTO_AZZURRO: TrackDefinition = {
     { cp: 63, name: 'Yacht Club' },
   ],
   poleSide: -1,
-  defaultLaps: 12,
+  defaultLaps: 5,
   referenceLapTime: 80,
   environment: {
     theme: 'street',
@@ -222,7 +222,7 @@ export const AL_SAHRA: TrackDefinition = {
     { cp: 61, name: 'Sahra' },
   ],
   poleSide: 1,
-  defaultLaps: 10,
+  defaultLaps: 5,
   referenceLapTime: 85,
   environment: {
     theme: 'desert',
@@ -337,7 +337,7 @@ export const RIVIERA: TrackDefinition = {
     { cp: 65, name: 'Casino' },
   ],
   poleSide: 1,
-  defaultLaps: 12,
+  defaultLaps: 5,
   referenceLapTime: 76,
   environment: {
     theme: 'coastal',
@@ -454,7 +454,7 @@ export const SCHWARZWALD: TrackDefinition = {
     { cp: 65, name: 'Zielkurve' },
   ],
   poleSide: -1,
-  defaultLaps: 10,
+  defaultLaps: 5,
   referenceLapTime: 78,
   environment: {
     theme: 'forest',
@@ -568,7 +568,7 @@ export const VELOCITA: TrackDefinition = {
     { cp: 64, name: 'Parabolica' },
   ],
   poleSide: -1,
-  defaultLaps: 10,
+  defaultLaps: 5,
   referenceLapTime: 83,
   environment: {
     theme: 'permanent',

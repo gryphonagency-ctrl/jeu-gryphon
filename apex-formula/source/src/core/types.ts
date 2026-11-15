@@ -780,6 +780,7 @@ export type UICommand =
   | { type: 'quit-to-menu' }
   | { type: 'next-session' }
   | { type: 'skip-to-end' }
+  | { type: 'shorten-race-to-five-laps' }
   | { type: 'ready' } // player pressed "start race" in pre-session
   | { type: 'set-quality'; quality: QualityLevel }
   | { type: 'set-camera'; mode: CameraMode }
