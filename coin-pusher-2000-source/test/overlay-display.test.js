@@ -23,20 +23,33 @@ const document = { createElement: tag => new Element(tag, document) };
 test("positions overlays at both screen edges without moving them outside the viewport", () => {
     const element = new Element("div", document);
     setOverlayPosition(element, 100, 0);
-    assert.deepEqual(element.style, { left: "100%", top: "0%", transform: "translate(-100%, -0%)" });
+    assert.deepEqual(element.style, {
+        left: "100%",
+        top: "0%",
+        transformOrigin: "100% 0%",
+        transform: "translate(-100%, -0%)"
+    });
     setOverlayPosition(element, 0, 100);
-    assert.deepEqual(element.style, { left: "0%", top: "100%", transform: "translate(-0%, -100%)" });
+    assert.deepEqual(element.style, {
+        left: "0%",
+        top: "100%",
+        transformOrigin: "0% 100%",
+        transform: "translate(-0%, -100%)"
+    });
     assert.throws(() => setOverlayPosition(element, 101, 0), RangeError);
+    setOverlayPosition(element, 50, 25, 70);
+    assert.equal(element.style.transform, "translate(-50%, -25%) scale(0.7)");
+    assert.throws(() => setOverlayPosition(element, 50, 25, 20), RangeError);
 });
 
-test("shows only actual profiles, names and scores without rank badges", () => {
+test("keeps all podium places visible and fills only confirmed winners", () => {
     const list = new Element("ol", document);
     renderSpectatorLeaderboard(list, [
         { username: "alice", stars: 1200, avatarUrl: "https://example.com/alice.png" },
         { username: "bob", stars: 8, avatarUrl: "" }
     ]);
-    assert.equal(list.children.length, 2);
-    const [alice, bob] = list.children;
+    assert.equal(list.children.length, 3);
+    const [alice, bob, pending] = list.children;
     const [avatar, name, score] = alice.children;
     assert.equal(avatar.children[1].src, "https://example.com/alice.png");
     assert.equal(avatar.children.length, 2);
@@ -49,8 +62,13 @@ test("shows only actual profiles, names and scores without rank badges", () => {
     assert.equal(avatar.children[1].hidden, true);
     assert.equal(bob.children[0].children.length, 1);
     assert.equal(bob.children[2].textContent, "8 ⭐");
+    assert.equal(pending.className, "leaderboard-placeholder");
+    assert.equal(pending.children[1].textContent, "En attente");
+    assert.equal(pending.children[2].textContent, "");
+    assert.equal(pending.children[3].textContent, "3e");
     renderSpectatorLeaderboard(list, []);
-    assert.equal(list.children.length, 0);
+    assert.equal(list.children.length, 3);
+    assert.ok(list.children.every(row => row.className === "leaderboard-placeholder"));
     renderSpectatorLeaderboard(list, Array.from({ length: 4 }, (_, index) => ({
         username: `user${index}`, stars: index, avatarUrl: ""
     })));
@@ -66,4 +84,13 @@ test("the spectator overlay has no title or background", () => {
     assert.match(style, /background:\s*transparent/);
     assert.match(avatarStyle, /background:\s*transparent/);
     assert.doesNotMatch(style, /border\s*:/);
+});
+
+test("the spectator leaderboard places first in the center, second right, third lower left", () => {
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+    assert.match(html, /\.star-leaderboard li:nth-child\(1\)\s*\{[^}]*grid-column:\s*2[^}]*height:/);
+    assert.match(html, /\.star-leaderboard li:nth-child\(2\)\s*\{[^}]*grid-column:\s*3/);
+    assert.match(html, /\.star-leaderboard li:nth-child\(3\)\s*\{[^}]*grid-column:\s*1[^}]*height:/);
+    assert.match(html, /\.leaderboard-podium-step\s*\{[^}]*background:/);
 });

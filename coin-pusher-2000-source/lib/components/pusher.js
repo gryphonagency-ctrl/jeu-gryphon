@@ -84,8 +84,10 @@ export default class {
         initializeLights({ lightBulbsMaterials: this.#lightBulbsMaterials, lights: this.#pusher.lights });
         this.#door = parts.get(DOOR_PART_NAME);
         this.#platform = parts.get(PLATFORM_PART_NAME);
-        parts.forEach(({ body, meshes }) => {
-            meshes.forEach(({ data }) => this.#scene.addObject(data));
+        parts.forEach(({ body, meshes }, name) => {
+            meshes.forEach(({ data }) => this.#scene.addObject(data, {
+                upperDeck: name === PLATFORM_PART_NAME
+            }));
             body.setEnabled(true);
         });
     }
@@ -151,6 +153,10 @@ export default class {
 
     get phase() {
         return this.#pusher.phase;
+    }
+
+    get deliveryPosition() {
+        return this.#deliveryPosition.clone();
     }
 
     save() {

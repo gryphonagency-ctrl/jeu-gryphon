@@ -154,8 +154,12 @@ export default class {
         return this.#cabinet.setCharacterPosition(position);
     }
 
-    static dropPrizeCard(username) {
-        return this.#cabinet.dropPrizeCard(username);
+    static dropPrizeCard(username, stars) {
+        return this.#cabinet.dropPrizeCard(username, stars);
+    }
+
+    static dropPrizeIngot(username) {
+        return this.#cabinet.dropPrizeIngot(username);
     }
 
     static setPrizeConfig(config) {

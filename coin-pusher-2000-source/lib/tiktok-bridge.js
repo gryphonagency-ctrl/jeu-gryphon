@@ -1,4 +1,5 @@
 import { renderSpectatorLeaderboard, setOverlayPosition } from "./overlay-display.js";
+import { deleteSetupVideo, loadSetupVideo, saveSetupVideo } from "./setup-video-storage.js";
 
 const RELAY_URL = "wss://jeu6boite.onrender.com";
 const RECONNECT_DELAY = 3000;
@@ -7,7 +8,7 @@ const MAX_TIKTOK_GIFT_COINS = 44000;
 const SETUP_STORAGE_KEY = "coin-pusher-2000-live-panel-v1";
 const SETUP_FORMAT = "coin-pusher-2000-control-panel";
 const MAX_SETUP_FILE_BYTES = 2000000;
-const MAX_SETUP_VIDEO_BYTES = 1300000;
+const MAX_EXPORTABLE_SETUP_VIDEO_BYTES = 1300000;
 const MAX_SETUP_VIDEO_DATA_URL_LENGTH = 1800000;
 const IS_LOCAL_PREVIEW = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const DEFAULT_CHARACTER_HORIZONTAL_PERCENT = 15;
@@ -35,8 +36,9 @@ const MAX_TOTAL_CARDS = 100000;
 const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
 const COIN_VOLUME_STORAGE_KEY = "coin-pusher-2000-coin-volume-v1";
 const MAX_AVATAR_DATA_URI_LENGTH = 700000;
+const SCENE_BRAND_TEXT = "GRYPHON AGENCY";
 
-export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, setPrizeConfig }) {
+export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, dropPrizeIngot, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
@@ -77,6 +79,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const manualCardUsernameInput = document.getElementById("manual-card-username");
     const manualCardStarsInput = document.getElementById("manual-card-stars");
     const dropPrizeCardButton = document.getElementById("drop-prize-card");
+    const dropPrizeIngotButton = document.getElementById("drop-prize-ingot");
     const newCardStarsInput = document.getElementById("new-card-stars");
     const newCardCountInput = document.getElementById("new-card-count");
     const addPrizeCardsButton = document.getElementById("add-prize-cards");
@@ -86,13 +89,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const ingotFrequencyValue = document.getElementById("ingot-frequency-value");
     const prizeStatusElement = document.getElementById("prize-status");
     const sceneBrand = document.getElementById("scene-brand");
-    const showSceneBrandInput = document.getElementById("show-scene-brand");
-    const sceneBrandTextInput = document.getElementById("scene-brand-text");
     const sceneBrandXInput = document.getElementById("scene-brand-x");
     const sceneBrandYInput = document.getElementById("scene-brand-y");
+    const sceneBrandScaleInput = document.getElementById("scene-brand-scale");
     const leaderboardXInput = document.getElementById("leaderboard-x");
     const leaderboardYInput = document.getElementById("leaderboard-y");
-    const overlayPositionInputs = [sceneBrandXInput, sceneBrandYInput, leaderboardXInput, leaderboardYInput];
+    const leaderboardScaleInput = document.getElementById("leaderboard-scale");
     const starLeaderboard = document.getElementById("star-leaderboard");
     const showStarLeaderboardInput = document.getElementById("show-star-leaderboard");
     const starLeaderboardList = document.getElementById("star-leaderboard-list");
@@ -106,6 +108,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     let activeVideoUrl = null;
     let activeVideoName = "";
     let activeVideoDataUrl = "";
+    let activeVideoStorageKey = "";
+    let activeVideoSavePromise = Promise.resolve();
+    let activeVideoDataUrlPromise = Promise.resolve();
+    let activeVideoSaveError = null;
     const retiredVideoUrls = new Set();
     let panelBounds;
     let panelDrag;
@@ -349,11 +355,13 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             ingotFrequency: 10,
             showStarLeaderboard: true,
             showSceneBrand: true,
-            sceneBrandText: "GRYPHON AGENCY",
+            sceneBrandText: SCENE_BRAND_TEXT,
             sceneBrandX: 5,
             sceneBrandY: 75,
+            sceneBrandScalePercent: 100,
             leaderboardX: 5,
             leaderboardY: 55,
+            leaderboardScalePercent: 100,
             manualCardUsername: "",
             manualCardStars: 300
         };
@@ -391,6 +399,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         ]) {
             if (record[key] !== undefined) {
                 if (!Number.isSafeInteger(record[key]) || record[key] < 0 || record[key] > 100) {
+                    throw new Error(`${label} invalide dans le setup.`);
+                }
+                normalized[key] = record[key];
+            }
+        }
+        for (const [key, label] of [
+            ["sceneBrandScalePercent", "Taille du texte"],
+            ["leaderboardScalePercent", "Taille du Top 3"]
+        ]) {
+            if (record[key] !== undefined) {
+                if (!Number.isSafeInteger(record[key]) || record[key] < 30 || record[key] > 100) {
                     throw new Error(`${label} invalide dans le setup.`);
                 }
                 normalized[key] = record[key];
@@ -434,9 +453,18 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             ) {
                 throw new Error("Données vidéo du setup invalides ou trop volumineuses.");
             }
+            const storageKey = record.video.storageKey;
+            if (
+                storageKey !== undefined &&
+                storageKey !== null &&
+                (typeof storageKey !== "string" || !/^[a-zA-Z0-9._-]{1,128}$/.test(storageKey))
+            ) {
+                throw new Error("Référence de vidéo invalide dans le setup.");
+            }
             normalized.video = {
                 name: record.video.name,
-                dataUrl: dataUrl || null
+                dataUrl: dataUrl || null,
+                storageKey: storageKey || null
             };
         }
         if (record.prizeCards !== undefined) {
@@ -456,18 +484,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             }
             normalized.showStarLeaderboard = record.showStarLeaderboard;
         }
-        if (record.showSceneBrand !== undefined) {
-            if (typeof record.showSceneBrand !== "boolean") {
-                throw new Error("État du texte invalide dans le setup.");
-            }
-            normalized.showSceneBrand = record.showSceneBrand;
-        }
-        if (record.sceneBrandText !== undefined) {
-            if (typeof record.sceneBrandText !== "string" || record.sceneBrandText.length > 80) {
-                throw new Error("Texte affiché invalide dans le setup.");
-            }
-            normalized.sceneBrandText = record.sceneBrandText;
-        }
+        normalized.showSceneBrand = true;
+        normalized.sceneBrandText = SCENE_BRAND_TEXT;
         if (record.manualCardUsername !== undefined) {
             if (typeof record.manualCardUsername !== "string" || record.manualCardUsername.length > 33) {
                 throw new Error("Pseudo bénéficiaire invalide dans le setup.");
@@ -563,16 +581,22 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             prizeStockAdditionVersion,
             ingotFrequency,
             showStarLeaderboard: showStarLeaderboardInput.checked,
-            showSceneBrand: showSceneBrandInput.checked,
-            sceneBrandText: sceneBrandTextInput.value,
+            showSceneBrand: true,
+            sceneBrandText: SCENE_BRAND_TEXT,
             sceneBrandX: Number(sceneBrandXInput.value),
             sceneBrandY: Number(sceneBrandYInput.value),
+            sceneBrandScalePercent: Number(sceneBrandScaleInput.value),
             leaderboardX: Number(leaderboardXInput.value),
             leaderboardY: Number(leaderboardYInput.value),
+            leaderboardScalePercent: Number(leaderboardScaleInput.value),
             manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
             manualCardStars,
             video: activeVideoName
-                ? { name: activeVideoName, dataUrl: activeVideoDataUrl || null }
+                ? {
+                    name: activeVideoName,
+                    dataUrl: activeVideoDataUrl || null,
+                    storageKey: activeVideoStorageKey || null
+                }
                 : null
         };
         try {
@@ -607,6 +631,13 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         return activeVideoName && !activeVideoDataUrl
             ? ` La vidéo « ${activeVideoName} » n’est pas incluse; il faudra la sélectionner à nouveau après import.`
             : "";
+    }
+
+    function createVideoStorageKey() {
+        const randomId = globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
+            ? globalThis.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        return `video-${randomId}`;
     }
 
     function renderPrizeCards() {
@@ -744,11 +775,15 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     }
 
     function updateOverlayPositions() {
-        for (const input of overlayPositionInputs) {
-            document.getElementById(`${input.id}-value`).value = `${input.value} %`;
-        }
-        setOverlayPosition(sceneBrand, Number(sceneBrandXInput.value), Number(sceneBrandYInput.value));
-        setOverlayPosition(starLeaderboard, Number(leaderboardXInput.value), Number(leaderboardYInput.value));
+        updateOverlayPosition(sceneBrand, sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput);
+        updateOverlayPosition(starLeaderboard, leaderboardXInput, leaderboardYInput, leaderboardScaleInput);
+    }
+
+    function updateOverlayPosition(element, xInput, yInput, scaleInput) {
+        document.getElementById(`${xInput.id}-value`).value = `${xInput.value} %`;
+        document.getElementById(`${yInput.id}-value`).value = `${yInput.value} %`;
+        document.getElementById(`${scaleInput.id}-value`).value = `${scaleInput.value} %`;
+        setOverlayPosition(element, Number(xInput.value), Number(yInput.value), Number(scaleInput.value));
     }
 
     function updateGlobalStars(player) {
@@ -839,14 +874,14 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     renderStarLeaderboard();
     showStarLeaderboardInput.checked = setupRecord.showStarLeaderboard;
     starLeaderboard.hidden = !setupRecord.showStarLeaderboard;
-    showSceneBrandInput.checked = setupRecord.showSceneBrand;
-    sceneBrand.hidden = !setupRecord.showSceneBrand;
-    sceneBrandTextInput.value = setupRecord.sceneBrandText;
-    sceneBrand.textContent = setupRecord.sceneBrandText;
+    sceneBrand.hidden = false;
+    sceneBrand.textContent = SCENE_BRAND_TEXT;
     sceneBrandXInput.value = String(setupRecord.sceneBrandX);
     sceneBrandYInput.value = String(setupRecord.sceneBrandY);
     leaderboardXInput.value = String(setupRecord.leaderboardX);
     leaderboardYInput.value = String(setupRecord.leaderboardY);
+    sceneBrandScaleInput.value = String(setupRecord.sceneBrandScalePercent);
+    leaderboardScaleInput.value = String(setupRecord.leaderboardScalePercent);
     updateOverlayPositions();
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
@@ -869,11 +904,32 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     if (setupRecord.video) {
         activeVideoName = setupRecord.video.name;
         activeVideoDataUrl = setupRecord.video.dataUrl || "";
+        activeVideoStorageKey = setupRecord.video.storageKey || "";
         clearVideoButton.disabled = false;
         if (activeVideoDataUrl) {
             activeVideoUrl = activeVideoDataUrl;
             setScreenVideo(activeVideoUrl);
             setVideoStatus(`Restauration de « ${activeVideoName} »…`);
+        } else if (activeVideoStorageKey) {
+            const storageKey = activeVideoStorageKey;
+            setVideoStatus(`Restauration de « ${activeVideoName} »…`);
+            activeVideoSavePromise = loadSetupVideo(storageKey).then(file => {
+                if (activeVideoStorageKey !== storageKey) {
+                    return;
+                }
+                if (!file) {
+                    throw new Error("Fichier vidéo introuvable dans le stockage local.");
+                }
+                activeVideoUrl = URL.createObjectURL(file);
+                setScreenVideo(activeVideoUrl);
+            }).catch(error => {
+                if (activeVideoStorageKey !== storageKey) {
+                    return;
+                }
+                activeVideoSaveError = error;
+                console.error("Impossible de restaurer la vidéo du setup :", error);
+                setVideoStatus(`Impossible de restaurer « ${activeVideoName} » : ${error.message}`, "error");
+            });
         } else {
             setVideoStatus(`« ${activeVideoName} » devra être re-sélectionnée après rechargement.`);
         }
@@ -949,22 +1005,31 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         persistSetupRecord();
         dropPrizeCard(username, stars);
     });
+    dropPrizeIngotButton.addEventListener("click", () => {
+        const username = manualCardUsernameInput.value.trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            setPrizeStatus("Indique un pseudo TikTok valide pour le lingot.", "error");
+            manualCardUsernameInput.focus();
+            return;
+        }
+        manualCardUsernameInput.value = username;
+        persistSetupRecord();
+        dropPrizeIngot(username);
+    });
     manualCardStarsInput.addEventListener("change", persistSetupRecord);
     showStarLeaderboardInput.addEventListener("change", () => {
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
         persistSetupRecord();
     });
-    showSceneBrandInput.addEventListener("change", () => {
-        sceneBrand.hidden = !showSceneBrandInput.checked;
-        persistSetupRecord();
-    });
-    sceneBrandTextInput.addEventListener("input", () => {
-        sceneBrand.textContent = sceneBrandTextInput.value;
-        scheduleSetupPersistence();
-    });
-    for (const input of overlayPositionInputs) {
+    for (const input of [sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput]) {
         input.addEventListener("input", () => {
-            updateOverlayPositions();
+            updateOverlayPosition(sceneBrand, sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput);
+            scheduleSetupPersistence();
+        });
+    }
+    for (const input of [leaderboardXInput, leaderboardYInput, leaderboardScaleInput]) {
+        input.addEventListener("input", () => {
+            updateOverlayPosition(starLeaderboard, leaderboardXInput, leaderboardYInput, leaderboardScaleInput);
             scheduleSetupPersistence();
         });
     }
@@ -1220,47 +1285,93 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         if (activeVideoUrl && activeVideoUrl.startsWith("blob:")) {
             retiredVideoUrls.add(activeVideoUrl);
         }
+        const previousStorageKey = activeVideoStorageKey;
         const videoUrl = URL.createObjectURL(file);
+        const storageKey = createVideoStorageKey();
         activeVideoUrl = videoUrl;
         activeVideoName = file.name;
         activeVideoDataUrl = "";
+        activeVideoStorageKey = "";
+        activeVideoDataUrlPromise = Promise.resolve();
+        activeVideoSaveError = null;
         clearVideoButton.disabled = false;
         setScreenVideo(activeVideoUrl);
         scheduleSetupPersistence();
-        if (file.size > MAX_SETUP_VIDEO_BYTES) {
-            setVideoStatus(`« ${file.name} » est affichée, mais dépasse 1,3 Mo et ne sera pas incluse dans l’export.`, "warning");
+        activeVideoSavePromise = saveSetupVideo(storageKey, file).then(() => {
+            if (activeVideoUrl !== videoUrl) {
+                return deleteSetupVideo(storageKey);
+            }
+            activeVideoSaveError = null;
+            activeVideoStorageKey = storageKey;
+            if (!persistSetupRecord()) {
+                activeVideoSaveError = new Error("Impossible d’enregistrer la référence de la vidéo dans le setup.");
+                setVideoStatus(activeVideoSaveError.message, "error");
+                return;
+            }
+            if (previousStorageKey) {
+                void deleteSetupVideo(previousStorageKey).catch(error => {
+                    console.warn("Impossible de supprimer l’ancienne vidéo du setup :", error);
+                });
+            }
+            setVideoStatus(activeVideoDataUrl
+                ? `« ${file.name} » est affichée et incluse dans l’export du setup, et conservée sur cet appareil.`
+                : `« ${file.name} » est affichée et conservée sur cet appareil, mais ne sera pas incluse dans l’export.`);
+        }).catch(error => {
+            activeVideoSaveError = error;
+            console.error("Impossible de conserver la vidéo dans le setup :", error);
+            if (activeVideoUrl === videoUrl) {
+                setVideoStatus(`« ${file.name} » est affichée, mais n’a pas pu être sauvegardée : ${error.message}`, "error");
+            }
+        });
+        if (file.size > MAX_EXPORTABLE_SETUP_VIDEO_BYTES) {
+            setVideoStatus(`« ${file.name} » est affichée; sauvegarde locale en cours. Elle ne sera pas incluse dans l’export du setup (limite : 1,3 Mo).`, "warning");
             return;
         }
         const reader = new FileReader();
-        reader.addEventListener("load", () => {
-            if (activeVideoUrl !== videoUrl) {
-                return;
-            }
-            if (typeof reader.result !== "string") {
-                setVideoStatus("La vidéo est affichée, mais ne peut pas être incluse dans le setup.", "warning");
-                return;
-            }
-            activeVideoDataUrl = reader.result;
-            if (persistSetupRecord()) {
-                setVideoStatus(`« ${file.name} » est affichée et incluse dans le setup.`);
-            }
-        }, { once: true });
-        reader.addEventListener("error", () => {
-            if (activeVideoUrl !== videoUrl) {
-                return;
-            }
-            console.error("Impossible de préparer la vidéo pour l’export :", reader.error);
-            setVideoStatus("Vidéo affichée, mais impossible de l’inclure dans le setup.", "warning");
-        }, { once: true });
-        reader.readAsDataURL(file);
+        activeVideoDataUrlPromise = new Promise(resolve => {
+            reader.addEventListener("load", () => {
+                if (activeVideoUrl !== videoUrl) {
+                    resolve();
+                    return;
+                }
+                if (typeof reader.result !== "string") {
+                    setVideoStatus("La vidéo est affichée, mais ne peut pas être incluse dans le setup.", "warning");
+                    resolve();
+                    return;
+                }
+                activeVideoDataUrl = reader.result;
+                if (persistSetupRecord()) {
+                    setVideoStatus(`« ${file.name} » est affichée et incluse dans l’export du setup.`);
+                }
+                resolve();
+            }, { once: true });
+            reader.addEventListener("error", () => {
+                if (activeVideoUrl === videoUrl) {
+                    console.error("Impossible de préparer la vidéo pour l’export :", reader.error);
+                    setVideoStatus("Vidéo affichée, mais impossible de l’inclure dans le setup.", "warning");
+                }
+                resolve();
+            }, { once: true });
+            reader.readAsDataURL(file);
+        });
     });
     clearVideoButton.addEventListener("click", () => {
+        const storageKey = activeVideoStorageKey;
+        if (storageKey) {
+            void deleteSetupVideo(storageKey).catch(error => {
+                console.error("Impossible de supprimer la vidéo du stockage local :", error);
+                setVideoStatus(`Vidéo retirée, mais impossible d’effacer sa copie locale : ${error.message}`, "warning");
+            });
+        }
         if (activeVideoUrl && activeVideoUrl.startsWith("blob:")) {
             retiredVideoUrls.add(activeVideoUrl);
         }
         activeVideoUrl = null;
         activeVideoName = "";
         activeVideoDataUrl = "";
+        activeVideoStorageKey = "";
+        activeVideoDataUrlPromise = Promise.resolve();
+        activeVideoSaveError = null;
         videoInput.value = "";
         clearVideoButton.disabled = true;
         setScreenVideo(null);
@@ -1273,9 +1384,13 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
         if (event.data.type === "screenVideoLoaded" && event.data.url === activeVideoUrl) {
             releaseRetiredVideoUrls();
-            setVideoStatus(activeVideoDataUrl
-                ? `« ${activeVideoName} » est affichée et incluse dans le setup.`
-                : `« ${activeVideoName} » est affichée en boucle.`);
+            setVideoStatus(
+                activeVideoDataUrl
+                    ? `« ${activeVideoName} » est affichée et incluse dans l’export du setup.`
+                    : activeVideoStorageKey
+                        ? `« ${activeVideoName} » est affichée et conservée sur cet appareil.`
+                        : `« ${activeVideoName} » est affichée en boucle.`
+            );
         }
         if (event.data.type === "screenVideoError" && event.data.url === activeVideoUrl) {
             setVideoStatus("Impossible de lire cette vidéo. Essaie un fichier MP4 ou WebM.", "error");
@@ -1291,17 +1406,25 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }));
     }
 
-    saveSetupButton.addEventListener("click", () => {
-        if (!persistSetupRecord()) {
-            return;
-        }
+    saveSetupButton.addEventListener("click", async () => {
         try {
+            await Promise.all([activeVideoSavePromise, activeVideoDataUrlPromise]);
+            if (activeVideoName && activeVideoSaveError && !activeVideoDataUrl) {
+                throw activeVideoSaveError;
+            }
+            if (!persistSetupRecord()) {
+                return;
+            }
             const raw = localStorage.getItem(SETUP_STORAGE_KEY);
             if (!raw) {
                 throw new Error("Aucun setup à sauvegarder.");
             }
             backupSetup(raw);
-            setSetupStatus(`Setup sauvegardé sur cet appareil.${setupVideoExportNotice()}`, activeVideoName && !activeVideoDataUrl ? "warning" : "");
+            setSetupStatus(
+                activeVideoName
+                    ? "Setup sauvegardé sur cet appareil. La vidéo sera restaurée à l’écran."
+                    : "Setup sauvegardé sur cet appareil."
+            );
         } catch (error) {
             console.error("Échec de la sauvegarde du setup :", error);
             setSetupStatus(`Sauvegarde impossible : ${error.message}`, "error");
@@ -1327,20 +1450,25 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setSetupStatus(`Restauration impossible : ${error.message}`, "error");
         }
     });
-    exportSetupButton.addEventListener("click", () => {
-        if (!persistSetupRecord()) {
-            return;
-        }
+    exportSetupButton.addEventListener("click", async () => {
         try {
+            await Promise.all([activeVideoSavePromise, activeVideoDataUrlPromise]);
+            if (!persistSetupRecord()) {
+                return;
+            }
             const raw = localStorage.getItem(SETUP_STORAGE_KEY);
             if (!raw) {
                 throw new Error("Aucun setup à exporter.");
+            }
+            const portableSetup = JSON.parse(raw);
+            if (portableSetup.video) {
+                portableSetup.video.storageKey = null;
             }
             const payload = JSON.stringify({
                 format: SETUP_FORMAT,
                 game: SETUP_STORAGE_KEY,
                 exportedAt: new Date().toISOString(),
-                data: JSON.parse(raw)
+                data: portableSetup
             }, null, 2);
             if (new Blob([payload]).size > MAX_SETUP_FILE_BYTES) {
                 throw new Error("Le setup dépasse la taille maximale d’export (2 Mo).");

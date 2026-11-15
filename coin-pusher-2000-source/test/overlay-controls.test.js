@@ -102,27 +102,44 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(elements["machine-start"].disabled, true);
     assert.equal(elements["machine-left"].disabled, false);
     assert.equal(elements["machine-coins"].textContent, "100");
+    assert.equal(elements["scene-brand"].textContent, "GRYPHON AGENCY");
+    assert.equal(elements["scene-brand"].hidden, false);
     elements["coin-volume"].value = "72";
     elements["coin-volume"].dispatch("input");
     assert.equal(elements["coin-volume-value"].value, "72 %");
     assert.equal(soundVolumes.at(-1), 0.72);
     assert.equal(storage.get("coin-pusher-2000-coin-volume-v1"), "72");
-    assert.equal(elements["scene-brand"].textContent, "GRYPHON AGENCY");
-    elements["scene-brand-text"].value = "MON TEXTE";
-    elements["scene-brand-text"].dispatch("input");
+    const initialBrandTransform = elements["scene-brand"].style.transform;
+    elements["leaderboard-x"].value = "80";
+    elements["leaderboard-x"].dispatch("input");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -55%)");
+    assert.equal(elements["scene-brand"].style.transform, initialBrandTransform);
     elements["scene-brand-x"].value = "90";
     elements["scene-brand-y"].value = "20";
     elements["scene-brand-y"].dispatch("input");
-    elements["leaderboard-x"].value = "80";
+    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%)");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -55%)");
     elements["leaderboard-y"].value = "40";
     elements["leaderboard-y"].dispatch("input");
-    elements["show-scene-brand"].checked = false;
-    elements["show-scene-brand"].dispatch("change");
+    elements["scene-brand-scale"].value = "70";
+    elements["scene-brand-scale"].dispatch("input");
+    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%) scale(0.7)");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%)");
+    elements["leaderboard-scale"].value = "60";
+    elements["leaderboard-scale"].dispatch("input");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%) scale(0.6)");
     elements["show-star-leaderboard"].checked = true;
     elements["show-star-leaderboard"].dispatch("change");
-    assert.equal(elements["scene-brand"].hidden, true);
-    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%)");
-    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%)");
+    assert.equal(elements["scene-brand"].hidden, false);
+    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%) scale(0.7)");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%) scale(0.6)");
+    const legacySetup = JSON.parse(storage.get("coin-pusher-2000-live-panel-v1"));
+    assert.equal(legacySetup.sceneBrandScalePercent, 70);
+    assert.equal(legacySetup.leaderboardScalePercent, 60);
+    legacySetup.showSceneBrand = false;
+    legacySetup.sceneBrandText = "MON TEXTE";
+    storage.set("coin-pusher-2000-live-panel-v1", JSON.stringify(legacySetup));
+    assert.doesNotMatch(html, /id="(?:show-scene-brand|scene-brand-text)"/);
     window.dispatch("coin-pusher-prize-awarded", {
         username: "alice", amount: 25, avatarUrl: "https://example.com/avatar.png", globalStars: 25
     });
@@ -132,14 +149,11 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
 
     elements = start();
     assert.equal(elements["manual-card-stars"].value, "300");
-    assert.equal(elements["scene-brand-text"].value, "MON TEXTE");
-    assert.equal(elements["scene-brand"].hidden, true);
-    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%)");
-    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%)");
-    assert.equal(elements["star-leaderboard-list"].children[0].children[2].textContent, "25 ⭐");
-    elements["show-scene-brand"].checked = true;
-    elements["show-scene-brand"].dispatch("change");
+    assert.equal(elements["scene-brand"].textContent, "GRYPHON AGENCY");
     assert.equal(elements["scene-brand"].hidden, false);
+    assert.equal(elements["scene-brand"].style.transform, "translate(-90%, -20%) scale(0.7)");
+    assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%) scale(0.6)");
+    assert.equal(elements["star-leaderboard-list"].children[0].children[2].textContent, "25 ⭐");
 
     storage.set("coin-pusher-2000-live-panel-v1", JSON.stringify({
         version: 1,

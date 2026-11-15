@@ -27,6 +27,7 @@ window.CoinPusher2000 = {
     setCharacterScale: scale => Game.setCharacterScale(scale),
     setCharacterPosition: position => Game.setCharacterPosition(position),
     dropPrizeCard: (username, stars) => Game.dropPrizeCard(username, stars),
+    dropPrizeIngot: username => Game.dropPrizeIngot(username),
     setPrizeConfig: config => Game.setPrizeConfig(config),
     get pendingCoins() {
         return Game.pendingCoins;
@@ -44,6 +45,7 @@ initializeTikTokBridge({
     setCharacterScale: scale => Game.setCharacterScale(scale),
     setCharacterPosition: position => Game.setCharacterPosition(position),
     dropPrizeCard: (username, stars) => Game.dropPrizeCard(username, stars),
+    dropPrizeIngot: username => Game.dropPrizeIngot(username),
     setPrizeConfig: config => Game.setPrizeConfig(config)
 });
 let checkingPrizeCredits = false;

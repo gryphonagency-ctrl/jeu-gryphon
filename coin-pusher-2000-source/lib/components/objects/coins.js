@@ -494,7 +494,7 @@ function initializeInstancedMeshes({ scene, materials, geometries }) {
         }
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        scene.addObject(mesh);
+        scene.addObject(mesh, { upperDeck: true });
         meshes.push(mesh);
     }
     return meshes;
@@ -551,7 +551,7 @@ function initializeAvatarMeshes({ scene }) {
         mesh.receiveShadow = false;
         mesh.renderOrder = 1;
         mesh.frustumCulled = false;
-        scene.addObject(mesh);
+        scene.addObject(mesh, { upperDeck: true });
         meshes.push(mesh);
     }
     return { context, texture, rectAttribute, meshes };

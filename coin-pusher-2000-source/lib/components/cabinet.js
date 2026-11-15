@@ -23,6 +23,8 @@ import TokenSlot from "./gadgets/token-slot.js";
 import GiphyCharacter from "./giphy-character.js";
 import PrizeCreditQueue from "../prize-credit-queue.js";
 import { selectPrizeCard } from "../prize-card-selection.js";
+import { shouldPlayCoinImpact } from "../coin-impact-filter.js";
+import { getPrizeDropPosition } from "../prize-drop-position.js";
 
 const MIN_POSITION_Y_OBJECTS = -1;
 const MODEL_PATH = "./assets/cabinet.glb";
@@ -125,7 +127,7 @@ export default class {
         this.#Runs = Runs;
         this.#onCharacterStatus = onCharacterStatus;
         scene.setCollisionHandler((first, second) => {
-            if (first?.objectType === Coins.TYPE || second?.objectType === Coins.TYPE) {
+            if (shouldPlayCoinImpact(first, second, Coins.TYPE, index => Coins.getCoin({ index }))) {
                 CoinSounds.playImpact();
             }
         });
@@ -174,6 +176,7 @@ export default class {
     #creditOwner = "";
     #unstoredPrizes = [];
     #pendingIngots = [];
+    #pendingClawPrizePlayers = [];
     #ingotFrequency = 10;
     #prizeCardsWon = 0;
     #controlPanel;
@@ -247,9 +250,9 @@ export default class {
             Coins,
             onFallenCoin: instance => Coins.enableCcd(instance, false),
             onBonusWon: player => {
-                this.#deliverPrize(player);
                 const random = Math.random();
                 if (this.DEBUG_AUTOPLAY) {
+                    this.#deliverPrize(player);
                     const tokens = [];
                     const cards = [];
                     for (let i = 0; i < 5; i++) {
@@ -270,20 +273,27 @@ export default class {
                     ]));
                 } else {
                     if (random < 1 / 6) {
+                        this.#pendingClawPrizePlayers.push({
+                            username: player.username,
+                            avatarUrl: player.avatarUrl || ""
+                        });
                         this.#excavator.pick();
-                    } else if (random < 2 / 6) {
-                        this.#controlPanel.enableShootButton();
-                        this.#coinRoller.shootCoin();
-                    } else if (random < 3 / 6) {
-                        this.#leftTower.shootCoins();
-                        this.#rightTower.shootCoins();
-                    } else if (random < 4 / 6) {
-                        this.#leftStacker.deliver({ levels: 30 });
-                        this.#rightStacker.deliver({ levels: 30 });
-                    } else if (random < 5 / 6) {
-                        this.#sweepers.sweepFloor({ level: 5 });
                     } else {
-                        this.#stacker.deliver({ stacks: 7, levels: 15 });
+                        this.#deliverPrize(player);
+                        if (random < 2 / 6) {
+                            this.#controlPanel.enableShootButton();
+                            this.#coinRoller.shootCoin();
+                        } else if (random < 3 / 6) {
+                            this.#leftTower.shootCoins();
+                            this.#rightTower.shootCoins();
+                        } else if (random < 4 / 6) {
+                            this.#leftStacker.deliver({ levels: 30 });
+                            this.#rightStacker.deliver({ levels: 30 });
+                        } else if (random < 5 / 6) {
+                            this.#sweepers.sweepFloor({ level: 5 });
+                        } else {
+                            this.#stacker.deliver({ stacks: 7, levels: 15 });
+                        }
                     }
                 }
             }
@@ -292,6 +302,10 @@ export default class {
             scene,
             cabinet: this,
             onPick: dropPosition => {
+                const player = this.#pendingClawPrizePlayers.shift();
+                if (player) {
+                    this.#deliverPrize(player, false, null, dropPosition);
+                }
                 const tokens = [];
                 for (let i = 0; i < 1; i++) {
                     if (Math.random() < 0.5) {
@@ -594,6 +608,28 @@ export default class {
         return this.#deliverPrize({ username: target }, true, stars);
     }
 
+    dropPrizeIngot(username) {
+        const target = String(username || "").trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(target)) {
+            this.#dispatchPrizeStatus("Indique un pseudo TikTok valide pour le lingot.", "error");
+            return false;
+        }
+        if (!this.#creditQueue || this.#unstoredPrizes.length) {
+            this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
+            return false;
+        }
+        const queued = !Ingots.hasAvailableInstance() || this.#pendingIngots.length > 0;
+        this.#pendingIngots.push({ username: target, avatarUrl: "" });
+        this.#deliverPendingIngots();
+        this.#dispatchPrizeStatus(
+            queued
+                ? `Lingot de ${INGOT_STARS} étoiles mis en attente pour @${target} ; il tombera dès qu’une place se libérera.`
+                : `Lingot de ${INGOT_STARS} étoiles lâché pour @${target} ; crédit à la sortie du plateau.`,
+            queued ? "warning" : ""
+        );
+        return true;
+    }
+
     setPrizeConfig({ cards, ingotFrequency }) {
         if (
             !Array.isArray(cards) ||
@@ -664,6 +700,7 @@ export default class {
         data.tokens = Tokens.save();
         data.buttons = Buttons.save();
         data.ingots = Ingots.save();
+        data.pendingClawPrizePlayers = this.#pendingClawPrizePlayers.map(player => ({ ...player }));
         Object.assign(data, {
             state: this.#cabinet.state,
             sensorCollidersHandles,
@@ -692,6 +729,17 @@ export default class {
         Tokens.load(cabinet.tokens);
         Buttons.load(cabinet.buttons);
         Ingots.load(cabinet.ingots);
+        this.#pendingClawPrizePlayers = Array.isArray(cabinet.pendingClawPrizePlayers)
+            ? cabinet.pendingClawPrizePlayers.filter(player =>
+                player &&
+                typeof player.username === "string" &&
+                /^[a-zA-Z0-9._]{1,32}$/.test(player.username) &&
+                (typeof player.avatarUrl === "string" || player.avatarUrl === undefined)
+            ).map(player => ({
+                username: player.username,
+                avatarUrl: player.avatarUrl || ""
+            }))
+            : [];
         this.#sensorColliders = new Map();
         this.#parts.forEach(partData => {
             partData.meshes.forEach(({ data }) => {
@@ -779,7 +827,7 @@ export default class {
         }
     }
 
-    #deliverPrize(player, manual = false, requestedStars = null) {
+    #deliverPrize(player, manual = false, requestedStars = null, position = null) {
         const username = String(player?.username || "").trim().replace(/^@/, "");
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
             return false;
@@ -816,6 +864,7 @@ export default class {
         };
         const cardObject = Cards.deposit({
             type: cardType,
+            position: getPrizeDropPosition(position || this.#pusher.deliveryPosition, Cards.getSize()),
             prize: { username, amount: selected.stars, avatarUrl: player.avatarUrl || "" },
             onAvatarError: reportAvatarError
         });
@@ -847,7 +896,9 @@ export default class {
     #deliverPendingIngots() {
         while (this.#pendingIngots.length && Ingots.hasAvailableInstance()) {
             const player = this.#pendingIngots.shift();
-            const ingot = Ingots.deposit({});
+            const ingot = Ingots.deposit({
+                position: getPrizeDropPosition(this.#pusher.deliveryPosition, Ingots.getSize())
+            });
             this.#prizeAssignments.set(ingot, {
                 username: player.username,
                 avatarUrl: player.avatarUrl,

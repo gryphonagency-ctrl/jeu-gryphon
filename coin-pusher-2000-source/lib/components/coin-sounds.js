@@ -5,7 +5,7 @@ const DEFAULT_VOLUME = 0.45;
 let audioContext;
 let masterGain;
 let volume = DEFAULT_VOLUME;
-let lastImpactTime = 0;
+let lastImpactTime = Number.NEGATIVE_INFINITY;
 
 function getAudioContext() {
     if (audioContext) {

@@ -159,7 +159,7 @@ function initializeInstancedMeshes({ scene, materials, geometries }) {
         for (let indexInstance = 0; indexInstance < MAX_INSTANCES; indexInstance++) {
             mesh.setMatrixAt(indexInstance, INITIAL_SCALE);
         }
-        scene.addObject(mesh);
+        scene.addObject(mesh, { upperDeck: true });
         meshes.push(mesh);
     }
     return meshes;

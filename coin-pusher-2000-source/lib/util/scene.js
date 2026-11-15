@@ -2,6 +2,7 @@ import { Quaternion, Vector3, Euler, Scene, WebGLRenderer, PMREMGenerator, Direc
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { UPPER_DECK_LAYER } from "../components/output/upper-deck-layer.js";
 
 const NUM_SOLVER_ITERATIONS = 2;
 const NUM_ADDITIONAL_FRICTION_ITERATIONS = 1;
@@ -46,8 +47,11 @@ export default class {
         this.#world.integrationParameters.minIslandSize = 32;
         // this.#world.integrationParameters.switchToSmallStepsPgsSolver();
         this.#world.timestep = TIMESTEP;
-        this.#scene.add(new AmbientLight(AMBIANT_LIGHT_COLOR, AMBIANT_LIGHT_INTENSITY));
+        const ambientLight = new AmbientLight(AMBIANT_LIGHT_COLOR, AMBIANT_LIGHT_INTENSITY);
+        ambientLight.layers.enable(UPPER_DECK_LAYER);
+        this.#scene.add(ambientLight);
         const directionalLight = new DirectionalLight(DIRECTIONAL_LIGHT_COLOR, DIRECTIONAL_LIGHT_INTENSITY);
+        directionalLight.layers.enable(UPPER_DECK_LAYER);
         directionalLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
         directionalLight.position.set(...DIRECTIONAL_LIGHT_POSITION);
         directionalLight.castShadow = DIRECTIONAL_LIGHT_CAST_SHADOW;
@@ -248,11 +252,14 @@ export default class {
         return this.#world.createImpulseJoint(jointData, body1, body2);
     }
 
-    addObject(object) {
+    addObject(object, { upperDeck = false } = {}) {
         object.traverse((child) => {
             if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
+            }
+            if (upperDeck) {
+                child.layers.enable(UPPER_DECK_LAYER);
             }
         });
         this.#scene.add(object);
@@ -260,6 +267,17 @@ export default class {
 
     render() {
         this.#renderer.render(this.#scene, this.#camera);
+    }
+
+    renderToTarget(camera, target) {
+        const currentTarget = this.#renderer.getRenderTarget();
+        try {
+            this.#renderer.setRenderTarget(target);
+            this.#renderer.clear();
+            this.#renderer.render(this.#scene, camera);
+        } finally {
+            this.#renderer.setRenderTarget(currentTarget);
+        }
     }
 
     step() {

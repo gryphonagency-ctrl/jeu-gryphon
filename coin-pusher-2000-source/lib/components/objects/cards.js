@@ -104,7 +104,7 @@ export default class {
             instance.prizeLabel = createPrizeCardLabel({
                 ...prize, width: WIDTH, height: HEIGHT, depth: DEPTH, onAvatarError
             });
-            this.#scene.addObject(instance.prizeLabel.group);
+            this.#scene.addObject(instance.prizeLabel.group, { upperDeck: true });
             instance.prizeLabel.group.traverse(object => {
                 if (object.isMesh) {
                     object.castShadow = false;
@@ -215,7 +215,7 @@ function initializeInstancedMeshes({ scene, materials, geometries }) {
             for (let indexInstance = 0; indexInstance < MAX_INSTANCES; indexInstance++) {
                 mesh.setMatrixAt(indexInstance, INITIAL_SCALE);
             }
-            scene.addObject(mesh);
+            scene.addObject(mesh, { upperDeck: true });
             typeMeshes.push(mesh);
         }
         meshes.push(typeMeshes);
