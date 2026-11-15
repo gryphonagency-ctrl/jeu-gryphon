@@ -23,6 +23,7 @@ export default class {
     #upperDeckCamera;
     #upperDeckRenderTarget;
     #upperDeckDisplay;
+    #upperDeckRenderFailed = false;
     #cameraPosition = new Vector3();
     #screenNormal = new Vector3();
     #screenVisible;
@@ -106,11 +107,16 @@ export default class {
     }
 
     refresh() {
-        this.#upperDeckDisplay.visible = false;
-        try {
-            this.#scene.renderToTarget(this.#upperDeckCamera, this.#upperDeckRenderTarget);
-        } finally {
-            this.#upperDeckDisplay.visible = true;
+        if (!this.#upperDeckRenderFailed) {
+            this.#upperDeckDisplay.visible = false;
+            try {
+                this.#scene.renderToTarget(this.#upperDeckCamera, this.#upperDeckRenderTarget);
+            } catch (error) {
+                this.#upperDeckRenderFailed = true;
+                console.error("La vue miroir du plateau a été désactivée après une erreur de rendu.", error);
+            } finally {
+                this.#upperDeckDisplay.visible = !this.#upperDeckRenderFailed;
+            }
         }
         this.#css3DObject.visible = this.#screenVisible;
         this.#css3DRenderer.render(this.#scene.css3DScene, this.#scene.camera);

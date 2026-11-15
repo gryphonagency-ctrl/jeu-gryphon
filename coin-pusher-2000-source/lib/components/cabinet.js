@@ -22,7 +22,7 @@ import CardReader from "./gadgets/card-reader.js";
 import TokenSlot from "./gadgets/token-slot.js";
 import GiphyCharacter from "./giphy-character.js";
 import PrizeCreditQueue from "../prize-credit-queue.js";
-import { selectPrizeCard } from "../prize-card-selection.js";
+import { resolveManualPrizeCard, selectPrizeCard } from "../prize-card-selection.js";
 import { shouldPlayCoinImpact } from "../coin-impact-filter.js";
 import { getPrizeDropPosition } from "../prize-drop-position.js";
 
@@ -618,15 +618,9 @@ export default class {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
         }
-        const queued = !Ingots.hasAvailableInstance() || this.#pendingIngots.length > 0;
         this.#pendingIngots.push({ username: target, avatarUrl: "" });
         this.#deliverPendingIngots();
-        this.#dispatchPrizeStatus(
-            queued
-                ? `Lingot de ${INGOT_STARS} étoiles mis en attente pour @${target} ; il tombera dès qu’une place se libérera.`
-                : `Lingot de ${INGOT_STARS} étoiles lâché pour @${target} ; crédit à la sortie du plateau.`,
-            queued ? "warning" : ""
-        );
+        this.#dispatchPrizeStatus(`Lingot de ${INGOT_STARS} étoiles lâché immédiatement pour @${target} ; crédit à la sortie du plateau.`);
         return true;
     }
 
@@ -838,26 +832,16 @@ export default class {
         }
         const availableCards = this.#prizeDeck.filter(card => card.count > 0);
         const totalCards = availableCards.reduce((sum, card) => sum + card.count, 0);
-        if (!totalCards) {
+        if (!manual && !totalCards) {
             this.#dispatchPrizeStatus("Le stock de cartes est vide ou toutes les cartes sont déjà sur le plateau.", "warning");
             return false;
         }
-        const selected = selectPrizeCard(availableCards, requestedStars);
-        if (!selected && requestedStars !== null) {
-            this.#dispatchPrizeStatus(
-                `Aucune carte à ${requestedStars.toLocaleString("fr-FR")} étoile${requestedStars === 1 ? "" : "s"} n’est disponible dans le stock.`,
-                "warning"
-            );
-            return false;
-        }
+        const manualSelection = manual ? resolveManualPrizeCard(this.#prizeDeck, requestedStars) : null;
+        const selected = manualSelection?.card || selectPrizeCard(availableCards);
         if (!selected) {
             return false;
         }
         const cardType = this.#cardTypeForStars(selected.stars);
-        if (!Cards.hasAvailableInstance(cardType)) {
-            this.#dispatchPrizeStatus("Toutes les cartes de cette couleur sont sur le plateau; réessaie au prochain bonus.", "warning");
-            return false;
-        }
         const reportAvatarError = error => {
             console.warn("Photo de profil indisponible sur la carte de récompense :", error);
             this.#dispatchPrizeStatus(`Photo de profil indisponible pour @${username} ; le pseudo et les étoiles restent affichés.`, "warning");
@@ -871,34 +855,38 @@ export default class {
         if (!player.avatarUrl) {
             void Cards.loadPrizeAvatar(cardObject, username).catch(reportAvatarError);
         }
-        selected.count--;
+        const usesStock = manualSelection ? manualSelection.usesStock : true;
+        if (usesStock) selected.count--;
         this.#prizeAssignments.set(cardObject, {
             username,
             avatarUrl: player.avatarUrl || "",
             amount: selected.stars,
-            kind: "carte"
+            kind: "carte",
+            usesStock
         });
-        this.#dispatchPrizeDeck();
+        if (usesStock) this.#dispatchPrizeDeck();
         this.#deliverPendingIngots();
         if (manual) {
-            this.#dispatchPrizeStatus(`Carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée pour @${username} ; crédit à la sortie du plateau.`);
+            this.#dispatchPrizeStatus(`Carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée immédiatement pour @${username} ; crédit à la sortie du plateau.`);
         }
         return true;
     }
 
     #cardTypeForStars(stars) {
-        return this.#prizeDeck
+        const type = this.#prizeDeck
             .slice()
             .sort((a, b) => a.stars - b.stars)
-            .findIndex(card => card.stars === stars) % Cards.TYPES;
+            .findIndex(card => card.stars === stars);
+        return type < 0 ? (stars - 1) % Cards.TYPES : type % Cards.TYPES;
     }
 
     #deliverPendingIngots() {
-        while (this.#pendingIngots.length && Ingots.hasAvailableInstance()) {
-            const player = this.#pendingIngots.shift();
+        while (this.#pendingIngots.length) {
+            const player = this.#pendingIngots[0];
             const ingot = Ingots.deposit({
                 position: getPrizeDropPosition(this.#pusher.deliveryPosition, Ingots.getSize())
             });
+            this.#pendingIngots.shift();
             this.#prizeAssignments.set(ingot, {
                 username: player.username,
                 avatarUrl: player.avatarUrl,
@@ -914,7 +902,7 @@ export default class {
             return;
         }
         this.#prizeAssignments.delete(object);
-        if (prize.kind === "carte") {
+        if (prize.kind === "carte" && prize.usesStock) {
             this.#restoreCard(prize.amount);
         } else if (prize.kind === "lingot") {
             this.#pendingIngots.unshift({ username: prize.username, avatarUrl: prize.avatarUrl });

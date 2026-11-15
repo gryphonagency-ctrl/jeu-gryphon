@@ -9,3 +9,14 @@ export function selectPrizeCard(availableCards, requestedStars = null, random = 
         return selection < 0;
     }) || null;
 }
+
+export function resolveManualPrizeCard(prizeDeck, requestedStars) {
+    if (!Number.isSafeInteger(requestedStars) || requestedStars < 1) {
+        throw new RangeError("La valeur de la carte doit être un nombre entier positif.");
+    }
+    const stockedCard = prizeDeck.find(card => card.stars === requestedStars && card.count > 0) || null;
+    return {
+        card: stockedCard || { stars: requestedStars, count: 0 },
+        usesStock: stockedCard !== null
+    };
+}

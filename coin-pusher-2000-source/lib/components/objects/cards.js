@@ -1,5 +1,6 @@
 import { Vector3, Quaternion, Matrix4, Euler, InstancedMesh } from "three";
 import { createPrizeCardLabel, lookupPrizeAvatar } from "../../prize-card-label.js";
+import { expandInstancedMeshes } from "./expand-instanced-meshes.js";
 
 const TYPE = "card";
 const MAX_INSTANCES = 8;
@@ -12,6 +13,11 @@ const INITIAL_HIDDEN_ROTATION = [0, 0, 0, 1];
 const INITIAL_HIDDEN_LINEAR_VELOCITY = new Vector3(0, 0, 0);
 const INITIAL_HIDDEN_ANGULAR_VELOCITY = new Vector3(0, 0, 0);
 const INITIAL_SCALE = new Vector3(0, 0, 0);
+const INITIAL_HIDDEN_MATRIX = new Matrix4().compose(
+    new Vector3(...INITIAL_HIDDEN_POSITION),
+    new Quaternion().fromArray(INITIAL_HIDDEN_ROTATION),
+    INITIAL_SCALE
+);
 const DEFAULT_SCALE = new Vector3(1, 1, 1);
 const EULER_ROTATION = new Euler(0, 0, 0);
 const SOFT_CCD_PREDICTION = Math.max(WIDTH, HEIGHT, DEPTH);
@@ -42,9 +48,11 @@ export default class {
     static #scene;
     static #meshes;
     static #instances;
+    static #groups;
 
     static async initialize({ scene, groups }) {
         this.#scene = scene;
+        this.#groups = groups;
         const { materials, geometries } = await initializeModel({ scene });
         this.#meshes = initializeInstancedMeshes({ scene, materials, geometries });
         this.#instances = [];
@@ -98,7 +106,16 @@ export default class {
     }
 
     static deposit({ type, position, rotation, prize, onAvatarError }) {
-        const instance = this.#instances[type].find(instance => !instance.used);
+        let instance = this.#instances[type].find(instance => !instance.used);
+        if (!instance) {
+            this.#ensureTypeCapacity(type, this.#instances[type].length + 1);
+            instance = createInstance({
+                scene: this.#scene,
+                type,
+                instances: this.#instances,
+                groups: this.#groups
+            });
+        }
         instance.used = true;
         if (prize) {
             instance.prizeLabel = createPrizeCardLabel({
@@ -157,31 +174,45 @@ export default class {
 
     static load(cards) {
         cards.forEach((type, indexType) => {
-            type.forEach((instance, instanceIndex) => {
-                const body = this.#scene.worldBodies.get(instance.bodyHandle);
-                const card = this.#instances[indexType][instanceIndex];
+            for (const card of this.#instances[indexType]) {
                 card.prizeLabel?.dispose();
                 card.prizeLabel = null;
-                this.#instances[indexType][instanceIndex] = {
-                    ...card,
-                    position: new Vector3().fromArray(instance.position),
-                    rotation: new Quaternion().fromArray(instance.rotation),
-                    used: instance.used,
-                    body
-                };
-                for (let indexCollider = 0; indexCollider < body.numColliders(); indexCollider++) {
-                    const collider = body.collider(indexCollider);
-                    collider.userData = {
-                        objectType: TYPE,
-                        type: indexType,
-                        index: instanceIndex
-                    };
-                }
+            }
+            this.#ensureTypeCapacity(indexType, type.length);
+            this.#instances[indexType] = [];
+            type.forEach((instance, instanceIndex) => {
+                const body = this.#scene.worldBodies.get(instance.bodyHandle);
+                if (!body) throw new Error(`Impossible de restaurer le corps de la carte ${indexType}:${instanceIndex}.`);
+                const card = createInstance({
+                    scene: this.#scene,
+                    type: indexType,
+                    instances: this.#instances,
+                    existingBody: body
+                });
+                card.position.fromArray(instance.position);
+                card.rotation.fromArray(instance.rotation);
+                card.used = instance.used;
                 update({
-                    instance: this.#instances[indexType][instanceIndex],
+                    instance: card,
                     meshes: this.#meshes[indexType]
                 });
             });
+            for (let index = type.length; index < this.#meshes[indexType][0].count; index++) {
+                for (const mesh of this.#meshes[indexType]) mesh.setMatrixAt(index, INITIAL_HIDDEN_MATRIX);
+            }
+            for (const mesh of this.#meshes[indexType]) mesh.instanceMatrix.needsUpdate = true;
+        });
+    }
+
+    static #ensureTypeCapacity(type, capacity) {
+        const meshes = this.#meshes[type];
+        const currentCapacity = meshes[0].count;
+        if (capacity <= currentCapacity) return;
+        this.#meshes[type] = expandInstancedMeshes({
+            scene: this.#scene,
+            meshes,
+            capacity: Math.max(capacity, currentCapacity * 2),
+            upperDeck: true
         });
     }
 }
@@ -213,7 +244,7 @@ function initializeInstancedMeshes({ scene, materials, geometries }) {
         for (let indexMaterial = 0; indexMaterial < materials[type].length; indexMaterial++) {
             const mesh = new InstancedMesh(geometries[type][indexMaterial], materials[type][indexMaterial], MAX_INSTANCES);
             for (let indexInstance = 0; indexInstance < MAX_INSTANCES; indexInstance++) {
-                mesh.setMatrixAt(indexInstance, INITIAL_SCALE);
+                mesh.setMatrixAt(indexInstance, INITIAL_HIDDEN_MATRIX);
             }
             scene.addObject(mesh, { upperDeck: true });
             typeMeshes.push(mesh);
@@ -232,24 +263,30 @@ function createInstances({ scene, instances, groups }) {
     }
 }
 
-function createInstance({ scene, type, instances, groups }) {
-    const body = scene.createDynamicBody();
-    body.setEnabled(false);
-    body.setSoftCcdPrediction(SOFT_CCD_PREDICTION);
-    body.setAngularDamping(ANGULAR_DAMPING);
-    body.setLinearDamping(LINEAR_DAMPING);
-    body.setAdditionalSolverIterations(ADDITIONAL_SOLVER_ITERATIONS);
+function createInstance({ scene, type, instances, groups, existingBody = null }) {
+    const body = existingBody ?? scene.createDynamicBody();
     const index = instances[type].length;
-    const collider = scene.createCuboidCollider({
-        userData: { objectType: TYPE, type, index },
-        width: WIDTH,
-        height: DEPTH,
-        depth: HEIGHT,
-        friction: FRICTION,
-        restitution: RESTITUTION,
-        density: DENSITY
-    }, body);
-    collider.setCollisionGroups(groups.OBJECTS << 16 | groups.ALL);
+    if (existingBody) {
+        for (let indexCollider = 0; indexCollider < body.numColliders(); indexCollider++) {
+            body.collider(indexCollider).userData = { objectType: TYPE, type, index };
+        }
+    } else {
+        body.setEnabled(false);
+        body.setSoftCcdPrediction(SOFT_CCD_PREDICTION);
+        body.setAngularDamping(ANGULAR_DAMPING);
+        body.setLinearDamping(LINEAR_DAMPING);
+        body.setAdditionalSolverIterations(ADDITIONAL_SOLVER_ITERATIONS);
+        const collider = scene.createCuboidCollider({
+            userData: { objectType: TYPE, type, index },
+            width: WIDTH,
+            height: DEPTH,
+            depth: HEIGHT,
+            friction: FRICTION,
+            restitution: RESTITUTION,
+            density: DENSITY
+        }, body);
+        collider.setCollisionGroups(groups.OBJECTS << 16 | groups.ALL);
+    }
     const instance = {
         objectType: TYPE,
         index,

@@ -5,6 +5,7 @@ import Pointer from "./util/pointer.js";
 import Camera from "./util/camera.js";
 import Runs from "./business/runs.js";
 import CoinSounds from "./components/coin-sounds.js";
+import runFrame from "./run-frame.js";
 
 import initialState from "./data/initial-state.json" with { type: "json" };
 
@@ -83,24 +84,27 @@ export default class {
     }
 
     static #update() {
-        if (this.#restart) {
-            this.#restart = false;
-            this.#stopped = false;
-        }
-        if (!this.#stopped) {
-            this.#cabinet.update(this.#time);
-            this.#pointer.update();
-            Debug.update();
-            this.#cabinet.refresh();
-            this.#scene.render();
-            this.#scene.step();
-            this.#time += STEP_DELAY;
-        }
-        if (this.DEBUG_MAX_SPEED) {
-            setTimeout(() => this.#update(), 0);
-        } else {
-            requestAnimationFrame(() => this.#update());
-        }
+        runFrame(() => {
+            if (this.#restart) {
+                this.#restart = false;
+                this.#stopped = false;
+            }
+            if (!this.#stopped) {
+                this.#cabinet.update(this.#time);
+                this.#pointer.update();
+                Debug.update();
+                this.#cabinet.refresh();
+                this.#scene.render();
+                this.#scene.step();
+                this.#time += STEP_DELAY;
+            }
+        }, () => {
+            if (this.DEBUG_MAX_SPEED) {
+                setTimeout(() => this.#update(), 0);
+            } else {
+                requestAnimationFrame(() => this.#update());
+            }
+        });
     }
 
     static async save() {

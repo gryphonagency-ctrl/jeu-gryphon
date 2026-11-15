@@ -265,6 +265,10 @@ export default class {
         this.#scene.add(object);
     }
 
+    removeObject(object) {
+        this.#scene.remove(object);
+    }
+
     render() {
         this.#renderer.render(this.#scene, this.#camera);
     }
