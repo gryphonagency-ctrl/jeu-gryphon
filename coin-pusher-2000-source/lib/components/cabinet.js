@@ -27,6 +27,7 @@ import { shouldPlayCoinImpact } from "../coin-impact-filter.js";
 import { getPrizeDropPosition } from "../prize-drop-position.js";
 
 const MIN_POSITION_Y_OBJECTS = -1;
+const MANUAL_PRIZE_DROP_HEIGHT = 1.5;
 const MODEL_PATH = "./assets/cabinet.glb";
 const SENSOR_HEIGHT = 0.2;
 const DEFAULT_PRIZE_DECK = [
@@ -618,7 +619,7 @@ export default class {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
         }
-        this.#pendingIngots.push({ username: target, avatarUrl: "" });
+        this.#pendingIngots.push({ username: target, avatarUrl: "", manual: true });
         this.#deliverPendingIngots();
         this.#dispatchPrizeStatus(`Lingot de ${INGOT_STARS} étoiles lâché immédiatement pour @${target} ; crédit à la sortie du plateau.`);
         return true;
@@ -848,7 +849,9 @@ export default class {
         };
         const cardObject = Cards.deposit({
             type: cardType,
-            position: getPrizeDropPosition(position || this.#pusher.deliveryPosition, Cards.getSize()),
+            position: getPrizeDropPosition(position || this.#pusher.deliveryPosition, Cards.getSize(), {
+                height: manual ? MANUAL_PRIZE_DROP_HEIGHT : 0
+            }),
             prize: { username, amount: selected.stars, avatarUrl: player.avatarUrl || "" },
             onAvatarError: reportAvatarError
         });
@@ -884,14 +887,17 @@ export default class {
         while (this.#pendingIngots.length) {
             const player = this.#pendingIngots[0];
             const ingot = Ingots.deposit({
-                position: getPrizeDropPosition(this.#pusher.deliveryPosition, Ingots.getSize())
+                position: getPrizeDropPosition(this.#pusher.deliveryPosition, Ingots.getSize(), {
+                    height: player.manual ? MANUAL_PRIZE_DROP_HEIGHT : 0
+                })
             });
             this.#pendingIngots.shift();
             this.#prizeAssignments.set(ingot, {
                 username: player.username,
                 avatarUrl: player.avatarUrl,
                 amount: INGOT_STARS,
-                kind: "lingot"
+                kind: "lingot",
+                manual: player.manual === true
             });
         }
     }
@@ -905,7 +911,11 @@ export default class {
         if (prize.kind === "carte" && prize.usesStock) {
             this.#restoreCard(prize.amount);
         } else if (prize.kind === "lingot") {
-            this.#pendingIngots.unshift({ username: prize.username, avatarUrl: prize.avatarUrl });
+            this.#pendingIngots.unshift({
+                username: prize.username,
+                avatarUrl: prize.avatarUrl,
+                manual: prize.manual
+            });
         }
     }
 
