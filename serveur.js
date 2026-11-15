@@ -220,6 +220,7 @@ const protectedRoutes = new Set([
     '/rallye-neon.html',
     '/apex-formula.html',
     '/city-hunter-tiktok.html',
+    '/pokefight-live.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -256,7 +257,8 @@ const freeTrialRoutes = new Set([
 const fixedGameImageIds = new Set([
     '/qui-veut-gagner-des-etoiles.html',
     '/quartier-des-veilleurs.html',
-    '/apex-formula.html'
+    '/apex-formula.html',
+    '/pokefight-live.html'
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
@@ -312,6 +314,7 @@ store.grantGameAccessToExistingCreators('/araignee.html');
 store.grantGameAccessToExistingCreators('/rallye-neon.html');
 store.grantGameAccessToExistingCreators('/apex-formula.html');
 store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
+store.grantGameAccessToExistingCreators('/pokefight-live.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -373,6 +376,7 @@ const staticGameTitles = {
     '/rallye-neon.html': 'Rallye Néon',
     '/apex-formula.html': 'Apex Formula',
     '/city-hunter-tiktok.html': 'City Hunter — TikTok Live Battle',
+    '/pokefight-live.html': 'PokéFight x TikTok Live',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -445,6 +449,7 @@ const gameRouteIds = new Map([
     ['/rallye-neon.html', '/rallye-neon.html'],
     ['/apex-formula.html', '/apex-formula.html'],
     ['/city-hunter-tiktok.html', '/city-hunter-tiktok.html'],
+    ['/pokefight-live.html', '/pokefight-live.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3279,6 +3284,8 @@ const server = http.createServer((req, res) => {
         ['/apex-formula.html', [path.join(__dirname, 'apex-formula', 'index.html'), 'text/html; charset=utf-8']],
         ...apexFormulaAssetRoutes,
         ['/city-hunter-tiktok.html', [path.join(__dirname, 'city-hunter-tiktok.html'), 'text/html; charset=utf-8']],
+        ['/pokefight-live.html', [path.join(__dirname, 'pokefight-live.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/pokefight-live.png', [path.join(__dirname, 'images-vitrine', 'pokefight-live.png'), 'image/png']],
         ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
