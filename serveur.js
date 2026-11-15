@@ -58,9 +58,21 @@ const adminDashboardWidgetIds = [
 const configuredMaxTikTokSessions = Number(process.env.MAX_TIKTOK_SESSIONS);
 const maxTikTokSessions = Number.isSafeInteger(configuredMaxTikTokSessions) &&
     configuredMaxTikTokSessions > 0 ? configuredMaxTikTokSessions : 25;
-const liveAlertTikTokUsername = String(
-    process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'gryphon.agency'
-).trim().replace(/^@/, '');
+const creatorTikTokDefaults = Object.freeze({ griffon: 'cityhunter698' });
+
+function resolveCreatorTikTokUsername(owner, fallback = '') {
+    const key = String(owner || '').trim().toLocaleLowerCase();
+    const settingsUsername = store.getCreatorSettings(key).tiktokUsername;
+    const candidates = [settingsUsername, creatorTikTokDefaults[key], fallback];
+    return candidates
+        .map(username => String(username || '').trim().replace(/^@/, ''))
+        .find(username => /^[a-zA-Z0-9._]{1,32}$/.test(username)) || '';
+}
+
+const liveAlertTikTokUsername = resolveCreatorTikTokUsername(
+    'griffon',
+    process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'cityhunter698'
+);
 const liveTikTokDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true';
 const liveAlertVapidKeys = loadLiveAlertVapidKeys();
 webPush.setVapidDetails(
@@ -720,7 +732,10 @@ function getLiveTtsSource(token) {
         if (storedHash.length === providedHash.length &&
             crypto.timingSafeEqual(storedHash, providedHash)) {
             if (!source.accountUsername || !canUseCreatorTts(source.accountUsername)) return null;
-            return source;
+            return {
+                ...source,
+                username: resolveCreatorTikTokUsername(source.accountUsername, source.username)
+            };
         }
     }
     return null;
@@ -1295,8 +1310,7 @@ const handleMedia = createMediaAdmin({
 });
 
 function getOverlayTiktokUsername(owner) {
-    const username = store.getAccountLiveTts(owner)?.username || store.getCreatorSettings(owner).tiktokUsername || '';
-    return /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : '';
+    return resolveCreatorTikTokUsername(owner, store.getAccountLiveTts(owner)?.username);
 }
 
 const server = http.createServer((req, res) => {
