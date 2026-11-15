@@ -604,14 +604,20 @@ function getGameCatalog(data = store.getGameCatalogData(staticGameIds)) {
     return [...builtInGames, ...uploadedGames];
 }
 
-function getPublicTikTokPlayer(player, owner) {
+function getPublicTikTokProfile(player) {
     return {
         playerId: player.id,
         username: player.username,
         uniqueId: player.uniqueId,
         nickname: player.nickname,
-        stars: store.getWalletBalance(player, owner),
         avatarUrl: player.avatarKey ? `/api/tiktok-avatars/${player.avatarKey}` : ''
+    };
+}
+
+function getPublicTikTokPlayer(player, owner) {
+    return {
+        ...getPublicTikTokProfile(player),
+        stars: store.getWalletBalance(player, owner)
     };
 }
 
@@ -3787,7 +3793,7 @@ function updateSessionWalletProfile(session, messageData) {
         avatarSavedAt
     });
     session.seenPlayerIds.add(player.id);
-    messageData.walletPlayer = getPublicTikTokPlayer(player, session.username);
+    messageData.walletPlayer = getPublicTikTokProfile(player);
     if (messageData.type === 'viewer' && messageData.viewer) {
         messageData.viewer.avatarUrl = messageData.walletPlayer.avatarUrl;
     }
@@ -3811,65 +3817,94 @@ function broadcastSessionMessage(session, messageData) {
     }
 }
 
+function getSessionWalletOwners(session) {
+    const owners = new Set();
+    for (const client of session.clients) {
+        if (client.readyState !== WebSocket.OPEN ||
+            overlaySockets.has(client) ||
+            treasureOverlaySocketOwners.has(client)) continue;
+        const owner = authenticatedClientUsernames.get(client);
+        if (typeof owner === 'string' && owner.trim()) owners.add(owner.trim().toLowerCase());
+    }
+    return [...owners];
+}
+
+function sendWalletMessage(session, owner, messageData) {
+    const ownerKey = owner.toLowerCase();
+    const encoded = JSON.stringify(messageData);
+    for (const client of session.clients) {
+        if (client.readyState === WebSocket.OPEN &&
+            !overlaySockets.has(client) &&
+            !treasureOverlaySocketOwners.has(client) &&
+            authenticatedClientUsernames.get(client)?.toLowerCase() === ownerKey) {
+            client.send(encoded);
+        }
+    }
+}
+
 const MIN_RUN_STARS = 1;
 const MAX_RUN_STARS = 44_000;
 
 function processTikTokWalletCommand(session, messageData, player) {
     if (messageData.type !== 'comment' || !player) return;
     player = store.resolveTikTokPlayer(player.id) || player;
-    const walletOwner = session.username;
+    const walletOwners = getSessionWalletOwners(session);
     const commentData = messageData.commentData || {};
     const comment = String(commentData.comment || '').trim();
     if (/^!?\s*(?:étoile|etoile|star)s?$/iu.test(comment) || comment === '*') {
-        broadcastSessionMessage(session, {
-            type: 'WALLET_BALANCE',
-            source: 'chat',
-            player: getPublicTikTokPlayer(player, walletOwner),
-            messageId: commentData.messageId || ''
-        });
+        for (const walletOwner of walletOwners) {
+            sendWalletMessage(session, walletOwner, {
+                type: 'WALLET_BALANCE',
+                source: 'chat',
+                player: getPublicTikTokPlayer(player, walletOwner),
+                messageId: commentData.messageId || ''
+            });
+        }
     }
     const runMatch = /^!?\s*run(?:\s+((?:\d{1,3}(?:[ .,\u00a0\u202f]\d{3})+)|\d+))?$/iu.exec(comment);
     if (!runMatch) return;
     const requested = runMatch[1] ? Number(runMatch[1].replace(/[ .,\u00a0\u202f]/g, '')) : 0;
-    if (!Number.isSafeInteger(requested)) {
-        broadcastSessionMessage(session, {
-            type: 'WALLET_RUN_REJECTED',
-            player: getPublicTikTokPlayer(player, walletOwner),
-            message: `@${player.username}, le nombre d’étoiles demandé est invalide.`
-        });
-        return;
-    }
-    const balance = store.getWalletBalance(player, walletOwner);
-    const requestedAmount = requested > 0 ? Math.max(requested, MIN_RUN_STARS) : balance;
-    const amount = Math.min(requestedAmount, MAX_RUN_STARS, balance);
-    if (amount < MIN_RUN_STARS) {
-        broadcastSessionMessage(session, {
-            type: 'WALLET_RUN_REJECTED',
-            player: getPublicTikTokPlayer(player, walletOwner),
-            message: `@${player.username}, il faut au moins ${MIN_RUN_STARS} étoiles pour un RUN : aucune étoile n’a été débitée.`
-        });
-        return;
-    }
     const sourceId = commentData.messageId || crypto.randomUUID();
     const transactionId = crypto.createHash('sha256')
         .update(`${session.username.toLowerCase()}:${sourceId}`)
         .digest('hex');
-    const result = store.applyTikTokStarTransaction({
-        transactionId,
-        playerId: player.id,
-        delta: -amount,
-        gameId: 'all-games',
-        reason: 'run',
-        owner: walletOwner
-    });
-    const updatedPlayer = store.resolveTikTokPlayer(player.id);
-    if (!result.applied) return;
-    broadcastSessionMessage(session, {
-        type: 'WALLET_RUN',
-        player: getPublicTikTokPlayer(updatedPlayer, walletOwner),
-        spent: amount,
-        messageId: sourceId
-    });
+    for (const walletOwner of walletOwners) {
+        if (!Number.isSafeInteger(requested)) {
+            sendWalletMessage(session, walletOwner, {
+                type: 'WALLET_RUN_REJECTED',
+                player: getPublicTikTokPlayer(player, walletOwner),
+                message: `@${player.username}, le nombre d’étoiles demandé est invalide.`
+            });
+            continue;
+        }
+        const balance = store.getWalletBalance(player, walletOwner);
+        const requestedAmount = requested > 0 ? Math.max(requested, MIN_RUN_STARS) : balance;
+        const amount = Math.min(requestedAmount, MAX_RUN_STARS, balance);
+        if (amount < MIN_RUN_STARS) {
+            sendWalletMessage(session, walletOwner, {
+                type: 'WALLET_RUN_REJECTED',
+                player: getPublicTikTokPlayer(player, walletOwner),
+                message: `@${player.username}, il faut au moins ${MIN_RUN_STARS} étoiles pour un RUN : aucune étoile n’a été débitée.`
+            });
+            continue;
+        }
+        const result = store.applyTikTokStarTransaction({
+            transactionId,
+            playerId: player.id,
+            delta: -amount,
+            gameId: 'all-games',
+            reason: 'run',
+            owner: walletOwner
+        });
+        if (!result.applied) continue;
+        const updatedPlayer = store.resolveTikTokPlayer(player.id);
+        sendWalletMessage(session, walletOwner, {
+            type: 'WALLET_RUN',
+            player: getPublicTikTokPlayer(updatedPlayer, walletOwner),
+            spent: amount,
+            messageId: sourceId
+        });
+    }
 }
 
 function sendBalloonGameRole(session, socket) {

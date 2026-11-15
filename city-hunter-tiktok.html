@@ -62,7 +62,7 @@ body{margin:0;height:100%;min-height:100dvh;background:#05060d;color:#fff;font-f
   <div id="walletAvatarFallback" aria-hidden="true"></div>
   <div class="wallet-info">
     <div id="walletUsername"></div>
-    <div class="wallet-balance"><span id="walletStars"></span><span class="wallet-stars-label">ÉTOILES DISPONIBLES</span></div>
+    <div class="wallet-balance"><span id="walletStars"></span><span class="wallet-stars-label">ÉTOILES DANS CE LIVE</span></div>
   </div>
 </div>
 <button class="btn" id="fullscreenExitBtn" type="button" aria-label="Revenir à l’écran normal" title="Revenir à l’écran normal" hidden>REVENIR À L’ÉCRAN NORMAL</button>
@@ -101,7 +101,7 @@ body{margin:0;height:100%;min-height:100dvh;background:#05060d;color:#fff;font-f
   <input id="tiktokUser" type="text" autocomplete="off" maxlength="32" placeholder="Pseudo TikTok (sans @)">
   <button class="btn" id="con" style="width:100%;margin-top:5px">CONNECTER</button>
   <p id="st"></p>
-  <p style="opacity:.6;font-size:10px;margin:6px 0 0">Dans le chat : « loup » ou « reine » pour choisir ton camp. Cadeaux d’attaque : 1, 10 ou 30 pièces. « étoile » affiche le solde; « run » dépense les étoiles et attaque ton camp, ou le camp en retard (Loup en cas d’égalité) si tu n’en as pas choisi.</p>
+  <p style="opacity:.6;font-size:10px;margin:6px 0 0">Dans le chat : « loup » ou « reine »/« renne » pour choisir ton camp. Tous les cadeaux attaquent selon leur valeur en pièces; sans choix, le cadeau vise le camp en retard (Loup en cas d’égalité). « étoile » affiche le solde du joueur dans le portefeuille de ce live; « run » dépense ses étoiles et attaque son camp, ou le camp en retard s’il n’en a pas choisi.</p>
   <p style="opacity:.6;font-size:10px;margin:6px 0 0">Clavier : A = Loup, L = Reine. Clic sur la moitié gauche ou droite du jeu.</p>
 </details>
 </div>
@@ -352,7 +352,7 @@ function drawWinnerBanner(){
     txt(`SCORE : ${S[S.win]} POINTS`,580,286,18,accent,'center',accent);
     txt(`${S.rewardStars} ÉTOILES GAGNÉES`,580,312,24,GD,'center',GD);
     let walletMessage;
-    if(S.awardStatus==='credited')walletMessage=`Solde global Griffon Arcade : ${Number(S.walletBalance||0).toLocaleString('fr-FR')} étoiles`;
+    if(S.awardStatus==='credited')walletMessage=`Solde de ce live : ${Number(S.walletBalance||0).toLocaleString('fr-FR')} étoiles`;
     else if(S.awardStatus==='pending')walletMessage='Crédit du portefeuille Griffon Arcade en cours…';
     else if(S.awardStatus==='failed')walletMessage=`Crédit non confirmé : ${S.awardError}`;
     else if(S.awardStatus==='unavailable')walletMessage='Portefeuille Griffon Arcade indisponible sur cette page.';
@@ -422,8 +422,8 @@ function fire(team,pts,user,gift,alertText=''){
     S.totalCoins+=pts;
     const donors=S.donors[team],key=gift.userKey;
     let donor=donors.get(key);
-    if(!donor){donor={name:user||key,coins:0,lastGift:0,avatarUrl:'',avatarImage:null};}
-    donor.name=user||donor.name;donor.coins+=pts;donor.lastGift=performance.now();
+    if(!donor){donor={name:user||key,playerId:gift.playerId||'',coins:0,lastGift:0,avatarUrl:'',avatarImage:null};}
+    donor.name=user||donor.name;donor.playerId=gift.playerId||donor.playerId;donor.coins+=pts;donor.lastGift=performance.now();
     if(gift.avatarUrl&&gift.avatarUrl!==donor.avatarUrl){
       donor.avatarUrl=gift.avatarUrl;
       donor.avatarImage=new Image();
@@ -463,7 +463,9 @@ function settleWinner(){
   const nonce=typeof crypto.randomUUID==='function'?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const transactionId=`city-hunter:${nonce}`;
   S.settlementId=transactionId;S.awardStatus='pending';
-  wallet.award({username:S.winner.name,amount:S.rewardStars,transactionId}).then(player=>{
+  const reward={username:S.winner.name,amount:S.rewardStars,transactionId};
+  if(S.winner.playerId)reward.playerId=S.winner.playerId;
+  wallet.award(reward).then(player=>{
     if(S.settlementId!==transactionId)return;
     S.walletBalance=Number(player.stars)||0;
     if(player.avatarUrl)updateProfileImage(S.winner,player.avatarUrl);
@@ -756,7 +758,7 @@ document.getElementById('con').onclick=()=>{
     const userKey=String(event.uniqueId||event.username||event.nickname||eventUser.uniqueId||eventUser.username||envelopeUser.uniqueId||envelopeUser.username||envelopeName||'').trim().replace(/^@/,'').toLocaleLowerCase();
     if((d.type==='comment'||d.type==='chat')&&userKey){
       const message=String(event.comment||event.text||d.text||d.comment||'').trim().toLocaleLowerCase();
-      const choice=message.match(/^(?:!|\/)?(loup|reine)$/);
+      const choice=message.match(/^(?:!|\/)?(loup|reine|renne)$/);
       if(choice){
         const team=choice[1]==='loup'?'L':'R';
         teams.set(userKey,team);
@@ -764,11 +766,18 @@ document.getElementById('con').onclick=()=>{
       }
     }
     else if(d.type==='gift'){
-      const team=teams.get(userKey);
       const coinCount=Number(event.coinCount??event.diamonds??event.diamondCount??d.diamonds);
-      if(!team){st.textContent=`@${user||'Spectateur'} : écris « loup » ou « reine » avant d’envoyer un cadeau.`;return}
-      if(![1,10,30].includes(coinCount))return;
-      fire(team,coinCount,user,{userKey,avatarUrl:getGiftAvatarUrl(event,d)})}};
+      if(!Number.isSafeInteger(coinCount)||coinCount<1){
+        st.textContent=`Valeur du cadeau de @${user||'Spectateur'} invalide : attaque ignorée.`;
+        return;
+      }
+      let team=teams.get(userKey);
+      if(!team){
+        team=S.L<=S.R?'L':'R';
+        if(userKey)teams.set(userKey,team);
+      }
+      const walletPlayer=d.walletPlayer&&typeof d.walletPlayer==='object'?d.walletPlayer:{};
+      fire(team,coinCount,user,{userKey,playerId:String(walletPlayer.playerId||''),avatarUrl:getGiftAvatarUrl(event,d)})}};
 };
 window.addEventListener('arcade:wallet-run',event=>{
   const detail=event.detail||{},player=detail.player||{},spent=Number(detail.spent);
