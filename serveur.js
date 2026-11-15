@@ -255,7 +255,8 @@ const freeTrialRoutes = new Set([
 ]);
 const fixedGameImageIds = new Set([
     '/qui-veut-gagner-des-etoiles.html',
-    '/quartier-des-veilleurs.html'
+    '/quartier-des-veilleurs.html',
+    '/apex-formula.html'
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
