@@ -1199,13 +1199,18 @@
         enqueueMediaAlert({ ...alert, fullScreen: true }, 20);
     }
 
-    async function showBoboOrCityComment(data) {
+    async function showCommentKeyword(data) {
         const commentData = data.commentData || {};
         const comment = String(commentData.comment || '');
-        if (!/(?:^|[^\p{L}\p{N}_])(?:bobo|city)(?:$|[^\p{L}\p{N}_])/iu.test(comment)) return;
-        const eventId = commentData.messageId ? `comment-bobo:${commentData.messageId}` : '';
+        const alertKey = /(?:^|[^\p{L}\p{N}_])bobo(?:$|[^\p{L}\p{N}_])/iu.test(comment)
+            ? 'comment_bobo'
+            : /(?:^|[^\p{L}\p{N}_])(?:city|ville)(?:$|[^\p{L}\p{N}_])/iu.test(comment)
+                ? 'comment_city'
+                : '';
+        if (!alertKey) return;
+        const eventId = commentData.messageId ? `${alertKey.replace('_', '-')}:${commentData.messageId}` : '';
         if (!firstSeen(eventId)) return;
-        const alert = await getMediaAlert(data.sourceTikTokUsername, 'comment_bobo');
+        const alert = await getMediaAlert(data.sourceTikTokUsername, alertKey);
         if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
         enqueueMediaAlert({ ...alert, fullScreen: true });
     }
@@ -1217,7 +1222,7 @@
         } else if (data.type === 'level-up' && data.levelUp && !data.suppressInGameMediaAlert) {
             void showLevelUp(data);
         } else if (data.type === 'comment' && data.commentData && !data.suppressInGameMediaAlert) {
-            void showBoboOrCityComment(data);
+            void showCommentKeyword(data);
         } else if (data.type === 'share') {
             const share = data.shareData || {};
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
