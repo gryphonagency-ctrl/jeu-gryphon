@@ -773,7 +773,7 @@ function pickAlert(event, allowMultipliers) {
   else if (event.type === 'level-up') keys.push('level_up');
   else if (
     event.type === 'comment' &&
-    /(?:^|[^\p{L}\p{N}_])bobo(?:$|[^\p{L}\p{N}_])/iu.test(String(event.commentData?.comment || ''))
+    /(?:^|[^\p{L}\p{N}_])(?:bobo|city)(?:$|[^\p{L}\p{N}_])/iu.test(String(event.commentData?.comment || ''))
   ) {
     keys.push('comment_bobo');
   }
@@ -994,13 +994,13 @@ function connect() {
       }
       const isNewLevelUp = data.type !== 'level-up' ||
         firstLiveEvent('level-up', data.levelUp || {});
-      const isBoboComment = data.type === 'comment' &&
-        /(?:^|[^\p{L}\p{N}_])bobo(?:$|[^\p{L}\p{N}_])/iu.test(String(data.commentData?.comment || '')) &&
+      const isBoboOrCityComment = data.type === 'comment' &&
+        /(?:^|[^\p{L}\p{N}_])(?:bobo|city)(?:$|[^\p{L}\p{N}_])/iu.test(String(data.commentData?.comment || '')) &&
         firstLiveEvent('comment-bobo', data.commentData || {});
       if (isNewLevelUp &&
           (showAlertOverlay || (showGiftCarousel && data.type === 'gift')) &&
           (data.type === 'follow' || data.type === 'subscribe' || data.type === 'share' ||
-            data.type === 'gift' || data.type === 'level-up' || isBoboComment)) {
+            data.type === 'gift' || data.type === 'level-up' || isBoboOrCityComment)) {
         if (showAlertOverlay && data.type === 'gift' && fireworkEnabled &&
             Number(data.gift?.coinCount) >= fireworkThreshold) {
           const gift = data.gift;
@@ -1018,7 +1018,7 @@ function connect() {
         }
         await loadAlerts();
         const alert = pickAlert(data, data.matchLive === true);
-        if (alert && (queue.length < 20 || isBoboComment)) { queue.push(alert); drain(); }
+        if (alert && (queue.length < 20 || isBoboOrCityComment)) { queue.push(alert); drain(); }
       }
     }
   });
@@ -1069,13 +1069,14 @@ loadAlerts().then(() => {
     } else {
       setStatus('Configure d’abord la vidéo Niveau Fan Club dans Mes médias.');
     }
-  } else if (params.get('test') === 'comment-bobo') {
-    const alert = pickAlert({ type: 'comment', commentData: { comment: 'bobo' } }, false);
+  } else if (params.get('test') === 'comment-bobo' || params.get('test') === 'comment-city') {
+    const comment = params.get('test') === 'comment-city' ? 'City' : 'bobo';
+    const alert = pickAlert({ type: 'comment', commentData: { comment } }, false);
     if (alert) {
       queue.push(alert);
       drain();
     } else {
-      setStatus('Configure d’abord la vidéo du commentaire « bobo » dans Mes médias.');
+      setStatus(`Configure d’abord la vidéo du commentaire « ${comment} » dans Mes médias.`);
     }
   }
   connect();

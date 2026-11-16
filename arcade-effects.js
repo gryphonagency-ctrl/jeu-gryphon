@@ -1199,10 +1199,10 @@
         enqueueMediaAlert({ ...alert, fullScreen: true }, 20);
     }
 
-    async function showBoboComment(data) {
+    async function showBoboOrCityComment(data) {
         const commentData = data.commentData || {};
         const comment = String(commentData.comment || '');
-        if (!/(?:^|[^\p{L}\p{N}_])bobo(?:$|[^\p{L}\p{N}_])/iu.test(comment)) return;
+        if (!/(?:^|[^\p{L}\p{N}_])(?:bobo|city)(?:$|[^\p{L}\p{N}_])/iu.test(comment)) return;
         const eventId = commentData.messageId ? `comment-bobo:${commentData.messageId}` : '';
         if (!firstSeen(eventId)) return;
         const alert = await getMediaAlert(data.sourceTikTokUsername, 'comment_bobo');
@@ -1217,7 +1217,7 @@
         } else if (data.type === 'level-up' && data.levelUp && !data.suppressInGameMediaAlert) {
             void showLevelUp(data);
         } else if (data.type === 'comment' && data.commentData && !data.suppressInGameMediaAlert) {
-            void showBoboComment(data);
+            void showBoboOrCityComment(data);
         } else if (data.type === 'share') {
             const share = data.shareData || {};
             if (firstSeen(share.messageId && 'share:' + share.messageId)) paperPlane();
