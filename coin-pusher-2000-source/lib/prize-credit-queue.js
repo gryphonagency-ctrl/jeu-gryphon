@@ -19,7 +19,7 @@ export default class PrizeCreditQueue {
             !item || typeof item.transactionId !== "string" ||
             typeof item.username !== "string" ||
             !Number.isSafeInteger(item.amount) || item.amount < 1 ||
-            (item.kind !== "carte" && item.kind !== "lingot")
+            !["carte", "lingot", "roulette"].includes(item.kind)
         )) {
             throw new Error("La file des récompenses enregistrées est invalide.");
         }

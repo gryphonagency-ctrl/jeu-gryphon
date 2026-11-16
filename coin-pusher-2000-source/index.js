@@ -36,6 +36,7 @@ import GiftRouletteQueue, { MAX_GIFT_COIN_COUNT } from "./lib/gift-roulette-queu
 import { resolveGiftRouletteTurn } from "./lib/gift-roulette-outcome.js";
 import { createGiftRouletteCatalog } from "./lib/gift-roulette-catalog.js";
 import { advanceDiamondCharge, DIAMOND_CHARGE_TARGET } from "./lib/gift-roulette-diamond.js";
+import PrizeCreditQueue from "./lib/prize-credit-queue.js";
 
 const giftRouletteImages = document.querySelectorAll(".gift-roulette-item");
 const giftRouletteCatalog = createGiftRouletteCatalog({
@@ -53,6 +54,7 @@ const giftRouletteCatalog = createGiftRouletteCatalog({
 const giftRouletteSources = giftRouletteCatalog.map(gift => gift.image);
 const initialGiftIndices = [0, 1, 2, 3, 1, 3];
 const giftRouletteIndices = [...initialGiftIndices];
+const GIFT_ROULETTE_CREDIT_STORAGE_KEY = "coin-pusher-2000-gift-roulette-credits-v1";
 if (giftRouletteImages.length !== initialGiftIndices.length) {
     throw new Error("La roulette doit afficher exactement six cadeaux.");
 }
@@ -76,6 +78,8 @@ const giftRouletteStatus = document.getElementById("gift-roulette-status");
 const giftRouletteDiamond = document.getElementById("gift-roulette-diamond");
 const giftQueuePinButton = document.getElementById("gift-roulette-queue-pin-panel");
 const GIFT_QUEUE_STORAGE_KEY = "coin-pusher-2000-gift-roulette-queue-v1";
+let giftRouletteCreditQueue = null;
+let giftRouletteAwardRetryTimer = 0;
 const giftQueueDefaults = {
     left: Math.min(340, Math.max(12, window.innerWidth - 300)),
     top: Math.max(12, Math.round(window.innerHeight * 0.6)),
@@ -91,15 +95,12 @@ let giftRouletteSpinTimer = 0;
 let giftRouletteResultTimer = 0;
 let giftRouletteMilestoneTimer = 0;
 const ROULETTE_SPIN_DURATIONS = [180, 120, 80, 48, 24];
-const giftRouletteAwards = new Map();
 const giftRouletteIdleTimers = Array(giftRouletteImages.length).fill(0);
 let giftRouletteSpeed = 1;
 let diamondCharge = readDiamondCharge();
 let giftRouletteWinChance = 0.1;
 let giftRouletteVolume = 0.45;
 let giftRouletteAudioContext = null;
-let giftRouletteAwardTimer = 0;
-let giftRouletteAwardsFlushing = false;
 let lastGiftRouletteSoundAt = 0;
 let giftRouletteAudioWarningShown = false;
 
@@ -328,46 +329,81 @@ function playGiftRouletteSound(won) {
     }
 }
 
-async function flushGiftRouletteAwards() {
-    if (giftRouletteAwardsFlushing) {
+function scheduleGiftRouletteAwardRetry() {
+    if (giftRouletteAwardRetryTimer) {
         return;
     }
-    giftRouletteAwardTimer = 0;
-    const awards = [...giftRouletteAwards.entries()];
-    giftRouletteAwards.clear();
-    giftRouletteAwardsFlushing = true;
-    try {
-        for (const [username, amount] of awards) {
-            try {
+    giftRouletteAwardRetryTimer = window.setTimeout(() => {
+        giftRouletteAwardRetryTimer = 0;
+        retryGiftRouletteAwards();
+    }, 10000);
+}
+
+function getGiftRouletteCreditQueue() {
+    if (!giftRouletteCreditQueue) {
+        giftRouletteCreditQueue = new PrizeCreditQueue({
+            storage: localStorage,
+            key: GIFT_ROULETTE_CREDIT_STORAGE_KEY,
+            award: async prize => {
                 if (typeof window.ArcadeStars?.award !== "function") {
                     throw new Error("Portefeuille Griffon Arcade indisponible.");
                 }
-                const player = await window.ArcadeStars.award({ username, amount });
+                return window.ArcadeStars.award({
+                    username: prize.username,
+                    amount: prize.amount,
+                    transactionId: prize.transactionId
+                });
+            },
+            onConfirmed: (prize, player) => {
                 window.dispatchEvent(new CustomEvent("coin-pusher-prize-awarded", {
                     detail: {
-                        username,
-                        amount,
+                        username: prize.username,
+                        avatarUrl: player?.avatarUrl || "",
+                        amount: prize.amount,
                         kind: "roulette",
                         globalStars: Number(player?.stars) || 0
                     }
                 }));
-            } catch (error) {
-                console.error(`Impossible de créditer le gain de la roulette pour @${username} :`, error);
-                giftRouletteStatus.textContent = `Gain de ${amount.toLocaleString("fr-FR")} étoiles non crédité pour @${username} : ${error.message}`;
+                giftRouletteStatus.textContent = `Gain crédité : ${prize.amount.toLocaleString("fr-FR")} étoile${prize.amount === 1 ? "" : "s"} attribuée${prize.amount === 1 ? "" : "s"} à @${prize.username}.`;
+            },
+            onError: (prize, error) => {
+                console.error(`Crédit en attente pour la roulette de @${prize.username} :`, error);
+                giftRouletteStatus.textContent = `Crédit en attente : ${prize.amount.toLocaleString("fr-FR")} étoile${prize.amount === 1 ? "" : "s"} pour @${prize.username}. Nouvelle tentative automatique : ${error.message || "portefeuille indisponible"}.`;
+                scheduleGiftRouletteAwardRetry();
             }
-        }
-    } finally {
-        giftRouletteAwardsFlushing = false;
+        });
     }
-    if (giftRouletteAwards.size && !giftRouletteAwardTimer) {
-        giftRouletteAwardTimer = window.setTimeout(() => void flushGiftRouletteAwards(), 250);
+    return giftRouletteCreditQueue;
+}
+
+function retryGiftRouletteAwards() {
+    try {
+        void getGiftRouletteCreditQueue().flush().catch(error => {
+            console.error("Impossible de traiter la file des gains de la roulette :", error);
+            giftRouletteStatus.textContent = `File des gains de la roulette en attente : ${error.message || "erreur inconnue"}.`;
+            scheduleGiftRouletteAwardRetry();
+        });
+    } catch (error) {
+        console.error("Impossible de charger la file des gains de la roulette :", error);
+        giftRouletteStatus.textContent = `File des gains de la roulette indisponible : ${error.message || "erreur inconnue"}.`;
+        scheduleGiftRouletteAwardRetry();
     }
 }
 
 function queueGiftRouletteAward(username, amount) {
-    giftRouletteAwards.set(username, (giftRouletteAwards.get(username) || 0) + amount);
-    if (!giftRouletteAwardTimer && !giftRouletteAwardsFlushing) {
-        giftRouletteAwardTimer = window.setTimeout(() => void flushGiftRouletteAwards(), 250);
+    if (!/^[a-zA-Z0-9._]{1,32}$/.test(username) || !Number.isSafeInteger(amount) || amount < 1 || amount > 100) {
+        const error = new RangeError("Le pseudo ou le montant du gain de roulette est invalide.");
+        console.error("Impossible d’enregistrer le gain de la roulette :", error);
+        giftRouletteStatus.textContent = `Gain non enregistré : ${error.message}`;
+        return;
+    }
+    try {
+        getGiftRouletteCreditQueue().enqueue({ username, amount, kind: "roulette" });
+        giftRouletteStatus.textContent = `Gain de ${amount.toLocaleString("fr-FR")} étoile${amount === 1 ? "" : "s"} en cours de crédit pour @${username}.`;
+        retryGiftRouletteAwards();
+    } catch (error) {
+        console.error(`Impossible d’enregistrer le gain de la roulette pour @${username} :`, error);
+        giftRouletteStatus.textContent = `Gain non enregistré pour @${username} : ${error.message || "erreur inconnue"}.`;
     }
 }
 
@@ -505,6 +541,9 @@ applyGiftQueueSettings();
 renderDiamondCharge();
 startGiftRouletteIdleAnimations();
 renderGiftQueue();
+window.addEventListener("online", retryGiftRouletteAwards);
+window.setInterval(retryGiftRouletteAwards, 30000);
+retryGiftRouletteAwards();
 
 Game.DEBUG_EMPTY_POOL = 0
 Game.DEBUG_AUTOPLAY = 0

@@ -38,6 +38,47 @@ test("retries a lost response using the original transaction id after reload", a
     assert.deepEqual(JSON.parse(storage.getItem("queue")), []);
 });
 
+test("retries roulette awards for the same senders and amounts after reload", async () => {
+    const storage = memoryStorage();
+    const attempts = [];
+    const confirmed = [];
+    const options = {
+        storage,
+        key: "roulette-queue",
+        award: async item => {
+            attempts.push({
+                transactionId: item.transactionId,
+                username: item.username,
+                amount: item.amount
+            });
+            if (attempts.length === 1) throw new Error("connexion interrompue");
+            return { stars: item.amount };
+        },
+        onConfirmed: item => confirmed.push(item),
+        onError: () => {}
+    };
+    const first = new PrizeCreditQueue(options);
+    const aliceAward = first.enqueue({ username: "alice", amount: 100, kind: "roulette" });
+    first.enqueue({ username: "bob", amount: 1, kind: "roulette" });
+    await first.flush();
+
+    const second = new PrizeCreditQueue(options);
+    await second.flush();
+
+    assert.deepEqual(attempts.map(({ username, amount }) => [username, amount]), [
+        ["alice", 100],
+        ["alice", 100],
+        ["bob", 1]
+    ]);
+    assert.equal(attempts[0].transactionId, aliceAward.transactionId);
+    assert.equal(attempts[1].transactionId, aliceAward.transactionId);
+    assert.deepEqual(confirmed.map(({ username, amount }) => [username, amount]), [
+        ["alice", 100],
+        ["bob", 1]
+    ]);
+    assert.deepEqual(JSON.parse(storage.getItem("roulette-queue")), []);
+});
+
 test("does not submit a reward when it cannot be saved", async () => {
     const storage = memoryStorage();
     storage.setItem = () => { throw new Error("stockage indisponible"); };
