@@ -27,7 +27,7 @@ button.danger{background:#ff6b7a}
 .media img,.media video{width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#000}
 .slot .video-preview{grid-column:1/-1;display:flex;align-items:center;justify-content:center;overflow:hidden;width:min(100%,520px);aspect-ratio:16/9;height:auto;background:#000;border-radius:8px}
 .slot .video-preview[hidden]{display:none}
-.slot .video-preview video{max-width:none;max-height:none;object-fit:contain}
+.slot .video-preview video,.slot .video-preview img{max-width:none;max-height:none;object-fit:contain}
 .media audio{width:100%}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tabs a{padding:8px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:#fff;font-size:.9rem}
@@ -665,14 +665,21 @@ function slot(key, label, removable) {
   const alert = state.alerts[key] || {};
   const isLevelUp = key === 'level_up';
   const isFullScreenAlert = isLevelUp || key === 'comment_bobo' || key === 'comment_city';
+  const isCityComment = key === 'comment_city';
   const giftIdMatch = /^gift_id_(\d+)$/.exec(key);
   const hasGiftMetadata = Boolean(giftIdMatch || alert.giftName);
   const audio = select('audio', alert.audio);
+  const photo = isCityComment ? select('image', alert.image) : null;
   const video = select('video', alert.video);
+  const visualName = isCityComment ? 'du visuel' : 'de la vidéo';
   const videoHint = el('p', { className: 'hint', role: 'status' });
   const updateVideoHint = () => {
-    if (!video.value) {
-      videoHint.textContent = 'Choisis une vidéo. Son aperçu apparaîtra ici; clique sur « Enregistrer » pour l’associer à cet évènement.';
+    if (photo?.value) {
+      videoHint.textContent = 'Photo sélectionnée. Elle s’affichera 5 secondes; clique sur « Enregistrer » pour l’associer à cet évènement.';
+    } else if (!video.value) {
+      videoHint.textContent = isCityComment
+        ? 'Choisis une photo ou une vidéo. Son aperçu apparaîtra ici; clique sur « Enregistrer » pour l’associer à cet évènement.'
+        : 'Choisis une vidéo. Son aperçu apparaîtra ici; clique sur « Enregistrer » pour l’associer à cet évènement.';
     } else if (video.value !== (alert.video || '')) {
       videoHint.textContent = 'Aperçu affiché. Cette sélection n’est pas encore enregistrée : clique sur « Enregistrer » pour l’associer à cet évènement.';
     } else {
@@ -701,8 +708,16 @@ function slot(key, label, removable) {
   const videoPreviewFrame = el('div', {
     className: 'video-preview',
     role: 'group',
-    'aria-label': `Aperçu de la vidéo pour ${label}`
+    'aria-label': `Aperçu ${visualName} pour ${label}`
   }, videoPreview);
+  const photoPreview = photo ? el('img', { alt: `Aperçu photo pour ${label}`, loading: 'lazy' }) : null;
+  const photoPreviewFrame = photo
+    ? el('div', {
+      className: 'video-preview',
+      role: 'group',
+      'aria-label': `Aperçu photo pour ${label}`
+    }, photoPreview)
+    : null;
   const updatePreview = () => {
     const file = state.files.find(item => item.id === video.value && item.kind === 'video');
     videoPreviewFrame.hidden = !file;
@@ -722,14 +737,44 @@ function slot(key, label, removable) {
       videoPreview.load();
     }
   };
+  const updatePhotoPreview = () => {
+    const file = photo && state.files.find(item => item.id === photo.value && item.kind === 'image');
+    if (!photoPreviewFrame) return;
+    photoPreviewFrame.hidden = !file;
+    if (file) {
+      if (photoPreview.getAttribute('src') !== file.url) photoPreview.src = file.url;
+      const height = Math.max(25, Number(videoHeight.value) || 100);
+      photoPreview.style.width = `${Number(videoWidth.value)}%`;
+      photoPreview.style.height = `${height}%`;
+      photoPreview.style.transform = isFullScreenAlert
+        ? `translateY(${Number(videoOffsetY.value) * 100 / height}%)`
+        : '';
+      photoPreview.style.objectFit = videoFit.value;
+    } else {
+      photoPreview.removeAttribute('src');
+    }
+  };
   videoWidth.addEventListener('input', () => { videoWidthValue.textContent = `${videoWidth.value} %`; updatePreview(); });
-  videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); });
+  videoHeight.addEventListener('input', () => { videoHeightValue.textContent = `${videoHeight.value} %`; updatePreview(); updatePhotoPreview(); });
   videoOffsetY.addEventListener('input', () => {
     videoOffsetYValue.textContent = formatVideoOffset(Number(videoOffsetY.value));
     updatePreview();
+    updatePhotoPreview();
   });
-  videoFit.addEventListener('change', updatePreview);
-  video.addEventListener('change', () => { updatePreview(); updateVideoHint(); });
+  videoWidth.addEventListener('input', updatePhotoPreview);
+  videoFit.addEventListener('change', () => { updatePreview(); updatePhotoPreview(); });
+  video.addEventListener('change', () => {
+    if (photo && video.value) photo.value = '';
+    updatePreview();
+    updatePhotoPreview();
+    updateVideoHint();
+  });
+  photo?.addEventListener('change', () => {
+    if (photo.value) video.value = '';
+    updatePreview();
+    updatePhotoPreview();
+    updateVideoHint();
+  });
   videoPreview.addEventListener('error', () => {
     if (!video.value) return;
     if (videoPreview.error?.code === 3 || videoPreview.error?.code === 4) {
@@ -740,6 +785,7 @@ function slot(key, label, removable) {
   });
   volume.addEventListener('input', updatePreview);
   updatePreview();
+  updatePhotoPreview();
   const actionText = hasGiftMetadata
     ? el('input', { maxlength: 80, value: alert.actionText || '', placeholder: 'Ex. Buzzer, Bruh, GG !' })
     : null;
@@ -755,9 +801,9 @@ function slot(key, label, removable) {
       referrerPolicy: 'no-referrer'
     })
     : null;
-  const active = Boolean(alert.audio || alert.video || giftIdMatch);
+  const active = Boolean(alert.audio || alert.image || alert.video || giftIdMatch);
   const save = el('button', { type: 'button', textContent: 'Enregistrer',
-    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, video: video.value,
+    onclick: () => run(() => api({ action: 'set-alert', event: key, audio: audio.value, image: photo?.value || '', video: video.value,
       videoVolume: Number(volume.value) / 100, videoFit: videoFit.value,
       videoWidth: Number(videoWidth.value), videoHeight: Number(videoHeight.value),
       videoOffsetY: Number(videoOffsetY.value),
@@ -789,24 +835,27 @@ function slot(key, label, removable) {
   const slotClass = multiplier ? `slot slot--multiplier slot--multiplier-${multiplier}` : 'slot';
   return el('div', { className: slotClass, id: key }, el('h3', { textContent: label }),
     ...(giftPhoto ? [giftPhoto] : []),
+    ...(photoPreviewFrame ? [photoPreviewFrame] : []),
     videoPreviewFrame,
     ...(actionTextLabel ? [actionTextLabel] : []),
-    el('label', {}, 'Son', audio), el('label', {}, 'Vidéo', video), videoHint,
+    el('label', {}, 'Son', audio),
+    ...(photo ? [el('label', {}, 'Photo', photo)] : []),
+    el('label', {}, 'Vidéo', video), videoHint,
     ...(!isFullScreenAlert ? [
-      el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
-      el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
-      el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight)
+      el('label', { className: 'video-fit' }, `Cadrage ${visualName}`, videoFit),
+      el('label', { className: 'video-size' }, `Largeur ${visualName}`, videoWidthValue, videoWidth),
+      el('label', { className: 'video-size' }, `Hauteur ${visualName}`, videoHeightValue, videoHeight)
     ] : [
-      el('label', { className: 'video-fit' }, 'Cadrage de la vidéo', videoFit),
-      el('label', { className: 'video-size' }, 'Largeur de la vidéo', videoWidthValue, videoWidth),
-      el('label', { className: 'video-size' }, 'Hauteur de la vidéo', videoHeightValue, videoHeight),
+      el('label', { className: 'video-fit' }, `Cadrage ${visualName}`, videoFit),
+      el('label', { className: 'video-size' }, `Largeur ${visualName}`, videoWidthValue, videoWidth),
+      el('label', { className: 'video-size' }, `Hauteur ${visualName}`, videoHeightValue, videoHeight),
       el('label', { className: 'video-size' }, 'Position verticale (− monte, + descend)', videoOffsetYValue, videoOffsetY),
-      el('p', { className: 'hint', textContent: 'La vidéo reste centrée par défaut. Ajuste sa largeur, sa hauteur et sa position verticale; 100 % correspond à la taille de l’écran.' })
+      el('p', { className: 'hint', textContent: `Le visuel reste centré par défaut. Ajuste sa largeur, sa hauteur et sa position verticale; 100 % correspond à la taille de l’écran.${isCityComment ? ' Une photo reste affichée 5 secondes.' : ''}` })
     ]),
     videoVolume, actions,
     el('span', { className: `state${active ? '' : ' off'}`, textContent: hasGiftMetadata
       ? '● Cadeau disponible dans le carrousel'
-      : active ? '● Active' : '○ Non configurée' }));
+      : active || photo?.value ? '● Active' : '○ Non configurée' }));
 }
 
 function renderSections() {

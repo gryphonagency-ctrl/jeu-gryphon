@@ -749,7 +749,7 @@ function createMediaAdmin({
             if (!index.files.some(file => file.id === body.id)) throw fail('Fichier introuvable.', 404);
             // Un média relié à une alerte n'est jamais supprimé en silence : il faut d'abord retirer l'alerte.
             const usedBy = Object.entries({ ...index.alerts, ...index.carouselAlerts })
-                .find(([, alert]) => alert.audio === body.id || alert.video === body.id);
+                .find(([, alert]) => alert.audio === body.id || alert.video === body.id || alert.image === body.id);
             if (usedBy) throw fail(`Ce média est utilisé par l’alerte « ${usedBy[0]} » : change ou réinitialise l’alerte avant de le supprimer.`, 409);
             index.files = index.files.filter(file => file.id !== body.id);
             writeIndex(owner, index);
@@ -765,6 +765,10 @@ function createMediaAdmin({
                 if (!file || file.kind !== kind) throw fail(`Média ${kind} introuvable.`);
                 return value;
             };
+            const previousAlert = alertStore[event] || {};
+            const image = body.image === undefined ? pick(previousAlert.image, 'image') : pick(body.image, 'image');
+            const video = pick(body.video, 'video');
+            if (image && video) throw fail('Choisis une photo ou une vidéo, pas les deux.');
             const previousVolume = Number.isFinite(alertStore[event]?.videoVolume)
                 ? alertStore[event].videoVolume
                 : 1;
@@ -773,7 +777,6 @@ function createMediaAdmin({
                 videoVolume < 0 || videoVolume > 1) {
                 throw fail('Le volume vidéo doit être compris entre 0 et 100 %.');
             }
-            const previousAlert = alertStore[event] || {};
             const videoFit = body.videoFit === undefined ? previousAlert.videoFit || 'contain' : body.videoFit;
             const videoWidth = body.videoWidth === undefined ? previousAlert.videoWidth ?? 100 : body.videoWidth;
             const videoHeight = body.videoHeight === undefined ? previousAlert.videoHeight ?? 100 : body.videoHeight;
@@ -815,7 +818,8 @@ function createMediaAdmin({
             }
             alertStore[event] = {
                 audio: pick(body.audio, 'audio'),
-                video: pick(body.video, 'video'),
+                image,
+                video,
                 videoVolume,
                 videoFit,
                 videoWidth,
@@ -842,6 +846,7 @@ function createMediaAdmin({
         for (const [event, alert] of Object.entries(source)) {
             alerts[event] = {
                 audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
+                imageUrl: alert.image ? `/media-files/${owner}/${alert.image}` : null,
                 videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
                 videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
                 videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',
@@ -918,6 +923,7 @@ function createMediaAdmin({
                 for (const [event, alert] of Object.entries(readIndex(owner).alerts)) {
                     alerts[event] = {
                         audioUrl: alert.audio ? `/media-files/${owner}/${alert.audio}` : null,
+                        imageUrl: alert.image ? `/media-files/${owner}/${alert.image}` : null,
                         videoUrl: alert.video ? `/media-files/${owner}/${alert.video}` : null,
                         videoVolume: Number.isFinite(alert.videoVolume) ? Math.min(1, Math.max(0, alert.videoVolume)) : 1,
                         videoFit: alert.videoFit === 'cover' ? 'cover' : 'contain',

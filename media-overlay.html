@@ -99,7 +99,7 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
 </style>
 </head>
 <body>
-<div id="stage"><video id="video" playsinline></video></div>
+<div id="stage"><video id="video" playsinline></video><img id="image" alt="" aria-hidden="true"></div>
 <div id="live-effects" aria-hidden="true"></div>
 <div id="live-stats" aria-live="polite"></div>
 <div id="chat-overlay" class="chat-overlay" aria-live="polite"></div>
@@ -144,6 +144,7 @@ body.mode-stats #live-stats.visible { position: fixed; top: 18px; left: 18px; bo
 const token = location.pathname.split('/').pop();
 const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
+const image = document.getElementById('image');
 const alertAudioUnlockEl = document.getElementById('alert-audio-unlock');
 const alertVideoUnlockEl = document.getElementById('alert-video-unlock');
 let alertVideoForUnlock = null;
@@ -799,7 +800,7 @@ function pickAlert(event, allowMultipliers) {
   }
   for (const key of keys) {
     const alert = alerts[key];
-    if (alert && (alert.audioUrl || alert.videoUrl)) {
+    if (alert && (alert.audioUrl || alert.videoUrl || alert.imageUrl)) {
       return key === 'level_up' || key === 'comment_bobo' || key === 'comment_city'
         ? { ...alert, fullScreen: true }
         : alert;
@@ -864,12 +865,17 @@ function playAlert(alert) {
   return new Promise(resolve => {
     let pending = 0;
     let finished = false;
+    let imageTimer;
     const done = () => {
       if (finished) return;
       if (--pending > 0) return;
       finished = true;
+      clearTimeout(imageTimer);
       video.style.display = 'none';
       video.removeAttribute('src');
+      image.style.display = 'none';
+      image.onload = image.onerror = null;
+      image.removeAttribute('src');
       resolve();
     };
     const guard = setTimeout(() => { pending = 1; done(); }, 60000);
@@ -922,6 +928,33 @@ function playAlert(alert) {
           endVideo();
         });
       });
+    } else if (alert.imageUrl) {
+      pending++;
+      const width = Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100;
+      const height = Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100;
+      image.style.width = `${width}vw`;
+      image.style.height = alert.fullScreen && window.CSS?.supports('height', '100dvh')
+        ? `${height}dvh`
+        : `${height}vh`;
+      const verticalOffset = alert.fullScreen && Number.isFinite(alert.videoOffsetY)
+        ? Math.min(50, Math.max(-50, alert.videoOffsetY))
+        : 0;
+      image.style.transform = `translateY(${verticalOffset}vh)`;
+      image.style.objectFit = alert.videoFit === 'cover' ? 'cover' : 'contain';
+      const endImage = () => {
+        clearTimeout(imageTimer);
+        image.onload = image.onerror = null;
+        image.style.display = 'none';
+        image.removeAttribute('src');
+        end();
+      };
+      image.onload = () => { imageTimer = setTimeout(endImage, 5000); };
+      image.onerror = () => {
+        console.warn('Impossible de charger la photo de l’alerte.');
+        endImage();
+      };
+      image.src = alert.imageUrl;
+      image.style.display = 'block';
     }
     if (!pending) { clearTimeout(guard); resolve(); }
   });

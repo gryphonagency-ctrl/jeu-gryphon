@@ -35,6 +35,7 @@
     let treasureGiftServerResetAt = 0;
     let mediaAlertPlaying = false;
     let mediaAlertVideo = null;
+    let mediaAlertImage = null;
     let mediaAlertAudio = null;
     let mediaAlertUnlockButton = null;
     let treasureLayout = { x: 50, y: 82, width: 38, giftSize: 72 };
@@ -1073,14 +1074,16 @@
 
     function playMediaAlert(alert) {
         return new Promise(resolve => {
-            const pending = Number(Boolean(alert.audioUrl)) + Number(Boolean(alert.videoUrl));
+            const pending = Number(Boolean(alert.audioUrl)) + Number(Boolean(alert.videoUrl || alert.imageUrl));
             if (!pending) { resolve(); return; }
             let remaining = pending;
             let finished = false;
+            let imageTimer;
             const finishItem = () => {
                 if (finished || --remaining > 0) return;
                 finished = true;
                 clearTimeout(guard);
+                clearTimeout(imageTimer);
                 blockedMediaAlerts.delete(mediaAlertVideo);
                 const blockedAudio = mediaAlertAudio && blockedMediaAlerts.has(mediaAlertAudio)
                     ? mediaAlertAudio
@@ -1092,6 +1095,11 @@
                     mediaAlertVideo.removeAttribute('src');
                     mediaAlertVideo.style.display = 'none';
                     mediaAlertVideo.load();
+                }
+                if (mediaAlertImage) {
+                    mediaAlertImage.onload = mediaAlertImage.onerror = null;
+                    mediaAlertImage.removeAttribute('src');
+                    mediaAlertImage.style.display = 'none';
                 }
                 if (mediaAlertAudio) {
                     if (blockedAudio) {
@@ -1169,6 +1177,39 @@
                         finishItem();
                     });
                 });
+            } else if (alert.imageUrl) {
+                if (!mediaAlertImage) {
+                    mediaAlertImage = document.createElement('img');
+                    mediaAlertImage.className = 'ae-media-alert-image';
+                    mediaAlertImage.alt = '';
+                    mediaAlertImage.setAttribute('aria-hidden', 'true');
+                    mediaAlertImage.style.cssText =
+                        'position:fixed;top:50%;left:50%;width:100vw;height:100vh;height:100dvh;' +
+                        'transform:translate(-50%,-50%);object-fit:contain;display:none;' +
+                        'z-index:2147483647;pointer-events:none;background:transparent';
+                    document.documentElement.appendChild(mediaAlertImage);
+                }
+                const width = Number.isFinite(alert.videoWidth) ? Math.min(150, Math.max(25, alert.videoWidth)) : 100;
+                const height = Number.isFinite(alert.videoHeight) ? Math.min(150, Math.max(25, alert.videoHeight)) : 100;
+                mediaAlertImage.style.width = `${width}vw`;
+                const viewportHeightUnit = window.CSS?.supports('height', '100dvh') ? 'dvh' : 'vh';
+                mediaAlertImage.style.height = `${height}${viewportHeightUnit}`;
+                mediaAlertImage.style.objectFit = alert.videoFit === 'cover' ? 'cover' : 'contain';
+                mediaAlertImage.style.transform = `translate(-50%,-50%) translateY(${Number.isFinite(alert.videoOffsetY) ? Math.min(50, Math.max(-50, alert.videoOffsetY)) : 0}vh)`;
+                const finishImage = () => {
+                    clearTimeout(imageTimer);
+                    mediaAlertImage.onload = mediaAlertImage.onerror = null;
+                    mediaAlertImage.removeAttribute('src');
+                    mediaAlertImage.style.display = 'none';
+                    finishItem();
+                };
+                mediaAlertImage.onload = () => { imageTimer = setTimeout(finishImage, 5000); };
+                mediaAlertImage.onerror = () => {
+                    console.warn('Chargement de la photo d’alerte impossible.');
+                    finishImage();
+                };
+                mediaAlertImage.src = alert.imageUrl;
+                mediaAlertImage.style.display = 'block';
             }
         });
     }
@@ -1195,7 +1236,7 @@
         const eventId = levelUp.messageId ? `level-up:${levelUp.messageId}` : '';
         if (!firstSeen(eventId)) return;
         const alert = await getMediaAlert(data.sourceTikTokUsername || levelUp.sourceTikTokUsername, 'level_up');
-        if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
+        if (!alert || (!alert.audioUrl && !alert.videoUrl && !alert.imageUrl)) return;
         enqueueMediaAlert({ ...alert, fullScreen: true }, 20);
     }
 
@@ -1211,7 +1252,7 @@
         const eventId = commentData.messageId ? `${alertKey.replace('_', '-')}:${commentData.messageId}` : '';
         if (!firstSeen(eventId)) return;
         const alert = await getMediaAlert(data.sourceTikTokUsername, alertKey);
-        if (!alert || (!alert.audioUrl && !alert.videoUrl)) return;
+        if (!alert || (!alert.audioUrl && !alert.videoUrl && !alert.imageUrl)) return;
         enqueueMediaAlert({ ...alert, fullScreen: true });
     }
 
