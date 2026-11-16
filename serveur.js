@@ -3301,6 +3301,7 @@ const server = http.createServer((req, res) => {
         ['/pokefight-live.html', [path.join(__dirname, 'pokefight-live.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/pokefight-live.png', [path.join(__dirname, 'images-vitrine', 'pokefight-live.png'), 'image/png']],
         ['/images-vitrine/pokefight-space-loop.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-space-loop.mp4'), 'video/mp4']],
+        ['/images-vitrine/pokefight-live-arena.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-live-arena.mp4'), 'video/mp4']],
         ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
