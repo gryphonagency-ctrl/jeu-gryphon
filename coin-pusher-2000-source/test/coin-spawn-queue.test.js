@@ -46,3 +46,16 @@ test("all thousand coins in a single gift remain scheduled and rotate across the
     assert.deepEqual(spawnedSlots, [334, 333, 333]);
     assert.equal(queue.pending, 0);
 });
+
+test("keeps and emits every coin from a 44,000 coin gift", () => {
+    const queue = new CoinSpawnQueue();
+    queue.enqueue({ remaining: 44000, username: "alice", slot: null });
+    let spawned = 0;
+
+    while (queue.pending) {
+        spawned += queue.takeNext(3).length;
+    }
+
+    assert.equal(spawned, 44000);
+    assert.equal(queue.pending, 0);
+});

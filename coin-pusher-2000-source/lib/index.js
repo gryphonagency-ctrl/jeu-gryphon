@@ -28,12 +28,14 @@ export default class {
     static #restart = false;
     static #scene;
     static #pointer;
+    static #camera;
 
     static pixelRatio = 1;
 
     static async initialize({ rapier, onCharacterStatus }) {
         this.#containerElement = document.body;
         const camera = new Camera(this.width / this.height);
+        this.#camera = camera;
         this.#scene = new Scene({
             containerElement: this.#containerElement,
             camera,
@@ -148,6 +150,18 @@ export default class {
 
     static setScreenVideo(url) {
         return this.#cabinet.setScreenVideo(url);
+    }
+
+    static setSceneHorizontalOffset(offsetPixels) {
+        if (!Number.isFinite(offsetPixels) || offsetPixels < 0) {
+            throw new RangeError("Le décalage horizontal de la scène doit être positif.");
+        }
+        const distance = Math.hypot(this.#camera.position.y - 0.45, this.#camera.position.z);
+        const viewportWorldWidth =
+            2 * distance * Math.tan(this.#camera.fov * Math.PI / 360) * this.#camera.aspect;
+        const offset = offsetPixels / this.width * viewportWorldWidth;
+        this.#camera.position.x = -offset;
+        this.#camera.lookAt(-offset, 0.45, 0);
     }
 
     static setCharacterScale(scale) {

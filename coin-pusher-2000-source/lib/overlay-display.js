@@ -1,9 +1,9 @@
-export function setOverlayPosition(element, x, y, scalePercent = 100) {
+export function setOverlayPosition(element, x, y, scalePercent = 100, maximumScalePercent = 100) {
     if (![x, y].every(value => Number.isSafeInteger(value) && value >= 0 && value <= 100)) {
         throw new RangeError("La position doit être comprise entre 0 % et 100 %.");
     }
-    if (!Number.isSafeInteger(scalePercent) || scalePercent < 30 || scalePercent > 100) {
-        throw new RangeError("La taille doit être comprise entre 30 % et 100 %.");
+    if (!Number.isSafeInteger(scalePercent) || scalePercent < 30 || scalePercent > maximumScalePercent) {
+        throw new RangeError(`La taille doit être comprise entre 30 % et ${maximumScalePercent} %.`);
     }
     element.style.left = `${x}%`;
     element.style.top = `${y}%`;
@@ -14,13 +14,16 @@ export function setOverlayPosition(element, x, y, scalePercent = 100) {
 
 export function renderSpectatorLeaderboard(list, winners) {
     const document = list.ownerDocument;
-    const podiumPlaces = ["1er", "2e", "3e"];
+    const podiumPlaces = ["1", "2", "3"];
     const rows = podiumPlaces.map((place, index) => {
         const winner = winners[index];
         const row = document.createElement("li");
         if (!winner) {
             row.className = "leaderboard-placeholder";
         }
+        const placeLabel = document.createElement("span");
+        placeLabel.className = "leaderboard-place";
+        placeLabel.textContent = place;
         const avatar = document.createElement("div");
         avatar.className = "leaderboard-avatar";
         const placeholder = document.createElement("span");
@@ -44,11 +47,7 @@ export function renderSpectatorLeaderboard(list, winners) {
         const score = document.createElement("span");
         score.className = "leaderboard-score";
         score.textContent = winner ? `${winner.stars.toLocaleString("fr-FR")} ⭐` : "";
-        const step = document.createElement("span");
-        step.className = "leaderboard-podium-step";
-        step.textContent = place;
-        step.setAttribute("aria-hidden", "true");
-        row.append(avatar, name, score, step);
+        row.append(placeLabel, avatar, name, score);
         return row;
     });
     list.replaceChildren(...rows);

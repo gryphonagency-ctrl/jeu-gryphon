@@ -1,4 +1,4 @@
-import { BoxGeometry, Mesh, PlaneGeometry } from "three";
+import { BoxGeometry, BufferAttribute, BufferGeometry, Mesh, PlaneGeometry } from "three";
 import Wall from "./wall.js";
 import Pusher from "./pusher.js";
 import CollisionsDetector from "./util/collisions-detector.js";
@@ -14,13 +14,13 @@ import CoinSounds from "./coin-sounds.js";
 import SensorGate from "./gadgets/sensor-gate.js";
 import Excavator from "./gadgets/excavator.js";
 import Tower from "./gadgets/tower.js";
-import CoinRoller from "./gadgets/coin-roller.js";
 import Stacker from "./gadgets/stacker.js";
 import MiniStacker from "./gadgets/mini-stacker.js";
 import Sweepers from "./gadgets/sweepers.js";
 import CardReader from "./gadgets/card-reader.js";
 import TokenSlot from "./gadgets/token-slot.js";
 import GiphyCharacter from "./giphy-character.js";
+import createTwinklingStars from "./twinkling-stars.js";
 import PrizeCreditQueue from "../prize-credit-queue.js";
 import { resolveManualPrizeCard, selectPrizeCard } from "../prize-card-selection.js";
 import { shouldPlayCoinImpact } from "../coin-impact-filter.js";
@@ -34,6 +34,12 @@ const MIN_POSITION_Y_OBJECTS = -1;
 const MANUAL_PRIZE_DROP_HEIGHT = 1.5;
 const MODEL_PATH = "./assets/cabinet.glb";
 const SENSOR_HEIGHT = 0.2;
+const EXCAVATOR_PICKUP_OPENING = {
+    minX: 0.38,
+    maxX: 0.66,
+    minZ: -0.26,
+    maxZ: 0.02
+};
 const DEFAULT_PRIZE_DECK = [
     { stars: 1, count: 200 },
     { stars: 2, count: 125 },
@@ -43,6 +49,8 @@ const DEFAULT_PRIZE_DECK = [
     { stars: 300, count: 2 }
 ];
 const INGOT_STARS = 50;
+const IS_LOCAL_PREVIEW = globalThis.location?.hostname === "localhost" ||
+    globalThis.location?.hostname === "127.0.0.1";
 const HIDDEN_CABINET_LABELS = new Set([
     "label-coins-in-play",
     "coins-in-play",
@@ -52,10 +60,10 @@ const HIDDEN_CABINET_LABELS = new Set([
 ]);
 const CABINET_SURFACE_COVERS = [
     { position: [0, 0.16125, 1.25], width: 1.5, height: 0.008, depth: 0.24, rotation: [2 * Math.PI + Math.PI / 10, 0, 0] },
-    { position: [0.85, 0.2, 0.785], width: 0.15, height: 0.006, depth: 0.1, rotation: [Math.PI / 2, 0, 0] }
 ];
 const CABINET_PANEL_COVERS = [
-    { position: [-0.785, 0.22, 0.795], width: 0.22, height: 0.14 }
+    { position: [-0.785, 0.22, 0.795], width: 0.22, height: 0.14 },
+    { position: [-0.69, 0.245, -0.319], width: 0.38, height: 0.1 }
 ];
 const WALL_BACKGROUND_PATCHES = [
     {
@@ -64,6 +72,13 @@ const WALL_BACKGROUND_PATCHES = [
         height: 0.34,
         u: [0.062, 0.252],
         v: [0.261, 0.559]
+    },
+    {
+        position: [-0.69, 0.355, -0.319],
+        width: 0.32,
+        height: 0.13,
+        u: [0.0792, 0.2376],
+        v: [0.7748, 0.8919]
     },
     {
         position: [-0.21, 1.15, -0.319],
@@ -104,8 +119,6 @@ const GROUPS = {
         0b00000000001000000,
     TOWER:
         0b00000000010000000,
-    COIN_ROLLER:
-        0b00000000100000000,
     PUSHER:
         0b00000001000000000,
     FLOOR:
@@ -191,7 +204,6 @@ export default class {
     #excavator;
     #leftTower;
     #rightTower;
-    #coinRoller;
     #stacker;
     #leftStacker;
     #rightStacker;
@@ -204,14 +216,16 @@ export default class {
     #runs;
     #objectsDistributor;
     #parts;
+    #twinklingStars;
 
     async initialize() {
         const scene = this.#scene;
-        const { parts } = await initializeModel({
+        const { parts, backgroundTexture, twinklingStars } = await initializeModel({
             scene,
             DEBUG_HIDE_CABINET: this.DEBUG_HIDE_CABINET
         });
         this.#parts = parts;
+        this.#twinklingStars = twinklingStars;
         this.#character = new GiphyCharacter({ scene, onStatus: this.#onCharacterStatus });
         void this.#character.initialize();
         const { sensorColliders } = initializeColliders({
@@ -227,9 +241,6 @@ export default class {
                     Coins.dropCoin({ slot });
                     this.#cabinet.state.coins--;
                 }
-            },
-            onPressShootButton: () => {
-                this.#coinRoller.triggerCoin();
             },
             onPressStartButton: () => this.#startGame(),
             onPressHoldButton: () => {
@@ -255,9 +266,12 @@ export default class {
             Coins,
             onFallenCoin: instance => Coins.enableCcd(instance, false),
             onBonusWon: player => {
+                const hasPlayer = typeof player?.username === "string" && player.username.trim().length > 0;
                 const random = Math.random();
                 if (this.DEBUG_AUTOPLAY) {
-                    this.#deliverPrize(player);
+                    if (hasPlayer) {
+                        this.#deliverPrize(player);
+                    }
                     const tokens = [];
                     const cards = [];
                     for (let i = 0; i < 5; i++) {
@@ -277,24 +291,23 @@ export default class {
                         [Ingots, { length: Math.random() < 0.5 ? 1 : 0 }]
                     ]));
                 } else {
-                    if (random < 1 / 6) {
+                    if (random < 1 / 5 && hasPlayer) {
                         this.#pendingClawPrizePlayers.push({
                             username: player.username,
                             avatarUrl: player.avatarUrl || ""
                         });
                         this.#excavator.pick();
                     } else {
-                        this.#deliverPrize(player);
-                        if (random < 2 / 6) {
-                            this.#controlPanel.enableShootButton();
-                            this.#coinRoller.shootCoin();
-                        } else if (random < 3 / 6) {
+                        if (hasPlayer) {
+                            this.#deliverPrize(player);
+                        }
+                        if (random < 2 / 5) {
                             this.#leftTower.shootCoins();
                             this.#rightTower.shootCoins();
-                        } else if (random < 4 / 6) {
+                        } else if (random < 3 / 5) {
                             this.#leftStacker.deliver({ levels: 30 });
                             this.#rightStacker.deliver({ levels: 30 });
-                        } else if (random < 5 / 6) {
+                        } else if (random < 4 / 5) {
                             this.#sweepers.sweepFloor({ level: 5 });
                         } else {
                             this.#stacker.deliver({ stacks: 7, levels: 15 });
@@ -340,17 +353,6 @@ export default class {
             onShootCoin: ({ position, impulse }) => Coins.deposit({ position, impulse }),
             groups: GROUPS
         });
-        this.#coinRoller = new CoinRoller({
-            scene,
-            cabinet: this,
-            onInitializeCoin: ({ position, rotation }) => Coins.deposit({ position, rotation }),
-            onGameLost: () => this.#controlPanel.disableShootButton(),
-            onBonusWon: bonus => {
-                Coins.dropCoins({ count: Math.pow(bonus + 1, 2) * 5 });
-                this.#controlPanel.disableShootButton();
-            },
-            groups: GROUPS
-        });
         this.#stacker = new Stacker({
             scene,
             cabinet: this,
@@ -376,7 +378,7 @@ export default class {
             cabinet: this,
             groups: GROUPS
         });
-        this.#screen = new Screen({ scene });
+        this.#screen = new Screen({ scene, backgroundTexture });
         this.#cardReader = new CardReader({
             scene,
             cabinet: this,
@@ -435,7 +437,14 @@ export default class {
             Cards.initialize({ scene, groups: GROUPS }),
             Coins.initialize({
                 scene,
-                onSpawnedCoin: instance => Coins.enableCcd(instance, true),
+                onSpawnedCoin: instance => {
+                    Coins.enableCcd(instance, true);
+                    if (instance.username) {
+                        window.dispatchEvent(new CustomEvent("coin-pusher-coin-spawned", {
+                            detail: { username: instance.username }
+                        }));
+                    }
+                },
                 groups: GROUPS
             }),
             Tokens.initialize({ scene, groups: GROUPS }),
@@ -450,7 +459,6 @@ export default class {
             this.#excavator.initialize(),
             this.#leftTower.initialize(),
             this.#rightTower.initialize(),
-            this.#coinRoller.initialize(),
             this.#stacker.initialize(),
             this.#leftStacker.initialize(),
             this.#rightStacker.initialize(),
@@ -492,7 +500,6 @@ export default class {
         this.#excavator.update();
         this.#leftTower.update();
         this.#rightTower.update();
-        this.#coinRoller.update();
         this.#stacker.update();
         this.#leftStacker.update();
         this.#rightStacker.update();
@@ -515,6 +522,7 @@ export default class {
     }
 
     refresh() {
+        this.#twinklingStars?.update(1 / 60);
         Cards.refresh();
         Coins.refresh();
         Tokens.refresh();
@@ -527,7 +535,6 @@ export default class {
         this.#excavator.refresh();
         this.#leftTower.refresh();
         this.#rightTower.refresh();
-        this.#coinRoller.refresh();
         this.#stacker.refresh();
         this.#leftStacker.refresh();
         this.#rightStacker.refresh();
@@ -541,8 +548,7 @@ export default class {
         return [
             ...this.#sensorColliders.values(),
             ...this.#excavator.sensorColliders(),
-            ...this.#sensorGate.sensorColliders(),
-            ...this.#coinRoller.sensorColliders(),
+            ...this.#sensorGate.sensorColliders()
         ];
     }
 
@@ -583,9 +589,7 @@ export default class {
         const coins = this.#cabinet.state.coins;
         const buttons = this.#controlPanel.getButtonStates();
         if (coins <= 0) {
-            buttons.left = false;
             buttons.center = false;
-            buttons.right = false;
         }
         return { buttons, coins };
     }
@@ -629,18 +633,23 @@ export default class {
             this.#dispatchPrizeStatus("Indique un pseudo TikTok valide pour le lingot.", "error");
             return false;
         }
-        if (!this.#creditQueue || this.#unstoredPrizes.length) {
+        const canCredit = Boolean(this.#creditQueue && !this.#unstoredPrizes.length);
+        const preview = IS_LOCAL_PREVIEW && !canCredit;
+        if (!canCredit && !preview) {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
         }
         const queued = getActivePrizeObjectCount(Cards, Ingots) >= MAX_ACTIVE_PRIZE_OBJECTS ||
             this.#pendingIngots.length > 0;
-        this.#pendingIngots.push({ username: target, avatarUrl: "", manual: true });
+        this.#pendingIngots.push({ username: target, avatarUrl: "", manual: true, preview });
         this.#deliverPendingIngots();
-        this.#dispatchPrizeStatus(queued
-            ? `Lingot de ${INGOT_STARS} étoiles en attente pour @${target} ; il tombera dès qu’une place se libérera.`
-            : `Lingot de ${INGOT_STARS} étoiles lâché immédiatement pour @${target} ; crédit à la sortie du plateau.`,
-            queued ? "warning" : ""
+        this.#dispatchPrizeStatus(
+            preview
+                ? `Aperçu local : lingot lâché pour @${target} ; aucune étoile ne sera créditée.${queued ? " Il tombera dès qu’une place se libérera." : ""}`
+                : queued
+                    ? `Lingot de ${INGOT_STARS} étoiles mis en attente pour @${target} ; il tombera dès qu’une place se libérera.`
+                    : `Lingot de ${INGOT_STARS} étoiles lâché pour @${target} ; crédit à la sortie du plateau.`,
+            preview || queued ? "warning" : ""
         );
         return true;
     }
@@ -725,7 +734,6 @@ export default class {
             excavator: this.#excavator.save(),
             leftTower: this.#leftTower.save(),
             rightTower: this.#rightTower.save(),
-            coinRoller: this.#coinRoller.save(),
             stacker: this.#stacker.save(),
             leftStacker: this.#leftStacker.save(),
             rightStacker: this.#rightStacker.save(),
@@ -785,7 +793,6 @@ export default class {
         this.#excavator.load(cabinet.excavator);
         this.#leftTower.load(cabinet.leftTower);
         this.#rightTower.load(cabinet.rightTower);
-        this.#coinRoller.load(cabinet.coinRoller);
         this.#stacker.load(cabinet.stacker);
         this.#leftStacker.load(cabinet.leftStacker);
         this.#rightStacker.load(cabinet.rightStacker);
@@ -849,7 +856,9 @@ export default class {
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
             return false;
         }
-        if (!this.#creditQueue || this.#unstoredPrizes.length) {
+        const canCredit = Boolean(this.#creditQueue && !this.#unstoredPrizes.length);
+        const preview = manual && IS_LOCAL_PREVIEW && !canCredit;
+        if (!canCredit && !preview) {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
         }
@@ -877,7 +886,7 @@ export default class {
             prize: { username, amount: selected.stars, avatarUrl: player.avatarUrl || "" },
             onAvatarError: reportAvatarError
         });
-        if (!player.avatarUrl) {
+        if (!player.avatarUrl && !preview) {
             void Cards.loadPrizeAvatar(cardObject, username).catch(reportAvatarError);
         }
         const usesStock = manualSelection ? manualSelection.usesStock : true;
@@ -887,12 +896,15 @@ export default class {
             avatarUrl: player.avatarUrl || "",
             amount: selected.stars,
             kind: "carte",
-            usesStock
+            usesStock,
+            preview
         });
         if (usesStock) this.#dispatchPrizeDeck();
         this.#deliverPendingIngots();
         if (manual) {
-            this.#dispatchPrizeStatus(`Carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée immédiatement pour @${username} ; crédit à la sortie du plateau.`);
+            this.#dispatchPrizeStatus(preview
+                ? `Aperçu local : carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée pour @${username} ; aucune étoile ne sera créditée.`
+                : `Carte de ${selected.stars.toLocaleString("fr-FR")} étoile${selected.stars === 1 ? "" : "s"} lâchée pour @${username} ; crédit à la sortie du plateau.`);
         }
         return true;
     }
@@ -922,7 +934,8 @@ export default class {
                 avatarUrl: player.avatarUrl,
                 amount: INGOT_STARS,
                 kind: "lingot",
-                manual: player.manual === true
+                manual: player.manual === true,
+                preview: player.preview === true
             });
         }
     }
@@ -939,7 +952,8 @@ export default class {
             this.#pendingIngots.unshift({
                 username: prize.username,
                 avatarUrl: prize.avatarUrl,
-                manual: prize.manual
+                manual: prize.manual,
+                preview: prize.preview === true
             });
         }
     }
@@ -1037,6 +1051,13 @@ export default class {
     }
 
     #awardPrize(prize) {
+        if (prize.preview) {
+            if (prize.kind === "carte") {
+                this.#restoreCard(prize.amount);
+            }
+            this.#dispatchPrizeStatus(`Aperçu local : ${prize.kind} récupéré pour @${prize.username} ; aucun gain n’a été crédité.`, "warning");
+            return;
+        }
         const pending = {
             ...prize,
             avatarUrl: /^https?:\/\/|^\/(?!\/)/i.test(prize.avatarUrl || "")
@@ -1094,7 +1115,12 @@ async function initializeModel({ scene, DEBUG_HIDE_CABINET }) {
             child.visible = false;
         }
         if (child.isMesh) {
-            const { material, geometry } = child;
+            const { material } = child;
+            let { geometry } = child;
+            if (material.name === "table-obstacle") {
+                geometry = createExcavatorPickupOpening(geometry);
+                child.geometry = geometry;
+            }
             const userData = material.userData;
             const name = userData.name;
             if (userData.collider || userData.sensor) {
@@ -1115,13 +1141,141 @@ async function initializeModel({ scene, DEBUG_HIDE_CABINET }) {
             }
         }
     });
+    let backgroundTexture = null;
+    let twinklingStars = null;
     if (!DEBUG_HIDE_CABINET) {
         scene.addObject(mesh);
-        addCabinetSurfaceCovers({ scene, mesh });
+        ({ backgroundTexture, twinklingStars } = addCabinetSurfaceCovers({ scene, mesh }));
     }
     return {
-        parts
+        parts,
+        backgroundTexture,
+        twinklingStars
     };
+}
+
+function createExcavatorPickupOpening(geometry) {
+    const attributes = Object.entries(geometry.attributes);
+    const sourceIndex = geometry.index;
+    const vertexCount = sourceIndex ? sourceIndex.count : geometry.getAttribute("position").count;
+    const output = new Map(attributes.map(([name]) => [name, []]));
+
+    const readVertex = index => Object.fromEntries(attributes.map(([name, attribute]) => [
+        name,
+        Array.from({ length: attribute.itemSize }, (_, component) =>
+            getAttributeComponent(attribute, index, component))
+    ]));
+    const appendVertex = vertex => attributes.forEach(([name]) => output.get(name).push(...vertex[name]));
+
+    for (let offset = 0; offset < vertexCount; offset += 3) {
+        const triangle = [0, 1, 2].map(index => readVertex(
+            sourceIndex ? sourceIndex.getX(offset + index) : offset + index
+        ));
+        const points = triangle.map(vertex => vertex.position);
+        const minY = Math.min(...points.map(point => point[1]));
+        const maxY = Math.max(...points.map(point => point[1]));
+        const horizontalTableTop = maxY - minY < 0.0001 && maxY >= 0.28;
+        const fragments = horizontalTableTop && triangleOverlapsOpening(points)
+            ? subtractPickupOpening(triangle)
+            : [triangle];
+
+        fragments.forEach(polygon => {
+            for (let index = 1; index < polygon.length - 1; index++) {
+                appendVertex(polygon[0]);
+                appendVertex(polygon[index]);
+                appendVertex(polygon[index + 1]);
+            }
+        });
+    }
+
+    const result = new BufferGeometry();
+    attributes.forEach(([name, attribute]) => {
+        result.setAttribute(name, new BufferAttribute(
+            new Float32Array(output.get(name)),
+            attribute.itemSize
+        ));
+    });
+    if (sourceIndex) {
+        const outputCount = output.get("position").length / geometry.getAttribute("position").itemSize;
+        result.setIndex(Array.from({ length: outputCount }, (_, index) => index));
+    }
+    result.computeBoundingBox();
+    result.computeBoundingSphere();
+    return result;
+}
+
+function triangleOverlapsOpening(points) {
+    const xs = points.map(point => point[0]);
+    const zs = points.map(point => point[2]);
+    return Math.min(...xs) < EXCAVATOR_PICKUP_OPENING.maxX &&
+        Math.max(...xs) > EXCAVATOR_PICKUP_OPENING.minX &&
+        Math.min(...zs) < EXCAVATOR_PICKUP_OPENING.maxZ &&
+        Math.max(...zs) > EXCAVATOR_PICKUP_OPENING.minZ;
+}
+
+function subtractPickupOpening(triangle) {
+    let remaining = triangle;
+    const fragments = [];
+    const boundaries = [
+        { axis: 0, value: EXCAVATOR_PICKUP_OPENING.minX, keepGreater: true },
+        { axis: 0, value: EXCAVATOR_PICKUP_OPENING.maxX, keepGreater: false },
+        { axis: 2, value: EXCAVATOR_PICKUP_OPENING.minZ, keepGreater: true },
+        { axis: 2, value: EXCAVATOR_PICKUP_OPENING.maxZ, keepGreater: false }
+    ];
+
+    boundaries.forEach(({ axis, value, keepGreater }) => {
+        const outside = clipPolygon(remaining, axis, value, !keepGreater);
+        if (outside.length >= 3) {
+            fragments.push(outside);
+        }
+        remaining = clipPolygon(remaining, axis, value, keepGreater);
+    });
+    return fragments;
+}
+
+function clipPolygon(polygon, axis, boundary, keepGreater) {
+    if (!polygon.length) {
+        return [];
+    }
+    const result = [];
+    const coordinate = vertex => vertex.position[axis];
+    const isInside = vertex => keepGreater
+        ? coordinate(vertex) >= boundary
+        : coordinate(vertex) <= boundary;
+    const intersection = (start, end) => {
+        const amount = (boundary - coordinate(start)) / (coordinate(end) - coordinate(start));
+        return Object.fromEntries(Object.keys(start).map(name => [
+            name,
+            start[name].map((value, index) => value + (end[name][index] - value) * amount)
+        ]));
+    };
+
+    let previous = polygon[polygon.length - 1];
+    polygon.forEach(current => {
+        const previousInside = isInside(previous);
+        const currentInside = isInside(current);
+        if (currentInside !== previousInside) {
+            result.push(intersection(previous, current));
+        }
+        if (currentInside) {
+            result.push(current);
+        }
+        previous = current;
+    });
+    return result;
+}
+
+function getAttributeComponent(attribute, index, component) {
+    if (component === 0) {
+        return attribute.getX(index);
+    }
+    if (component === 1) {
+        return attribute.getY(index);
+    }
+    if (component === 2) {
+        return attribute.getZ(index);
+    }
+    return attribute.getW(index);
 }
 
 function addCabinetSurfaceCovers({ scene, mesh }) {
@@ -1173,6 +1327,11 @@ function addCabinetSurfaceCovers({ scene, mesh }) {
         backgroundPatch.position.set(...position);
         scene.addObject(backgroundPatch);
     });
+    const twinklingStars = createTwinklingStars(scene);
+    return {
+        backgroundTexture: wallBackgroundMaterial.map,
+        twinklingStars
+    };
 }
 
 function initializeColliders({ scene, parts, sensorListeners }) {

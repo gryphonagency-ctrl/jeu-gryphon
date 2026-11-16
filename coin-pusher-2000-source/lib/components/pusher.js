@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 const SPEED = Math.PI / 60;
 const DISTANCE = 0.10;
@@ -47,6 +48,7 @@ export default class {
     #parts;
     #door;
     #platform;
+    #platformBrand;
     #deliveryPosition;
     #onDeliverBonus;
     #onDisableHold;
@@ -84,6 +86,8 @@ export default class {
         initializeLights({ lightBulbsMaterials: this.#lightBulbsMaterials, lights: this.#pusher.lights });
         this.#door = parts.get(DOOR_PART_NAME);
         this.#platform = parts.get(PLATFORM_PART_NAME);
+        this.#platformBrand = createBrand();
+        this.#scene.css3DScene.add(this.#platformBrand);
         parts.forEach(({ body, meshes }, name) => {
             meshes.forEach(({ data }) => this.#scene.addObject(data, {
                 upperDeck: name === PLATFORM_PART_NAME
@@ -131,6 +135,19 @@ export default class {
                 data.quaternion.copy(body.rotation());
             });
         });
+        const platformPosition = this.#platform.body.translation();
+        const platformRotation = this.#platform.body.rotation();
+        this.#platformBrand.position.set(
+            0.05 + platformPosition.x,
+            0.227 + platformPosition.y,
+            0.081 + platformPosition.z
+        );
+        this.#platformBrand.quaternion.set(
+            platformRotation.x,
+            platformRotation.y,
+            platformRotation.z,
+            platformRotation.w
+        );
         if (this.#pusher.lights.state !== LIGHTS_STATES.IDLE) {
             this.#pusher.lights.bulbs.forEach((bulb, indexBulb) => {
                 this.#lightBulbsMaterials[indexBulb].emissiveIntensity = bulb.intensity;
@@ -200,6 +217,32 @@ export default class {
             intensity: bulb.intensity
         }));
     }
+}
+
+function createBrand() {
+    const element = document.createElement("div");
+    element.textContent = "GRYPHON Agency";
+    element.setAttribute("role", "img");
+    element.setAttribute("aria-label", "GRYPHON Agency");
+    element.style.cssText = [
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "width:500px",
+        "height:64px",
+        "color:#f4ca59",
+        "background:linear-gradient(180deg,#fff3aa 0%,#f5c95c 48%,#b77a19 100%)",
+        "-webkit-background-clip:text",
+        "-webkit-text-fill-color:transparent",
+        "-webkit-text-stroke:1px #694713",
+        "font:900 40px/1 Georgia,serif",
+        "letter-spacing:1px",
+        "white-space:nowrap",
+        "pointer-events:none"
+    ].join(";");
+    const brand = new CSS3DObject(element);
+    brand.scale.set(0.001, 0.00065, 0.001);
+    return brand;
 }
 
 function updatePusherState({ pusher }) {

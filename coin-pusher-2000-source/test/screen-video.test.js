@@ -27,11 +27,13 @@ test("la vidéo masque les éléments de démonstration et le filtre de la tél�
     const styles = read("../../coin-pusher-2000/views/styles.css");
     assert.equal(html, sourceHtml);
     assert.equal(styles, read("../public/views/styles.css"));
+    assert.doesNotMatch(sourceHtml, /top-banner\.png|class="banner"|updateBannerAnimation|getRandomAnimationProperties/);
+    assert.doesNotMatch(styles, /\.banner|@keyframes (rotate|scale|skew|shake|grayscale|contrast|hue-rotate|sepia|fade-in-out|origin)/);
+    assert.match(read("../lib/components/output/screen.js"), /screen-logo-removed/);
     assert.match(styles, /body\.video-playing::after\s*\{\s*display:\s*none/);
     const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
     const classes = new Set();
     const listeners = {};
-    const banner = { style: { setProperty() {}, getPropertyValue() { return ""; } } };
     const demo = { style: {} };
     const run = { style: {}, querySelector() { return { textContent: "" }; } };
     const video = {
@@ -39,7 +41,7 @@ test("la vidéo masque les éléments de démonstration et le filtre de la tél�
         pause() {}, removeAttribute(name) { delete this[name]; }
     };
     const elements = {
-        ".background-canvas": {}, ".banner": banner, ".demo-mode": demo,
+        ".background-canvas": {}, ".demo-mode": demo,
         ".run-mode": run, ".screen-video": video
     };
     const parent = { postMessage() {} };
@@ -68,6 +70,8 @@ test("la vidéo masque les éléments de démonstration et le filtre de la tél�
 
 test("les effets du jeu restent sous la télévision sans intercepter les commandes", async () => {
     const html = read("../index.html");
+    assert.match(html, /id="screen-layout-lock"[^>]*>🔒 Verrouiller les écrans/);
+    assert.match(html, /#screen-layout-lock,\s*#screen-rotation-mode\s*\{\s*position:\s*fixed/s);
     assert.match(html, /#arcade-effects-layer,[\s\S]*?#arcade-stars-wallet,[\s\S]*?#arcade-stars-owed,[\s\S]*?\.ae-media-alert-video,[\s\S]*?\.ae-media-alert-unlock,[\s\S]*?\.ae-sound-unlock\s*\{\s*z-index:\s*4\s*!important/);
     assert.match(html, /body\s*>\s*canvas\s*\{/);
     const effects = read("../../arcade-effects.js");
@@ -76,18 +80,50 @@ test("les effets du jeu restent sous la télévision sans intercepter les comman
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
     const elements = [];
+    const containerListeners = {};
+    const windowListeners = {};
+    const controlListeners = {};
+    const buttons = Object.fromEntries(["screen-layout-lock", "screen-rotation-mode"].map(id => [id, {
+        dataset: {},
+        style: {},
+        addEventListener(type, callback) { controlListeners[`${id}:${type}`] = callback; },
+        setAttribute(name, value) { this[name] = value; }
+    }]));
     globalThis.document = {
         createElement() {
             return { style: {}, appendChild(child) { elements.push(child); } };
+        },
+        getElementById(id) {
+            assert.ok(buttons[id], `Missing screen control: ${id}`);
+            return buttons[id];
         }
     };
-    globalThis.window = { innerWidth: 1280, innerHeight: 720 };
+    globalThis.window = {
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener(type, callback) { windowListeners[type] = callback; }
+    };
     try {
         const { default: Screen } = await import("../lib/components/output/screen.js");
         let renderer;
-        new Screen({ scene: { containerElement: { appendChild(element) { renderer = element; } } } });
+        const containerElement = {
+            appendChild(element) { renderer = element; },
+            addEventListener(type, callback) { containerListeners[type] = callback; }
+        };
+        new Screen({ scene: { containerElement } });
         assert.equal(renderer.style.zIndex, "7");
         assert.equal(renderer.style.pointerEvents, "none");
+        assert.equal(buttons["screen-layout-lock"].dataset.locked, "false");
+        controlListeners["screen-rotation-mode:click"]();
+        assert.equal(buttons["screen-rotation-mode"]["aria-pressed"], "true");
+        assert.equal(buttons["screen-rotation-mode"].textContent, "✓ Rotation active");
+        controlListeners["screen-layout-lock:click"]();
+        assert.equal(buttons["screen-layout-lock"].dataset.locked, "true");
+        assert.equal(buttons["screen-layout-lock"].textContent, "🔓 Déplacer les écrans");
+        assert.equal(buttons["screen-rotation-mode"].disabled, true);
+        assert.equal(buttons["screen-rotation-mode"]["aria-pressed"], "false");
+        assert.deepEqual(containerListeners, {});
+        assert.deepEqual(windowListeners, {});
     } finally {
         globalThis.document = previousDocument;
         globalThis.window = previousWindow;

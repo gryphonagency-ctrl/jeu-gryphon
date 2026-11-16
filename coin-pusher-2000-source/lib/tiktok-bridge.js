@@ -1,15 +1,17 @@
 import { renderSpectatorLeaderboard, setOverlayPosition } from "./overlay-display.js";
 import { deleteSetupVideo, loadSetupVideo, saveSetupVideo } from "./setup-video-storage.js";
+import { MAX_GIFT_COIN_COUNT } from "./gift-roulette-queue.js";
 
 const RELAY_URL = "wss://jeu6boite.onrender.com";
 const RECONNECT_DELAY = 3000;
-const MAX_DEMO_COINS = 44000;
-const MAX_TIKTOK_GIFT_COINS = 44000;
+const MAX_DEMO_COINS = MAX_GIFT_COIN_COUNT;
+const MAX_TIKTOK_GIFT_COINS = MAX_GIFT_COIN_COUNT;
 const SETUP_STORAGE_KEY = "coin-pusher-2000-live-panel-v1";
 const SETUP_FORMAT = "coin-pusher-2000-control-panel";
 const MAX_SETUP_FILE_BYTES = 2000000;
 const MAX_EXPORTABLE_SETUP_VIDEO_BYTES = 1300000;
 const MAX_SETUP_VIDEO_DATA_URL_LENGTH = 1800000;
+const MAX_SETUP_BACKGROUND_DATA_URL_LENGTH = 1800000;
 const IS_LOCAL_PREVIEW = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const DEFAULT_CHARACTER_HORIZONTAL_PERCENT = 15;
 const DEFAULT_CHARACTER_DEPTH_PERCENT = 30;
@@ -38,7 +40,7 @@ const COIN_VOLUME_STORAGE_KEY = "coin-pusher-2000-coin-volume-v1";
 const MAX_AVATAR_DATA_URI_LENGTH = 700000;
 const SCENE_BRAND_TEXT = "GRYPHON AGENCY";
 
-export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setCharacterScale, setCharacterPosition, dropPrizeCard, dropPrizeIngot, setPrizeConfig }) {
+export default function initializeTikTokBridge({ receiveGift, giftCatalog, setGiftRouletteSettings, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setSceneHorizontalOffset, setCharacterScale, setCharacterPosition, dropPrizeCard, dropPrizeIngot, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
@@ -49,11 +51,27 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const coinVolumeValue = document.getElementById("coin-volume-value");
     const avatarLookupRequests = new Map();
     const machineButtons = Object.fromEntries(
-        ["start", "hold", "shoot", "left", "center", "right", "a", "b"]
+        ["start", "hold", "center"]
             .map(name => [name, document.getElementById(`machine-${name}`)])
     );
     const demoCountInput = document.getElementById("demo-count");
     const testGiftButton = document.getElementById("test-gift");
+    const manualGiftUsernameInput = document.getElementById("manual-gift-username");
+    const manualGiftSelect = document.getElementById("manual-gift-select");
+    const manualGiftTriggerButton = document.getElementById("manual-gift-trigger");
+    const manualGiftStatusElement = document.getElementById("gift-manual-status");
+    const giftRouletteSpeedButtons = [1, 2, 3, 4, 5]
+        .map(speed => document.getElementById(`gift-roulette-speed-${speed}`));
+    const giftRouletteWinChanceInput = document.getElementById("gift-roulette-win-chance");
+    const giftRouletteWinChanceValue = document.getElementById("gift-roulette-win-chance-value");
+    const giftRouletteVolumeInput = document.getElementById("gift-roulette-volume");
+    const giftRouletteVolumeValue = document.getElementById("gift-roulette-volume-value");
+    const gameBackgroundInput = document.getElementById("game-background-input");
+    const gameBackgroundImage = document.getElementById("game-background-image");
+    const gameBackgroundVideo = document.getElementById("game-background-video");
+    const gameBackgroundMedia = document.getElementById("game-background-media");
+    const clearGameBackgroundButton = document.getElementById("clear-game-background");
+    const gameBackgroundStatusElement = document.getElementById("game-background-status");
     const videoInput = document.getElementById("screen-video");
     const clearVideoButton = document.getElementById("clear-screen-video");
     const videoStatusElement = document.getElementById("video-status");
@@ -68,6 +86,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const panelHeader = document.getElementById("live-panel-header");
     const panelResizeHandle = document.getElementById("panel-resize-handle");
     const showPanelButton = document.getElementById("show-live-panel");
+    const livePanelContent = document.getElementById("live-panel-content");
+    const controlTabs = [
+        {
+            button: document.getElementById("machine-controls-tab"),
+            panel: document.getElementById("machine-controls-panel")
+        },
+        {
+            button: document.getElementById("symbols-controls-tab"),
+            panel: document.getElementById("symbols-controls-panel")
+        }
+    ];
     const saveSetupButton = document.getElementById("save-setup");
     const restoreSetupButton = document.getElementById("restore-setup");
     const exportSetupButton = document.getElementById("export-setup");
@@ -89,13 +118,19 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const ingotFrequencyValue = document.getElementById("ingot-frequency-value");
     const prizeStatusElement = document.getElementById("prize-status");
     const sceneBrand = document.getElementById("scene-brand");
+    const sceneBrandLockButton = document.getElementById("scene-brand-lock");
     const sceneBrandXInput = document.getElementById("scene-brand-x");
     const sceneBrandYInput = document.getElementById("scene-brand-y");
     const sceneBrandScaleInput = document.getElementById("scene-brand-scale");
+    const rouletteDiamond = document.getElementById("gift-roulette-diamond");
+    const diamondXInput = document.getElementById("diamond-x");
+    const diamondYInput = document.getElementById("diamond-y");
+    const diamondScaleInput = document.getElementById("diamond-scale");
     const leaderboardXInput = document.getElementById("leaderboard-x");
     const leaderboardYInput = document.getElementById("leaderboard-y");
     const leaderboardScaleInput = document.getElementById("leaderboard-scale");
     const starLeaderboard = document.getElementById("star-leaderboard");
+    const starLeaderboardDragHandle = document.getElementById("star-leaderboard-drag-handle");
     const showStarLeaderboardInput = document.getElementById("show-star-leaderboard");
     const starLeaderboardList = document.getElementById("star-leaderboard-list");
     const panelStarLeaderboard = document.getElementById("panel-star-leaderboard");
@@ -103,8 +138,26 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     const prizeBannerAvatar = prizeBanner.querySelector("img");
     const prizeBannerName = prizeBanner.querySelector("strong");
     const prizeBannerMessage = prizeBanner.querySelector("span");
+    if (!Array.isArray(giftCatalog) || !giftCatalog.length) {
+        throw new Error("Le catalogue de cadeaux de la roulette est indisponible.");
+    }
+    for (const gift of giftCatalog) {
+        const option = document.createElement("option");
+        option.value = gift.id;
+        option.textContent = `${gift.name} · ${gift.coinCount.toLocaleString("fr-FR")} pièce${gift.coinCount === 1 ? "" : "s"}`;
+        manualGiftSelect.append(option);
+    }
     let socket;
     let reconnectTimer;
+    let activeGameBackgroundUrl = null;
+    let activeGameBackgroundName = "";
+    let activeGameBackgroundType = "";
+    let activeGameBackgroundDataUrl = "";
+    let activeGameBackgroundStorageKey = "";
+    let activeGameBackgroundSavePromise = Promise.resolve();
+    let activeGameBackgroundDataUrlPromise = Promise.resolve();
+    let activeGameBackgroundSaveError = null;
+    const retiredGameBackgroundUrls = new Set();
     let activeVideoUrl = null;
     let activeVideoName = "";
     let activeVideoDataUrl = "";
@@ -116,11 +169,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     let panelBounds;
     let panelDrag;
     let panelResize;
+    let sceneHorizontalOffset = 0;
+    let rouletteDrag;
+    let diamondDrag;
+    let leaderboardDrag;
+    let rouletteLocked = false;
     let setupPersistTimer = 0;
     let setupReloadPending = false;
     let prizeCards = DEFAULT_PRIZE_CARDS.map(card => ({ ...card }));
     let prizeStockAdditionVersion = PRIZE_STOCK_ADDITION_VERSION;
     let ingotFrequency = 10;
+    let giftRouletteSpeed = 1;
     let prizeBannerTimer;
     let starWinners = [];
 
@@ -150,6 +209,11 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     function setVideoStatus(message, state = "") {
         videoStatusElement.textContent = message;
         videoStatusElement.dataset.state = state;
+    }
+
+    function setGameBackgroundStatus(message, state = "") {
+        gameBackgroundStatusElement.textContent = message;
+        gameBackgroundStatusElement.dataset.state = state;
     }
 
     function setSetupStatus(message, state = "") {
@@ -351,17 +415,27 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             panel: null,
             panelVisible: true,
             video: null,
+            gameBackground: null,
             prizeCards: DEFAULT_PRIZE_CARDS.map(card => ({ ...card })),
             ingotFrequency: 10,
             showStarLeaderboard: true,
             showSceneBrand: true,
             sceneBrandText: SCENE_BRAND_TEXT,
+            sceneBrandLocked: false,
             sceneBrandX: 5,
             sceneBrandY: 75,
             sceneBrandScalePercent: 100,
+            diamondX: 5,
+            diamondY: 85,
+            diamondScalePercent: 100,
             leaderboardX: 5,
             leaderboardY: 55,
             leaderboardScalePercent: 100,
+            giftRouletteSpeed: 1,
+            giftRouletteWinChancePercent: 10,
+            giftRouletteVolumePercent: 45,
+            manualGiftId: giftCatalog[0].id,
+            manualGiftUsername: "",
             manualCardUsername: "",
             manualCardStars: 300
         };
@@ -392,8 +466,10 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         for (const [key, label] of [
             ["characterHorizontalPercent", "Position horizontale du personnage"],
             ["characterDepthPercent", "Profondeur du personnage"],
-            ["sceneBrandX", "Position horizontale du texte"],
-            ["sceneBrandY", "Position verticale du texte"],
+            ["sceneBrandX", "Position horizontale de la roulette"],
+            ["sceneBrandY", "Position verticale de la roulette"],
+            ["diamondX", "Position horizontale du diamant"],
+            ["diamondY", "Position verticale du diamant"],
             ["leaderboardX", "Position horizontale du Top 3"],
             ["leaderboardY", "Position verticale du Top 3"]
         ]) {
@@ -404,12 +480,31 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 normalized[key] = record[key];
             }
         }
-        for (const [key, label] of [
-            ["sceneBrandScalePercent", "Taille du texte"],
-            ["leaderboardScalePercent", "Taille du Top 3"]
+        if (record.diamondX === undefined) {
+            normalized.diamondX = normalized.sceneBrandX;
+        }
+        if (record.diamondY === undefined) {
+            normalized.diamondY = Math.min(100, normalized.sceneBrandY + 10);
+        }
+        for (const [key, label, maximum] of [
+            ["sceneBrandScalePercent", "Taille des six symboles", 200],
+            ["diamondScalePercent", "Taille du diamant", 200],
+            ["leaderboardScalePercent", "Taille du Top 3", 100]
         ]) {
             if (record[key] !== undefined) {
-                if (!Number.isSafeInteger(record[key]) || record[key] < 30 || record[key] > 100) {
+                if (!Number.isSafeInteger(record[key]) || record[key] < 30 || record[key] > maximum) {
+                    throw new Error(`${label} invalide dans le setup.`);
+                }
+                normalized[key] = record[key];
+            }
+        }
+        for (const [key, label, minimum, maximum] of [
+            ["giftRouletteSpeed", "Vitesse de la roulette", 1, 5],
+            ["giftRouletteWinChancePercent", "Chance de victoire de la roulette", 0, 100],
+            ["giftRouletteVolumePercent", "Volume des symboles", 0, 100]
+        ]) {
+            if (record[key] !== undefined) {
+                if (!Number.isSafeInteger(record[key]) || record[key] < minimum || record[key] > maximum) {
                     throw new Error(`${label} invalide dans le setup.`);
                 }
                 normalized[key] = record[key];
@@ -467,6 +562,41 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 storageKey: storageKey || null
             };
         }
+        if (record.gameBackground !== undefined && record.gameBackground !== null) {
+            if (
+                typeof record.gameBackground !== "object" ||
+                Array.isArray(record.gameBackground) ||
+                typeof record.gameBackground.name !== "string" ||
+                record.gameBackground.name.length > 255 ||
+                (record.gameBackground.type !== "image" && record.gameBackground.type !== "video")
+            ) {
+                throw new Error("Arrière-plan du jeu invalide.");
+            }
+            const dataUrl = record.gameBackground.dataUrl;
+            if (
+                dataUrl !== undefined &&
+                dataUrl !== null &&
+                (typeof dataUrl !== "string" ||
+                    dataUrl.length > MAX_SETUP_BACKGROUND_DATA_URL_LENGTH ||
+                    !new RegExp(`^data:${record.gameBackground.type}\/[a-z0-9.+-]+;base64,`, "i").test(dataUrl))
+            ) {
+                throw new Error("Données de l’arrière-plan invalides ou trop volumineuses.");
+            }
+            const storageKey = record.gameBackground.storageKey;
+            if (
+                storageKey !== undefined &&
+                storageKey !== null &&
+                (typeof storageKey !== "string" || !/^[a-zA-Z0-9._-]{1,128}$/.test(storageKey))
+            ) {
+                throw new Error("Référence de l’arrière-plan invalide dans le setup.");
+            }
+            normalized.gameBackground = {
+                name: record.gameBackground.name,
+                type: record.gameBackground.type,
+                dataUrl: dataUrl || null,
+                storageKey: storageKey || null
+            };
+        }
         if (record.prizeCards !== undefined) {
             normalized.prizeCards = validatePrizeCards(record.prizeCards);
         }
@@ -484,6 +614,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             }
             normalized.showStarLeaderboard = record.showStarLeaderboard;
         }
+        if (record.sceneBrandLocked !== undefined) {
+            if (typeof record.sceneBrandLocked !== "boolean") {
+                throw new Error("État du verrouillage de la roulette invalide.");
+            }
+            normalized.sceneBrandLocked = record.sceneBrandLocked;
+        }
         normalized.showSceneBrand = true;
         normalized.sceneBrandText = SCENE_BRAND_TEXT;
         if (record.manualCardUsername !== undefined) {
@@ -497,6 +633,23 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
                 throw new Error("Valeur de carte invalide dans le setup.");
             }
             normalized.manualCardStars = record.manualCardStars;
+        }
+        if (record.manualGiftId !== undefined) {
+            if (typeof record.manualGiftId !== "string" || !giftCatalog.some(gift => gift.id === record.manualGiftId)) {
+                throw new Error("Cadeau manuel invalide dans le setup.");
+            }
+            normalized.manualGiftId = record.manualGiftId;
+        }
+        if (record.manualGiftUsername !== undefined) {
+            if (
+                typeof record.manualGiftUsername !== "string" ||
+                record.manualGiftUsername.length > 33 ||
+                (record.manualGiftUsername.trim().replace(/^@/, "") &&
+                    !/^[a-zA-Z0-9._]{1,32}$/.test(record.manualGiftUsername.trim().replace(/^@/, "")))
+            ) {
+                throw new Error("Pseudo du cadeau manuel invalide dans le setup.");
+            }
+            normalized.manualGiftUsername = record.manualGiftUsername.trim().replace(/^@/, "");
         }
         return normalized;
     }
@@ -531,6 +684,7 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         panel.style.right = "auto";
         panel.style.width = `${width}px`;
         panel.style.height = `${height}px`;
+        updateGameSceneOffset();
     }
 
     function setPanelVisible(visible, shouldSave = true) {
@@ -538,9 +692,58 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         showPanelButton.hidden = visible;
         toggleButton.setAttribute("aria-expanded", String(visible));
         showPanelButton.setAttribute("aria-expanded", String(visible));
+        updateGameSceneOffset();
         if (shouldSave) {
             persistSetupRecord();
         }
+    }
+
+    function selectControlTab(selectedIndex, shouldFocus = false) {
+        controlTabs.forEach(({ button, panel: tabPanel }, index) => {
+            const selected = index === selectedIndex;
+            button.setAttribute("aria-selected", String(selected));
+            button.tabIndex = selected ? 0 : -1;
+            tabPanel.hidden = !selected;
+        });
+        livePanelContent.scrollTop = 0;
+        if (shouldFocus) {
+            controlTabs[selectedIndex].button.focus();
+        }
+    }
+
+    controlTabs.forEach(({ button }, index) => {
+        button.addEventListener("click", () => selectControlTab(index));
+        button.addEventListener("keydown", event => {
+            let nextIndex;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                nextIndex = (index + 1) % controlTabs.length;
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                nextIndex = (index + controlTabs.length - 1) % controlTabs.length;
+            } else if (event.key === "Home") {
+                nextIndex = 0;
+            } else if (event.key === "End") {
+                nextIndex = controlTabs.length - 1;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            selectControlTab(nextIndex, true);
+        });
+    });
+    selectControlTab(0);
+
+    function updateGameSceneOffset() {
+        const panelRight = panelBounds.left + panelBounds.width;
+        const panelIsOnLeft = panelBounds.left < window.innerWidth / 2;
+        const maximumOffset = window.innerWidth * 0.18;
+        sceneHorizontalOffset = !panel.hidden && panelIsOnLeft
+            ? Math.min((panelRight + 16) / 2, maximumOffset)
+            : 0;
+        document.documentElement.style.setProperty(
+            "--scene-horizontal-offset",
+            `${sceneHorizontalOffset}px`
+        );
+        setSceneHorizontalOffset(sceneHorizontalOffset);
     }
 
     function releaseRetiredVideoUrls() {
@@ -550,6 +753,41 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             }
         });
         retiredVideoUrls.clear();
+    }
+
+    function releaseRetiredGameBackgroundUrls() {
+        retiredGameBackgroundUrls.forEach(url => {
+            if (url.startsWith("blob:")) {
+                URL.revokeObjectURL(url);
+            }
+        });
+        retiredGameBackgroundUrls.clear();
+    }
+
+    function setGameBackground(url, type) {
+        gameBackgroundMedia.hidden = !url;
+        gameBackgroundImage.hidden = type !== "image";
+        gameBackgroundVideo.hidden = type !== "video";
+        if (type === "image" && url) {
+            gameBackgroundVideo.pause();
+            gameBackgroundVideo.removeAttribute("src");
+            gameBackgroundVideo.load();
+            gameBackgroundImage.src = url;
+        } else if (type === "video" && url) {
+            gameBackgroundImage.removeAttribute("src");
+            gameBackgroundVideo.src = url;
+            void gameBackgroundVideo.play().catch(error => {
+                if (activeGameBackgroundUrl === url) {
+                    console.warn("Impossible de lancer la vidéo d’arrière-plan :", error);
+                    setGameBackgroundStatus("Vidéo chargée, mais la lecture automatique est bloquée par le navigateur.", "warning");
+                }
+            });
+        } else {
+            gameBackgroundVideo.pause();
+            gameBackgroundVideo.removeAttribute("src");
+            gameBackgroundVideo.load();
+            gameBackgroundImage.removeAttribute("src");
+        }
     }
 
     function persistSetupRecord() {
@@ -568,6 +806,15 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setPrizeStatus("La valeur de la carte doit être comprise entre 1 et 250 000 étoiles.", "error");
             return false;
         }
+        const manualGiftUsername = manualGiftUsernameInput.value.trim().replace(/^@/, "");
+        if (manualGiftUsername && !/^[a-zA-Z0-9._]{1,32}$/.test(manualGiftUsername)) {
+            setSetupStatus("Le pseudo du cadeau manuel doit être un pseudo TikTok valide.", "error");
+            return false;
+        }
+        if (!giftCatalog.some(gift => gift.id === manualGiftSelect.value)) {
+            setSetupStatus("Sélectionne un cadeau valide.", "error");
+            return false;
+        }
         const record = {
             version: 1,
             username: usernameInput.value.trim().replace(/^@/, "").slice(0, 32),
@@ -583,14 +830,31 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             showStarLeaderboard: showStarLeaderboardInput.checked,
             showSceneBrand: true,
             sceneBrandText: SCENE_BRAND_TEXT,
+            sceneBrandLocked: rouletteLocked,
             sceneBrandX: Number(sceneBrandXInput.value),
             sceneBrandY: Number(sceneBrandYInput.value),
             sceneBrandScalePercent: Number(sceneBrandScaleInput.value),
+            diamondX: Number(diamondXInput.value),
+            diamondY: Number(diamondYInput.value),
+            diamondScalePercent: Number(diamondScaleInput.value),
             leaderboardX: Number(leaderboardXInput.value),
             leaderboardY: Number(leaderboardYInput.value),
             leaderboardScalePercent: Number(leaderboardScaleInput.value),
+            giftRouletteSpeed,
+            giftRouletteWinChancePercent: Number(giftRouletteWinChanceInput.value),
+            giftRouletteVolumePercent: Number(giftRouletteVolumeInput.value),
+            manualGiftId: manualGiftSelect.value,
+            manualGiftUsername,
             manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
             manualCardStars,
+            gameBackground: activeGameBackgroundName
+                ? {
+                    name: activeGameBackgroundName,
+                    type: activeGameBackgroundType,
+                    dataUrl: activeGameBackgroundDataUrl || null,
+                    storageKey: activeGameBackgroundStorageKey || null
+                }
+                : null,
             video: activeVideoName
                 ? {
                     name: activeVideoName,
@@ -627,11 +891,39 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         }
     }
 
-    function setupVideoExportNotice() {
-        return activeVideoName && !activeVideoDataUrl
-            ? ` La vidéo « ${activeVideoName} » n’est pas incluse; il faudra la sélectionner à nouveau après import.`
+    function setupMediaExportNotice() {
+        const notices = [];
+        if (activeVideoName && !activeVideoDataUrl) {
+            notices.push(`la vidéo de l’écran « ${activeVideoName} »`);
+        }
+        if (activeGameBackgroundName && !activeGameBackgroundDataUrl) {
+            notices.push(`l’arrière-plan « ${activeGameBackgroundName} »`);
+        }
+        return notices.length
+            ? ` ${notices.join(" et ")} ne sont pas inclus; il faudra les sélectionner à nouveau après import.`
             : "";
     }
+
+    const handleGameBackgroundReady = () => {
+        releaseRetiredGameBackgroundUrls();
+        if (activeGameBackgroundName) {
+            setGameBackgroundStatus(`« ${activeGameBackgroundName} » est affiché en arrière-plan.`);
+        }
+    };
+    gameBackgroundImage.addEventListener("load", handleGameBackgroundReady);
+    gameBackgroundImage.addEventListener("error", () => {
+        if (activeGameBackgroundType === "image") {
+            setGameBackgroundStatus("Impossible d’afficher cette image d’arrière-plan.", "error");
+        }
+        releaseRetiredGameBackgroundUrls();
+    });
+    gameBackgroundVideo.addEventListener("loadeddata", handleGameBackgroundReady);
+    gameBackgroundVideo.addEventListener("error", () => {
+        if (activeGameBackgroundType === "video") {
+            setGameBackgroundStatus("Impossible de lire cette vidéo d’arrière-plan. Essaie un fichier MP4 ou WebM.", "error");
+        }
+        releaseRetiredGameBackgroundUrls();
+    });
 
     function createVideoStorageKey() {
         const randomId = globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
@@ -776,14 +1068,41 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
 
     function updateOverlayPositions() {
         updateOverlayPosition(sceneBrand, sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput);
+        updateOverlayPosition(rouletteDiamond, diamondXInput, diamondYInput, diamondScaleInput);
         updateOverlayPosition(starLeaderboard, leaderboardXInput, leaderboardYInput, leaderboardScaleInput);
+    }
+
+    function setRouletteLocked(locked) {
+        rouletteLocked = locked;
+        if (locked && rouletteDrag) {
+            rouletteDrag = null;
+            sceneBrand.classList.remove("is-dragging");
+        }
+        sceneBrand.classList.toggle("is-locked", locked);
+        sceneBrand.setAttribute(
+            "aria-label",
+            locked ? "Roulette des six cadeaux verrouillée" : "Roulette des six cadeaux"
+        );
+        sceneBrandLockButton.setAttribute("aria-pressed", String(locked));
+        sceneBrandLockButton.textContent = locked ? "Déverrouiller la roulette" : "Verrouiller la roulette";
+        sceneBrandXInput.disabled = locked;
+        sceneBrandYInput.disabled = locked;
     }
 
     function updateOverlayPosition(element, xInput, yInput, scaleInput) {
         document.getElementById(`${xInput.id}-value`).value = `${xInput.value} %`;
         document.getElementById(`${yInput.id}-value`).value = `${yInput.value} %`;
-        document.getElementById(`${scaleInput.id}-value`).value = `${scaleInput.value} %`;
-        setOverlayPosition(element, Number(xInput.value), Number(yInput.value), Number(scaleInput.value));
+        if (scaleInput) {
+            document.getElementById(`${scaleInput.id}-value`).value = `${scaleInput.value} %`;
+        }
+        const scalePercent = scaleInput ? Number(scaleInput.value) : 100;
+        const maximumScalePercent = element === starLeaderboard ? 100 : 200;
+        setOverlayPosition(element, Number(xInput.value), Number(yInput.value), scalePercent, maximumScalePercent);
+        if (element === sceneBrand || element === rouletteDiamond) {
+            const scale = scalePercent === 100 ? "" : ` scale(${scalePercent / 100})`;
+            element.style.transformOrigin = "center";
+            element.style.transform = `translate(-50%, -50%)${scale}`;
+        }
     }
 
     function updateGlobalStars(player) {
@@ -875,14 +1194,32 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     showStarLeaderboardInput.checked = setupRecord.showStarLeaderboard;
     starLeaderboard.hidden = !setupRecord.showStarLeaderboard;
     sceneBrand.hidden = false;
-    sceneBrand.textContent = SCENE_BRAND_TEXT;
     sceneBrandXInput.value = String(setupRecord.sceneBrandX);
     sceneBrandYInput.value = String(setupRecord.sceneBrandY);
     leaderboardXInput.value = String(setupRecord.leaderboardX);
     leaderboardYInput.value = String(setupRecord.leaderboardY);
     sceneBrandScaleInput.value = String(setupRecord.sceneBrandScalePercent);
+    diamondXInput.value = String(setupRecord.diamondX);
+    diamondYInput.value = String(setupRecord.diamondY);
+    diamondScaleInput.value = String(setupRecord.diamondScalePercent);
     leaderboardScaleInput.value = String(setupRecord.leaderboardScalePercent);
+    giftRouletteSpeed = setupRecord.giftRouletteSpeed;
+    giftRouletteSpeedButtons.forEach((button, index) => {
+        button.setAttribute("aria-pressed", String(index + 1 === giftRouletteSpeed));
+    });
+    giftRouletteWinChanceInput.value = String(setupRecord.giftRouletteWinChancePercent);
+    giftRouletteWinChanceValue.value = `${setupRecord.giftRouletteWinChancePercent} %`;
+    giftRouletteVolumeInput.value = String(setupRecord.giftRouletteVolumePercent);
+    giftRouletteVolumeValue.value = `${setupRecord.giftRouletteVolumePercent} %`;
+    setGiftRouletteSettings({
+        speed: giftRouletteSpeed,
+        winChance: setupRecord.giftRouletteWinChancePercent / 100,
+        volume: setupRecord.giftRouletteVolumePercent / 100
+    });
+    manualGiftUsernameInput.value = setupRecord.manualGiftUsername;
+    manualGiftSelect.value = setupRecord.manualGiftId;
     updateOverlayPositions();
+    setRouletteLocked(setupRecord.sceneBrandLocked);
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
     manualCardUsernameInput.value = setupRecord.manualCardUsername;
@@ -932,6 +1269,40 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             });
         } else {
             setVideoStatus(`« ${activeVideoName} » devra être re-sélectionnée après rechargement.`);
+        }
+    }
+    if (setupRecord.gameBackground) {
+        activeGameBackgroundName = setupRecord.gameBackground.name;
+        activeGameBackgroundType = setupRecord.gameBackground.type;
+        activeGameBackgroundDataUrl = setupRecord.gameBackground.dataUrl || "";
+        activeGameBackgroundStorageKey = setupRecord.gameBackground.storageKey || "";
+        clearGameBackgroundButton.disabled = false;
+        if (activeGameBackgroundDataUrl) {
+            activeGameBackgroundUrl = activeGameBackgroundDataUrl;
+            setGameBackground(activeGameBackgroundUrl, activeGameBackgroundType);
+            setGameBackgroundStatus(`Restauration de l’arrière-plan « ${activeGameBackgroundName} »…`);
+        } else if (activeGameBackgroundStorageKey) {
+            const storageKey = activeGameBackgroundStorageKey;
+            setGameBackgroundStatus(`Restauration de l’arrière-plan « ${activeGameBackgroundName} »…`);
+            activeGameBackgroundSavePromise = loadSetupVideo(storageKey).then(file => {
+                if (activeGameBackgroundStorageKey !== storageKey) {
+                    return;
+                }
+                if (!file) {
+                    throw new Error("Fichier d’arrière-plan introuvable dans le stockage local.");
+                }
+                activeGameBackgroundUrl = URL.createObjectURL(file);
+                setGameBackground(activeGameBackgroundUrl, activeGameBackgroundType);
+            }).catch(error => {
+                if (activeGameBackgroundStorageKey !== storageKey) {
+                    return;
+                }
+                activeGameBackgroundSaveError = error;
+                console.error("Impossible de restaurer l’arrière-plan du setup :", error);
+                setGameBackgroundStatus(`Impossible de restaurer « ${activeGameBackgroundName} » : ${error.message}`, "error");
+            });
+        } else {
+            setGameBackgroundStatus(`« ${activeGameBackgroundName} » devra être re-sélectionné après rechargement.`);
         }
     }
     if (prizeStockAdditionApplied) {
@@ -1021,12 +1392,187 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
         persistSetupRecord();
     });
+    giftRouletteSpeedButtons.forEach((button, index) => {
+        button.addEventListener("click", () => {
+            giftRouletteSpeed = index + 1;
+            giftRouletteSpeedButtons.forEach((speedButton, speedIndex) => {
+                speedButton.setAttribute("aria-pressed", String(speedIndex === index));
+            });
+            setGiftRouletteSettings({
+                speed: giftRouletteSpeed,
+                winChance: Number(giftRouletteWinChanceInput.value) / 100,
+                volume: Number(giftRouletteVolumeInput.value) / 100
+            });
+            scheduleSetupPersistence();
+        });
+    });
+    giftRouletteWinChanceInput.addEventListener("input", () => {
+        const winChancePercent = Number(giftRouletteWinChanceInput.value);
+        giftRouletteWinChanceValue.value = `${winChancePercent} %`;
+        setGiftRouletteSettings({
+            speed: giftRouletteSpeed,
+            winChance: winChancePercent / 100,
+            volume: Number(giftRouletteVolumeInput.value) / 100
+        });
+        scheduleSetupPersistence();
+    });
+    giftRouletteVolumeInput.addEventListener("input", () => {
+        const volumePercent = Number(giftRouletteVolumeInput.value);
+        giftRouletteVolumeValue.value = `${volumePercent} %`;
+        setGiftRouletteSettings({
+            speed: giftRouletteSpeed,
+            winChance: Number(giftRouletteWinChanceInput.value) / 100,
+            volume: volumePercent / 100
+        });
+        scheduleSetupPersistence();
+    });
     for (const input of [sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput]) {
         input.addEventListener("input", () => {
+            if (rouletteLocked && input !== sceneBrandScaleInput) {
+                return;
+            }
             updateOverlayPosition(sceneBrand, sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput);
             scheduleSetupPersistence();
         });
     }
+    for (const input of [diamondXInput, diamondYInput, diamondScaleInput]) {
+        input.addEventListener("input", () => {
+            updateOverlayPosition(rouletteDiamond, diamondXInput, diamondYInput, diamondScaleInput);
+            scheduleSetupPersistence();
+        });
+    }
+    manualGiftUsernameInput.addEventListener("input", scheduleSetupPersistence);
+    manualGiftSelect.addEventListener("change", scheduleSetupPersistence);
+    sceneBrandLockButton.addEventListener("click", () => {
+        setRouletteLocked(!rouletteLocked);
+        persistSetupRecord();
+    });
+    sceneBrand.addEventListener("pointerdown", event => {
+        if (rouletteLocked || event.button !== 0) {
+            return;
+        }
+        const bounds = sceneBrand.getBoundingClientRect();
+        rouletteDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - (bounds.left + bounds.width / 2),
+            offsetY: event.clientY - (bounds.top + bounds.height / 2)
+        };
+        sceneBrand.classList.add("is-dragging");
+        sceneBrand.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+    function finishRouletteDrag(event) {
+        if (!rouletteDrag || rouletteDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        rouletteDrag = null;
+        sceneBrand.classList.remove("is-dragging");
+        persistSetupRecord();
+    }
+    window.addEventListener("pointermove", event => {
+        if (rouletteLocked || !rouletteDrag || rouletteDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        const bounds = sceneBrand.getBoundingClientRect();
+        const minX = Math.min(bounds.width / 2, window.innerWidth / 2);
+        const maxX = Math.max(window.innerWidth - bounds.width / 2, window.innerWidth / 2);
+        const minY = Math.min(bounds.height / 2, window.innerHeight / 2);
+        const maxY = Math.max(window.innerHeight - bounds.height / 2, window.innerHeight / 2);
+        const centerX = Math.min(maxX, Math.max(minX, event.clientX - rouletteDrag.offsetX));
+        const centerY = Math.min(maxY, Math.max(minY, event.clientY - rouletteDrag.offsetY));
+        sceneBrandXInput.value = String(Math.round(centerX / window.innerWidth * 100));
+        sceneBrandYInput.value = String(Math.round(centerY / window.innerHeight * 100));
+        updateOverlayPosition(sceneBrand, sceneBrandXInput, sceneBrandYInput, sceneBrandScaleInput);
+    });
+    window.addEventListener("pointerup", finishRouletteDrag);
+    window.addEventListener("pointercancel", finishRouletteDrag);
+    rouletteDiamond.addEventListener("pointerdown", event => {
+        if (event.button !== 0) {
+            return;
+        }
+        const bounds = rouletteDiamond.getBoundingClientRect();
+        diamondDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - (bounds.left + bounds.width / 2),
+            offsetY: event.clientY - (bounds.top + bounds.height / 2)
+        };
+        rouletteDiamond.classList.add("is-dragging");
+        rouletteDiamond.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+    function finishDiamondDrag(event) {
+        if (!diamondDrag || diamondDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        diamondDrag = null;
+        rouletteDiamond.classList.remove("is-dragging");
+        persistSetupRecord();
+    }
+    window.addEventListener("pointermove", event => {
+        if (!diamondDrag || diamondDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        const bounds = rouletteDiamond.getBoundingClientRect();
+        const minX = Math.min(bounds.width / 2, window.innerWidth / 2);
+        const maxX = Math.max(window.innerWidth - bounds.width / 2, window.innerWidth / 2);
+        const minY = Math.min(bounds.height / 2, window.innerHeight / 2);
+        const maxY = Math.max(window.innerHeight - bounds.height / 2, window.innerHeight / 2);
+        const centerX = Math.min(maxX, Math.max(minX, event.clientX - diamondDrag.offsetX));
+        const centerY = Math.min(maxY, Math.max(minY, event.clientY - diamondDrag.offsetY));
+        diamondXInput.value = String(Math.round(centerX / window.innerWidth * 100));
+        diamondYInput.value = String(Math.round(centerY / window.innerHeight * 100));
+        updateOverlayPosition(rouletteDiamond, diamondXInput, diamondYInput, diamondScaleInput);
+    });
+    window.addEventListener("pointerup", finishDiamondDrag);
+    window.addEventListener("pointercancel", finishDiamondDrag);
+    window.addEventListener("pointermove", event => {
+        const bounds = starLeaderboard.getBoundingClientRect();
+        const hovering = event.pointerType === "mouse" &&
+            event.clientX >= bounds.left &&
+            event.clientX <= bounds.right &&
+            event.clientY >= bounds.top &&
+            event.clientY <= bounds.bottom;
+        starLeaderboard.classList.toggle("is-handle-visible", hovering || Boolean(leaderboardDrag));
+    });
+    starLeaderboardDragHandle.addEventListener("pointerdown", event => {
+        if (event.button !== 0) {
+            return;
+        }
+        const bounds = starLeaderboard.getBoundingClientRect();
+        leaderboardDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - (bounds.left + bounds.width / 2),
+            offsetY: event.clientY - (bounds.top + bounds.height / 2)
+        };
+        starLeaderboard.classList.add("is-dragging");
+        starLeaderboardDragHandle.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+    function finishLeaderboardDrag(event) {
+        if (!leaderboardDrag || leaderboardDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        leaderboardDrag = null;
+        starLeaderboard.classList.remove("is-dragging");
+        persistSetupRecord();
+    }
+    window.addEventListener("pointermove", event => {
+        if (!leaderboardDrag || leaderboardDrag.pointerId !== event.pointerId) {
+            return;
+        }
+        const bounds = starLeaderboard.getBoundingClientRect();
+        const minX = Math.min(bounds.width / 2, window.innerWidth / 2);
+        const maxX = Math.max(window.innerWidth - bounds.width / 2, window.innerWidth / 2);
+        const minY = Math.min(bounds.height / 2, window.innerHeight / 2);
+        const maxY = Math.max(window.innerHeight - bounds.height / 2, window.innerHeight / 2);
+        const centerX = Math.min(maxX, Math.max(minX, event.clientX - leaderboardDrag.offsetX));
+        const centerY = Math.min(maxY, Math.max(minY, event.clientY - leaderboardDrag.offsetY));
+        leaderboardXInput.value = String(Math.round(centerX / window.innerWidth * 100));
+        leaderboardYInput.value = String(Math.round(centerY / window.innerHeight * 100));
+        updateOverlayPosition(starLeaderboard, leaderboardXInput, leaderboardYInput, leaderboardScaleInput);
+    });
+    window.addEventListener("pointerup", finishLeaderboardDrag);
+    window.addEventListener("pointercancel", finishLeaderboardDrag);
     for (const input of [leaderboardXInput, leaderboardYInput, leaderboardScaleInput]) {
         input.addEventListener("input", () => {
             updateOverlayPosition(starLeaderboard, leaderboardXInput, leaderboardYInput, leaderboardScaleInput);
@@ -1250,8 +1796,42 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setStatus(`Simulation limitée à ${MAX_DEMO_COINS.toLocaleString("fr-FR")} pièces.`, "error");
             return;
         }
-        receiveGift(count);
-        setStatus(`Simulation · ${count.toLocaleString("fr-FR")} pièces ajoutées à la file.`);
+        const candidate = manualGiftUsernameInput.value.trim().replace(/^@/, "");
+        if (candidate && !/^[a-zA-Z0-9._]{1,32}$/.test(candidate)) {
+            manualGiftStatusElement.textContent = "Indique un pseudo TikTok valide ou laisse le champ vide.";
+            manualGiftUsernameInput.focus();
+            return;
+        }
+        const username = candidate || "Spectateur";
+        const queued = receiveGift(count, { username, uniqueId: username }, true);
+        const coinLabel = `${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"}`;
+        manualGiftStatusElement.textContent = `Simulation · ${coinLabel} ajoutée${queued === 1 ? "" : "s"} à la file pour @${username} (sans étoiles).`;
+        setStatus(`Simulation · ${coinLabel} ajoutée${queued === 1 ? "" : "s"} à la file.`);
+    });
+    manualGiftTriggerButton.addEventListener("click", () => {
+        const username = manualGiftUsernameInput.value.trim().replace(/^@/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+            manualGiftStatusElement.textContent = "Indique un pseudo TikTok valide pour déclencher ce cadeau.";
+            manualGiftUsernameInput.focus();
+            return;
+        }
+        const gift = giftCatalog.find(item => item.id === manualGiftSelect.value);
+        if (!gift) {
+            manualGiftStatusElement.textContent = "Sélectionne un cadeau valide.";
+            return;
+        }
+        manualGiftUsernameInput.value = username;
+        if (!persistSetupRecord()) {
+            manualGiftStatusElement.textContent = "Impossible de sauvegarder le pseudo et le cadeau sélectionnés.";
+            return;
+        }
+        const queued = receiveGift(gift.coinCount, { username, uniqueId: username }, true);
+        const coinLabel = `${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"}`;
+        const turnLabel = `${queued.toLocaleString("fr-FR")} tour${queued === 1 ? "" : "s"}`;
+        manualGiftStatusElement.textContent = queued === gift.coinCount
+            ? `Simulation · ${gift.name} pour @${username} : ${coinLabel} et ${turnLabel}, sans étoiles.`
+            : `Ajout partiel à la file pour @${username} : ${coinLabel}.`;
+        setStatus(manualGiftStatusElement.textContent);
     });
     characterScaleInput.addEventListener("input", () => {
         const percent = Number(characterScaleInput.value);
@@ -1269,6 +1849,129 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     };
     characterHorizontalInput.addEventListener("input", updateCharacterPosition);
     characterDepthInput.addEventListener("input", updateCharacterPosition);
+    gameBackgroundInput.addEventListener("change", () => {
+        const file = gameBackgroundInput.files[0];
+        gameBackgroundInput.value = "";
+        if (!file) {
+            return;
+        }
+        const isImage = file.type.startsWith("image/") || /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name);
+        const isVideo = file.type.startsWith("video/") || /\.(3gp|avi|m4v|mkv|mov|mp4|mpeg|mpg|ogv|ogg|webm)$/i.test(file.name);
+        const mediaType = file.type.startsWith("image/")
+            ? "image"
+            : file.type.startsWith("video/")
+                ? "video"
+                : isImage
+                    ? "image"
+                    : isVideo
+                        ? "video"
+                        : "";
+        if (!mediaType) {
+            setGameBackgroundStatus("Choisis un fichier image ou vidéo.", "error");
+            return;
+        }
+        if (activeGameBackgroundUrl && activeGameBackgroundUrl.startsWith("blob:")) {
+            retiredGameBackgroundUrls.add(activeGameBackgroundUrl);
+        }
+        const previousStorageKey = activeGameBackgroundStorageKey;
+        const mediaUrl = URL.createObjectURL(file);
+        const storageKey = createVideoStorageKey();
+        activeGameBackgroundUrl = mediaUrl;
+        activeGameBackgroundName = file.name;
+        activeGameBackgroundType = mediaType;
+        activeGameBackgroundDataUrl = "";
+        activeGameBackgroundStorageKey = "";
+        activeGameBackgroundDataUrlPromise = Promise.resolve();
+        activeGameBackgroundSaveError = null;
+        clearGameBackgroundButton.disabled = false;
+        setGameBackground(mediaUrl, mediaType);
+        scheduleSetupPersistence();
+        activeGameBackgroundSavePromise = saveSetupVideo(storageKey, file).then(() => {
+            if (activeGameBackgroundUrl !== mediaUrl) {
+                return deleteSetupVideo(storageKey);
+            }
+            activeGameBackgroundSaveError = null;
+            activeGameBackgroundStorageKey = storageKey;
+            if (!persistSetupRecord()) {
+                activeGameBackgroundSaveError = new Error("Impossible d’enregistrer la référence de l’arrière-plan dans le setup.");
+                setGameBackgroundStatus(activeGameBackgroundSaveError.message, "error");
+                return;
+            }
+            if (previousStorageKey) {
+                void deleteSetupVideo(previousStorageKey).catch(error => {
+                    console.warn("Impossible de supprimer l’ancien arrière-plan du setup :", error);
+                });
+            }
+            setGameBackgroundStatus(activeGameBackgroundDataUrl
+                ? `« ${file.name} » est affiché en arrière-plan et inclus dans l’export du setup.`
+                : `« ${file.name} » est affiché en arrière-plan et conservé sur cet appareil, mais ne sera pas inclus dans l’export.`);
+        }).catch(error => {
+            activeGameBackgroundSaveError = error;
+            console.error("Impossible de conserver l’arrière-plan dans le setup :", error);
+            if (activeGameBackgroundUrl === mediaUrl) {
+                setGameBackgroundStatus(`« ${file.name} » est affiché, mais n’a pas pu être sauvegardé : ${error.message}`, "error");
+            }
+        });
+        if (file.size > MAX_EXPORTABLE_SETUP_VIDEO_BYTES) {
+            setGameBackgroundStatus(`« ${file.name} » est affiché; sauvegarde locale en cours. Il ne sera pas inclus dans l’export du setup (limite : 1,3 Mo).`, "warning");
+            return;
+        }
+        const reader = new FileReader();
+        activeGameBackgroundDataUrlPromise = new Promise(resolve => {
+            reader.addEventListener("load", () => {
+                if (activeGameBackgroundUrl !== mediaUrl) {
+                    resolve();
+                    return;
+                }
+                if (
+                    typeof reader.result !== "string" ||
+                    !reader.result.startsWith(`data:${mediaType}/`)
+                ) {
+                    setGameBackgroundStatus("Le média est affiché, mais ne peut pas être inclus dans le setup.", "warning");
+                    resolve();
+                    return;
+                }
+                activeGameBackgroundDataUrl = reader.result;
+                if (persistSetupRecord()) {
+                    setGameBackgroundStatus(`« ${file.name} » est affiché en arrière-plan et inclus dans l’export du setup.`);
+                }
+                resolve();
+            }, { once: true });
+            reader.addEventListener("error", () => {
+                if (activeGameBackgroundUrl === mediaUrl) {
+                    console.error("Impossible de préparer le média d’arrière-plan pour l’export :", reader.error);
+                    setGameBackgroundStatus("Média affiché, mais impossible de l’inclure dans le setup.", "warning");
+                }
+                resolve();
+            }, { once: true });
+            reader.readAsDataURL(file);
+        });
+    });
+    clearGameBackgroundButton.addEventListener("click", () => {
+        const storageKey = activeGameBackgroundStorageKey;
+        if (storageKey) {
+            void deleteSetupVideo(storageKey).catch(error => {
+                console.error("Impossible de supprimer l’arrière-plan du stockage local :", error);
+                setGameBackgroundStatus(`Arrière-plan retiré, mais impossible d’effacer sa copie locale : ${error.message}`, "warning");
+            });
+        }
+        if (activeGameBackgroundUrl && activeGameBackgroundUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(activeGameBackgroundUrl);
+        }
+        activeGameBackgroundUrl = null;
+        activeGameBackgroundName = "";
+        activeGameBackgroundType = "";
+        activeGameBackgroundDataUrl = "";
+        activeGameBackgroundStorageKey = "";
+        activeGameBackgroundDataUrlPromise = Promise.resolve();
+        activeGameBackgroundSaveError = null;
+        gameBackgroundInput.value = "";
+        clearGameBackgroundButton.disabled = true;
+        setGameBackground(null, null);
+        releaseRetiredGameBackgroundUrls();
+        setGameBackgroundStatus("Arrière-plan retiré.");
+        scheduleSetupPersistence();
+    });
     videoInput.addEventListener("change", () => {
         const file = videoInput.files[0];
         videoInput.value = "";
@@ -1408,9 +2111,17 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
 
     saveSetupButton.addEventListener("click", async () => {
         try {
-            await Promise.all([activeVideoSavePromise, activeVideoDataUrlPromise]);
+            await Promise.all([
+                activeVideoSavePromise,
+                activeVideoDataUrlPromise,
+                activeGameBackgroundSavePromise,
+                activeGameBackgroundDataUrlPromise
+            ]);
             if (activeVideoName && activeVideoSaveError && !activeVideoDataUrl) {
                 throw activeVideoSaveError;
+            }
+            if (activeGameBackgroundName && activeGameBackgroundSaveError && !activeGameBackgroundDataUrl) {
+                throw activeGameBackgroundSaveError;
             }
             if (!persistSetupRecord()) {
                 return;
@@ -1421,8 +2132,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             }
             backupSetup(raw);
             setSetupStatus(
-                activeVideoName
-                    ? "Setup sauvegardé sur cet appareil. La vidéo sera restaurée à l’écran."
+                activeVideoName || activeGameBackgroundName
+                    ? "Setup sauvegardé sur cet appareil. Les médias sélectionnés seront restaurés."
                     : "Setup sauvegardé sur cet appareil."
             );
         } catch (error) {
@@ -1452,7 +2163,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     });
     exportSetupButton.addEventListener("click", async () => {
         try {
-            await Promise.all([activeVideoSavePromise, activeVideoDataUrlPromise]);
+            await Promise.all([
+                activeVideoSavePromise,
+                activeVideoDataUrlPromise,
+                activeGameBackgroundSavePromise,
+                activeGameBackgroundDataUrlPromise
+            ]);
             if (!persistSetupRecord()) {
                 return;
             }
@@ -1463,6 +2179,9 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             const portableSetup = JSON.parse(raw);
             if (portableSetup.video) {
                 portableSetup.video.storageKey = null;
+            }
+            if (portableSetup.gameBackground) {
+                portableSetup.gameBackground.storageKey = null;
             }
             const payload = JSON.stringify({
                 format: SETUP_FORMAT,
@@ -1481,7 +2200,8 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             link.click();
             link.remove();
             window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-            setSetupStatus(`Setup exporté.${setupVideoExportNotice()}`, activeVideoName && !activeVideoDataUrl ? "warning" : "");
+            const mediaNotice = setupMediaExportNotice();
+            setSetupStatus(`Setup exporté.${mediaNotice}`, mediaNotice ? "warning" : "");
         } catch (error) {
             console.error("Échec de l’export du setup :", error);
             setSetupStatus(`Export impossible : ${error.message}`, "error");
@@ -1603,11 +2323,16 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
             setupPersistTimer = 0;
         }
         persistSetupRecord();
+        releaseRetiredGameBackgroundUrls();
     });
     window.addEventListener("beforeunload", () => {
         if (activeVideoUrl && activeVideoUrl.startsWith("blob:")) {
             URL.revokeObjectURL(activeVideoUrl);
         }
+        if (activeGameBackgroundUrl && activeGameBackgroundUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(activeGameBackgroundUrl);
+        }
+        releaseRetiredGameBackgroundUrls();
         releaseRetiredVideoUrls();
     });
 

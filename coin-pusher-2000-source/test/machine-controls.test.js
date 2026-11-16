@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Buttons from "../lib/components/input/buttons.js";
 import ControlPanel from "../lib/components/input/control-panel.js";
+import initialState from "../lib/data/initial-state.json" with { type: "json" };
+
+test("l’état initial ne restaure plus le mécanisme supprimé ni les types de boutons cachés", () => {
+    assert.equal(Object.hasOwn(initialState.cabinet, "coinRoller"), false);
+    assert.ok(initialState.cabinet.buttons.every(colorButtons => colorButtons.length === 3));
+});
 
 test("les commandes utilisent les boutons réels et respectent leur disponibilité", async () => {
     const originals = Object.fromEntries(
@@ -20,7 +26,6 @@ test("les commandes utilisent les boutons réels et respectent leur disponibilit
         const panel = new ControlPanel({
             onPressStartButton: () => actions.push("start"),
             onPressDropButton: slot => actions.push(slot),
-            onPressShootButton: () => actions.push("shoot"),
             onPressHoldButton: () => actions.push("hold")
         });
         await panel.initialize();
@@ -28,25 +33,27 @@ test("les commandes utilisent les boutons réels et respectent leur disponibilit
         panel.enableStartButton();
         panel.enableDropButtons();
         panel.enableHoldButton();
-        panel.enableShootButton();
-        for (const name of ["start", "left", "center", "right", "hold", "shoot"]) {
+        for (const name of ["start", "center", "hold"]) {
             assert.equal(panel.pressButton(name), true);
         }
-        assert.deepEqual(actions, ["start", 0, 1, 2, "hold", "shoot"]);
+        assert.deepEqual(actions, ["start", 1, "hold"]);
         panel.disableDropButtons();
         panel.disableHoldButton();
-        panel.disableShootButton();
-        for (const name of ["left", "center", "right", "hold", "shoot"]) {
+        for (const name of ["center", "hold"]) {
             assert.equal(panel.pressButton(name), false);
         }
-        instances[5].enabled = true;
-        instances[6].enabled = true;
-        assert.equal(panel.getButtonStates().a, false);
-        assert.equal(panel.getButtonStates().b, false);
-        assert.equal(panel.pressButton("a"), false);
-        assert.equal(panel.pressButton("b"), false);
+        assert.equal(Object.hasOwn(panel.getButtonStates(), "a"), false);
+        assert.equal(Object.hasOwn(panel.getButtonStates(), "b"), false);
+        assert.equal(Object.hasOwn(panel.getButtonStates(), "shoot"), false);
+        assert.equal(Object.hasOwn(panel.getButtonStates(), "left"), false);
+        assert.equal(Object.hasOwn(panel.getButtonStates(), "right"), false);
+        assert.throws(() => panel.pressButton("a"), RangeError);
+        assert.throws(() => panel.pressButton("b"), RangeError);
+        assert.throws(() => panel.pressButton("shoot"), RangeError);
+        assert.throws(() => panel.pressButton("left"), RangeError);
+        assert.throws(() => panel.pressButton("right"), RangeError);
         assert.throws(() => panel.pressButton("inconnu"), RangeError);
-        assert.deepEqual(actions, ["start", 0, 1, 2, "hold", "shoot"]);
+        assert.deepEqual(actions, ["start", 1, "hold"]);
     } finally {
         Object.assign(Buttons, originals);
     }

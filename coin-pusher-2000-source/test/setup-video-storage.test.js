@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { deleteSetupVideo, loadSetupVideo, saveSetupVideo } from "../lib/setup-video-storage.js";
 
-test("stores, restores and removes setup videos", async () => {
+test("stores, restores and removes setup media", async () => {
     const previousIndexedDB = globalThis.indexedDB;
     const videos = new Map();
     const database = {
@@ -42,6 +42,10 @@ test("stores, restores and removes setup videos", async () => {
         const video = new Blob(["video-data"], { type: "video/webm" });
         await saveSetupVideo("video-test", video);
         assert.equal(await loadSetupVideo("video-test"), video);
+        const image = new Blob(["image-data"], { type: "image/png" });
+        await saveSetupVideo("background-test", image);
+        assert.equal(await loadSetupVideo("background-test"), image);
+        await deleteSetupVideo("background-test");
         await deleteSetupVideo("video-test");
         assert.equal(await loadSetupVideo("video-test"), null);
     } finally {
