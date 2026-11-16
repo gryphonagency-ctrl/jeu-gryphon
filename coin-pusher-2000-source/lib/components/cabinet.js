@@ -439,11 +439,6 @@ export default class {
                 scene,
                 onSpawnedCoin: instance => {
                     Coins.enableCcd(instance, true);
-                    if (instance.username) {
-                        window.dispatchEvent(new CustomEvent("coin-pusher-coin-spawned", {
-                            detail: { username: instance.username }
-                        }));
-                    }
                 },
                 groups: GROUPS
             }),

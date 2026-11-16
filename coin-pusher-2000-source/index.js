@@ -94,8 +94,9 @@ let giftQueueSaveTimer = 0;
 let giftRouletteSpinTimer = 0;
 let giftRouletteResultTimer = 0;
 let giftRouletteMilestoneTimer = 0;
+let giftRoulettePlaybackTimer = 0;
 const ROULETTE_SPIN_DURATIONS = [180, 120, 80, 48, 24];
-const giftRouletteIdleTimers = Array(giftRouletteImages.length).fill(0);
+const ROULETTE_TURN_INTERVALS = [4000, 3000, 2000, 1500, 1000];
 let giftRouletteSpeed = 1;
 let diamondCharge = readDiamondCharge();
 let giftRouletteWinChance = 0.1;
@@ -253,7 +254,6 @@ function renderGiftQueue() {
 }
 
 function setGiftRouletteSettings({ speed = giftRouletteSpeed, winChance = giftRouletteWinChance, volume = giftRouletteVolume } = {}) {
-    const previousSpeed = giftRouletteSpeed;
     if (Number.isSafeInteger(speed) && speed >= 1 && speed <= ROULETTE_SPIN_DURATIONS.length) {
         giftRouletteSpeed = speed;
     }
@@ -267,30 +267,6 @@ function setGiftRouletteSettings({ speed = giftRouletteSpeed, winChance = giftRo
         "--gift-roulette-duration",
         `${ROULETTE_SPIN_DURATIONS[giftRouletteSpeed - 1]}ms`
     );
-    if (giftRouletteSpeed !== previousSpeed) {
-        startGiftRouletteIdleAnimations();
-    }
-}
-
-function startGiftRouletteIdleAnimations() {
-    giftRouletteImages.forEach((image, index) => {
-        window.clearInterval(giftRouletteIdleTimers[index]);
-        const interval = Math.max(
-            35,
-            Math.round((260 + index * 40) * ROULETTE_SPIN_DURATIONS[giftRouletteSpeed - 1] / ROULETTE_SPIN_DURATIONS[0])
-        );
-        giftRouletteIdleTimers[index] = window.setInterval(() => {
-            if (image.classList.contains("is-rolling") || image.classList.contains("is-winning")) {
-                return;
-            }
-            let nextIndex = Math.floor(Math.random() * giftRouletteSources.length);
-            if (nextIndex === giftRouletteIndices[index]) {
-                nextIndex = (nextIndex + 1) % giftRouletteSources.length;
-            }
-            giftRouletteIndices[index] = nextIndex;
-            image.src = giftRouletteSources[nextIndex];
-        }, interval);
-    });
 }
 
 function playGiftRouletteSound(won) {
@@ -456,6 +432,22 @@ function animateGiftRouletteTurn(username, source) {
     }, 1000);
 }
 
+function playNextGiftRouletteTurn() {
+    if (giftRoulettePlaybackTimer) {
+        return;
+    }
+    const turn = giftRouletteQueue.consumeNextTurn();
+    if (!turn) {
+        return;
+    }
+    animateGiftRouletteTurn(turn.username, turn);
+    renderGiftQueue();
+    giftRoulettePlaybackTimer = window.setTimeout(() => {
+        giftRoulettePlaybackTimer = 0;
+        playNextGiftRouletteTurn();
+    }, ROULETTE_TURN_INTERVALS[giftRouletteSpeed - 1]);
+}
+
 giftQueuePinButton.addEventListener("click", () => {
     giftQueueSettings.pinned = !giftQueueSettings.pinned;
     applyGiftQueueSettings();
@@ -528,18 +520,8 @@ window.addEventListener("resize", () => {
     applyGiftQueueSettings();
     scheduleGiftQueueSettingsSave();
 });
-window.addEventListener("coin-pusher-coin-spawned", event => {
-    const username = event.detail?.username;
-    const source = giftRouletteQueue.consumeTurn(username);
-    if (!source) {
-        return;
-    }
-    animateGiftRouletteTurn(username, source);
-    renderGiftQueue();
-});
 applyGiftQueueSettings();
 renderDiamondCharge();
-startGiftRouletteIdleAnimations();
 renderGiftQueue();
 window.addEventListener("online", retryGiftRouletteAwards);
 window.setInterval(retryGiftRouletteAwards, 30000);
@@ -576,6 +558,7 @@ function receiveGift(count, avatar = {}, simulation = false) {
         }
         giftRouletteQueue.enqueue(username, queuedCoins, { simulation, creditable });
         renderGiftQueue();
+        playNextGiftRouletteTurn();
     }
     return queuedCoins;
 }

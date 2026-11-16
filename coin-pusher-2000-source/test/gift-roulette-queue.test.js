@@ -47,6 +47,19 @@ test("keeps simulated and real turns distinguishable when gifts share a username
     assert.equal(queue.consumeTurn("alice"), null);
 });
 
+test("plays queued users fairly without depending on physical coin spawns", () => {
+    const queue = new GiftRouletteQueue();
+    queue.enqueue("Alice", 2, { simulation: true });
+    queue.enqueue("Bob", 1);
+    queue.enqueue("alice", 1);
+
+    assert.deepEqual(queue.consumeNextTurn(), { username: "Alice", simulation: true, creditable: true });
+    assert.deepEqual(queue.consumeNextTurn(), { username: "Bob", simulation: false, creditable: true });
+    assert.deepEqual(queue.consumeNextTurn(), { username: "Alice", simulation: true, creditable: true });
+    assert.deepEqual(queue.consumeNextTurn(), { username: "Alice", simulation: false, creditable: true });
+    assert.equal(queue.consumeNextTurn(), null);
+});
+
 test("rejects gift counts outside the supported range", () => {
     const queue = new GiftRouletteQueue();
 

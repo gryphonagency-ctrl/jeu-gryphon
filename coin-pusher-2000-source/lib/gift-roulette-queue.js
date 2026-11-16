@@ -41,6 +41,19 @@ export default class GiftRouletteQueue {
         return this.consumeTurn(username) !== null;
     }
 
+    consumeNextTurn() {
+        const entry = this.#entries[0];
+        if (!entry) {
+            return null;
+        }
+        const username = entry.username;
+        const source = this.consumeTurn(username);
+        if (entry.remaining > 0) {
+            this.#entries.push(this.#entries.shift());
+        }
+        return { username, ...source };
+    }
+
     consumeTurn(username) {
         const normalizedUsername = normalizeUsername(username);
         if (!normalizedUsername) {
