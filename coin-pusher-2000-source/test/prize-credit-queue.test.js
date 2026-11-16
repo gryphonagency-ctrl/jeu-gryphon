@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import PrizeCreditQueue from "../lib/prize-credit-queue.js";
+import retryLegacyRouletteCredits from "../lib/legacy-roulette-credits.js";
 
 function memoryStorage() {
     const data = new Map();
@@ -116,4 +117,52 @@ test("does not submit the same pending reward concurrently", async () => {
     finish({ stars: 1 });
     await first;
     assert.deepEqual(JSON.parse(storage.getItem("queue")), []);
+});
+
+test("retries previously won roulette credits after removing the roulette", async () => {
+    const storage = memoryStorage();
+    const key = "coin-pusher-2000-gift-roulette-credits-v1";
+    storage.setItem(key, JSON.stringify([
+        { transactionId: "coin-pusher:previous", username: "alice", amount: 10, kind: "roulette" }
+    ]));
+    const attempts = [];
+    const events = [];
+    let retry;
+    globalThis.localStorage = storage;
+    globalThis.CustomEvent = class {
+        constructor(type, options) { this.type = type; this.detail = options.detail; }
+    };
+    globalThis.window = {
+        ArcadeStars: {
+            async award(prize) {
+                attempts.push(prize);
+                if (attempts.length === 1) throw new Error("connexion interrompue");
+                return { stars: 10 };
+            }
+        },
+        dispatchEvent: event => events.push(event),
+        addEventListener() {},
+        setInterval() {},
+        setTimeout: callback => { retry = callback; return 1; }
+    };
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+        retryLegacyRouletteCredits();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(JSON.parse(storage.getItem(key)).length, 1);
+        assert.equal(typeof retry, "function");
+        retry();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(attempts.map(item => item.transactionId), [
+            "coin-pusher:previous", "coin-pusher:previous"
+        ]);
+        assert.deepEqual(JSON.parse(storage.getItem(key)), []);
+        assert.equal(events.find(event => event.type === "coin-pusher-prize-awarded").detail.username, "alice");
+    } finally {
+        console.error = originalError;
+        delete globalThis.window;
+        delete globalThis.localStorage;
+        delete globalThis.CustomEvent;
+    }
 });
