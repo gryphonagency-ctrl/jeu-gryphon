@@ -178,6 +178,7 @@ const protectedRoutes = new Set([
     '/pendu.html',
     '/coffres',
     '/coffres.html',
+    '/coffre-incandescent.html',
     '/jeu-foot-tiktok.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/escape-bunker.html',
@@ -327,6 +328,7 @@ store.grantGameAccessToExistingCreators('/rallye-neon.html');
 store.grantGameAccessToExistingCreators('/apex-formula.html');
 store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 store.grantGameAccessToExistingCreators('/pokefight-live.html');
+store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -389,6 +391,7 @@ const staticGameTitles = {
     '/apex-formula.html': 'Apex Formula',
     '/city-hunter-tiktok.html': 'City Hunter — TikTok Live Battle',
     '/pokefight-live.html': 'PokéFight x TikTok Live',
+    '/coffre-incandescent.html': 'Le Coffre Incandescent',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -462,6 +465,7 @@ const gameRouteIds = new Map([
     ['/apex-formula.html', '/apex-formula.html'],
     ['/city-hunter-tiktok.html', '/city-hunter-tiktok.html'],
     ['/pokefight-live.html', '/pokefight-live.html'],
+    ['/coffre-incandescent.html', '/coffre-incandescent.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3302,6 +3306,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/pokefight-live.png', [path.join(__dirname, 'images-vitrine', 'pokefight-live.png'), 'image/png']],
         ['/images-vitrine/pokefight-space-loop.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-space-loop.mp4'), 'video/mp4']],
         ['/images-vitrine/pokefight-live-arena.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-live-arena.mp4'), 'video/mp4']],
+        ['/coffre-incandescent.html', [path.join(__dirname, 'coffre-incandescent.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/coffre-incandescent.png', [path.join(__dirname, 'images-vitrine', 'coffre-incandescent.png'), 'image/png']],
         ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],

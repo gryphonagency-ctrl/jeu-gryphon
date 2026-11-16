@@ -1,0 +1,1874 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le Coffre Incandescent - Overlay TikTok Live</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js pour le rendu 3D réel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+
+        :root {
+            --config-chest-shift: -24vw;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            /* Fond totalement transparent pour overlay OBS / TikTok Live */
+            background: transparent !important;
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .font-cinzel {
+            font-family: 'Cinzel', serif;
+        }
+
+        #webgl-container {
+            width: 100%;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            cursor: grab;
+            transition: transform 450ms ease-in-out;
+            will-change: transform;
+        }
+        body.config-open #webgl-container {
+            transform: translateX(var(--config-chest-shift));
+        }
+        #webgl-container:active {
+            cursor: grabbing;
+        }
+
+        .ui-layer {
+            position: relative;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .interactive {
+            pointer-events: auto;
+        }
+
+        #gameTitle {
+            position: fixed;
+            top: 4.5rem;
+            left: 0;
+            width: 100%;
+            padding: 0 1rem;
+            transition: left 450ms ease-in-out, transform 450ms ease-in-out;
+        }
+
+        body.config-open #gameTitle {
+            left: clamp(110px, calc(50% + var(--config-chest-shift)), 50%);
+            width: max-content;
+            max-width: calc(100vw - 2rem);
+            transform: translateX(-50%);
+            z-index: 20;
+        }
+
+        #configBtn {
+            position: fixed;
+            right: 1.5rem;
+            bottom: 1.5rem;
+            z-index: 40;
+        }
+
+        #configModal {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: flex-end;
+            justify-content: flex-end;
+            background: transparent;
+            backdrop-filter: none;
+        }
+
+        #configPanel {
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+
+        #backgroundVideo {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            pointer-events: none;
+            display: none;
+        }
+
+        #backgroundVideo.is-active {
+            display: block;
+        }
+
+        @media (min-width: 901px) and (max-width: 1000px) {
+            :root {
+                --config-chest-shift: -30vw;
+            }
+
+            body.config-open #webgl-container {
+                transform: translateX(var(--config-chest-shift)) scale(0.85);
+            }
+
+            body.config-open #gameTitle h1 {
+                font-size: clamp(1.5rem, 3vw, 2rem);
+            }
+        }
+
+        @media (max-width: 900px) {
+            :root {
+                --config-chest-shift: -35vw;
+            }
+
+            body.config-open #webgl-container {
+                transform: translateX(var(--config-chest-shift)) scale(0.55);
+            }
+
+            body.config-open #gameTitle h1 {
+                font-size: clamp(0.85rem, 2.5vw, 1.25rem);
+                white-space: nowrap;
+            }
+
+            #configPanel {
+                width: 62vw;
+                max-width: 62vw;
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col items-center p-4 sm:p-6 select-none relative">
+
+    <video id="backgroundVideo" muted loop playsinline aria-hidden="true"></video>
+
+    <!-- Conteneur 3D Three.js avec fond transparent -->
+    <div id="webgl-container"></div>
+
+    <!-- Identifiant TikTok -->
+    <div class="w-full flex justify-start items-center ui-layer">
+        <div class="bg-neutral-900/80 border border-amber-500/50 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="tiktokDisplay" class="font-cinzel text-amber-400 font-bold text-sm">@MonPseudoTikTok</span>
+        </div>
+    </div>
+
+    <!-- En-tête du jeu -->
+    <header id="gameTitle" class="text-center ui-layer">
+        <h1 class="font-cinzel text-3xl sm:text-4xl font-extrabold tracking-wider text-amber-400 drop-shadow-[0_2px_15px_rgba(245,158,11,0.6)]">
+            Coffre Blindé TikTok
+        </h1>
+    </header>
+
+    <button id="configBtn" class="interactive bg-neutral-900/90 hover:bg-amber-600 border border-amber-500/60 text-amber-400 hover:text-white px-4 py-2 rounded-xl font-bold shadow-xl transition-all flex items-center gap-2 text-sm backdrop-blur-md">
+        ⚙️ Configuration
+    </button>
+
+    <!-- Panneau de Configuration en bas à droite -->
+    <div id="configModal" class="fixed inset-0 z-50 flex items-end justify-end p-4 invisible opacity-0 pointer-events-none transition-opacity duration-300 ui-layer">
+        <div id="configPanel" class="bg-neutral-900 border-2 border-amber-500/60 rounded-3xl p-5 sm:p-6 max-w-lg w-full max-h-[calc(100vh-2rem)] overflow-y-auto shadow-[0_0_50px_rgba(245,158,11,0.3)] transform scale-95 transition-transform duration-300 interactive">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="font-cinzel text-2xl font-bold text-amber-400">Panneau de Configuration</h3>
+                <button id="closeConfigBtn" class="text-neutral-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+
+            <!-- Contrôles du coffre -->
+            <div class="mb-5 p-4 bg-neutral-800/80 border border-amber-500/30 rounded-2xl">
+                <div class="flex justify-between text-xs font-bold px-1 mb-2 text-amber-300">
+                    <span id="chestStageLabel">Coffre 1 / 3</span>
+                    <span id="giftCounter">0 / 10 000 unités</span>
+                </div>
+                <div class="w-full bg-neutral-900 rounded-full h-3 overflow-hidden p-0.5 border border-neutral-700">
+                    <div id="progressBar" class="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 h-full rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.9)]" style="width: 0%"></div>
+                </div>
+                <label for="giftCoinInput" class="block text-xs font-bold text-amber-300 mt-4 mb-2">Montant du cadeau simulé (pièces TikTok)</label>
+                <input id="giftCoinInput" type="number" min="1" step="1" value="1000" required class="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                <div class="flex gap-3 mt-4">
+                    <button id="giftBtn" class="flex-1 bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-cinzel font-bold py-3 px-3 rounded-xl shadow-[0_4px_25px_rgba(234,88,12,0.6)] active:scale-95 transition-all duration-150 border border-amber-400/50 tracking-wide text-xs sm:text-sm flex items-center justify-center gap-2">
+                        <span>🎁 Simuler le cadeau</span>
+                    </button>
+                    <button id="resetBtn" class="interactive bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 font-semibold py-3 px-4 rounded-xl border border-neutral-700 active:scale-95 transition-all duration-150 text-sm backdrop-blur-md shadow-md">
+                        🔄 Reset
+                    </button>
+                </div>
+                <button id="shareSimBtn" type="button" class="mt-2 w-full bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold py-2 rounded-xl border border-neutral-700 text-xs transition-all">✈️ Simuler le partage du live</button>
+                <div data-save-key="coffre-incandescent-rewards-v1"></div>
+                <p id="giftStatus" class="text-xs text-neutral-400 mt-3">Pièces TikTok et étoiles RUN s’ajoutent au seuil (1 unité chacune).</p>
+                <p class="text-xs text-neutral-500 mt-2">En live : « étoiles » affiche le solde global ; « run » rejoue le solde disponible.</p>
+            </div>
+
+            <!-- Configuration Pseudo TikTok -->
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">Pseudo TikTok Live</label>
+                <input type="text" id="tiktokUsernameInput" value="MonPseudoTikTok" maxlength="32" autocomplete="off" class="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500">
+                <div class="flex gap-2 mt-2">
+                    <button id="connectTikTokBtn" type="button" class="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2 rounded-xl text-xs transition-all">Connecter au live</button>
+                    <button id="disconnectTikTokBtn" type="button" class="bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold py-2 px-3 rounded-xl border border-neutral-700 text-xs transition-all">Déconnecter</button>
+                </div>
+                <p id="liveConnectionStatus" class="text-xs text-neutral-400 mt-2" role="status" aria-live="polite">Live déconnecté. Les cadeaux simulés restent disponibles.</p>
+            </div>
+
+            <!-- Vidéo d'arrière-plan -->
+            <div class="mb-5">
+                <label for="backgroundVideoInput" class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">Vidéo d'arrière-plan</label>
+                <input id="backgroundVideoInput" type="file" accept="video/*" class="block w-full text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-amber-600 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-amber-500">
+                <button id="removeBackgroundVideoBtn" type="button" class="mt-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold py-2 px-3 rounded-xl border border-neutral-700 text-xs transition-all">Retirer la vidéo</button>
+                <p id="backgroundVideoStatus" class="text-xs text-neutral-400 mt-2" role="status" aria-live="polite">Choisis un fichier vidéo lisible par ce navigateur.</p>
+            </div>
+
+            <!-- Gestion des Récompenses -->
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">Récompenses du Coffre</label>
+                <div id="rewardsList" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+
+            <!-- Ajouter une récompense -->
+            <form id="rewardForm" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-3 border-t border-neutral-800">
+                <input type="number" id="newRewardStars" placeholder="Étoiles" min="1" step="1" required class="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white">
+                <input type="number" id="newRewardThreshold" placeholder="Seuil de progression" min="1" step="1" required class="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white">
+                <button type="submit" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-3 rounded-xl text-xs transition-all">Ajouter</button>
+            </form>
+
+            <!-- Attribution manuelle indépendante de la progression -->
+            <div class="mt-5 pt-4 border-t border-neutral-800">
+                <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">Attribuer une récompense à un pseudo</label>
+                <form id="manualAwardForm" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input type="text" id="manualAwardUsername" placeholder="Pseudo TikTok" maxlength="50" required class="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                    <select id="manualAwardReward" required class="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"></select>
+                    <button type="submit" class="sm:col-span-2 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 px-3 rounded-xl text-xs transition-all">Attribuer la récompense</button>
+                </form>
+                <p class="text-xs text-neutral-400 mt-2">Cette attribution crédite le portefeuille global après confirmation et ne change pas la progression du coffre.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Annonce d'une attribution manuelle -->
+    <div id="manualAwardModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 ui-layer" role="dialog" aria-modal="true" aria-labelledby="manualAwardTitle">
+        <div class="bg-neutral-900 border-2 border-amber-500 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-[0_0_60px_rgba(245,158,11,0.4)] interactive">
+            <div class="text-5xl mb-3">🎁</div>
+            <h3 id="manualAwardTitle" class="font-cinzel text-2xl font-bold text-amber-400 mb-2">Attribution de récompense</h3>
+            <p id="manualAwardText" class="text-sm text-neutral-200 mb-6 leading-relaxed"></p>
+            <button id="closeManualAwardBtn" type="button" class="w-full bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">Fermer</button>
+        </div>
+    </div>
+
+    <!-- Boîte de message de fin -->
+    <div id="message-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 ui-layer">
+        <div class="bg-neutral-900 border-2 border-red-500 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-[0_0_60px_rgba(239,68,68,0.5)] transform scale-95 transition-transform duration-300 interactive">
+            <div class="text-5xl mb-3">⚡</div>
+            <h3 id="messageTitle" class="font-cinzel text-2xl font-bold text-red-500 mb-2">Coffre Ouvert !</h3>
+            <p id="explodedRewardText" class="text-sm text-neutral-300 mb-6 leading-relaxed">Le coffre a libéré ses récompenses !</p>
+            <button id="modal-close-btn" class="w-full bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
+                Coffre suivant
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * SCÈNE 3D THREE.JS : COFFRE BLINDÉ NOIR & OR EXACT (VIDÉO)
+         */
+        let scene, camera, renderer, chestGroup, lidMesh;
+        let sparkParticles = [];
+        let crackMeshes = [];
+        let interiorLight, lavaGlowMaterial;
+
+        const maxVisualGifts = 10;
+        let visualGiftCount = 0;
+        let totalProgressCount = 0;
+        let pendingProgressCount = 0;
+        const awardedRewardIds = new Set();
+        const processedLiveGiftIds = new Set();
+        let activeReward = null;
+        let isExploded = false;
+        let rewardRevealTimer = null;
+        let rewardAdvanceTimer = null;
+        let liveSocket = null;
+        let reconnectTimer = null;
+        let shouldReconnect = false;
+        let backgroundVideoUrl = null;
+        let clock = new THREE.Clock();
+
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let chestRotationTarget = { x: 0.35, y: 0.65 };
+
+        function init3D() {
+            const container = document.getElementById('webgl-container');
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 2.2, 11.5);
+            camera.lookAt(0, 0, 0);
+
+            // Rendu avec transparence Alpha activée (Fond 100% transparent)
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setClearColor(0x000000, 0); // fond 100 % transparent
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.15;
+            container.appendChild(renderer.domElement);
+
+            // Éclairage
+            scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+            const mainLight = new THREE.DirectionalLight(0xfff0dd, 1.8);
+            mainLight.position.set(6, 10, 9);
+            scene.add(mainLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffe6cc, 0.8);
+            fillLight.position.set(-8, 3, -4);
+            scene.add(fillLight);
+
+            interiorLight = new THREE.PointLight(0xff4500, 1.5, 8);
+            interiorLight.position.set(0, 3.2, 0);
+            scene.add(interiorLight);
+
+            buildEnvironment();
+            createVaultCube3D();
+
+            // Interactions Souris & Tactile pour faire pivoter le coffre
+            container.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                chestRotationTarget.y += deltaX * 0.008;
+                chestRotationTarget.x += deltaY * 0.008;
+                chestRotationTarget.x = Math.max(-0.2, Math.min(1.2, chestRotationTarget.x));
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            });
+            window.addEventListener('touchmove', (e) => {
+                if (!isDragging || e.touches.length !== 1) return;
+                const deltaX = e.touches[0].clientX - previousMousePosition.x;
+                const deltaY = e.touches[0].clientY - previousMousePosition.y;
+
+                chestRotationTarget.y += deltaX * 0.008;
+                chestRotationTarget.x += deltaY * 0.008;
+                chestRotationTarget.x = Math.max(-0.2, Math.min(1.2, chestRotationTarget.x));
+
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            });
+            window.addEventListener('touchend', () => { isDragging = false; });
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // ============================================================
+        //  COFFRE BLINDÉ : cube noir mat, plaques bronze doré, rivets,
+        //  porte circulaire centrale + éclairs plasma/lave
+        // ============================================================
+        const H = 1.6;              // demi-côté du cube
+        const BOLT_OFF = 0.17;      // hauteur des éclairs au-dessus de la surface
+        const BOLT_MAX = 72;        // points max par éclair
+        const BOLT_COUNT = 16;
+
+        const FACES = [
+            { n: new THREE.Vector3(0, 0, 1),  U: new THREE.Vector3(1, 0, 0),  V: new THREE.Vector3(0, 1, 0) }, // avant (porte)
+            { n: new THREE.Vector3(1, 0, 0),  U: new THREE.Vector3(0, 0, -1), V: new THREE.Vector3(0, 1, 0) }, // droite
+            { n: new THREE.Vector3(0, 0, -1), U: new THREE.Vector3(-1, 0, 0), V: new THREE.Vector3(0, 1, 0) }, // arrière
+            { n: new THREE.Vector3(-1, 0, 0), U: new THREE.Vector3(0, 0, 1),  V: new THREE.Vector3(0, 1, 0) }  // gauche
+        ];
+        FACES.push({ n: new THREE.Vector3(0, 1, 0), U: new THREE.Vector3(1, 0, 0), V: new THREE.Vector3(0, 0, -1) }); // dessus
+        FACES.forEach(f => {
+            f.q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(f.U, f.V, f.n));
+        });
+
+        let doorWheel, doorPivot, doorSwing, doorGlow, doorLight, boltTex, sparkSystem;
+        let flickerLights = [];
+        let bolts = [];
+        let curInten = 1, curLevel = 0, shockwave, shockT = 0;
+        const rivetPos = [];
+
+        function faceVec(fi, u, v, off) {
+            const f = FACES[fi];
+            return f.n.clone().multiplyScalar(H + off).addScaledVector(f.U, u).addScaledVector(f.V, v);
+        }
+
+        function addPlate(parent, fi, cu, cv, w, h, t, mat, z0) {
+            z0 = z0 || 0;
+            const f = FACES[fi];
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), mat);
+            mesh.quaternion.copy(f.q);
+            mesh.position.copy(f.n).multiplyScalar(H + z0 + t / 2 - 0.01)
+                .addScaledVector(f.U, cu).addScaledVector(f.V, cv);
+            parent.add(mesh);
+            return mesh;
+        }
+
+        function addRivet(fi, u, v, off) { rivetPos.push(faceVec(fi, u, v, off)); }
+
+        // Environnement (reflets métalliques) généré à la volée
+        function buildEnvironment() {
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            const env = new THREE.Scene();
+            env.add(new THREE.Mesh(
+                new THREE.BoxGeometry(40, 40, 40),
+                new THREE.MeshBasicMaterial({ color: 0x0d0907, side: THREE.BackSide })
+            ));
+            const panel = (w, h, col, pos) => {
+                const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+                    new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+                m.position.set(pos[0], pos[1], pos[2]);
+                m.lookAt(0, 0, 0);
+                env.add(m);
+            };
+            panel(14, 8, new THREE.Color(7, 6, 4.5), [8, 14, 12]);
+            panel(10, 10, new THREE.Color(2.5, 2.3, 2.0), [-14, 2, -4]);
+            panel(12, 5, new THREE.Color(2.5, 2.2, 2.0), [0, -10, 12]);
+            panel(8, 8, new THREE.Color(2, 1.9, 1.7), [10, 0, -14]);
+            scene.environment = pmrem.fromScene(env, 0.02).texture;
+            pmrem.dispose();
+        }
+
+        function createVaultCube3D() {
+            chestGroup = new THREE.Group();
+            scene.add(chestGroup);
+
+            // --- Matériaux ---
+            const blackMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0f, roughness: 0.82, metalness: 0.35 });
+            const panelMat = new THREE.MeshStandardMaterial({ color: 0x18181c, roughness: 0.7, metalness: 0.45 });
+            const bronzeMat = new THREE.MeshStandardMaterial({
+                color: 0xc98a35, roughness: 0.34, metalness: 0.92, emissive: 0x000000, emissiveIntensity: 0
+            });
+            const darkBronzeMat = new THREE.MeshStandardMaterial({ color: 0x8a5a24, roughness: 0.42, metalness: 0.9 });
+            const goldMat = new THREE.MeshStandardMaterial({
+                color: 0xf2b84a, roughness: 0.22, metalness: 1.0, emissive: 0x000000, emissiveIntensity: 0
+            });
+            const rivetMat = new THREE.MeshStandardMaterial({ color: 0xe6a948, roughness: 0.2, metalness: 1.0 });
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0xff5a00, toneMapped: false });
+
+            // --- 1. Corps : cube blindé noir mat ---
+            chestGroup.add(new THREE.Mesh(new THREE.BoxGeometry(H * 2, H * 2, H * 2), blackMat));
+
+            // Socle
+            const base = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.14, 3.4), darkBronzeMat);
+            base.position.y = -H - 0.05;
+            chestGroup.add(base);
+
+            // --- 2. Poteaux d'angle en bronze doré + rivets ---
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sz]) => {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.34, 3.2, 0.34), darkBronzeMat);
+                post.position.set(sx * H, 0, sz * H);
+                chestGroup.add(post);
+                [-0.55, 0.55].forEach(y => {
+                    rivetPos.push(new THREE.Vector3(sx * (H + 0.17), y, sz * H));
+                    rivetPos.push(new THREE.Vector3(sx * H, y, sz * (H + 0.17)));
+                });
+            });
+
+            // --- 3. Faces : ceintures, panneaux, renforts ---
+            for (let fi = 0; fi < 4; fi++) {
+                // panneau en retrait
+                if (fi !== 0) addPlate(chestGroup, fi, 0, 0.02, 2.0, 1.9, 0.05, panelMat);
+
+                // ceintures haute et basse
+                addPlate(chestGroup, fi, 0, -1.18, 3.2, 0.4, 0.1, bronzeMat);
+                addPlate(chestGroup, fi, 0, 1.18, 3.2, 0.3, 0.1, bronzeMat);
+                for (let u = -1.2; u <= 1.21; u += 0.4) {
+                    addRivet(fi, u, -1.1, 0.1);
+                    addRivet(fi, u, 1.18, 0.1);
+                }
+
+                if (fi === 0) continue; // la face avant reçoit la porte
+
+                // sangles verticales
+                [-0.78, 0.78].forEach(u => {
+                    addPlate(chestGroup, fi, u, 0.02, 0.3, 1.9, 0.08, bronzeMat);
+                    for (let v = -0.8; v <= 0.81; v += 0.4) addRivet(fi, u, v, 0.08);
+                });
+
+                if (fi === 2) {
+                    // plaque centrale arrière
+                    addPlate(chestGroup, fi, 0, 0.02, 0.9, 0.6, 0.08, bronzeMat);
+                    [[-0.35, -0.2], [0.35, -0.2], [-0.35, 0.24], [0.35, 0.24]].forEach(p => addRivet(fi, p[0], p[1], 0.08));
+                } else {
+                    // grille de ventilation à lamelles
+                    for (let v = -0.7; v <= 0.71; v += 0.2) addPlate(chestGroup, fi, 0, v, 0.9, 0.07, 0.07, blackMat, 0.05);
+                }
+            }
+
+            // --- 4. PORTE CIRCULAIRE CENTRALE (face avant) ---
+            const shp = new THREE.Shape();
+            shp.moveTo(-1.12, -1.12); shp.lineTo(1.12, -1.12); shp.lineTo(1.12, 1.12); shp.lineTo(-1.12, 1.12); shp.closePath();
+            const hole = new THREE.Path();
+            hole.absarc(0, 0, 0.96, 0, Math.PI * 2, true);
+            shp.holes.push(hole);
+            const frame = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, {
+                depth: 0.12, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 48
+            }), bronzeMat);
+            frame.position.set(0, 0, H - 0.01);
+            chestGroup.add(frame);
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(p => addRivet(0, p[0] * 0.99, p[1] * 0.99, 0.16));
+
+            // porte pivotante (charnière à gauche)
+            doorPivot = new THREE.Group();
+            doorPivot.position.set(-1.12, 0, 0);
+            chestGroup.add(doorPivot);
+            doorSwing = new THREE.Group();
+            doorSwing.position.set(1.12, 0, 0);
+            doorPivot.add(doorSwing);
+
+            // intérieur incandescent (visible quand la porte s'ouvre)
+            doorGlow = new THREE.Group();
+            const g1 = new THREE.Mesh(new THREE.CircleGeometry(0.97, 56), new THREE.MeshBasicMaterial({ color: 0xff4a00, toneMapped: false }));
+            const g2 = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshBasicMaterial({ color: 0xffb040, toneMapped: false }));
+            g2.position.z = 0.004;
+            doorGlow.add(g1, g2);
+            doorGlow.position.z = H + 0.01;
+            doorGlow.visible = false;
+            chestGroup.add(doorGlow);
+            doorLight = new THREE.PointLight(0xff6a10, 0, 6, 2);
+            doorLight.position.set(0, 0, H + 0.9);
+            chestGroup.add(doorLight);
+
+            // charnières dorées
+            [-0.6, 0.6].forEach(y => {
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.45, 16), goldMat);
+                barrel.position.set(-1.12, y, H + 0.08);
+                chestGroup.add(barrel);
+                const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.06), goldMat);
+                leaf.position.set(-1.0, y, H + 0.09);
+                doorSwing.add(leaf);
+            });
+
+            // disque de la porte
+            const door = new THREE.Mesh(new THREE.CylinderGeometry(0.94, 0.94, 0.1, 56), goldMat);
+            door.rotation.x = Math.PI / 2;
+            door.position.z = H + 0.02;
+            doorSwing.add(door);
+
+            const ring = (r, tube, z, mat) => {
+                const t = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 14, 72), mat);
+                t.position.z = z;
+                doorSwing.add(t);
+            };
+            ring(0.95, 0.05, H + 0.09, goldMat);
+            ring(0.80, 0.035, H + 0.08, darkBronzeMat);
+            ring(0.58, 0.03, H + 0.08, darkBronzeMat);
+
+            const boss = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.1, 40), goldMat);
+            boss.rotation.x = Math.PI / 2;
+            boss.position.z = H + 0.1;
+            doorSwing.add(boss);
+
+            // 8 verrous dorés autour de la porte
+            for (let k = 0; k < 8; k++) {
+                const a = (k * Math.PI) / 4;
+                const lock = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.09), goldMat);
+                lock.position.set(Math.cos(a) * 1.04, Math.sin(a) * 1.04, H + 0.18);
+                lock.rotation.z = a;
+                doorSwing.add(lock);
+                const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.14, 10), darkBronzeMat);
+                pin.rotation.x = Math.PI / 2;
+                pin.position.set(Math.cos(a) * 1.04, Math.sin(a) * 1.04, H + 0.23);
+                doorSwing.add(pin);
+            }
+
+            // barres de verrouillage latérales
+            [-1.29, 1.29].forEach(x => {
+                const bar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.16), goldMat);
+                bar.position.set(x, 0, H + 0.08);
+                chestGroup.add(bar);
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 16), darkBronzeMat);
+                cap.rotation.x = Math.PI / 2;
+                cap.position.set(x, 0, H + 0.17);
+                chestGroup.add(cap);
+            });
+
+            // moyeu + volant (tourne)
+            doorWheel = new THREE.Group();
+            doorWheel.position.z = H + 0.17;
+            doorSwing.add(doorWheel);
+            const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.2, 32), goldMat);
+            hub.rotation.x = Math.PI / 2;
+            doorWheel.add(hub);
+            const hubRing = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 12, 48), darkBronzeMat);
+            hubRing.position.z = 0.1;
+            doorWheel.add(hubRing);
+            const cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 14), darkBronzeMat);
+            cap.position.z = 0.1;
+            doorWheel.add(cap);
+            for (let k = 0; k < 4; k++) {
+                const spoke = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.08), goldMat);
+                spoke.rotation.z = (k * Math.PI) / 4;
+                doorWheel.add(spoke);
+            }
+            for (let k = 0; k < 8; k++) {
+                const a = (k * Math.PI) / 4;
+                const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 10), goldMat);
+                knob.position.set(Math.cos(a) * 0.5, Math.sin(a) * 0.5, 0);
+                doorWheel.add(knob);
+            }
+
+            // --- 5. Couvercle articulé ---
+            const lidGroup = new THREE.Group();
+            lidGroup.position.set(0, H, -(H + 0.1));
+            chestGroup.add(lidGroup);
+            lidMesh = lidGroup;
+
+            const lidPlate = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.16, 3.5), bronzeMat);
+            lidPlate.position.set(0, 0.08, 1.75);
+            lidGroup.add(lidPlate);
+            [-0.9, 0.9].forEach(x => {
+                const strap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 3.52), goldMat);
+                strap.position.set(x, 0.17, 1.75);
+                lidGroup.add(strap);
+            });
+            const lip = new THREE.Mesh(new THREE.BoxGeometry(3.52, 0.1, 0.12), bronzeMat);
+            lip.position.set(0, 0.11, 3.46);
+            lidGroup.add(lip);
+
+            const lidRivetPos = [];
+            [-0.9, 0.9].forEach(x => [0.4, 1.2, 2.0, 2.8].forEach(z => lidRivetPos.push(new THREE.Vector3(x, 0.21, z))));
+            const lidRivets = new THREE.InstancedMesh(new THREE.SphereGeometry(0.085, 12, 8), rivetMat, lidRivetPos.length);
+            const dl = new THREE.Object3D();
+            lidRivetPos.forEach((p, i) => { dl.position.copy(p); dl.updateMatrix(); lidRivets.setMatrixAt(i, dl.matrix); });
+            lidGroup.add(lidRivets);
+
+            // --- 6. Rivets lourds (un seul InstancedMesh) ---
+            const rivets = new THREE.InstancedMesh(new THREE.SphereGeometry(0.095, 14, 10), rivetMat, rivetPos.length);
+            const d = new THREE.Object3D();
+            rivetPos.forEach((p, i) => { d.position.copy(p); d.updateMatrix(); rivets.setMatrixAt(i, d.matrix); });
+            chestGroup.add(rivets);
+
+            // --- 7. Éclairs plasma / lave ---
+            boltTex = makeBoltTexture();
+            initShockwave();
+            for (let i = 0; i < BOLT_COUNT; i++) {
+                const b = {
+                    main: createStrip(), fork: createStrip(),
+                    life: Math.random() * 0.3, phase: Math.random() * 10, idx: i
+                };
+                chestGroup.add(b.main.mesh, b.fork.mesh);
+                bolts.push(b);
+                regenBolt(b);
+            }
+
+            // lumières orange qui suivent les éclairs
+            for (let i = 0; i < 4; i++) {
+                const l = new THREE.PointLight(0xff5a10, 0, 5, 2);
+                chestGroup.add(l);
+                flickerLights.push(l);
+            }
+        }
+
+        // ---------- Explosion ----------
+        function initShockwave() {
+            shockwave = new THREE.Mesh(
+                new THREE.SphereGeometry(1, 32, 24),
+                new THREE.MeshBasicMaterial({
+                    color: 0xffa040, transparent: true, opacity: 0,
+                    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+                })
+            );
+            shockwave.visible = false;
+            scene.add(shockwave);
+        }
+
+        function triggerBlast() {
+            if (sparkSystem) sparkSystem.burst();
+            flashT = 1.0;
+            kick = 2;
+        }
+
+        // ---------- Éclairs ----------
+        function makeBoltTexture() {
+            const hgt = 128, w = 2;
+            const data = new Uint8Array(w * hgt * 4);
+            for (let y = 0; y < hgt; y++) {
+                const d = Math.abs(((y + 0.5) / hgt) * 2 - 1);
+                const core = Math.exp(-Math.pow(d / 0.13, 2));
+                const mid = Math.exp(-Math.pow(d / 0.32, 2));
+                const out = Math.exp(-Math.pow(d / 0.62, 2));
+                const edge = Math.max(0, 1 - Math.pow(d, 3));
+                const r = Math.min(1, (core + mid + out * 0.9) * edge);
+                const g = (core * 0.93 + mid * 0.5 + out * 0.2) * edge;
+                const bl = (core * 0.7 + mid * 0.08) * edge;
+                const a = Math.max(r, 0.0001);
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    data[i] = 255;
+                    data[i + 1] = Math.min(255, (g / a) * 255);
+                    data[i + 2] = Math.min(255, (bl / a) * 255);
+                    data[i + 3] = a * 255;
+                }
+            }
+            const tex = new THREE.DataTexture(data, w, hgt, THREE.RGBAFormat);
+            tex.magFilter = THREE.LinearFilter;
+            tex.minFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        function createStrip(tex, additive) {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(BOLT_MAX * 2 * 3);
+            const uv = new Float32Array(BOLT_MAX * 2 * 2);
+            const idx = [];
+            for (let i = 0; i < BOLT_MAX; i++) {
+                const t = i / (BOLT_MAX - 1);
+                uv[i * 4] = t; uv[i * 4 + 1] = 0;
+                uv[i * 4 + 2] = t; uv[i * 4 + 3] = 1;
+                if (i < BOLT_MAX - 1) {
+                    const a = i * 2;
+                    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+                }
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+            geo.setIndex(idx);
+            geo.setDrawRange(0, 0);
+            const mat = new THREE.MeshBasicMaterial({
+                map: tex || boltTex, transparent: true,
+                blending: additive === false ? THREE.NormalBlending : THREE.AdditiveBlending,
+                depthWrite: false, side: THREE.DoubleSide, toneMapped: false
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.frustumCulled = false;
+            mesh.renderOrder = 5;
+            return { mesh, geo, mat };
+        }
+
+        const _t = new THREE.Vector3(), _w = new THREE.Vector3();
+        function fillStrip(strip, pts, nrm, width) {
+            const n = Math.min(pts.length, BOLT_MAX);
+            if (n < 2) { strip.geo.setDrawRange(0, 0); return; }
+            const p = strip.geo.attributes.position.array;
+            for (let i = 0; i < n; i++) {
+                _t.subVectors(pts[Math.min(i + 1, n - 1)], pts[Math.max(i - 1, 0)]).normalize();
+                _w.crossVectors(_t, nrm[i]);
+                if (_w.lengthSq() < 1e-6) _w.set(0, 1, 0);
+                _w.normalize();
+                const tt = i / (n - 1);
+                const taper = 0.2 + 0.8 * Math.pow(Math.sin(Math.PI * tt), 0.6);
+                const hw = width * 0.5 * taper * (0.85 + Math.random() * 0.3);
+                p[i * 6]     = pts[i].x + _w.x * hw;
+                p[i * 6 + 1] = pts[i].y + _w.y * hw;
+                p[i * 6 + 2] = pts[i].z + _w.z * hw;
+                p[i * 6 + 3] = pts[i].x - _w.x * hw;
+                p[i * 6 + 4] = pts[i].y - _w.y * hw;
+                p[i * 6 + 5] = pts[i].z - _w.z * hw;
+            }
+            strip.geo.attributes.position.needsUpdate = true;
+            strip.geo.setDrawRange(0, (n - 1) * 6);
+        }
+
+        // ---------- Génération de trajets d'éclairs / fissures ----------
+        function genPath(opts) {
+            opts = opts || {};
+            const off = opts.off !== undefined ? opts.off : BOLT_OFF;
+            const pts = [], nrm = [], meta = [];
+            const push = (fi, u, v) => {
+                pts.push(faceVec(fi, u, v, off)); nrm.push(FACES[fi].n); meta.push({ fi: fi, u: u, v: v });
+            };
+            const pushCorner = (fi, dir, v) => {
+                const f = FACES[fi];
+                pts.push(f.n.clone().multiplyScalar(H + off)
+                    .addScaledVector(f.U, dir * (H + off)).addScaledVector(f.V, v));
+                nrm.push(f.n.clone().addScaledVector(f.U, dir).normalize());
+                meta.push(null);
+            };
+            let fi = opts.face !== undefined ? opts.face : Math.floor(Math.random() * 4);
+            const frontOnly = opts.avoidFront && fi === 0;
+            const vertical = frontOnly ? true : (opts.vertical !== undefined ? opts.vertical : Math.random() >= 0.7);
+
+            if (!vertical) {
+                const dir = Math.random() < 0.5 ? 1 : -1;
+                let u = -dir * (0.1 + Math.random() * 1.4);
+                let v = (Math.random() - 0.5) * 2.4;
+                let L = (2.2 + Math.random() * 4.5) * (opts.lenMul || 1);
+                push(fi, u, v);
+                while (L > 0 && pts.length < BOLT_MAX - 4) {
+                    const step = 0.14 + Math.random() * 0.16;
+                    u += dir * step; L -= step;
+                    v += (Math.random() - 0.5) * 0.55;
+                    v *= 0.96;
+                    v = Math.max(-1.45, Math.min(1.45, v));
+                    if (dir * u >= H) {
+                        u = dir * H; push(fi, u, v);
+                        if (opts.avoidFront && ((fi + dir + 4) % 4) === 0) break;
+                        pushCorner(fi, dir, v);
+                        fi = (fi + dir + 4) % 4;
+                        u = -dir * H; push(fi, u, v);
+                    } else {
+                        push(fi, u, v);
+                    }
+                }
+            } else {
+                const dv = Math.random() < 0.5 ? 1 : -1;
+                const sgn = Math.random() < 0.5 ? -1 : 1;
+                let u = frontOnly ? sgn * (1.22 + Math.random() * 0.15) : (Math.random() - 0.5) * 2.4;
+                let v = -dv * (frontOnly ? 1.5 : 1.1 + Math.random() * 0.4);
+                let L = (frontOnly ? 3.2 : 1.6 + Math.random() * 2.4) * (opts.lenMul || 1);
+                push(fi, u, v);
+                while (L > 0 && pts.length < BOLT_MAX - 4) {
+                    const step = 0.14 + Math.random() * 0.16;
+                    v += dv * step; L -= step;
+                    if (frontOnly) {
+                        u += (Math.random() - 0.5) * 0.12;
+                        u = sgn * Math.max(1.18, Math.min(1.42, Math.abs(u)));
+                    } else {
+                        u += (Math.random() - 0.5) * 0.55;
+                        u = Math.max(-1.45, Math.min(1.45, u));
+                    }
+                    if (Math.abs(v) > 1.58) break;
+                    push(fi, u, v);
+                }
+            }
+            return { pts: pts, nrm: nrm, meta: meta };
+        }
+
+        // Fissure sur le dessus (face 4)
+        function genTopPath(off) {
+            const pts = [], nrm = [], meta = [];
+            const n = FACES[4].n;
+            const edge = Math.floor(Math.random() * 4);
+            let u, v, h0;
+            if (edge < 2) { u = (edge ? 1 : -1) * 1.55; v = (Math.random() - 0.5) * 2.4; h0 = edge ? Math.PI : 0; }
+            else { v = (edge === 3 ? 1 : -1) * 1.55; u = (Math.random() - 0.5) * 2.4; h0 = edge === 3 ? -Math.PI / 2 : Math.PI / 2; }
+            h0 += (Math.random() - 0.5) * 0.8;
+            let h = h0, L = 3 + Math.random() * 2.5;
+            const push = () => { pts.push(faceVec(4, u, v, off)); nrm.push(n); meta.push({ fi: 4, u: u, v: v }); };
+            push();
+            while (L > 0 && pts.length < BOLT_MAX - 4) {
+                const step = 0.14 + Math.random() * 0.16;
+                h += (Math.random() - 0.5) * 1.1;
+                h = h0 + (h - h0) * 0.75;
+                u += Math.cos(h) * step; v += Math.sin(h) * step; L -= step;
+                if (Math.abs(u) > 1.65 || Math.abs(v) > 1.65) break;
+                push();
+            }
+            return { pts: pts, nrm: nrm, meta: meta };
+        }
+
+        // Fissure sur le disque de la porte (face 0)
+        function genDiscPath(off, R) {
+            const pts = [], nrm = [], meta = [];
+            const n = FACES[0].n;
+            const a0 = Math.random() * Math.PI * 2;
+            const a1 = a0 + Math.PI + (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.5);
+            const sx = R * Math.cos(a0), sy = R * Math.sin(a0), ex = R * Math.cos(a1), ey = R * Math.sin(a1);
+            const steps = 11 + Math.floor(Math.random() * 5);
+            const px = -(ey - sy), py = ex - sx, pl = Math.hypot(px, py) || 1;
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                let u = sx + (ex - sx) * t, v = sy + (ey - sy) * t;
+                const j = (i === 0 || i === steps) ? 0 : (Math.random() - 0.5) * 0.3;
+                u += (px / pl) * j; v += (py / pl) * j;
+                const r = Math.hypot(u, v);
+                if (r > R) { u *= R / r; v *= R / r; }
+                pts.push(faceVec(0, u, v, off)); nrm.push(n); meta.push({ fi: 0, u: u, v: v });
+            }
+            return { pts: pts, nrm: nrm, meta: meta };
+        }
+
+        function genFork(meta, off, maxR, lim) {
+            lim = lim || 1.58;
+            const valid = [];
+            meta.forEach((m, i) => { if (m) valid.push(i); });
+            if (!valid.length) return null;
+            const m = meta[valid[Math.floor(Math.random() * valid.length)]];
+            const fp = [faceVec(m.fi, m.u, m.v, off)], fn = [FACES[m.fi].n];
+            let u = m.u, v = m.v, ang = Math.random() * Math.PI * 2;
+            const steps = 4 + Math.floor(Math.random() * 5);
+            for (let s = 0; s < steps; s++) {
+                ang += (Math.random() - 0.5) * 1.2;
+                u = Math.max(-lim, Math.min(lim, u + Math.cos(ang) * 0.15));
+                v = Math.max(-lim, Math.min(lim, v + Math.sin(ang) * 0.15));
+                if (maxR) { const r = Math.hypot(u, v); if (r > maxR) { u *= maxR / r; v *= maxR / r; } }
+                fp.push(faceVec(m.fi, u, v, off)); fn.push(FACES[m.fi].n);
+            }
+            return { fp: fp, fn: fn };
+        }
+
+        function regenBolt(b) {
+            const P = genPath({ lenMul: 0.6 + curLevel * 0.9 });
+            fillStrip(b.main, P.pts, P.nrm, (0.4 + Math.random() * 0.2) * (0.6 + 1.5 * curLevel));
+            const F = Math.random() < 0.4 + curLevel * 0.6 ? genFork(P.meta, BOLT_OFF) : null;
+            if (F) fillStrip(b.fork, F.fp, F.fn, 0.2 + 0.25 * curLevel); else b.fork.geo.setDrawRange(0, 0);
+            b.life = (0.07 + Math.random() * 0.28) * (1.2 - 0.7 * Math.min(1, curLevel));
+        }
+
+        // ---------- Fissures permanentes (une par cadeau) ----------
+        let crackTex, flashT = 0, kick = 0, crackCount = 0;
+        const cracks = [];
+        const CRACK_FACES = [1, 3, 2, 0];
+
+        function makeCrackTexture() {
+            const hgt = 128, w = 2;
+            const data = new Uint8Array(w * hgt * 4);
+            for (let y = 0; y < hgt; y++) {
+                const d = Math.abs(((y + 0.5) / hgt) * 2 - 1);
+                const core = Math.exp(-Math.pow(d / 0.24, 2));
+                const glow = Math.exp(-Math.pow(d / 0.5, 2));
+                const edge = Math.max(0, 1 - Math.pow(d, 2.5));
+                const r = Math.min(1, core + glow * 0.85);
+                const g = Math.min(1, core * 0.97 + glow * 0.35);
+                const b = core * 0.65;
+                const a = Math.min(1, Math.max(0.9 * Math.exp(-Math.pow(d / 0.75, 2)), core)) * edge;
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    data[i] = r * 255; data[i + 1] = g * 255; data[i + 2] = b * 255; data[i + 3] = a * 255;
+                }
+            }
+            const tex = new THREE.DataTexture(data, w, hgt, THREE.RGBAFormat);
+            tex.magFilter = THREE.LinearFilter;
+            tex.minFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        let haloTex;
+        function makeHaloTexture() {
+            const hgt = 128, w = 2;
+            const data = new Uint8Array(w * hgt * 4);
+            for (let y = 0; y < hgt; y++) {
+                const d = Math.abs(((y + 0.5) / hgt) * 2 - 1);
+                const a = Math.exp(-Math.pow(d / 0.4, 2)) * Math.max(0, 1 - Math.pow(d, 3));
+                for (let x = 0; x < w; x++) {
+                    const k = (y * w + x) * 4;
+                    data[k] = 255; data[k + 1] = 120; data[k + 2] = 20; data[k + 3] = a * 255;
+                }
+            }
+            const tex = new THREE.DataTexture(data, w, hgt, THREE.RGBAFormat);
+            tex.magFilter = THREE.LinearFilter;
+            tex.minFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        // Elargit / ré-éclaire toutes les fissures selon le niveau de cadeaux
+        function refreshCracks() {
+            const lvl = Math.min(1, visualGiftCount / maxVisualGifts);
+            cracks.forEach(c => c.items.forEach(it => {
+                fillStrip(it.strip, it.pts, it.nrm, it.width * (0.9 + lvl * 1.4));
+                fillStrip(it.halo, it.pts, it.nrm, 1.0 + lvl * 1.2);
+                fillStrip(it.core, it.pts, it.nrm, 0.3 + lvl * 0.4);
+            }));
+        }
+
+        const CRACK_SEQ = [0, 4, 1, 0, 4, 1, 3, 0, 4, 1]; // porte, dessus, côté droit, côté gauche...
+        let frontCrackCount = 0;
+
+        // Éclair court qui part d'un point de la fissure et file sur la surface
+        function regenArc(c, a, lvl) {
+            const maxIdx = Math.floor(c.items[0].n * c.g);
+            const cand = c.valid.filter(i => i < maxIdx);
+            if (!cand.length) { a.strip.geo.setDrawRange(0, 0); a.life = 0.1; return; }
+            const m = c.meta[cand[Math.floor(Math.random() * cand.length)]];
+            const fp = [faceVec(m.fi, m.u, m.v, c.arcOff)], fn = [FACES[m.fi].n];
+            let u = m.u, v = m.v, ang = Math.random() * Math.PI * 2;
+            const steps = 6 + Math.floor(Math.random() * 7);
+            for (let s = 0; s < steps; s++) {
+                ang += (Math.random() - 0.5) * 1.3;
+                const st = 0.11 + Math.random() * 0.08;
+                u = Math.max(-c.lim, Math.min(c.lim, u + Math.cos(ang) * st));
+                v = Math.max(-c.lim, Math.min(c.lim, v + Math.sin(ang) * st));
+                if (c.maxR) { const r = Math.hypot(u, v); if (r > c.maxR) { u *= c.maxR / r; v *= c.maxR / r; } }
+                fp.push(faceVec(m.fi, u, v, c.arcOff)); fn.push(FACES[m.fi].n);
+            }
+            fillStrip(a.strip, fp, fn, 0.16 + 0.14 * Math.min(1.3, lvl));
+            a.life = 0.05 + Math.random() * 0.15;
+        }
+
+        // Appelée à chaque cadeau reçu : un éclair frappe et laisse une fissure lumineuse
+        // (porte, dessus, côtés). La lumière ne sort que des fissures.
+        function strikeCrack() {
+            if (!chestGroup) return;
+            if (!crackTex) crackTex = makeCrackTexture();
+            if (!haloTex) haloTex = makeHaloTexture();
+            const face = CRACK_SEQ[crackCount % CRACK_SEQ.length];
+            const c = { items: [], g: 0, phase: Math.random() * 10, parent: chestGroup, off: 0.115, arcOff: 0.15, lim: 1.58, maxR: 0 };
+            let P;
+            if (face === 4) {
+                c.off = 0.3; c.arcOff = 0.32; c.lim = 1.65;
+                P = genTopPath(c.off);
+            } else if (face === 0 && (frontCrackCount++ % 2 === 0)) {
+                // fissure sur la porte : elle suit la porte quand elle s'ouvre
+                c.parent = doorSwing; c.off = 0.15; c.arcOff = 0.19; c.maxR = 0.88;
+                P = genDiscPath(c.off, 0.88);
+            } else {
+                P = genPath({ face: face, off: c.off, avoidFront: true });
+            }
+
+            const addItem = (pts, nrm, width) => {
+                const s = createStrip(crackTex, false);
+                s.mesh.renderOrder = 4;
+                const h = createStrip(haloTex, true);
+                h.mesh.renderOrder = 5;
+                const k = createStrip();           // coeur plasma blanc-orangé qui crépite
+                k.mesh.renderOrder = 6;
+                s.geo.setDrawRange(0, 0);
+                h.geo.setDrawRange(0, 0);
+                k.geo.setDrawRange(0, 0);
+                c.parent.add(s.mesh, h.mesh, k.mesh);
+                c.items.push({ strip: s, halo: h, core: k, parent: c.parent, pts: pts, nrm: nrm, n: Math.min(pts.length, BOLT_MAX), width: width });
+            };
+            addItem(P.pts, P.nrm, 0.34);
+            for (let q = 0; q < 3; q++) {
+                const F = genFork(P.meta, c.off, c.maxR, c.lim);
+                if (F) addItem(F.fp, F.fn, 0.2);
+            }
+
+            // éclairs qui jaillissent de la fissure
+            c.meta = P.meta;
+            c.valid = [];
+            P.meta.forEach((mm, ii) => { if (mm) c.valid.push(ii); });
+            c.arcs = [];
+            for (let q = 0; q < 4; q++) {
+                const arc = createStrip();
+                arc.mesh.renderOrder = 6;
+                arc.geo.setDrawRange(0, 0);
+                c.parent.add(arc.mesh);
+                c.arcs.push({ strip: arc, life: Math.random() * 0.15, phase: Math.random() * 10 });
+            }
+
+            // lumière ponctuelle posée sur la fissure
+            const m = P.pts.length >> 1;
+            const L = flickerLights[crackCount % flickerLights.length];
+            L.position.copy(P.pts[m]).addScaledVector(P.nrm[m], 0.45);
+
+            cracks.push(c);
+            crackCount++;
+            refreshCracks();
+
+            // éclair d'impact : relance des éclairs + secousse + flash
+            flashT = 0.7;
+            kick = 1;
+            bolts.forEach(b => { b.life = 0; });
+        }
+
+        function clearCracks() {
+            cracks.forEach(c => {
+                c.items.forEach(it => {
+                    it.parent.remove(it.strip.mesh, it.halo.mesh, it.core.mesh);
+                    it.strip.geo.dispose(); it.strip.mat.dispose();
+                    it.halo.geo.dispose(); it.halo.mat.dispose();
+                    it.core.geo.dispose(); it.core.mat.dispose();
+                });
+                (c.arcs || []).forEach(a => {
+                    c.parent.remove(a.strip.mesh);
+                    a.strip.geo.dispose(); a.strip.mat.dispose();
+                });
+            });
+            cracks.length = 0;
+            crackCount = 0;
+            frontCrackCount = 0;
+            shockT = 0;
+            if (shockwave) shockwave.visible = false;
+        }
+
+        // ---------- Étincelles ----------
+        class SparkSystem {
+            constructor() {
+                const count = 170;
+                this.count = count;
+                this.pos = new Float32Array(count * 3);
+                this.col = new Float32Array(count * 3);
+                this.vel = [];
+                this.life = new Float32Array(count);
+                this.max = new Float32Array(count);
+                this.base = [];
+                for (let i = 0; i < count; i++) {
+                    this.vel.push(new THREE.Vector3());
+                    this.base.push([1, 0.4 + Math.random() * 0.4, 0.05]);
+                    this.respawn(i, true);
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+
+                const c = document.createElement('canvas');
+                c.width = c.height = 64;
+                const ctx = c.getContext('2d');
+                const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+                g.addColorStop(0, 'rgba(255,255,255,1)');
+                g.addColorStop(0.35, 'rgba(255,255,255,0.6)');
+                g.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, 64, 64);
+
+                this.points = new THREE.Points(geo, new THREE.PointsMaterial({
+                    size: 0.17, map: new THREE.CanvasTexture(c), vertexColors: true, transparent: true,
+                    blending: THREE.AdditiveBlending, depthWrite: false
+                }));
+                this.points.frustumCulled = false;
+                chestGroup.add(this.points);
+            }
+
+            respawn(i, initial) {
+                if (!cracks.length) {
+                    this.pos[i * 3] = this.pos[i * 3 + 1] = this.pos[i * 3 + 2] = 0;
+                    this.vel[i].set(0, 0, 0);
+                    this.max[i] = 1; this.life[i] = 0;
+                    return;
+                }
+                const c = cracks[Math.floor(Math.random() * cracks.length)];
+                const it = c.items[Math.floor(Math.random() * c.items.length)];
+                const k = Math.min(it.n - 1, Math.floor(Math.random() * Math.max(1, Math.floor(it.n * c.g))));
+                const p = it.pts[k].clone(), nn = it.nrm[k].clone();
+                if (it.parent === doorSwing && doorPivot) {
+                    p.applyMatrix4(doorSwing.matrix).applyMatrix4(doorPivot.matrix);
+                    nn.applyQuaternion(doorPivot.quaternion);
+                }
+                this.pos[i * 3] = p.x + nn.x * 0.05;
+                this.pos[i * 3 + 1] = p.y + nn.y * 0.05;
+                this.pos[i * 3 + 2] = p.z + nn.z * 0.05;
+                this.vel[i].copy(nn).multiplyScalar(0.2 + Math.random() * 0.5);
+                this.vel[i].x += (Math.random() - 0.5) * 0.4;
+                this.vel[i].z += (Math.random() - 0.5) * 0.4;
+                this.vel[i].y += 0.3 + Math.random() * 0.8;
+                this.max[i] = 0.6 + Math.random() * 1.2;
+                this.life[i] = initial ? this.max[i] * Math.random() : this.max[i];
+            }
+
+            burst() {
+                for (let i = 0; i < this.count; i++) {
+                    this.respawn(i, false);
+                    this.vel[i].multiplyScalar(5 + Math.random() * 6);
+                }
+            }
+
+            update(dt, inten, level) {
+                const k = Math.min(1, inten);
+                const activeN = Math.floor(this.count * (0.15 + 0.85 * Math.min(1, level || 0)));
+                for (let i = 0; i < this.count; i++) {
+                    this.life[i] -= dt;
+                    if (this.life[i] <= 0) {
+                        if (i < activeN) this.respawn(i, false);
+                        else { this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
+                    }
+                    const v = this.vel[i];
+                    v.y -= 0.4 * dt;
+                    this.pos[i * 3] += v.x * dt;
+                    this.pos[i * 3 + 1] += v.y * dt;
+                    this.pos[i * 3 + 2] += v.z * dt;
+                    const f = Math.max(0, this.life[i] / this.max[i]) * k;
+                    this.col[i * 3] = this.base[i][0] * f;
+                    this.col[i * 3 + 1] = this.base[i][1] * f;
+                    this.col[i * 3 + 2] = this.base[i][2] * f;
+                }
+                this.points.geometry.attributes.position.needsUpdate = true;
+                this.points.geometry.attributes.color.needsUpdate = true;
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        let lastT = performance.now();
+        let simT = 0;
+        let wasExploded = false;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const now = performance.now();
+            const dt = Math.min(0.05, (now - lastT) / 1000);
+            lastT = now;
+            simT += dt;
+
+            const ratio = visualGiftCount / maxVisualGifts;
+            if (isExploded && !wasExploded) triggerBlast();
+            wasExploded = isExploded;
+            const flash = flashT > 0 ? Math.min(1.5, flashT / 0.7) : 0;
+            flashT = Math.max(0, flashT - dt);
+            kick = Math.max(0, kick - dt * 2.5);
+            const inten = (isExploded ? 2.4 : 0.6 + ratio * 1.4) + flash * 1.2;
+            curInten = inten;
+            curLevel = Math.min(1.3, (isExploded ? 1 : ratio) + flash * 0.3);
+            // Aucun éclair tant qu'aucun cadeau n'a été envoyé
+            const active = isExploded || flash > 0 || visualGiftCount > 0;
+
+            if (chestGroup) {
+                chestGroup.rotation.y += (chestRotationTarget.y - chestGroup.rotation.y) * 0.1;
+                chestGroup.rotation.x += (chestRotationTarget.x - chestGroup.rotation.x) * 0.1;
+
+                const shake = isExploded ? 0.5 : Math.max(0, ratio - 0.4);
+                chestGroup.position.y = Math.sin(simT * 1.6) * 0.05 + Math.sin(simT * 41) * (shake * 0.05 + kick * 0.06);
+                chestGroup.position.x = Math.sin(simT * 53) * (shake * 0.05 + kick * 0.08);
+            }
+
+            // Éclairs : régénération rapide = scintillement plasma
+            bolts.forEach((b, i) => {
+                const visible = flash > 0 && (i / BOLT_COUNT) < 0.4 + Math.min(1, ratio) * 0.6; // éclair d'impact uniquement
+                b.main.mesh.visible = visible;
+                b.fork.mesh.visible = visible;
+                if (!visible) return;
+                b.life -= dt;
+                if (flash > 0.3 && b.life > 0.06) b.life = 0.06;
+                if (b.life <= 0) regenBolt(b);
+                const fl = 0.55 + 0.45 * Math.abs(Math.sin(simT * (37 + curLevel * 45) + b.phase));
+                const o = Math.min(1, fl * (0.75 + 0.35 * inten));
+                b.main.mat.opacity = o;
+                b.fork.mat.opacity = o * 0.85;
+            });
+
+            // Fissures : elles se creusent en suivant l'éclair puis restent lumineuses
+            const lvl = isExploded ? 1.3 : ratio;
+            cracks.forEach(c => {
+                c.g = Math.min(1, c.g + dt * 3);
+                const pulse = 0.85 + 0.15 * Math.sin(simT * 5 + c.phase);
+                c.items.forEach(it => {
+                    const count = Math.floor(it.n * c.g);
+                    const dr = count >= 2 ? (count - 1) * 6 : 0;
+                    it.strip.geo.setDrawRange(0, dr);
+                    it.halo.geo.setDrawRange(0, dr);
+                    it.core.geo.setDrawRange(0, dr);
+                    it.strip.mat.color.setScalar(pulse + flash * 0.3);
+                    it.halo.mat.opacity = Math.min(1, 0.5 + 0.5 * lvl + flash * 0.4) * pulse;
+                    it.core.mat.opacity = Math.min(1, (0.6 + 0.4 * Math.abs(Math.sin(simT * (30 + lvl * 30) + c.phase))) * (0.75 + 0.35 * lvl));
+                });
+
+                // éclairs qui jaillissent des fissures
+                const nArcs = isExploded ? 4 : Math.min(4, 2 + Math.floor(ratio * 3));
+                c.arcs.forEach((arc, qi) => {
+                    const vis = qi < nArcs;
+                    arc.strip.mesh.visible = vis;
+                    if (!vis) return;
+                    arc.life -= dt;
+                    if (arc.life <= 0 || (flash > 0.3 && arc.life > 0.04)) regenArc(c, arc, lvl);
+                    arc.strip.mat.opacity = Math.min(1, (0.55 + 0.45 * Math.abs(Math.sin(simT * (40 + lvl * 40) + arc.phase))) * (0.7 + 0.4 * lvl));
+                });
+            });
+
+            flickerLights.forEach((l, i) => {
+                l.intensity = i < cracks.length
+                    ? (2.5 + ratio * 4 + flash * 6 + (isExploded ? 8 : 0)) * (0.85 + 0.15 * Math.sin(simT * 9 + i))
+                    : 0;
+            });
+            if (interiorLight) interiorLight.intensity = 0;
+
+            if (doorWheel) doorWheel.rotation.z += dt * (0.25 + ratio * 2 + (isExploded ? 6 : 0));
+
+            // La porte avant (avec la roue) ouvre le coffre
+            if (doorPivot) {
+                const target = isExploded ? -1.95 : (ratio > 0.7 ? -(ratio - 0.7) * 0.8 : 0);
+                doorPivot.rotation.y += (target - doorPivot.rotation.y) * 0.06;
+                doorGlow.visible = false;
+                doorLight.intensity = 0;
+            }
+
+            if (sparkSystem) sparkSystem.update(dt, active ? inten : 0, isExploded ? 1 : ratio);
+
+            if (shockwave && shockT > 0) {
+                shockT = Math.max(0, shockT - dt);
+                const k = 1 - shockT / 0.9;
+                shockwave.scale.setScalar(1.5 + k * 7);
+                shockwave.material.opacity = (1 - k) * 0.6;
+                if (shockT <= 0) shockwave.visible = false;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- GESTION DES RÉCOMPENSES & CONFIGURATION ---
+        const defaultRewards = [
+            { id: 1, stars: 5000, coinThreshold: 10000 },
+            { id: 2, stars: 10000, coinThreshold: 12000 },
+            { id: 3, stars: 15000, coinThreshold: 32000 }
+        ];
+        const rewardStorageKey = 'coffre-incandescent-rewards-v1';
+
+        function loadRewards() {
+            try {
+                const storedRewards = localStorage.getItem(rewardStorageKey);
+                if (storedRewards === null) return defaultRewards.map(reward => ({ ...reward }));
+
+                const parsedRewards = JSON.parse(storedRewards);
+                const validRewards = Array.isArray(parsedRewards) &&
+                    parsedRewards.every(reward =>
+                        reward &&
+                        Number.isSafeInteger(reward.id) && reward.id > 0 &&
+                        Number.isSafeInteger(reward.stars) && reward.stars > 0 &&
+                        Number.isSafeInteger(reward.coinThreshold) && reward.coinThreshold > 0
+                    ) &&
+                    new Set(parsedRewards.map(reward => reward.id)).size === parsedRewards.length;
+
+                if (!validRewards) throw new Error('Format de récompenses invalide.');
+                return parsedRewards;
+            } catch (error) {
+                console.error('Impossible de charger les récompenses sauvegardées :', error);
+                return defaultRewards.map(reward => ({ ...reward }));
+            }
+        }
+
+        let rewards = loadRewards();
+        let nextRewardId = rewards.reduce((highestId, reward) => Math.max(highestId, reward.id), 0) + 1;
+
+        function saveRewards() {
+            try {
+                localStorage.setItem(rewardStorageKey, JSON.stringify(rewards));
+            } catch (error) {
+                console.error('Impossible de sauvegarder les récompenses :', error);
+                alert('Les récompenses n’ont pas pu être sauvegardées dans ce navigateur.');
+            }
+        }
+
+        function formatTikTokNumber(value) {
+            return value.toLocaleString('fr-FR');
+        }
+
+        function getOrderedRewards() {
+            return rewards.slice().sort((a, b) => a.coinThreshold - b.coinThreshold || a.stars - b.stars);
+        }
+
+        function getNextReward() {
+            return getOrderedRewards().find(reward => !awardedRewardIds.has(reward.id)) || null;
+        }
+
+        function renderRewardsList() {
+            const container = document.getElementById('rewardsList');
+            const orderedRewards = getOrderedRewards();
+            container.innerHTML = '';
+            orderedRewards.forEach((reward, index) => {
+                const item = document.createElement('div');
+                item.className = 'bg-neutral-800 p-2.5 rounded-xl border border-neutral-700 text-xs';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-amber-400">Coffre ${index + 1}</span>
+                        <button type="button" data-action="remove" data-reward-id="${reward.id}" class="text-red-400 hover:text-red-300 font-bold px-2 py-1" aria-label="Supprimer le coffre ${index + 1}">Supprimer</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <label class="text-neutral-400">Étoiles
+                            <input type="number" min="1" step="1" required data-reward-field="stars" data-reward-id="${reward.id}" value="${reward.stars}" class="mt-1 w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-white">
+                        </label>
+                        <label class="text-neutral-400">Seuil de progression
+                            <input type="number" min="1" step="1" required data-reward-field="coinThreshold" data-reward-id="${reward.id}" value="${reward.coinThreshold}" class="mt-1 w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-white">
+                        </label>
+                    </div>
+                    <button type="button" data-action="save" data-reward-id="${reward.id}" class="mt-2 w-full bg-neutral-700 hover:bg-amber-600 text-white font-bold py-1.5 rounded-lg transition-all">Enregistrer les modifications</button>
+                `;
+                container.appendChild(item);
+            });
+
+            const rewardSelect = document.getElementById('manualAwardReward');
+            const selectedRewardId = rewardSelect.value;
+            rewardSelect.innerHTML = '';
+            orderedRewards.forEach((reward, index) => {
+                const option = document.createElement('option');
+                option.value = reward.id;
+                option.textContent = `Coffre ${index + 1} — ${formatTikTokNumber(reward.stars)} étoiles`;
+                rewardSelect.appendChild(option);
+            });
+            rewardSelect.disabled = orderedRewards.length === 0;
+            if (orderedRewards.some(reward => String(reward.id) === selectedRewardId)) {
+                rewardSelect.value = selectedRewardId;
+            }
+        }
+
+        document.getElementById('rewardsList').addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+
+            const rewardId = Number(button.dataset.rewardId);
+            const reward = rewards.find(item => item.id === rewardId);
+            if (!reward) return;
+            if (activeReward && activeReward.id === rewardId) {
+                alert('Le coffre en cours d’ouverture ne peut pas être modifié ou supprimé.');
+                return;
+            }
+
+            if (button.dataset.action === 'remove') {
+                rewards = rewards.filter(item => item.id !== rewardId);
+                awardedRewardIds.delete(rewardId);
+                saveRewards();
+            } else if (button.dataset.action === 'save') {
+                const item = button.closest('#rewardsList > div');
+                const starsInput = item.querySelector('[data-reward-field="stars"]');
+                const thresholdInput = item.querySelector('[data-reward-field="coinThreshold"]');
+                const stars = starsInput.valueAsNumber;
+                const coinThreshold = thresholdInput.valueAsNumber;
+
+                if (!starsInput.checkValidity() || !Number.isSafeInteger(stars) || stars <= 0) {
+                    starsInput.reportValidity();
+                    return;
+                }
+                if (!thresholdInput.checkValidity() || !Number.isSafeInteger(coinThreshold) || coinThreshold <= 0) {
+                    thresholdInput.reportValidity();
+                    return;
+                }
+
+                reward.stars = stars;
+                reward.coinThreshold = coinThreshold;
+                saveRewards();
+            } else {
+                return;
+            }
+
+            renderRewardsList();
+            updateUI();
+        });
+
+        document.getElementById('rewardForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const starsInput = document.getElementById('newRewardStars');
+            const thresholdInput = document.getElementById('newRewardThreshold');
+            const stars = starsInput.valueAsNumber;
+            const coinThreshold = thresholdInput.valueAsNumber;
+
+            if (!Number.isSafeInteger(stars) || stars <= 0) {
+                starsInput.reportValidity();
+                return;
+            }
+            if (!Number.isSafeInteger(coinThreshold) || coinThreshold <= 0) {
+                thresholdInput.reportValidity();
+                return;
+            }
+
+            rewards.push({ id: nextRewardId++, stars, coinThreshold });
+            saveRewards();
+            e.currentTarget.reset();
+            renderRewardsList();
+            updateUI();
+        });
+
+        let manualAwardTimer = null;
+        let pendingManualAward = null;
+        const manualAwardModal = document.getElementById('manualAwardModal');
+
+        function closeManualAward() {
+            clearTimeout(manualAwardTimer);
+            manualAwardTimer = null;
+            manualAwardModal.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        document.getElementById('closeManualAwardBtn').addEventListener('click', closeManualAward);
+        document.getElementById('manualAwardForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const submitButton = form.querySelector('button[type="submit"]');
+            const usernameInput = document.getElementById('manualAwardUsername');
+            const username = usernameInput.value.trim().replace(/^@+/, '');
+            const rewardId = Number(document.getElementById('manualAwardReward').value);
+            const reward = rewards.find(item => item.id === rewardId);
+
+            usernameInput.setCustomValidity(username ? '' : 'Saisis un pseudo TikTok.');
+            if (!usernameInput.checkValidity()) {
+                usernameInput.reportValidity();
+                return;
+            }
+            if (!reward) {
+                document.getElementById('manualAwardReward').reportValidity();
+                return;
+            }
+
+            const awardTitle = document.getElementById('manualAwardTitle');
+            const awardText = document.getElementById('manualAwardText');
+            const assignmentKey = `${username.toLocaleLowerCase()}:${reward.id}:${reward.stars}`;
+            submitButton.disabled = true;
+            try {
+                if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+                    throw new Error('Le portefeuille global Griffon Arcade est indisponible.');
+                }
+                if (!pendingManualAward || pendingManualAward.key !== assignmentKey) {
+                    pendingManualAward = { key: assignmentKey, transactionId: crypto.randomUUID() };
+                }
+                await window.ArcadeStars.award({
+                    username,
+                    amount: reward.stars,
+                    transactionId: pendingManualAward.transactionId
+                });
+                pendingManualAward = null;
+                awardTitle.textContent = 'Récompense créditée !';
+                awardText.textContent =
+                    `@${username} reçoit ${formatTikTokNumber(reward.stars)} étoiles. Le solde global a été mis à jour.`;
+                form.reset();
+            } catch (error) {
+                console.error(`Impossible de créditer les étoiles de @${username} :`, error);
+                awardTitle.textContent = 'Attribution impossible';
+                awardText.textContent = `Aucun solde n’a été crédité. ${error.message || 'Réessaie plus tard.'}`;
+            } finally {
+                submitButton.disabled = false;
+            }
+            clearTimeout(manualAwardTimer);
+            manualAwardModal.classList.remove('opacity-0', 'pointer-events-none');
+            manualAwardTimer = setTimeout(closeManualAward, 8000);
+        });
+
+        // Panneau de configuration (Modale)
+        const configBtn = document.getElementById('configBtn');
+        const configModal = document.getElementById('configModal');
+        const closeConfigBtn = document.getElementById('closeConfigBtn');
+
+        configBtn.addEventListener('click', () => {
+            document.body.classList.add('config-open');
+            configModal.classList.remove('invisible', 'opacity-0', 'pointer-events-none');
+            renderRewardsList();
+        });
+
+        closeConfigBtn.addEventListener('click', () => {
+            document.body.classList.remove('config-open');
+            configModal.classList.add('invisible', 'opacity-0', 'pointer-events-none');
+            const username = document.getElementById('tiktokUsernameInput').value;
+            if(username) {
+                document.getElementById('tiktokDisplay').textContent = `@${username}`;
+            }
+        });
+
+        const backgroundVideo = document.getElementById('backgroundVideo');
+        const backgroundVideoInput = document.getElementById('backgroundVideoInput');
+        const backgroundVideoStatus = document.getElementById('backgroundVideoStatus');
+
+        backgroundVideoInput.addEventListener('change', () => {
+            const file = backgroundVideoInput.files && backgroundVideoInput.files[0];
+            if (!file) return;
+            if (file.type && !file.type.startsWith('video/')) {
+                backgroundVideoStatus.textContent = 'Le fichier sélectionné ne semble pas être une vidéo.';
+                return;
+            }
+
+            if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+            backgroundVideoUrl = URL.createObjectURL(file);
+            backgroundVideo.src = backgroundVideoUrl;
+            backgroundVideo.classList.add('is-active');
+            backgroundVideo.load();
+            backgroundVideo.play().then(() => {
+                backgroundVideoStatus.textContent = `Vidéo active : ${file.name}`;
+            }).catch(error => {
+                console.warn('Lecture de la vidéo d’arrière-plan impossible :', error);
+                backgroundVideoStatus.textContent = 'Le navigateur ne peut pas lire ce format ou ce codec vidéo.';
+            });
+        });
+
+        backgroundVideo.addEventListener('error', () => {
+            backgroundVideoStatus.textContent = 'Le navigateur ne peut pas décoder cette vidéo. Essaie un format ou un codec compatible.';
+        });
+
+        document.getElementById('removeBackgroundVideoBtn').addEventListener('click', () => {
+            backgroundVideo.pause();
+            backgroundVideo.removeAttribute('src');
+            backgroundVideo.load();
+            backgroundVideo.classList.remove('is-active');
+            backgroundVideoInput.value = '';
+            if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+            backgroundVideoUrl = null;
+            backgroundVideoStatus.textContent = 'Aucune vidéo sélectionnée.';
+        });
+
+        function setLiveConnectionStatus(message) {
+            document.getElementById('liveConnectionStatus').textContent = message;
+        }
+
+        function connectTikTokLive() {
+            const username = document.getElementById('tiktokUsernameInput').value.trim().replace(/^@/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                setLiveConnectionStatus('Saisis un pseudo TikTok valide (1 à 32 lettres, chiffres, points ou tirets bas).');
+                return;
+            }
+            if (!location.host) {
+                setLiveConnectionStatus('Ouvre le jeu via Griffon Arcade pour connecter le live TikTok.');
+                return;
+            }
+
+            shouldReconnect = true;
+            clearTimeout(reconnectTimer);
+            if (liveSocket) {
+                const previousSocket = liveSocket;
+                liveSocket = null;
+                previousSocket.close();
+            }
+
+            const relayProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const socket = new WebSocket(`${relayProtocol}//${location.host}`);
+            liveSocket = socket;
+            setLiveConnectionStatus(`Connexion au live de @${username}…`);
+
+            socket.addEventListener('open', () => {
+                if (liveSocket !== socket) return;
+                socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                setLiveConnectionStatus(`Demande de connexion envoyée pour @${username}…`);
+            });
+            socket.addEventListener('message', event => {
+                if (liveSocket !== socket) return;
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    console.warn('Message reçu du live TikTok invalide :', error);
+                    return;
+                }
+
+                if (data.type === 'STATUS') {
+                    setLiveConnectionStatus(data.message || 'État de connexion TikTok inconnu.');
+                    return;
+                }
+                if (data.type !== 'gift' && data.type !== 'tiktok-gift') return;
+
+                const gift = data.gift || data;
+                const messageId = String(gift.messageId || '');
+                if (messageId && processedLiveGiftIds.has(messageId)) return;
+                if (messageId) {
+                    processedLiveGiftIds.add(messageId);
+                    if (processedLiveGiftIds.size > 5000) {
+                        processedLiveGiftIds.delete(processedLiveGiftIds.values().next().value);
+                    }
+                }
+
+                const reportedCoinCount = Number(gift.coinCount);
+                const coinValue = Number(gift.coinValue ?? gift.diamondCount ?? gift.diamonds);
+                const repeatCount = Math.max(1, Math.floor(Number(gift.repeatCount) || 1));
+                const coinAmount = Number.isSafeInteger(reportedCoinCount) && reportedCoinCount > 0
+                    ? reportedCoinCount
+                    : Math.floor(coinValue * repeatCount);
+                if (!Number.isSafeInteger(coinAmount) || coinAmount <= 0) {
+                    console.warn('Cadeau TikTok ignoré : nombre de pièces invalide.', gift);
+                    return;
+                }
+                processProgress(coinAmount);
+            });
+            socket.addEventListener('error', () => {
+                setLiveConnectionStatus('Connexion au serveur impossible. Vérifie que le jeu est ouvert sur Griffon Arcade.');
+            });
+            socket.addEventListener('close', () => {
+                if (liveSocket !== socket) return;
+                liveSocket = null;
+                if (!shouldReconnect) return;
+                setLiveConnectionStatus('Connexion interrompue, nouvelle tentative…');
+                reconnectTimer = setTimeout(connectTikTokLive, 3000);
+            });
+        }
+
+        document.getElementById('connectTikTokBtn').addEventListener('click', connectTikTokLive);
+        document.getElementById('disconnectTikTokBtn').addEventListener('click', () => {
+            shouldReconnect = false;
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+            if (liveSocket) {
+                const socket = liveSocket;
+                liveSocket = null;
+                socket.close();
+            }
+            setLiveConnectionStatus('Live déconnecté. Les cadeaux simulés restent disponibles.');
+        });
+
+        function processProgress(amount) {
+            if (!Number.isSafeInteger(amount) || amount <= 0) return false;
+            if (isExploded) {
+                if (!Number.isSafeInteger(totalProgressCount + pendingProgressCount + amount)) {
+                    console.warn('Progression ignorée : le total dépasse la limite autorisée.');
+                    return false;
+                }
+                pendingProgressCount += amount;
+                updateUI();
+                return true;
+            }
+            if (!Number.isSafeInteger(totalProgressCount + amount)) {
+                console.warn('Progression ignorée : le total dépasse la limite autorisée.');
+                return false;
+            }
+
+            totalProgressCount += amount;
+            visualGiftCount = Math.min(maxVisualGifts, visualGiftCount + 1);
+            strikeCrack();
+            updateUI();
+            chestRotationTarget.y += (Math.random() - 0.5) * 0.6;
+            chestRotationTarget.x += (Math.random() - 0.5) * 0.25;
+
+            const nextReward = getNextReward();
+            if (nextReward && totalProgressCount >= nextReward.coinThreshold) {
+                triggerExplosion(nextReward);
+            }
+            return true;
+        }
+
+        window.addEventListener('arcade:wallet-run', event => {
+            const detail = event.detail || {};
+            const player = detail.player || {};
+            const username = String(player.username || player.uniqueId || player.nickname || '').trim().replace(/^@+/, '');
+            const spent = Number(detail.spent);
+            if (!username || !Number.isSafeInteger(spent) || spent < 1) {
+                console.warn('Commande RUN ignorée : identité TikTok ou montant invalide.', detail);
+                return;
+            }
+            if (!processProgress(spent)) return;
+            const message = `@${username} a joué ${formatTikTokNumber(spent)} étoiles RUN : ${formatTikTokNumber(spent)} unités de progression.`;
+            document.getElementById('giftStatus').textContent = message;
+            setLiveConnectionStatus(message);
+        });
+
+        window.addEventListener('arcade:wallet-run-rejected', event => {
+            const message = String(event.detail && event.detail.message || 'RUN refusé : solde d’étoiles insuffisant.');
+            document.getElementById('giftStatus').textContent = message;
+            setLiveConnectionStatus(message);
+        });
+
+        // Simulation des cadeaux et progression des coffres
+        document.getElementById('giftBtn').addEventListener('click', () => {
+            const giftCoinInput = document.getElementById('giftCoinInput');
+            const coinAmount = giftCoinInput.valueAsNumber;
+            if (!giftCoinInput.checkValidity() || !Number.isSafeInteger(coinAmount) || coinAmount <= 0) {
+                giftCoinInput.reportValidity();
+                return;
+            }
+            processProgress(coinAmount);
+            if (window.ArcadeEffects) {
+                ArcadeEffects.simulateBigGift('Simulation', coinAmount);
+            }
+        });
+        document.getElementById('shareSimBtn').addEventListener('click', () => {
+            if (window.ArcadeEffects) {
+                ArcadeEffects.simulateShare();
+            } else {
+                setLiveConnectionStatus('Le simulateur de partage est disponible sur le serveur Griffon Arcade.');
+            }
+        });
+
+        function triggerExplosion(reward) {
+            if (!reward || isExploded) return;
+            activeReward = reward;
+            isExploded = true;
+            document.getElementById('giftBtn').disabled = true;
+            document.getElementById('giftBtn').classList.add('opacity-50', 'cursor-not-allowed');
+
+            const orderedRewards = getOrderedRewards();
+            const stage = orderedRewards.findIndex(item => item.id === reward.id) + 1;
+            const hasNextReward = orderedRewards.some(item => item.id !== reward.id && !awardedRewardIds.has(item.id));
+            document.getElementById('messageTitle').textContent = `Coffre ${stage} ouvert !`;
+            document.getElementById('explodedRewardText').textContent = `Récompense obtenue : ${formatTikTokNumber(reward.stars)} étoiles !`;
+            document.getElementById('modal-close-btn').textContent = hasNextReward ? 'Coffre suivant' : 'Recommencer la série';
+            updateUI();
+
+            clearTimeout(rewardRevealTimer);
+            clearTimeout(rewardAdvanceTimer);
+            rewardRevealTimer = setTimeout(() => {
+                document.getElementById('message-modal').classList.remove('opacity-0', 'pointer-events-none');
+                rewardAdvanceTimer = setTimeout(advanceChest, 4000);
+            }, 800);
+        }
+
+        document.getElementById('resetBtn').addEventListener('click', resetGame);
+        document.getElementById('modal-close-btn').addEventListener('click', advanceChest);
+
+        function resetChestVisuals() {
+            visualGiftCount = 0;
+            isExploded = false;
+            clearCracks();
+            chestRotationTarget = { x: 0.35, y: 0.65 };
+            if (lidMesh) lidMesh.rotation.x = 0;
+            if (chestGroup) chestGroup.position.y = 0;
+            document.getElementById('giftBtn').disabled = false;
+            document.getElementById('giftBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('message-modal').classList.add('opacity-0', 'pointer-events-none');
+            updateUI();
+        }
+
+        function advanceChest() {
+            clearTimeout(rewardRevealTimer);
+            clearTimeout(rewardAdvanceTimer);
+            rewardRevealTimer = null;
+            rewardAdvanceTimer = null;
+
+            if (!activeReward) {
+                resetGame();
+                return;
+            }
+
+            awardedRewardIds.add(activeReward.id);
+            activeReward = null;
+            const nextReward = getNextReward();
+
+            if (!nextReward) {
+                const progressForNextSeries = pendingProgressCount;
+                pendingProgressCount = 0;
+                resetGame();
+                totalProgressCount = progressForNextSeries;
+                updateUI();
+                const firstReward = getNextReward();
+                if (firstReward && totalProgressCount >= firstReward.coinThreshold) {
+                    triggerExplosion(firstReward);
+                }
+                return;
+            }
+
+            totalProgressCount += pendingProgressCount;
+            pendingProgressCount = 0;
+            resetChestVisuals();
+            if (totalProgressCount >= nextReward.coinThreshold) {
+                triggerExplosion(nextReward);
+            }
+        }
+
+        function resetGame() {
+            clearTimeout(rewardRevealTimer);
+            clearTimeout(rewardAdvanceTimer);
+            rewardRevealTimer = null;
+            rewardAdvanceTimer = null;
+            totalProgressCount = 0;
+            pendingProgressCount = 0;
+            awardedRewardIds.clear();
+            activeReward = null;
+            resetChestVisuals();
+        }
+
+        function updateUI() {
+            const orderedRewards = getOrderedRewards();
+            const targetReward = activeReward || getNextReward();
+            const stageLabel = document.getElementById('chestStageLabel');
+            const giftCounter = document.getElementById('giftCounter');
+            const giftStatus = document.getElementById('giftStatus');
+            const giftBtn = document.getElementById('giftBtn');
+
+            if (!targetReward) {
+                stageLabel.textContent = 'Série terminée';
+                giftCounter.textContent = `${formatTikTokNumber(totalProgressCount)} unités`;
+                giftStatus.textContent = 'Toutes les récompenses ont été attribuées.';
+                giftBtn.disabled = true;
+                document.getElementById('progressBar').style.width = '100%';
+                return;
+            }
+
+            const stage = orderedRewards.findIndex(reward => reward.id === targetReward.id) + 1;
+            stageLabel.textContent = `Coffre ${stage} / ${orderedRewards.length}`;
+            giftCounter.textContent = `${formatTikTokNumber(totalProgressCount)} / ${formatTikTokNumber(targetReward.coinThreshold)} unités`;
+            giftStatus.textContent = activeReward
+                ? `Coffre ouvert : ${formatTikTokNumber(activeReward.stars)} étoiles à attribuer.${pendingProgressCount ? ` ${formatTikTokNumber(pendingProgressCount)} unités en attente pour la suite.` : ''}`
+                : 'Pièces TikTok et étoiles RUN s’ajoutent au seuil (1 unité chacune).';
+            giftBtn.disabled = isExploded;
+            const percentage = Math.min((totalProgressCount / targetReward.coinThreshold) * 100, 100);
+            document.getElementById('progressBar').style.width = `${percentage}%`;
+        }
+
+        window.onload = function() {
+            init3D();
+            sparkSystem = new SparkSystem();
+            renderRewardsList();
+            updateUI();
+            animate();
+        };
+    </script>
+</body>
+</html>
