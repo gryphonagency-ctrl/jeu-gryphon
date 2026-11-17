@@ -73,29 +73,143 @@
       pointer-events: none;
     }
 
-    /* Cartes Pokémon totalement transparentes et sans aucun arrière-plan */
+    /* Cartes Pokémon : fond transparent. Seul le personnage bouge, jamais son pseudo. */
     .poke-card {
-      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.45s ease, filter 0.3s ease;
       position: relative;
+      transition: opacity 0.35s ease;
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
     }
 
-    .poke-card:hover:not(.captured) {
-      transform: translateY(-6px) scale(1.08);
+    .poke-sprite {
+      width: 100%;
+      height: 100%;
+      transition: transform 0.3s ease, filter 0.3s ease;
     }
 
-    .poke-card.targeted {
-      transform: scale(1.14);
-      filter: drop-shadow(0 0 22px rgba(250, 204, 21, 0.9));
+    .poke-sway,
+    .poke-breath {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      transform-origin: 50% 92%; /* les pieds restent posés : aucun saut */
+      will-change: transform;
     }
 
-    /* Disparition complète et nette du Pokémon une fois capturé */
+    /* Respiration : la poitrine monte, le corps s'étire très légèrement */
+    @keyframes pokeBreath {
+      0%, 100% { transform: scale(1, 1); }
+      42% { transform: scale(calc(1 - var(--sx)), calc(1 + var(--sy))); }
+      62% { transform: scale(calc(1 - var(--sx) * 0.8), calc(1 + var(--sy) * 0.9)); }
+    }
+
+    /* Balancement lent du corps, pieds au sol */
+    @keyframes pokeSway {
+      0%, 100% { transform: translateX(calc(var(--sway) * -1)) rotate(calc(var(--rot) * -1)); }
+      50% { transform: translateX(var(--sway)) rotate(var(--rot)); }
+    }
+
+    /* Pokémon volants / flottants : lévitation douce */
+    @keyframes pokeFloat {
+      0%, 100% { transform: translateY(0) rotate(calc(var(--rot) * -1)); }
+      50% { transform: translateY(-5px) rotate(var(--rot)); }
+    }
+
+    .poke-breath {
+      animation: pokeBreath var(--breath-dur, 4s) ease-in-out var(--breath-delay, 0s) infinite;
+    }
+
+    .poke-sway {
+      animation: pokeSway var(--sway-dur, 6.5s) ease-in-out var(--sway-delay, 0s) infinite;
+    }
+
+    .poke-sway.floating {
+      animation-name: pokeFloat;
+    }
+
+    /* Pokémon ciblé : lueur dorée sur le personnage uniquement (le pseudo ne bouge pas) */
+    .poke-card.targeted .poke-sprite {
+      transform: scale(1.1);
+      filter: drop-shadow(0 0 20px rgba(250, 204, 21, 0.9));
+    }
+
+    /* Pendant l'aspiration : le personnage est animé dans la Pokéball, son pseudo s'efface sur place */
+    .poke-card.absorbing .poke-sprite {
+      visibility: hidden;
+    }
+
+    .poke-card.absorbing .poke-name,
+    .poke-card.captured .poke-name {
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+
     .poke-card.captured {
       opacity: 0;
-      transform: scale(0.15) rotate(15deg);
       pointer-events: none;
+    }
+
+    /* Le nouveau Pokémon se matérialise à la place de celui qui a été capturé */
+    @keyframes pokeMaterialize {
+      0% { opacity: 0; transform: scale(0.55); filter: brightness(5) saturate(0) blur(2px); }
+      45% { opacity: 1; transform: scale(1.05); filter: brightness(2.4) saturate(0.4) blur(0); }
+      100% { opacity: 1; transform: scale(1); filter: none; }
+    }
+
+    @keyframes pokeNameIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .poke-card.spawn .poke-sprite {
+      animation: pokeMaterialize 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .poke-card.spawn .poke-name {
+      animation: pokeNameIn 0.6s ease 0.25s both;
+    }
+
+    /* ===== Pokéball réaliste (base + couvercle + bouton) ===== */
+    .pb {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-origin: 50% 88%;
+      filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.55));
+    }
+
+    .pb > * {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .pb-lid {
+      transform-origin: 90% 50%;
+    }
+
+    .pb-glow {
+      opacity: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ffffff 0%, rgba(255, 236, 214, 0.95) 24%, rgba(255, 70, 50, 0.8) 52%, rgba(255, 40, 20, 0) 74%);
+      transform: scale(0.2);
+    }
+
+    .pb-btn-core {
+      transition: fill 0.12s;
+    }
+
+    .pb.hot .pb-btn {
+      filter: drop-shadow(0 0 4px #ff2d1a) drop-shadow(0 0 9px #ff2d1a);
+    }
+
+    .pb.hot .pb-btn-core {
+      fill: #ff3b2e;
     }
 
     .poke-name-shadow {
@@ -838,23 +952,108 @@
       } catch(e) {}
     }
 
+    let ballUid = 0;
+
+    /**
+     * Pokéball réaliste : base blanche ombrée, couvercle brillant avec reflets,
+     * bande noire et bouton métallique. Le couvercle est un calque séparé pour pouvoir s'ouvrir.
+     */
     function createBallSVG(type) {
-      const colors = {
-        pokeball: { top: '#ef4444', stripe: '#ef4444' },
-        greatball: { top: '#3b82f6', stripe: '#ef4444' },
-        ultraball: { top: '#1e293b', stripe: '#facc15' },
-        masterball: { top: '#9333ea', stripe: '#ec4899' }
+      const uid = ++ballUid;
+      const g = name => `pb${uid}-${name}`;
+      const palettes = {
+        pokeball: ['#ff8a80', '#e53935', '#b71c1c', '#5e0000'],
+        greatball: ['#9fd0ff', '#2f7de0', '#1546a3', '#082457'],
+        ultraball: ['#9a9aa2', '#3d3d43', '#1b1b1e', '#040405'],
+        masterball: ['#ecc7f2', '#a443cc', '#6a1b9a', '#2c0446']
       };
-      const c = colors[type] || colors.pokeball;
-      return `
-        <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-[0_6px_12px_rgba(0,0,0,0.8)]">
-          <circle cx="50" cy="50" r="46" fill="#ffffff" stroke="#0f172a" stroke-width="6"/>
-          <path d="M 4 50 A 46 46 0 0 1 96 50 Z" fill="${c.top}" stroke="#0f172a" stroke-width="6"/>
-          <rect x="4" y="45" width="92" height="10" fill="#0f172a"/>
-          <circle cx="50" cy="50" r="15" fill="#ffffff" stroke="#0f172a" stroke-width="6"/>
-          <circle cx="50" cy="50" r="7" fill="${c.stripe}"/>
+      const p = palettes[type] || palettes.pokeball;
+      const lidPath = 'M4 50 A46 46 0 0 1 96 50 Z';
+      const basePath = 'M4 50 A46 46 0 0 0 96 50 Z';
+
+      let deco = '';
+      if (type === 'greatball') {
+        deco = `<g clip-path="url(#${g('clipLid')})">
+          <path d="M6 47 Q14 30 28 17 L39 26 Q27 34 21 48 Z" fill="url(#${g('red')})"/>
+          <path d="M94 47 Q86 30 72 17 L61 26 Q73 34 79 48 Z" fill="url(#${g('red')})"/>
+        </g>`;
+      } else if (type === 'ultraball') {
+        deco = `<g clip-path="url(#${g('clipLid')})">
+          <path d="M14 47 L33 13 L43 18 L26 48 Z" fill="url(#${g('yel')})"/>
+          <path d="M86 47 L67 13 L57 18 L74 48 Z" fill="url(#${g('yel')})"/>
+        </g>`;
+      } else if (type === 'masterball') {
+        deco = `<g clip-path="url(#${g('clipLid')})">
+          <circle cx="21" cy="33" r="10" fill="url(#${g('pink')})"/>
+          <circle cx="79" cy="33" r="10" fill="url(#${g('pink')})"/>
+        </g>
+        <text x="50" y="35" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="22" fill="#f3e5f5" stroke="#4a148c" stroke-width="1.2" paint-order="stroke">M</text>`;
+      }
+
+      const defs = `<defs>
+        <radialGradient id="${g('top')}" gradientUnits="userSpaceOnUse" cx="36" cy="26" r="64">
+          <stop offset="0" stop-color="${p[0]}"/><stop offset="0.3" stop-color="${p[1]}"/>
+          <stop offset="0.68" stop-color="${p[2]}"/><stop offset="1" stop-color="${p[3]}"/>
+        </radialGradient>
+        <radialGradient id="${g('bot')}" gradientUnits="userSpaceOnUse" cx="38" cy="44" r="66">
+          <stop offset="0" stop-color="#ffffff"/><stop offset="0.42" stop-color="#f2f4f6"/>
+          <stop offset="0.8" stop-color="#c5ccd3"/><stop offset="1" stop-color="#8d98a4"/>
+        </radialGradient>
+        <radialGradient id="${g('shade')}" gradientUnits="userSpaceOnUse" cx="38" cy="34" r="70">
+          <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+        </radialGradient>
+        <radialGradient id="${g('spec')}">
+          <stop offset="0" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="${g('band')}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4a4a50"/><stop offset="1" stop-color="#0b0b0d"/>
+        </linearGradient>
+        <linearGradient id="${g('ring')}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#c9d0d6"/><stop offset="1" stop-color="#7d8791"/>
+        </linearGradient>
+        <radialGradient id="${g('btn')}" cx="0.38" cy="0.34" r="0.8">
+          <stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#e3e8ec"/><stop offset="1" stop-color="#aeb7bf"/>
+        </radialGradient>
+        <linearGradient id="${g('red')}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ff7043"/><stop offset="1" stop-color="#c62828"/>
+        </linearGradient>
+        <linearGradient id="${g('yel')}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffe566"/><stop offset="1" stop-color="#d9a40f"/>
+        </linearGradient>
+        <radialGradient id="${g('pink')}" cx="0.4" cy="0.35" r="0.75">
+          <stop offset="0" stop-color="#ff9ec8"/><stop offset="1" stop-color="#b0145f"/>
+        </radialGradient>
+        <clipPath id="${g('clipLid')}"><path d="${lidPath}"/></clipPath>
+        <clipPath id="${g('clipBase')}"><path d="${basePath}"/></clipPath>
+      </defs>`;
+
+      return `<div class="pb">
+        <svg class="pb-base" viewBox="0 0 100 100" aria-hidden="true">
+          ${defs}
+          <path d="${basePath}" fill="url(#${g('bot')})"/>
+          <path d="${basePath}" fill="url(#${g('shade')})"/>
+          <ellipse cx="34" cy="73" rx="15" ry="6" fill="url(#${g('spec')})" opacity="0.45" transform="rotate(-25 34 73)"/>
+          <g clip-path="url(#${g('clipBase')})"><rect x="0" y="50" width="100" height="5.5" fill="url(#${g('band')})"/></g>
+          <path d="${basePath}" fill="none" stroke="#15171a" stroke-width="3.2" stroke-linejoin="round"/>
         </svg>
-      `;
+        <div class="pb-glow"></div>
+        <svg class="pb-lid" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="${lidPath}" fill="url(#${g('top')})"/>
+          ${deco}
+          <path d="${lidPath}" fill="url(#${g('shade')})"/>
+          <g clip-path="url(#${g('clipLid')})"><rect x="0" y="44.5" width="100" height="5.5" fill="url(#${g('band')})"/></g>
+          <ellipse cx="33" cy="24" rx="17" ry="9" fill="url(#${g('spec')})" transform="rotate(-32 33 24)"/>
+          <path d="M12 38 A40 40 0 0 1 38 13" fill="none" stroke="#fff" stroke-opacity="0.38" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="${lidPath}" fill="none" stroke="#15171a" stroke-width="3.2" stroke-linejoin="round"/>
+        </svg>
+        <svg class="pb-btn" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="16.5" fill="#15171a"/>
+          <circle cx="50" cy="50" r="13" fill="url(#${g('ring')})"/>
+          <circle cx="50" cy="50" r="9" fill="#2a2d31"/>
+          <circle class="pb-btn-core" cx="50" cy="50" r="7.4" fill="url(#${g('btn')})"/>
+          <ellipse cx="47.5" cy="47.5" rx="3" ry="2" fill="#fff" opacity="0.8"/>
+        </svg>
+      </div>`;
     }
 
     function showAlertBanner(title, subtitle) {
@@ -950,22 +1149,49 @@
       updateStats();
     }
 
-    function createPokemonCard(pokemon, index) {
+    // Pokémon qui lévitent : mouvement flottant doux au lieu d'un simple balancement
+    const FLOATING_IDS = new Set([12, 16, 18, 94, 123, 130, 131, 142, 144, 145, 146, 150, 151]);
+
+    // Paramètres d'animation propres à chaque Pokémon (rythme et amplitude différents, jamais synchronisés)
+    function pokeMotionStyle(id) {
+      const r = n => {
+        const x = Math.sin(id * 127.1 + n * 311.7) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      return [
+        `--breath-dur:${(3.4 + r(1) * 1.6).toFixed(2)}s`,
+        `--breath-delay:${(-r(2) * 5).toFixed(2)}s`,
+        `--sx:${(0.008 + r(3) * 0.008).toFixed(4)}`,
+        `--sy:${(0.022 + r(4) * 0.018).toFixed(4)}`,
+        `--sway-dur:${(5.5 + r(5) * 3.5).toFixed(2)}s`,
+        `--sway-delay:${(-r(6) * 8).toFixed(2)}s`,
+        `--rot:${(0.8 + r(7) * 1.0).toFixed(2)}deg`,
+        `--sway:${(1.2 + r(8) * 1.6).toFixed(2)}px`
+      ].join(';');
+    }
+
+    function createPokemonCard(pokemon, index, spawn = false) {
       const artworkUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokemon.id}.png`;
       const card = document.createElement('div');
       card.id = `poke-card-${index}`;
-      card.className = `poke-card p-1 flex flex-col items-center justify-center ${pokemon.capturedBy ? 'captured' : ''}`;
+      card.className = `poke-card p-1 flex flex-col items-center justify-center ${pokemon.capturedBy ? 'captured' : ''} ${spawn ? 'spawn' : ''}`;
       card.innerHTML = `
         <div class="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
-          <img
-            src="${artworkUrl}"
-            alt="${pokemon.name}"
-            loading="lazy"
-            class="w-full h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)] transition-transform duration-300"
-          />
+          <div class="poke-sprite" style="${pokeMotionStyle(pokemon.id)}">
+            <div class="poke-sway ${FLOATING_IDS.has(pokemon.id) ? 'floating' : ''}">
+              <div class="poke-breath">
+                <img
+                  src="${artworkUrl}"
+                  alt="${pokemon.name}"
+                  loading="lazy"
+                  class="w-full h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]"
+                />
+              </div>
+            </div>
+          </div>
         </div>
         <div class="w-full text-center mt-0.5">
-          <div class="text-xs sm:text-sm font-extrabold text-white tracking-tight poke-name-shadow truncate">${pokemon.name}</div>
+          <div class="poke-name text-xs sm:text-sm font-extrabold text-white tracking-tight poke-name-shadow truncate">${pokemon.name}</div>
         </div>
       `;
       return card;
@@ -977,7 +1203,11 @@
       const replacement = getNextPokemon();
       gameState[index] = replacement;
       const capturedCard = document.getElementById(`poke-card-${index}`);
-      if (capturedCard) capturedCard.replaceWith(createPokemonCard(replacement, index));
+      if (capturedCard) {
+        const newCard = createPokemonCard(replacement, index, true);
+        capturedCard.replaceWith(newCard);
+        setTimeout(() => newCard.classList.remove('spawn'), 1000);
+      }
       renderPokemonConfigTable();
       updateStats();
     }
@@ -1325,7 +1555,7 @@
     }
 
     /**
-     * Lancer de Poké Ball, capture et disparition immédiate du Pokémon
+     * Lancer de Poké Ball : le Pokémon est aspiré dans la balle, puis remplacé par un nouveau
      */
     function throwPokeBallAtTarget(job) {
       const availableIndices = gameState.map((p, idx) => (!p.capturedBy && !p.locked ? idx : -1)).filter(idx => idx !== -1);
@@ -1350,18 +1580,22 @@
         }
         targetCard.classList.add('targeted');
 
+        const spriteImg = targetCard.querySelector('.poke-breath img') || targetCard;
+        const spriteBox = spriteImg.getBoundingClientRect();
+        const ballSize = window.innerWidth >= 640 ? 56 : 48;
+
         const launcher = document.getElementById('launcher-origin');
         const startX = launcher ? launcher.getBoundingClientRect().left + launcher.offsetWidth / 2 : window.innerWidth / 2;
         const startY = launcher ? launcher.getBoundingClientRect().top + launcher.offsetHeight / 2 : window.innerHeight - 60;
 
-        const targetRect = targetCard.getBoundingClientRect();
-        const endX = targetRect.left + targetRect.width / 2;
-        const endY = targetRect.top + targetRect.height / 2;
+        // La balle vient s'ouvrir juste au-dessus du Pokémon
+        const endX = spriteBox.left + spriteBox.width / 2;
+        const endY = spriteBox.top - ballSize * 0.1;
 
         const layer = document.getElementById('animation-layer');
         const ballEl = document.createElement('div');
-        ballEl.className = 'fixed w-10 h-10 sm:w-12 sm:h-12 pointer-events-none z-50';
-        ballEl.style.left = `${startX}px`; ballEl.style.top = `${startY}px`; ballEl.style.transform = 'translate(-50%, -50%)';
+        ballEl.className = 'fixed pointer-events-none z-50';
+        ballEl.style.cssText = `left:${startX}px;top:${startY}px;width:${ballSize}px;height:${ballSize}px;transform:translate(-50%, -50%)`;
         ballEl.innerHTML = createBallSVG(job.ballType);
         layer.appendChild(ballEl);
         playSound('throw');
@@ -1369,48 +1603,202 @@
         const midX = (startX + endX) / 2 + (Math.random() * 50 - 25);
         const midY = Math.min(startY, endY) - 75;
         const travelDuration = Math.max(180, 500 / captureSpeed);
-        const shakeDuration = Math.max(180, 650 / captureSpeed);
 
-        ballEl.animate([
+        const flight = ballEl.animate([
           { left: `${startX}px`, top: `${startY}px`, transform: 'translate(-50%, -50%) scale(0.7) rotate(0deg)' },
           { left: `${midX}px`, top: `${midY}px`, transform: 'translate(-50%, -50%) scale(1.2) rotate(360deg)', offset: 0.5 },
           { left: `${endX}px`, top: `${endY}px`, transform: 'translate(-50%, -50%) scale(1.1) rotate(720deg)' }
-        ], { duration: travelDuration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' }).onfinish = () => {
-          ballEl.classList.add('ball-shaking');
-          ballEl.style.animationDuration = `${Math.max(180, 600 / captureSpeed)}ms`;
-          setTimeout(async () => {
-            try {
-              ballEl.remove();
-              targetCard.classList.remove('targeted');
-              targetPokemon.capturedBy = job.username;
-              targetPokemon.locked = false;
+        ], { duration: travelDuration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
 
-              playSound('capture');
-              spawnCaptureStars(endX, endY);
-              const rewardAmount = getCaptureRewardAmount(job, targetPokemon);
-              showFloatingCaptureTag(endX, endY, job.username, rewardAmount);
-              targetCard.classList.add('captured');
-              updateCaptureLeaderboard(job.username);
-              updateStats();
-              setTimeout(() => replaceCapturedPokemon(targetIndex, targetPokemon), 450);
+        flight.onfinish = async () => {
+          try {
+            ballEl.style.left = `${endX}px`;
+            ballEl.style.top = `${endY}px`;
+            ballEl.style.transform = 'translate(-50%, -50%) scale(1.1)';
+            flight.cancel();
 
-              const reward = await awardCaptureReward(job, rewardAmount);
-              addCaptureToFeed(job.username, targetPokemon, job.giftName, job.avatarUrl, reward, job.simulation, rewardAmount);
-              showCaptureAwardBanner(job, targetPokemon, reward, rewardAmount);
-              if (!job.simulation && !reward.credited && !reward.skipped) {
-                document.getElementById('tiktok-connection-status').textContent =
-                  `Capture de @${job.username} non créditée : ${reward.error || 'erreur inconnue'}`;
-              }
-            } catch (error) {
-              console.error('Erreur pendant la validation d’une capture.', error);
+            // Ouverture, aspiration du Pokémon dans la balle, fermeture, chute et secousses
+            const landing = await playCaptureSequence(ballEl, targetCard, spriteImg, endX, endY, ballSize);
+
+            targetPokemon.capturedBy = job.username;
+            targetPokemon.locked = false;
+
+            const rewardAmount = getCaptureRewardAmount(job, targetPokemon);
+            showFloatingCaptureTag(landing.x, landing.y - 30, job.username, rewardAmount);
+            targetCard.classList.add('captured');
+            updateCaptureLeaderboard(job.username);
+            updateStats();
+            setTimeout(() => replaceCapturedPokemon(targetIndex, targetPokemon), 250);
+
+            const reward = await awardCaptureReward(job, rewardAmount);
+            addCaptureToFeed(job.username, targetPokemon, job.giftName, job.avatarUrl, reward, job.simulation, rewardAmount);
+            showCaptureAwardBanner(job, targetPokemon, reward, rewardAmount);
+            if (!job.simulation && !reward.credited && !reward.skipped) {
               document.getElementById('tiktok-connection-status').textContent =
-                'Une erreur a empêché de finaliser la capture. Consulte la console pour le détail.';
-            } finally {
-              resolve();
+                `Capture de @${job.username} non créditée : ${reward.error || 'erreur inconnue'}`;
             }
-          }, shakeDuration);
+          } catch (error) {
+            console.error('Erreur pendant la validation d’une capture.', error);
+            ballEl.remove();
+            targetCard.classList.remove('targeted');
+            if (!targetPokemon.capturedBy) {
+              targetCard.classList.remove('absorbing');
+              targetPokemon.locked = false;
+            }
+            document.getElementById('tiktok-connection-status').textContent =
+              'Une erreur a empêché de finaliser la capture. Consulte la console pour le détail.';
+          } finally {
+            resolve();
+          }
         };
       });
+    }
+
+    /**
+     * Séquence de capture réaliste :
+     * 1. la Pokéball s'ouvre et projette un faisceau rouge sur le Pokémon,
+     * 2. le Pokémon se change en lumière rouge et est aspiré dans la balle,
+     * 3. la balle se referme, tombe, rebondit et se secoue 3 fois,
+     * 4. le bouton s'éteint avec un « clic » et des étoiles.
+     * Retourne la position finale de la balle.
+     */
+    async function playCaptureSequence(ballEl, card, img, bx, by, ballSize) {
+      const layer = document.getElementById('animation-layer');
+      const pb = ballEl.querySelector('.pb');
+      const lid = pb.querySelector('.pb-lid');
+      const glow = pb.querySelector('.pb-glow');
+      const T = ms => Math.max(40, ms / captureSpeed);
+      const wait = ms => new Promise(r => setTimeout(r, T(ms)));
+      const go = (el, keyframes, opts) => {
+        const a = el.animate(keyframes, { fill: 'forwards', ...opts });
+        return a.finished.catch(() => {});
+      };
+
+      const box = img.getBoundingClientRect();
+      const sx = box.left + box.width / 2;
+      const sy = box.top + box.height / 2;
+      const dx = bx - sx;
+      const dy = by - sy;
+      const dist = Math.max(20, Math.hypot(dx, dy));
+      const ang = Math.atan2(sy - by, sx - bx) * 180 / Math.PI;
+
+      card.classList.remove('targeted');
+      pb.classList.add('hot');
+
+      // 1. Ouverture du couvercle + lueur
+      const opening = Promise.all([
+        go(lid, [
+          { transform: 'rotate(0deg)' },
+          { transform: 'rotate(70deg)', offset: 0.6 },
+          { transform: 'rotate(60deg)' }
+        ], { duration: T(220), easing: 'ease-out' }),
+        go(glow, [
+          { opacity: 0, transform: 'scale(0.2)' },
+          { opacity: 1, transform: 'scale(1.5)', offset: 0.5 },
+          { opacity: 0.85, transform: 'scale(1.1)' }
+        ], { duration: T(240), easing: 'ease-out' })
+      ]);
+
+      // Faisceau rouge de la balle vers le Pokémon
+      const beamH = box.width * 0.9;
+      const beam = document.createElement('div');
+      beam.style.cssText = `position:fixed;left:${bx}px;top:${by}px;width:${dist}px;height:${beamH}px;margin-top:${-beamH / 2}px;` +
+        `transform-origin:0 50%;transform:rotate(${ang}deg);` +
+        'background:linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,90,70,0.75) 45%, rgba(255,40,30,0.15));' +
+        'clip-path:polygon(0 42%, 100% 0, 100% 100%, 0 58%);filter:blur(2px);opacity:0;pointer-events:none;z-index:49;mix-blend-mode:screen';
+      layer.appendChild(beam);
+
+      // Copie du Pokémon qui sera aspirée (l'original est masqué, son pseudo s'efface sur place)
+      const clone = document.createElement('img');
+      clone.src = img.currentSrc || img.src;
+      clone.alt = '';
+      clone.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;` +
+        'object-fit:contain;pointer-events:none;z-index:48;transform-origin:50% 50%';
+      layer.appendChild(clone);
+      card.classList.add('absorbing');
+
+      await opening;
+      go(beam, [{ opacity: 0 }, { opacity: 1 }], { duration: T(120) });
+
+      // 2. Le Pokémon devient lumière rouge et entre dans la balle
+      const hot = (b, s, sa, h) => `brightness(${b}) sepia(${s}) saturate(${sa}) hue-rotate(${h}deg)`;
+      go(pb, [{ transform: 'scale(1)' }, { transform: 'scale(1.12)', offset: 0.5 }, { transform: 'scale(1)' }],
+        { duration: T(560), fill: 'none' });
+      await go(clone, [
+        { transform: 'translate(0px, 0px) scale(1, 1) rotate(0deg)', filter: hot(1, 0, 1, 0), opacity: 1 },
+        { transform: `translate(${dx * 0.08}px, ${dy * 0.08}px) scale(0.92, 1.06) rotate(-4deg)`, filter: hot(2.6, 0, 0.3, 0), opacity: 1, offset: 0.25 },
+        { transform: `translate(${dx * 0.45}px, ${dy * 0.45}px) scale(0.55, 0.75) rotate(-14deg)`, filter: hot(1.1, 1, 10, -50), opacity: 1, offset: 0.65 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.04, 0.06) rotate(-30deg)`, filter: hot(1.3, 1, 10, -50), opacity: 0.9 }
+      ], { duration: T(560), easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)' });
+      clone.remove();
+
+      // 3. Fermeture de la balle
+      go(beam, [{ opacity: 1 }, { opacity: 0 }], { duration: T(160) }).then(() => beam.remove());
+      await Promise.all([
+        go(lid, [
+          { transform: 'rotate(60deg)' },
+          { transform: 'rotate(-4deg)', offset: 0.7 },
+          { transform: 'rotate(0deg)' }
+        ], { duration: T(170), easing: 'ease-in' }),
+        go(glow, [{ opacity: 0.85, transform: 'scale(1.1)' }, { opacity: 0, transform: 'scale(0.3)' }], { duration: T(200) })
+      ]);
+
+      // Chute au sol avec rebonds + ombre
+      const ground = box.bottom - ballSize * 0.3;
+      const shadow = document.createElement('div');
+      shadow.style.cssText = `position:fixed;left:${bx}px;top:${ground + ballSize * 0.4}px;width:${ballSize * 0.8}px;height:${ballSize * 0.2}px;` +
+        'margin-left:' + (-ballSize * 0.4) + 'px;border-radius:50%;background:radial-gradient(ellipse, rgba(0,0,0,0.55), rgba(0,0,0,0));' +
+        'pointer-events:none;z-index:47;opacity:0';
+      layer.appendChild(shadow);
+      go(shadow, [{ opacity: 0 }, { opacity: 0.4, offset: 0.55 }, { opacity: 1 }], { duration: T(520) });
+      go(pb, [
+        { transform: 'scale(1, 1)' },
+        { transform: 'scale(1, 1.04)', offset: 0.58 },
+        { transform: 'scale(1.12, 0.88)', offset: 0.6 },
+        { transform: 'scale(1, 1)', offset: 0.68 },
+        { transform: 'scale(1, 1)', offset: 0.88 },
+        { transform: 'scale(1.06, 0.94)', offset: 0.9 },
+        { transform: 'scale(1, 1)', offset: 0.95 },
+        { transform: 'scale(1, 1)' }
+      ], { duration: T(520), fill: 'none' });
+      await go(ballEl, [
+        { top: `${by}px`, easing: 'cubic-bezier(0.5, 0, 0.9, 0.5)' },
+        { top: `${ground}px`, offset: 0.6, easing: 'ease-out' },
+        { top: `${ground - 14}px`, offset: 0.78, easing: 'ease-in' },
+        { top: `${ground}px`, offset: 0.9, easing: 'ease-out' },
+        { top: `${ground - 4}px`, offset: 0.96, easing: 'ease-in' },
+        { top: `${ground}px` }
+      ], { duration: T(520) });
+
+      // 4. Trois secousses, le bouton clignote en rouge
+      for (let k = 0; k < 3; k++) {
+        await wait(130);
+        await go(pb, [
+          { transform: 'rotate(0deg) translateX(0px)' },
+          { transform: 'rotate(-26deg) translateX(-3px)', offset: 0.35 },
+          { transform: 'rotate(24deg) translateX(3px)', offset: 0.7 },
+          { transform: 'rotate(0deg) translateX(0px)' }
+        ], { duration: T(300), easing: 'ease-in-out', fill: 'none' });
+      }
+      await wait(150);
+
+      // « Clic » : le bouton s'éteint, anneau de lumière et étoiles
+      pb.classList.remove('hot');
+      playSound('capture');
+      spawnCaptureStars(bx, ground);
+      const ring = document.createElement('div');
+      ring.style.cssText = `position:fixed;left:${bx}px;top:${ground}px;width:${ballSize}px;height:${ballSize}px;margin:${-ballSize / 2}px 0 0 ${-ballSize / 2}px;` +
+        'border-radius:50%;border:3px solid rgba(255,255,255,0.9);box-shadow:0 0 16px rgba(255,255,255,0.8);pointer-events:none;z-index:47';
+      layer.appendChild(ring);
+      go(ring, [{ transform: 'scale(0.6)', opacity: 1 }, { transform: 'scale(2.4)', opacity: 0 }], { duration: T(450), easing: 'ease-out' }).then(() => ring.remove());
+      await wait(280);
+      await Promise.all([
+        go(ballEl, [{ opacity: 1 }, { opacity: 0 }], { duration: T(260) }),
+        go(shadow, [{ opacity: 1 }, { opacity: 0 }], { duration: T(260) })
+      ]);
+      ballEl.remove();
+      shadow.remove();
+      return { x: bx, y: ground };
     }
 
     function addCaptureToFeed(username, pokemon, giftName, avatarUrl, reward, simulation, rewardAmount) {
