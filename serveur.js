@@ -286,6 +286,7 @@ store.grantGameAccessToExistingCreators('/bobo-pusher.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-2000.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
+store.grantGameAccessToExistingCreators('/jeu-foot-tiktok.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/noyau-des-abysses.html');
@@ -3384,6 +3385,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/pont-de-verre.svg', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/pont-de-verre.png', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.png'), 'image/png']],
         ['/images-vitrine/noyau-des-abysses.svg', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/noyau-des-abysses.png', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.png'), 'image/png']],
         ['/images-vitrine/mot-du-live.svg', [path.join(__dirname, 'images-vitrine', 'mot-du-live.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],

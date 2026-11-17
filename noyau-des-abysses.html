@@ -57,10 +57,18 @@
   .tool-btn, .primary-btn, .secondary-btn { border: 1px solid #4bc5d4; border-radius: 11px; background: #092840ee; color: #efffff; font-weight: 850; cursor: pointer; }
   .tool-btn { width: 42px; height: 42px; font-size: 19px; }
   .tool-btn:hover, .secondary-btn:hover { background: #124562; }
-  #panel { position: fixed; z-index: 10; top: 0; right: 0; bottom: 0; width: min(380px, 94vw); overflow: auto; padding: 18px; border-left: 1px solid #53dfe0; background: var(--panel); box-shadow: -20px 0 60px #0009; transform: translateX(105%); transition: transform .28s ease; }
-  body.panel-open #panel { transform: translateX(0); }
-  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 15px; }
+  #panel { display: none; position: fixed; z-index: 10; top: 64px; left: 12px; right: auto; bottom: auto; flex-direction: column; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 80px); max-height: min(620px, calc(100dvh - 80px)); overflow: hidden; padding: 14px; border: 1px solid #53dfe0; border-radius: 16px; background: var(--panel); box-shadow: 0 16px 48px #0009; }
+  body.panel-open #panel { display: flex; }
+  .panel-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 15px; padding-right: 28px; cursor: grab; touch-action: none; user-select: none; }
+  .panel-head.dragging { cursor: grabbing; }
+  .panel-head:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   .panel-head h2 { margin: 0; font-size: 19px; }
+  .panel-content { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 22px; }
+  .panel-resize-handle { position: absolute; z-index: 2; display: grid; width: 23px; height: 23px; place-items: center; padding: 0; border: 1px solid #53dfe0; border-radius: 6px; background: #092840ee; color: #b7f4f3; font-size: 14px; line-height: 1; cursor: nesw-resize; touch-action: none; }
+  .panel-resize-handle:hover { background: #124562; }
+  .panel-resize-handle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  #panel-resize-top-right { top: 2px; right: 2px; }
+  #panel-resize-bottom-left { bottom: 2px; left: 2px; }
   .panel-section { margin: 0 0 15px; padding: 12px; border: 1px solid #244e67; border-radius: 13px; background: #091d32; }
   .panel-section h3 { margin: 0 0 8px; color: #a7eff2; font-size: 13px; letter-spacing: .09em; text-transform: uppercase; }
   .panel-section p { margin: 6px 0; color: #b9d0df; font-size: 12px; line-height: 1.5; }
@@ -76,8 +84,6 @@
   .leader-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px solid #ffffff12; font-size: 12px; }
   .muted { color: #84aabe; }
   [hidden] { display: none !important; }
-  #backdrop { position: fixed; z-index: 8; inset: 0; display: none; background: #0007; }
-  body.panel-open #backdrop { display: block; }
   #board-toggle { position: fixed; z-index: 3; right: 12px; bottom: 12px; padding: 8px 11px; }
   body.board-hidden #milestones { display: none; }
   body.board-hidden #progress-wrap { display: none; }
@@ -151,10 +157,10 @@
   <button class="tool-btn" id="panel-show" type="button" title="Ouvrir les réglages" aria-label="Ouvrir les réglages">⚙</button>
 </div>
 <button id="board-toggle" class="secondary-btn" type="button">Masquer les paliers</button>
-<div id="backdrop"></div>
 <aside id="panel" aria-label="Panneau de contrôle" aria-hidden="true">
-  <div class="panel-head"><h2>Console d'expédition</h2><button class="tool-btn" id="panel-close" type="button" aria-label="Fermer les réglages">×</button></div>
+  <div class="panel-head" id="panel-drag-handle" tabindex="0" role="group" aria-label="Déplacer la console avec la souris, le toucher ou les flèches du clavier" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"><h2>Console d'expédition</h2><button class="tool-btn" id="panel-close" type="button" aria-label="Fermer les réglages">×</button></div>
 
+  <div class="panel-content" id="panel-content">
   <section class="panel-section">
     <h3>Connexion TikTok Live</h3>
     <div class="control-row"><input id="live-user" type="text" maxlength="32" autocomplete="off" placeholder="@pseudo TikTok"><button class="primary-btn" id="connect-live" type="button">Connecter</button></div>
@@ -198,6 +204,9 @@
     <h3>RUN · sonar bonus</h3>
     <p>Les étoiles dépensées avec RUN déclenchent un sonar visuel. Elles ne remplissent pas la jauge des cadeaux et ne modifient pas les récompenses.</p>
   </section>
+  </div>
+  <button class="panel-resize-handle" id="panel-resize-top-right" type="button" title="Tirer pour agrandir ou réduire" aria-label="Redimensionner la console depuis le coin supérieur droit" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">↗</button>
+  <button class="panel-resize-handle" id="panel-resize-bottom-left" type="button" title="Tirer pour agrandir ou réduire" aria-label="Redimensionner la console depuis le coin inférieur gauche" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">↙</button>
 </aside>
 
 <script>
@@ -220,9 +229,11 @@
   let liveSocket = null, awardBusy = false, announceTimer = 0, messageTimer = 0;
   let soundOn = true, soundContext = null, speed = 1, queueZoom = 1, queuePinned = true;
   let queueOffset = { x: 0, y: 0 }, dragPointer = null;
+  let panelOffset = { x: 12, y: 64 }, panelDragPointer = null, panelResizePointer = null;
   const simulation = { coins: 0, completed: [] };
   let sonarPulses = [], activity = [], bubbles = [], sparkles = [], clock = 0, bubbleTimer = 0;
   let lastFrameTime = 0, frameHandle = 0;
+  const chestState = { open: 0, openUntil: 0, burst: 0, pending: false, color: '#ffd86a', lastT: 0 };
 
   function makeRunId() {
     return typeof crypto.randomUUID === 'function'
@@ -365,6 +376,7 @@
       ? `APERÇU · ${username} · ⭐ ${milestone.stars.toLocaleString('fr-FR')} (simulation)`
       : `@${username} · ⭐ ${milestone.stars.toLocaleString('fr-FR')} confirmées`;
     $('announce').classList.add('show');
+    openChest(milestone);
     clearTimeout(announceTimer);
     announceTimer = setTimeout(() => $('announce').classList.remove('show'), 3200);
     const colorIndex = MILESTONES.indexOf(milestone);
@@ -405,12 +417,22 @@
     }
   }
 
+  function getChestPosition(coins = run.coins) {
+    const depthRatio = Math.min(1, Math.max(0, coins / MAX_COINS));
+    return { x: WIDTH * (.8 - depthRatio * .4), y: HEIGHT * (.78 - depthRatio * .3) };
+  }
+
+  function fireSonar(color, life = 54) {
+    const { x, y } = getChestPosition();
+    sonarPulses.push({ x, y, radius: 5, life, color });
+  }
+
   function receiveGift(username, coins, { simulated = false, runEvent = false } = {}) {
     username = String(username || 'Spectateur').replace(/^@/, '').trim().slice(0, 32) || 'Spectateur';
     coins = Math.floor(Number(coins));
     if (!Number.isSafeInteger(coins) || coins < 1) return;
     if (runEvent) {
-      sonarPulses.push({ x: WIDTH * .48, y: HEIGHT * .54, radius: 5, life: 50, color: '#bda2ff' });
+      fireSonar('#bda2ff', 50);
       notify(`Sonar activé par @${username} · il ne modifie pas les paliers ni les récompenses.`, 4000);
       return;
     }
@@ -422,7 +444,7 @@
       }
       simulation.coins += acceptedCoins;
       addActivity(`🧪 @${username} · ${acceptedCoins.toLocaleString('fr-FR')} pièces simulées`);
-      sonarPulses.push({ x: WIDTH * .48, y: HEIGHT * .56, radius: 5, life: 54, color: '#c29dff' });
+      fireSonar('#c29dff');
       const reached = MILESTONES.filter(milestone =>
         simulation.coins >= milestone.coins && !simulation.completed.includes(milestone.id));
       reached.forEach(milestone => {
@@ -445,7 +467,8 @@
     run.donors[username].coins += acceptedCoins;
     run.coins += acceptedCoins;
     addActivity(`🎁 @${username} · ${acceptedCoins.toLocaleString('fr-FR')} pièces`);
-    sonarPulses.push({ x: WIDTH * .48, y: HEIGHT * .56, radius: 5, life: 54, color: '#67fff0' });
+    fireSonar('#67fff0');
+    if (document.body.classList.contains('panel-open')) placePanelWithoutObscuringGame();
     const reached = MILESTONES.filter(milestone => run.coins >= milestone.coins && !run.completed.includes(milestone.id));
     reached.forEach(milestone => {
       run.completed.push(milestone.id);
@@ -533,11 +556,13 @@
     simulation.coins = 0;
     simulation.completed = [];
     activity = [];
+    if (document.body.classList.contains('panel-open')) placePanelWithoutObscuringGame();
     persistRun();
     renderProgress();
     addActivity('🫧 Nouvelle expédition · les quatre paliers sont affichés.');
     showAwardStatus(`Nouvelle expédition. Réserve maximale : ${MAX_STARS.toLocaleString('fr-FR')} étoiles.`);
     $('announce').classList.remove('show');
+    chestState.openUntil = 0;
   }
 
   function playTone(frequency, duration = .12, endFrequency = null) {
@@ -564,8 +589,192 @@
   function togglePanel(open) {
     const next = open === undefined ? !document.body.classList.contains('panel-open') : open;
     document.body.classList.toggle('panel-open', next);
+    if (!next) $('panel-show').focus();
     $('panel').setAttribute('aria-hidden', String(!next));
-    if (next) $('live-user').focus();
+    if (next) {
+      placePanelWithoutObscuringGame();
+      $('live-user').focus();
+    }
+  }
+  function clampPanelPosition() {
+    const panel = $('panel');
+    const maxX = Math.max(12, innerWidth - panel.offsetWidth - 12);
+    const maxY = Math.max(12, innerHeight - panel.offsetHeight - 12);
+    panelOffset.x = Math.min(maxX, Math.max(12, panelOffset.x));
+    panelOffset.y = Math.min(maxY, Math.max(12, panelOffset.y));
+    panel.style.left = `${panelOffset.x}px`;
+    panel.style.top = `${panelOffset.y}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+  function panelOverlapsGame(x, y, width, height, obstacles) {
+    return obstacles.some(obstacle => x < obstacle.right && x + width > obstacle.left
+      && y < obstacle.bottom && y + height > obstacle.top);
+  }
+  function placePanelWithoutObscuringGame() {
+    if (!document.body.classList.contains('panel-open')) return;
+    const panel = $('panel');
+    panel.style.maxHeight = `${Math.max(0, Math.min(620, innerHeight - 80))}px`;
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    const chest = getChestPosition();
+    const scaleX = innerWidth / WIDTH, scaleY = innerHeight / HEIGHT;
+    const depthRatio = run.coins / MAX_COINS;
+    const subX = WIDTH * .18 + (supportsMotion ? Math.sin(clock * .001 * speed) * 4 : 0);
+    const subY = HEIGHT * (.38 + depthRatio * .28) + (supportsMotion ? Math.sin(clock * .002 * speed) * 5 : 0);
+    const obstacles = [{
+      left: (subX - 130) * scaleX,
+      right: (subX + 110) * scaleX,
+      top: (subY - 100) * scaleY,
+      bottom: (subY + 50) * scaleY
+    }, {
+      left: (chest.x - 100) * scaleX,
+      right: (chest.x + 100) * scaleX,
+      top: (chest.y - 105) * scaleY,
+      bottom: (chest.y + 90) * scaleY
+    }];
+
+    if (!panelOverlapsGame(panelOffset.x, panelOffset.y, width, height, obstacles)) {
+      clampPanelPosition();
+      return;
+    }
+
+    const xCandidates = [
+      Math.max(12, (innerWidth - width) / 2),
+      12,
+      Math.max(12, innerWidth - width - 12)
+    ];
+    const safeX = xCandidates.find(x => obstacles.every(obstacle =>
+      x + width <= obstacle.left || x >= obstacle.right));
+    if (safeX !== undefined) {
+      panelOffset.x = safeX;
+      clampPanelPosition();
+      return;
+    }
+
+    const intervals = obstacles.map(obstacle => ({
+      top: Math.max(12, obstacle.top - 12),
+      bottom: Math.min(innerHeight - 12, obstacle.bottom + 12)
+    })).sort((a, b) => a.top - b.top);
+    const gaps = [];
+    let cursor = 12;
+    for (const interval of intervals) {
+      if (interval.top > cursor) gaps.push({ top: cursor, height: interval.top - cursor });
+      cursor = Math.max(cursor, interval.bottom);
+    }
+    if (innerHeight - 12 > cursor) gaps.push({ top: cursor, height: innerHeight - 12 - cursor });
+    const safeGap = gaps.sort((a, b) => b.height - a.height)[0] || { top: 12, height: 0 };
+    panel.style.maxHeight = `${safeGap.height}px`;
+    panelOffset.x = 12;
+    panelOffset.y = safeGap.top;
+    clampPanelPosition();
+  }
+  function initPanelDrag() {
+    const handle = $('panel-drag-handle');
+    const panel = $('panel');
+    handle.addEventListener('pointerdown', event => {
+      if (event.target.closest('button') || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      const rect = panel.getBoundingClientRect();
+      panelOffset = { x: rect.left, y: rect.top };
+      panelDragPointer = { id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      handle.setPointerCapture(event.pointerId);
+      handle.classList.add('dragging');
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!panelDragPointer || event.pointerId !== panelDragPointer.id) return;
+      panelOffset = { x: event.clientX - panelDragPointer.dx, y: event.clientY - panelDragPointer.dy };
+      clampPanelPosition();
+    });
+    const stopDragging = event => {
+      if (panelDragPointer?.id !== event.pointerId) return;
+      panelDragPointer = null;
+      handle.classList.remove('dragging');
+      placePanelWithoutObscuringGame();
+    };
+    handle.addEventListener('pointerup', stopDragging);
+    handle.addEventListener('pointercancel', stopDragging);
+    handle.addEventListener('keydown', event => {
+      if (event.target !== handle) return;
+      const step = event.shiftKey ? 40 : 16;
+      if (event.key === 'ArrowLeft') panelOffset.x -= step;
+      else if (event.key === 'ArrowRight') panelOffset.x += step;
+      else if (event.key === 'ArrowUp') panelOffset.y -= step;
+      else if (event.key === 'ArrowDown') panelOffset.y += step;
+      else return;
+      event.preventDefault();
+      clampPanelPosition();
+      placePanelWithoutObscuringGame();
+    });
+  }
+  function resizePanelFromCorner(corner, deltaX, deltaY, startRect) {
+    const panel = $('panel');
+    const maxWidth = Math.max(1, innerWidth - 24);
+    const minWidth = Math.min(240, maxWidth);
+    const configuredMaxHeight = Number.parseFloat(panel.style.maxHeight);
+    const maxHeight = Math.max(0, Math.min(innerHeight - 24,
+      Number.isFinite(configuredMaxHeight) ? configuredMaxHeight : innerHeight - 80));
+    const minHeight = Math.min(96, maxHeight);
+    const requestedWidth = corner === 'top-right'
+      ? startRect.width + deltaX
+      : startRect.width - deltaX;
+    const requestedHeight = corner === 'top-right'
+      ? startRect.height - deltaY
+      : startRect.height + deltaY;
+    const width = Math.min(maxWidth, Math.max(minWidth, requestedWidth));
+    const height = Math.min(maxHeight, Math.max(minHeight, requestedHeight));
+    panel.style.width = `${width}px`;
+    panel.style.height = `${height}px`;
+    panelOffset.x = corner === 'top-right' ? startRect.x : startRect.right - width;
+    panelOffset.y = corner === 'top-right' ? startRect.bottom - height : startRect.y;
+    clampPanelPosition();
+  }
+  function initPanelResize() {
+    [
+      { id: 'panel-resize-top-right', corner: 'top-right' },
+      { id: 'panel-resize-bottom-left', corner: 'bottom-left' }
+    ].forEach(({ id, corner }) => {
+      const handle = $(id);
+      handle.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        const rect = $('panel').getBoundingClientRect();
+        panelResizePointer = {
+          id: event.pointerId,
+          handle,
+          corner,
+          startX: event.clientX,
+          startY: event.clientY,
+          startRect: rect
+        };
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add('resizing');
+      });
+      handle.addEventListener('pointermove', event => {
+        const drag = panelResizePointer;
+        if (!drag || drag.handle !== handle || event.pointerId !== drag.id) return;
+        resizePanelFromCorner(corner, event.clientX - drag.startX, event.clientY - drag.startY, drag.startRect);
+      });
+      const stopResizing = event => {
+        if (panelResizePointer?.handle !== handle || panelResizePointer.id !== event.pointerId) return;
+        panelResizePointer = null;
+        handle.classList.remove('resizing');
+        placePanelWithoutObscuringGame();
+      };
+      handle.addEventListener('pointerup', stopResizing);
+      handle.addEventListener('pointercancel', stopResizing);
+      handle.addEventListener('keydown', event => {
+        const step = event.shiftKey ? 40 : 16;
+        let deltaX = 0, deltaY = 0;
+        if (event.key === 'ArrowLeft') deltaX = -step;
+        else if (event.key === 'ArrowRight') deltaX = step;
+        else if (event.key === 'ArrowUp') deltaY = -step;
+        else if (event.key === 'ArrowDown') deltaY = step;
+        else return;
+        event.preventDefault();
+        resizePanelFromCorner(corner, deltaX, deltaY, $('panel').getBoundingClientRect());
+        placePanelWithoutObscuringGame();
+      });
+    });
   }
   function toggleQueue(visible) {
     const show = visible === undefined ? $('gift-log').hidden : visible;
@@ -764,200 +973,265 @@
     ctx.fill();
     ctx.restore();
   }
-  function drawSubmarine(x, y, time) {
-    const bob = supportsMotion ? Math.sin(time * .0015 * speed) * 3 : 0;
-    ctx.save();
-    ctx.translate(x, y + bob);
+  // ============================================================
+  //  Sous-marin d'attaque réaliste : coque noire à tuiles anéchoïques,
+  //  kiosque avec barres de plongée et mâts, gouvernes en croix,
+  //  propulseur caréné à 7 pales, phare, bulles et vibrations.
+  // ============================================================
+  let subSprite = null, subPitch = 0, lastSubY = null, ventTimer = 0;
 
-    const beam = ctx.createLinearGradient(66, 0, 390, 0);
-    beam.addColorStop(0, 'rgba(208, 247, 215, .22)');
-    beam.addColorStop(.28, 'rgba(151, 223, 195, .10)');
+  function subHullPath(c) {
+    c.beginPath();
+    c.moveTo(-98, 0);
+    c.bezierCurveTo(-86, -10, -60, -21, -20, -23);
+    c.bezierCurveTo(30, -25, 76, -20, 96, -6);
+    c.bezierCurveTo(102, -2, 102, 3, 96, 7);
+    c.bezierCurveTo(76, 20, 30, 25, -20, 24);
+    c.bezierCurveTo(-60, 22, -86, 10, -98, 0);
+    c.closePath();
+  }
+
+  // Partie fixe (coque + kiosque) dessinée une seule fois
+  function buildSubSprite() {
+    const c = document.createElement('canvas');
+    c.width = 240; c.height = 130;
+    const g = c.getContext('2d');
+    g.translate(120, 92);
+    const tile = (x0, y0, x1, y1, sx, sy) => {
+      for (let gx = x0; gx < x1; gx += sx) {
+        for (let gy = y0; gy < y1; gy += sy) {
+          const h = Math.sin(gx * 12.9898 + gy * 78.233) * 43758.5453;
+          const r = h - Math.floor(h);
+          g.fillStyle = 'rgba(0,0,0,' + (0.04 + r * 0.11).toFixed(3) + ')';
+          g.fillRect(gx + 0.6, gy + 0.6, sx - 1.2, sy - 1.2);
+        }
+      }
+    };
+
+    // --- Kiosque ---
+    const sailPath = () => {
+      g.beginPath();
+      g.moveTo(4, -14); g.lineTo(12, -50);
+      g.quadraticCurveTo(14, -60, 25, -61); g.lineTo(52, -61);
+      g.quadraticCurveTo(58, -60, 60, -52); g.lineTo(70, -14);
+      g.closePath();
+    };
+    const sg = g.createLinearGradient(0, -62, 0, -14);
+    sg.addColorStop(0, '#5a7684'); sg.addColorStop(.25, '#3a5260');
+    sg.addColorStop(.65, '#1f313c'); sg.addColorStop(1, '#101c24');
+    g.fillStyle = sg; sailPath(); g.fill();
+    g.save(); sailPath(); g.clip();
+    tile(0, -62, 72, -14, 7, 6);
+    const lg = g.createLinearGradient(8, 0, 42, 0);
+    lg.addColorStop(0, 'rgba(190,225,240,.24)'); lg.addColorStop(1, 'rgba(190,225,240,0)');
+    g.fillStyle = lg; g.fillRect(0, -62, 42, 48);
+    g.restore();
+    g.strokeStyle = 'rgba(5,10,14,.9)'; g.lineWidth = 1.2; sailPath(); g.stroke();
+    g.strokeStyle = 'rgba(175,215,232,.45)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(25, -60.4); g.lineTo(52, -60.4); g.stroke();
+    g.fillStyle = 'rgba(2,6,9,.75)';
+    for (let i = 0; i < 3; i++) g.fillRect(22 + i * 10, -54, 6, 3);
+    g.fillStyle = 'rgba(226,236,240,.62)';
+    g.font = '700 9px system-ui'; g.textAlign = 'center';
+    g.fillText('618', 38, -24);
+
+    // --- Coque ---
+    const hull = g.createLinearGradient(0, -26, 0, 26);
+    hull.addColorStop(0, '#5f7c8b'); hull.addColorStop(.18, '#40596a');
+    hull.addColorStop(.5, '#22343f'); hull.addColorStop(.82, '#101b23'); hull.addColorStop(1, '#070d12');
+    g.fillStyle = hull; subHullPath(g); g.fill();
+    g.save(); subHullPath(g); g.clip();
+    tile(-100, -26, 104, 27, 8, 6);
+    // coutures entre les sections de coque
+    [-70, -40, -8, 62].forEach(sx => {
+      g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(sx, -26); g.lineTo(sx, 26); g.stroke();
+      g.strokeStyle = 'rgba(180,210,225,.1)';
+      g.beginPath(); g.moveTo(sx + 1.2, -26); g.lineTo(sx + 1.2, 26); g.stroke();
+    });
+    // lumière du dessus (surface) et ombre du dessous
+    const top = g.createLinearGradient(0, -25, 0, -4);
+    top.addColorStop(0, 'rgba(195,228,242,.42)'); top.addColorStop(1, 'rgba(195,228,242,0)');
+    g.fillStyle = top; g.fillRect(-100, -26, 206, 24);
+    const bot = g.createLinearGradient(0, 8, 0, 26);
+    bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,.5)');
+    g.fillStyle = bot; g.fillRect(-100, 8, 206, 20);
+    // dôme sonar à l'avant
+    g.fillStyle = 'rgba(130,170,190,.2)';
+    g.beginPath(); g.ellipse(93, 0, 9, 8, 0, 0, Math.PI * 2); g.fill();
+    // fentes de noyage au-dessus de la coque
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    for (let i = 0; i < 6; i++) g.fillRect(-60 + i * 4.5, -22.8 + Math.abs(i - 2.5) * .15, 2.4, 1.3);
+    g.restore();
+    g.strokeStyle = 'rgba(4,9,13,.95)'; g.lineWidth = 1.3; subHullPath(g); g.stroke();
+    // arête éclairée sur le dessus
+    g.strokeStyle = 'rgba(175,218,238,.5)'; g.lineWidth = 1.1;
+    g.beginPath();
+    g.moveTo(-92, -4); g.bezierCurveTo(-82, -12, -58, -20.4, -20, -22.4);
+    g.bezierCurveTo(30, -24.4, 74, -19.4, 94, -6.6);
+    g.stroke();
+    [-48, -18, 12].forEach(x => {
+      const y = 5;
+      g.fillStyle = '#09141c';
+      g.beginPath(); g.arc(x, y, 5.2, 0, Math.PI * 2); g.fill();
+      const glass = g.createRadialGradient(x - 1.6, y - 1.8, .4, x, y, 4.2);
+      glass.addColorStop(0, 'rgba(151,222,239,.8)');
+      glass.addColorStop(.55, 'rgba(48,103,122,.95)');
+      glass.addColorStop(1, 'rgba(8,24,34,.98)');
+      g.fillStyle = glass;
+      g.beginPath(); g.arc(x, y, 4.1, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(163,205,220,.72)'; g.lineWidth = .9;
+      g.beginPath(); g.arc(x, y, 4.45, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = 'rgba(235,251,255,.65)';
+      g.beginPath(); g.ellipse(x - 1.5, y - 1.6, 1.2, .7, -.5, 0, Math.PI * 2); g.fill();
+    });
+    return c;
+  }
+
+  function drawSubmarine(x, y, time, pitch) {
+    if (!subSprite) subSprite = buildSubSprite();
+    const motion = supportsMotion;
+    const bob = motion ? Math.sin(time * .0015 * speed) * 3 : 0;
+    const vib = motion ? Math.sin(time * .045) * .22 : 0;
+    ctx.save();
+    ctx.translate(x, y + bob + vib);
+    ctx.rotate(pitch || 0);
+
+    // Faisceau du phare
+    const beam = ctx.createLinearGradient(95, 0, 430, 0);
+    beam.addColorStop(0, 'rgba(228, 248, 238, .32)');
+    beam.addColorStop(.3, 'rgba(160, 228, 205, .11)');
     beam.addColorStop(1, 'rgba(131, 215, 187, 0)');
     ctx.fillStyle = beam;
     ctx.beginPath();
-    ctx.moveTo(68, -9);
-    ctx.lineTo(390, -112);
-    ctx.lineTo(390, 116);
-    ctx.lineTo(68, 9);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = 'rgba(0, 8, 22, .38)';
+    ctx.moveTo(95, -4); ctx.lineTo(430, -120); ctx.lineTo(430, 120); ctx.lineTo(95, 6);
+    ctx.closePath(); ctx.fill();
+    const core = ctx.createLinearGradient(95, 0, 330, 0);
+    core.addColorStop(0, 'rgba(255, 250, 225, .30)'); core.addColorStop(1, 'rgba(255, 250, 225, 0)');
+    ctx.fillStyle = core;
     ctx.beginPath();
-    ctx.ellipse(2, 25, 70, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(95, -2); ctx.lineTo(330, -34); ctx.lineTo(330, 38); ctx.lineTo(95, 3);
+    ctx.closePath(); ctx.fill();
 
-    ctx.strokeStyle = '#986a35';
-    ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.moveTo(-65, -3);
-    ctx.lineTo(-78, -3);
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(-81, -3);
-    ctx.rotate(supportsMotion ? time * .009 * speed : .4);
-    for (let blade = 0; blade < 3; blade++) {
-      ctx.rotate(Math.PI * 2 / 3);
-      ctx.fillStyle = '#b78c4a';
+    // Sillage turbulent derrière l'hélice
+    if (motion) {
+      for (let k = 0; k < 3; k++) {
+        const wob = Math.sin(time * .006 + k * 2) * 3;
+        ctx.fillStyle = 'rgba(190, 235, 245, ' + (0.07 - k * .018).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.ellipse(-122 - k * 20, wob, 22 + k * 8, 7 + k * 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Gouvernes arrière en croix (légère oscillation de barre)
+    const rudder = motion ? Math.sin(time * .0011 * speed) * .05 : 0;
+    const finGrad = ctx.createLinearGradient(-100, 0, -58, 0);
+    finGrad.addColorStop(0, '#16232c'); finGrad.addColorStop(1, '#40596a');
+    [-1, 1].forEach(sy => {
+      ctx.save();
+      ctx.translate(-62, sy * 12); ctx.rotate(rudder * sy); ctx.translate(62, -sy * 12);
+      ctx.fillStyle = finGrad; ctx.strokeStyle = 'rgba(4,9,13,.9)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-8, -5, -5, -21);
-      ctx.quadraticCurveTo(4, -18, 3, -3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#e6c276';
-      ctx.lineWidth = 1.5;
+      ctx.moveTo(-58, 16 * sy); ctx.lineTo(-88, 39 * sy); ctx.lineTo(-101, 36 * sy); ctx.lineTo(-95, 6 * sy);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(170,210,228,.35)';
+      ctx.beginPath(); ctx.moveTo(-58, 16 * sy); ctx.lineTo(-88, 39 * sy); ctx.stroke();
+      ctx.restore();
+    });
+
+    // Propulseur caréné : tuyère + 7 pales qui tournent
+    ctx.save();
+    ctx.translate(-101, 0);
+    const duct = ctx.createLinearGradient(0, -20, 0, 20);
+    duct.addColorStop(0, '#8ea1ab'); duct.addColorStop(.5, '#3b4a54'); duct.addColorStop(1, '#161f26');
+    ctx.fillStyle = duct;
+    ctx.beginPath(); ctx.ellipse(0, 0, 6.5, 20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#04080b';
+    ctx.beginPath(); ctx.ellipse(.8, 0, 3.8, 16.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(.8, 0, 3.8, 16.6, 0, 0, Math.PI * 2); ctx.clip();
+    const spin = motion ? time * .02 * speed : .5;
+    for (let k = 0; k < 7; k++) {
+      const a = spin + k * Math.PI * 2 / 7;
+      const yy = Math.sin(a) * 15, front = Math.cos(a);
+      ctx.strokeStyle = front > 0 ? 'rgba(180,196,204,.9)' : 'rgba(64,80,90,.75)';
+      ctx.lineWidth = 1.4 + Math.abs(front) * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-3, yy);
+      ctx.quadraticCurveTo(0, yy * .9 + front * 3, 5, yy * .72);
       ctx.stroke();
     }
+    ctx.fillStyle = 'rgba(170,195,205,.12)';
+    ctx.fillRect(-6, -17, 12, 34);
+    ctx.restore();
+    ctx.fillStyle = '#93a5ad';
+    ctx.beginPath(); ctx.ellipse(-.4, 0, 2.2, 3.6, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    ctx.fillStyle = '#53606a';
-    ctx.strokeStyle = '#b5c3bb';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-59, -14);
-    ctx.lineTo(-83, -26);
-    ctx.lineTo(-77, -7);
-    ctx.lineTo(-59, -4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-59, 12);
-    ctx.lineTo(-83, 25);
-    ctx.lineTo(-77, 6);
-    ctx.lineTo(-58, 4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    // Coque + kiosque (sprite)
+    ctx.drawImage(subSprite, -120, -92);
 
-    const hull = ctx.createLinearGradient(-42, -32, 36, 35);
-    hull.addColorStop(0, '#f2d89a');
-    hull.addColorStop(.2, '#c6a367');
-    hull.addColorStop(.48, '#8e744d');
-    hull.addColorStop(.72, '#5d5547');
-    hull.addColorStop(1, '#302f31');
-    ctx.shadowColor = '#78e9db';
-    ctx.shadowBlur = 13;
-    ctx.fillStyle = hull;
-    ctx.strokeStyle = '#e2c788';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(-66, -2);
-    ctx.quadraticCurveTo(-69, -25, -31, -29);
-    ctx.lineTo(35, -24);
-    ctx.quadraticCurveTo(70, -18, 78, -3);
-    ctx.quadraticCurveTo(78, 0, 78, 2);
-    ctx.quadraticCurveTo(68, 20, 35, 25);
-    ctx.lineTo(-31, 28);
-    ctx.quadraticCurveTo(-66, 24, -66, -2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255, 242, 196, .56)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-47, -17);
-    ctx.quadraticCurveTo(-3, -29, 42, -16);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(27, 35, 43, .56)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-42, 17);
-    ctx.quadraticCurveTo(8, 28, 54, 14);
-    ctx.stroke();
-
-    for (const seam of [-48, 47]) {
-      ctx.strokeStyle = 'rgba(47, 42, 36, .65)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(seam, -19);
-      ctx.quadraticCurveTo(seam + 7, 0, seam, 18);
-      ctx.stroke();
-    }
-    for (let rivet = 0; rivet < 8; rivet++) {
-      const rivetX = -43 + rivet * 13;
-      ctx.fillStyle = rivet % 2 ? '#f0d7a1' : '#594936';
-      ctx.beginPath();
-      ctx.arc(rivetX, -20 + Math.abs(rivet - 3.5) * .25, 1.4, 0, Math.PI * 2);
-      ctx.fill();
+    // Reflets de lumière de surface qui glissent sur la coque
+    if (motion) {
+      ctx.save();
+      subHullPath(ctx); ctx.clip();
+      for (let i = 0; i < 5; i++) {
+        const cx = ((time * .018 * (0.6 + i * .15) + i * 47) % 260) - 130;
+        ctx.fillStyle = 'rgba(150, 225, 240, .07)';
+        ctx.beginPath(); ctx.ellipse(cx, -17 + (i % 2) * 3, 16, 4.5, .2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
     }
 
-    for (const porthole of [-34, -6, 22, 49]) {
-      ctx.fillStyle = '#54483a';
-      ctx.strokeStyle = '#e6c887';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(porthole, -1, 8.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      const glass = ctx.createRadialGradient(porthole - 3, -5, 1, porthole, -1, 8);
-      glass.addColorStop(0, '#c8f5e9');
-      glass.addColorStop(.3, '#4b9d9b');
-      glass.addColorStop(1, '#12364b');
-      ctx.fillStyle = glass;
-      ctx.beginPath();
-      ctx.arc(porthole, -1, 5.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.82)';
-      ctx.beginPath();
-      ctx.ellipse(porthole - 2, -3, 1.7, 1, -.4, 0, Math.PI * 2);
-      ctx.fill();
+    // Barres de plongée sur le kiosque (vues par la tranche, elles s'inclinent)
+    const planeAngle = motion ? Math.sin(time * .0011) * .13 : 0;
+    ctx.save();
+    ctx.translate(30, -42); ctx.rotate(planeAngle);
+    ctx.fillStyle = '#486373'; ctx.strokeStyle = 'rgba(4,9,13,.9)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(-12, -1.8, 24, 3.6); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#93a5ad';
+    ctx.beginPath(); ctx.arc(30, -42, 2, 0, Math.PI * 2); ctx.fill();
+
+    // Mâts : périscope, radar, antenne (ils oscillent légèrement)
+    const sway = motion ? Math.sin(time * .002) * .9 : 0;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#8397a1'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(34, -61); ctx.lineTo(34 + sway, -86); ctx.stroke();
+    ctx.fillStyle = '#1d2a33';
+    ctx.fillRect(34 + sway, -88, 6, 3.4);
+    ctx.fillStyle = 'rgba(130,200,215,.8)'; ctx.fillRect(38.4 + sway, -87.2, 1.6, 1.8);
+    ctx.strokeStyle = '#6f828c'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(46, -61); ctx.lineTo(46 - sway * .6, -78); ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(44, -62); ctx.lineTo(41 - sway, -74); ctx.stroke();
+    ctx.lineCap = 'butt';
+    if (!motion || (time % 1500) < 170) {
+      ctx.save();
+      ctx.shadowColor = '#ff3b30'; ctx.shadowBlur = 9;
+      ctx.fillStyle = '#ff6a5a';
+      ctx.beginPath(); ctx.arc(46 - sway * .6, -79, 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     }
 
-    const tower = ctx.createLinearGradient(-10, -45, 12, -20);
-    tower.addColorStop(0, '#d7bd85');
-    tower.addColorStop(1, '#615540');
-    ctx.fillStyle = tower;
-    ctx.strokeStyle = '#dbc28d';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-12, -23);
-    ctx.lineTo(-8, -40);
-    ctx.quadraticCurveTo(0, -46, 10, -40);
-    ctx.lineTo(15, -22);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#243a48';
-    ctx.fillRect(-4, -38, 12, 7);
-    ctx.strokeStyle = '#ccb47e';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(2, -40);
-    ctx.lineTo(2, -52);
-    ctx.lineTo(10, -57);
-    ctx.stroke();
-    ctx.fillStyle = '#e9ce8d';
-    ctx.fillRect(8, -59, 8, 3);
+    // Phares avant
+    ctx.save();
+    ctx.shadowColor = '#fff6c1'; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#fffbe0';
+    ctx.beginPath(); ctx.arc(95, -3, 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(91, 4, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
 
-    ctx.fillStyle = '#d6c18d';
-    ctx.beginPath();
-    ctx.arc(75, -3, 5.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff6c1';
-    ctx.beginPath();
-    ctx.arc(76, -3, 2.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#91a59a';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-16, 26);
-    ctx.lineTo(-24, 34);
-    ctx.lineTo(3, 32);
-    ctx.stroke();
     ctx.restore();
   }
   function drawBubbles(delta, x, y) {
     bubbleTimer += delta;
     if (supportsMotion) {
-      while (bubbleTimer > 190) {
-        bubbleTimer -= 190;
+      while (bubbleTimer > 110) {
+        bubbleTimer -= 110;
         bubbles.push({
-          x: x - 76 + Math.random() * 12,
+          x: x - 112 + Math.random() * 10,
           y: y + Math.random() * 12,
           radius: 1.5 + Math.random() * 3.5,
           drift: (Math.random() - .5) * .035,
@@ -965,6 +1239,19 @@
           phase: Math.random() * Math.PI * 2,
           life: 1100 + Math.random() * 900
         });
+      }
+    }
+    if (supportsMotion) {
+      ventTimer += delta;
+      if (ventTimer > 2200) {
+        ventTimer = 0;
+        for (let k = 0; k < 5; k++) {
+          bubbles.push({
+            x: x - 20 + Math.random() * 60, y: y - 26, radius: 1 + Math.random() * 2.2,
+            drift: (Math.random() - .5) * .02, rise: .035 + Math.random() * .03,
+            phase: Math.random() * 6.28, life: 1300 + Math.random() * 700
+          });
+        }
       }
     }
     bubbles = bubbles.filter(bubble => bubble.life > 0 && bubble.y > -20);
@@ -990,233 +1277,447 @@
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+  // ============================================================
+  //  COFFRE AU TRÉSOR RÉALISTE
+  //  Fermé tant qu'aucune récompense n'est attribuée ; quand un palier est
+  //  atteint, le couvercle pivote sur ses charnières et révèle le trésor.
+  // ============================================================
+  const CH = { depth: 34, scale: 1.25 };
+  let chestSprite = null;
+  const cP = (px, py, pz) => [px + pz * .4, py - pz * .3];          // projection oblique
+  const cRnd = n => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+  const hexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const hexMix = (a, b, t) => {
+    const A = hexRgb(a), B = hexRgb(b);
+    t = Math.max(0, Math.min(1, t));
+    return 'rgb(' + Math.round(A[0] + (B[0] - A[0]) * t) + ',' + Math.round(A[1] + (B[1] - A[1]) * t) + ',' + Math.round(A[2] + (B[2] - A[2]) * t) + ')';
+  };
+
+  function openChest(milestone) {
+    chestState.openUntil = clock + 5200;
+    chestState.burst = 1;
+    chestState.pending = true;
+    chestState.color = milestone ? milestone.color : '#ffd86a';
+  }
+
+  function chestRoundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
+    g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
+    g.closePath();
+  }
+
+  // Corps du coffre (face avant, face droite, ferrures, usure) dessiné une seule fois
+  function buildChestSprite() {
+    const k = 3, D = CH.depth;
+    const c = document.createElement('canvas');
+    c.width = 124 * k; c.height = 100 * k;
+    const g = c.getContext('2d');
+    g.scale(k, k);
+    g.translate(52, 42);
+    const poly = pts => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); };
+    const rivet = (px, py, r) => {
+      g.fillStyle = '#e3c98f'; g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(30,22,14,.6)'; g.beginPath(); g.arc(px + .45, py + .5, r * .5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,255,230,.7)'; g.beginPath(); g.arc(px - .4, py - .45, r * .3, 0, Math.PI * 2); g.fill();
+    };
+    const bronze = (x0, x1) => { const gr = g.createLinearGradient(x0, 0, x1, 0); gr.addColorStop(0, '#8d6a30'); gr.addColorStop(.35, '#d9b46a'); gr.addColorStop(1, '#6b4d22'); return gr; };
+
+    // ---------- Face droite (dans l'ombre) ----------
+    const R = [cP(40, -8, 0), cP(40, -8, D), cP(40, 32, D), cP(40, 32, 0)];
+    const rg = g.createLinearGradient(40, -8, 54, 32);
+    rg.addColorStop(0, '#6b4429'); rg.addColorStop(1, '#2a1a10');
+    g.fillStyle = rg; poly(R); g.fill();
+    g.save(); poly(R); g.clip();
+    [5, 18].forEach(yy => {
+      const a = cP(40, yy, 0), b = cP(40, yy, D);
+      g.strokeStyle = 'rgba(15,8,4,.75)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+      g.strokeStyle = 'rgba(255,210,150,.12)'; g.beginPath(); g.moveTo(a[0], a[1] + 1); g.lineTo(b[0], b[1] + 1); g.stroke();
+    });
+    for (let i = 0; i < 16; i++) {
+      const yy = -6 + cRnd(i + 50) * 36, z0 = cRnd(i + 80) * 18, z1 = z0 + 8 + cRnd(i + 90) * 12;
+      const a = cP(40, yy, z0), b = cP(40, yy + (cRnd(i + 95) - .5) * 2, Math.min(D, z1));
+      g.strokeStyle = 'rgba(20,10,5,' + (.12 + cRnd(i) * .15).toFixed(2) + ')'; g.lineWidth = .8;
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+    g.fillStyle = 'rgba(0,0,0,.24)'; poly(R); g.fill();
+    g.restore();
+    g.strokeStyle = '#25160d'; g.lineWidth = 1.2; poly(R); g.stroke();
+    [6, D - 6].forEach(z => {
+      const q = [cP(40, -8, z - 3), cP(40, -8, z + 3), cP(40, 32, z + 3), cP(40, 32, z - 3)];
+      const ig = g.createLinearGradient(q[0][0], 0, q[1][0], 0);
+      ig.addColorStop(0, '#1a2124'); ig.addColorStop(.5, '#6f6f60'); ig.addColorStop(1, '#161c1f');
+      g.fillStyle = ig; poly(q); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = .8; poly(q); g.stroke();
+      [-2, 8, 18, 28].forEach(yy => { const p = cP(40, yy, z); rivet(p[0], p[1], 1.1); });
+    });
+    // cerclages haut et bas sur la face droite
+    [[-8, -4], [28, 32]].forEach(pair => {
+      const q = [cP(40, pair[0], 0), cP(40, pair[0], D), cP(40, pair[1], D), cP(40, pair[1], 0)];
+      g.fillStyle = '#7a5a2a'; poly(q); g.fill();
+      g.strokeStyle = '#3e2c12'; g.lineWidth = .8; poly(q); g.stroke();
+    });
+
+    // ---------- Face avant ----------
+    const boards = [[-8, 5, '#a46d3c', '#6b4226'], [5, 18, '#98633a', '#62391f'], [18, 32, '#8e5b33', '#58331b']];
+    boards.forEach((b, bi) => {
+      const gr = g.createLinearGradient(0, b[0], 0, b[1]);
+      gr.addColorStop(0, b[2]); gr.addColorStop(1, b[3]);
+      g.fillStyle = gr; g.fillRect(-40, b[0], 80, b[1] - b[0]);
+      g.save(); g.beginPath(); g.rect(-40, b[0], 80, b[1] - b[0]); g.clip();
+      for (let i = 0; i < 9; i++) {
+        const gy = b[0] + 1.5 + cRnd(bi * 20 + i) * (b[1] - b[0] - 3);
+        g.strokeStyle = 'rgba(30,14,6,' + (.1 + cRnd(bi * 30 + i) * .2).toFixed(2) + ')'; g.lineWidth = .7;
+        g.beginPath();
+        for (let xx = -40; xx <= 40; xx += 5) {
+          const yy = gy + Math.sin(xx * .09 + i * 1.7 + bi) * .9;
+          if (xx === -40) g.moveTo(xx, yy); else g.lineTo(xx, yy);
+        }
+        g.stroke();
+      }
+      // nœuds du bois
+      for (let i = 0; i < 2; i++) {
+        const nx = -30 + cRnd(bi * 9 + i + 3) * 60, ny = (b[0] + b[1]) / 2;
+        g.strokeStyle = 'rgba(35,16,6,.4)'; g.lineWidth = .8;
+        g.beginPath(); g.ellipse(nx, ny, 2.6, 1.4, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.restore();
+      g.fillStyle = 'rgba(18,8,3,.8)'; g.fillRect(-40, b[1] - .6, 80, 1.2);
+      g.fillStyle = 'rgba(255,225,170,.16)'; g.fillRect(-40, b[0] + .4, 80, .9);
+    });
+    const lightL = g.createLinearGradient(-40, 0, 40, 0);
+    lightL.addColorStop(0, 'rgba(255,225,170,.14)'); lightL.addColorStop(.5, 'rgba(0,0,0,0)'); lightL.addColorStop(1, 'rgba(0,0,0,.22)');
+    g.fillStyle = lightL; g.fillRect(-40, -8, 80, 40);
+
+    // cerclages haut et bas
+    g.fillStyle = bronze(-41, 41); g.fillRect(-41, -8, 82, 4);
+    g.fillStyle = bronze(-41, 41); g.fillRect(-41, 28, 82, 4);
+    g.strokeStyle = '#3e2c12'; g.lineWidth = .8;
+    g.strokeRect(-41, -8, 82, 4); g.strokeRect(-41, 28, 82, 4);
+    for (let xx = -36; xx <= 36; xx += 9) { rivet(xx, -6, 1.1); rivet(xx, 30, 1.1); }
+
+    // sangles de fer verticales
+    [-28, 27].forEach(bx => {
+      g.save(); g.translate(bx, 0);
+      const ig = g.createLinearGradient(-3.5, 0, 3.5, 0);
+      ig.addColorStop(0, '#20292d'); ig.addColorStop(.35, '#908d79'); ig.addColorStop(.7, '#4a4f4a'); ig.addColorStop(1, '#1b2326');
+      g.fillStyle = ig; g.fillRect(-3.5, -4, 7, 32);
+      g.strokeStyle = 'rgba(235,220,175,.45)'; g.lineWidth = .7; g.strokeRect(-3.5, -4, 7, 32);
+      [0, 9, 18, 26].forEach(yy => {
+        const rs = g.createLinearGradient(0, yy, 0, yy + 7);
+        rs.addColorStop(0, 'rgba(150,72,30,.4)'); rs.addColorStop(1, 'rgba(150,72,30,0)');
+        g.fillStyle = rs; g.fillRect(-.8, yy, 1.6, 7);
+        rivet(0, yy, 1.2);
+      });
+      g.restore();
+    });
+
+    // équerres d'angle
+    [[-40, 1], [40, -1]].forEach(cn => {
+      const sx = cn[1];
+      g.fillStyle = bronze(-41, 41);
+      poly([[cn[0], -8], [cn[0] + sx * 11, -8], [cn[0], 3]]); g.fill();
+      poly([[cn[0], 32], [cn[0] + sx * 11, 32], [cn[0], 21]]); g.fill();
+      g.strokeStyle = '#3e2c12'; g.lineWidth = .7;
+      poly([[cn[0], -8], [cn[0] + sx * 11, -8], [cn[0], 3]]); g.stroke();
+      poly([[cn[0], 32], [cn[0] + sx * 11, 32], [cn[0], 21]]); g.stroke();
+      rivet(cn[0] + sx * 3, -3.5, 1); rivet(cn[0] + sx * 3, 27.5, 1);
+    });
+
+    // serrure
+    g.save(); g.translate(0, 4);
+    const pg = g.createLinearGradient(-9, -9, 9, 11);
+    pg.addColorStop(0, '#f1d58f'); pg.addColorStop(.5, '#c39a4c'); pg.addColorStop(1, '#7c5a24');
+    g.fillStyle = pg; chestRoundRect(g, -9, -9, 18, 21, 3); g.fill();
+    g.strokeStyle = '#3e2c12'; g.lineWidth = 1.1; chestRoundRect(g, -9, -9, 18, 21, 3); g.stroke();
+    g.strokeStyle = 'rgba(70,48,18,.6)'; g.lineWidth = .7; chestRoundRect(g, -6.8, -6.8, 13.6, 16.6, 2); g.stroke();
+    g.fillStyle = '#17110c';
+    g.beginPath(); g.arc(0, 1, 2.4, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(-1.4, 2); g.lineTo(1.4, 2); g.lineTo(2.2, 7); g.lineTo(-2.2, 7); g.closePath(); g.fill();
+    [[-6.2, -6.2], [6.2, -6.2], [-6.2, 9.2], [6.2, 9.2]].forEach(p => rivet(p[0], p[1], .9));
+    g.restore();
+
+    // ---------- Usure sous-marine : algues, balanes, rouille ----------
+    [[-36, 30, 9], [-12, 31, 7], [16, 31, 10], [37, 29, 7], [-24, 12, 5]].forEach(m => {
+      const mg = g.createRadialGradient(m[0], m[1], 0, m[0], m[1], m[2]);
+      mg.addColorStop(0, 'rgba(58,118,72,.6)'); mg.addColorStop(1, 'rgba(58,118,72,0)');
+      g.fillStyle = mg; g.beginPath(); g.arc(m[0], m[1], m[2], 0, Math.PI * 2); g.fill();
+    });
+    {
+      const mp = cP(40, 29, 12), mg = g.createRadialGradient(mp[0], mp[1], 0, mp[0], mp[1], 9);
+      mg.addColorStop(0, 'rgba(58,118,72,.55)'); mg.addColorStop(1, 'rgba(58,118,72,0)');
+      g.fillStyle = mg; g.beginPath(); g.arc(mp[0], mp[1], 9, 0, Math.PI * 2); g.fill();
+    }
+    for (let i = 0; i < 26; i++) {
+      const bx = -38 + cRnd(i + 300) * 76, by = 22 + cRnd(i + 340) * 9, br = .8 + cRnd(i + 380) * 1.4;
+      g.fillStyle = '#59635c'; g.beginPath(); g.arc(bx, by, br + .5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#d6ddd4'; g.beginPath(); g.arc(bx, by, br, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(40,46,42,.7)'; g.beginPath(); g.arc(bx, by, br * .4, 0, Math.PI * 2); g.fill();
+    }
+    for (let i = 0; i < 10; i++) {
+      const p = cP(40, 18 + cRnd(i + 420) * 12, 2 + cRnd(i + 450) * 30), br = .7 + cRnd(i + 480) * 1.2;
+      g.fillStyle = '#59635c'; g.beginPath(); g.arc(p[0], p[1], br + .5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#c3ccc4'; g.beginPath(); g.arc(p[0], p[1], br, 0, Math.PI * 2); g.fill();
+    }
+    g.strokeStyle = 'rgba(255,225,170,.4)'; g.lineWidth = .9;
+    g.beginPath(); g.moveTo(-40, -3.6); g.lineTo(40, -3.6); g.stroke();
+    return c;
+  }
+
+  const chestMoundY = xx => -8 - 17 * Math.exp(-Math.pow((xx + 3) / 22, 2)) - 3;
+
+  function drawChestTreasure(time, e) {
+    const mg = ctx.createLinearGradient(0, -30, 0, -6);
+    mg.addColorStop(0, '#ffe88f'); mg.addColorStop(.6, '#d9a02a'); mg.addColorStop(1, '#8a5410');
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.moveTo(-39, -8);
+    for (let xx = -39; xx <= 39; xx += 3) ctx.lineTo(xx, chestMoundY(xx));
+    ctx.lineTo(39, -8); ctx.closePath(); ctx.fill();
+    const tones = ['#ffd24a', '#f2b92f', '#ffe892', '#d99a1c'];
+    for (let i = 0; i < 56; i++) {
+      const xx = -37 + cRnd(i) * 74, yy = chestMoundY(xx) + cRnd(i + 200) * 11;
+      const rot = cRnd(i + 400) * .9 - .45, rx = 3.4 + cRnd(i + 500) * 1.8;
+      ctx.fillStyle = tones[i % 4]; ctx.strokeStyle = 'rgba(110,62,0,.65)'; ctx.lineWidth = .5;
+      ctx.beginPath(); ctx.ellipse(xx, yy, rx, 1.6, rot, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,250,210,.7)';
+      ctx.beginPath(); ctx.ellipse(xx, yy - .3, rx * .65, 1, rot, Math.PI * 1.1, Math.PI * 1.8); ctx.stroke();
+    }
+    const gems = ['#ff3d5a', '#39e08a', '#4aa8ff', '#c777ff', '#ff9a3d', '#7ff0ff'];
+    for (let i = 0; i < 6; i++) {
+      const xx = -30 + i * 12 + cRnd(i + 600) * 5, yy = chestMoundY(xx) + 3 + cRnd(i + 650) * 2, s = 3 + cRnd(i + 700) * 1.2;
+      ctx.fillStyle = gems[i]; ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = .6;
+      ctx.beginPath(); ctx.moveTo(xx, yy - s); ctx.lineTo(xx + s, yy); ctx.lineTo(xx, yy + s * .9); ctx.lineTo(xx - s, yy); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.75)';
+      ctx.beginPath(); ctx.moveTo(xx - s * .15, yy - s * .75); ctx.lineTo(xx + s * .45, yy - s * .1); ctx.lineTo(xx - s * .35, yy - s * .1); ctx.closePath(); ctx.fill();
+    }
+    for (let j = 0; j <= 10; j++) {
+      const px = -22 + j * 4.4, py = chestMoundY(px) + 2 + Math.sin(j / 10 * Math.PI) * 3;
+      ctx.fillStyle = '#f6f0e6'; ctx.beginPath(); ctx.arc(px, py, 1.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(px - .5, py - .5, .5, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = 0; i < 7; i++) {
+      const tw = Math.max(0, Math.sin(time * .006 + i * 2.1));
+      if (tw < .5) continue;
+      const xx = -34 + cRnd(i + 800) * 68, yy = chestMoundY(xx) + 2;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,250,215,' + (tw * e).toFixed(2) + ')';
+      ctx.beginPath(); ctx.moveTo(xx, yy - 4 * tw); ctx.lineTo(xx + .8, yy - .8); ctx.lineTo(xx + 4 * tw, yy); ctx.lineTo(xx + .8, yy + .8);
+      ctx.lineTo(xx, yy + 4 * tw); ctx.lineTo(xx - .8, yy + .8); ctx.lineTo(xx - 4 * tw, yy); ctx.lineTo(xx - .8, yy - .8); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function drawChest(x, y, time) {
-    const pulse = .78 + Math.sin(time * .0022) * .12;
+    if (!chestSprite) chestSprite = buildChestSprite();
+    const S = CH.scale, D = CH.depth;
+
+    // --- animation d'ouverture : fermé par défaut, ouvert quand un palier est attribué ---
+    const dt = chestState.lastT ? Math.min(60, time - chestState.lastT) : 16;
+    chestState.lastT = time;
+    const want = time < chestState.openUntil ? 1 : 0;
+    if (supportsMotion) {
+      const rate = (want ? 1 / 1000 : 1 / 1500) * dt;
+      chestState.open += Math.max(-rate, Math.min(rate, want - chestState.open));
+    } else {
+      chestState.open = want;
+    }
+    chestState.burst = Math.max(0, chestState.burst - dt / 1400);
+    const o = chestState.open;
+    const e = o * o * (3 - 2 * o);
+    const bounceT = Math.max(0, time - (chestState.openUntil - 4200));
+    const theta = e * 1.9 + (o > .98 && want ? Math.sin(time * .016) * Math.exp(-bounceT * .006) * .05 : 0);
+    const pulse = .8 + Math.sin(time * .0022) * .12;
+
+    if (chestState.pending && e > .3) {
+      chestState.pending = false;
+      for (let i = 0; i < 22; i++) {
+        bubbles.push({
+          x: x + (Math.random() - .5) * 70, y: y - 18 * S, radius: 1.2 + Math.random() * 3,
+          drift: (Math.random() - .5) * .03, rise: .04 + Math.random() * .05,
+          phase: Math.random() * 6.28, life: 1500 + Math.random() * 900
+        });
+      }
+      for (let i = 0; i < 40; i++) {
+        sparkles.push({
+          x: x + (Math.random() - .5) * 50, y: y - 20 * S, vx: (Math.random() - .5) * 4.5, vy: -2 - Math.random() * 5.5,
+          life: 45 + Math.random() * 40, size: 2 + Math.random() * 4, phase: Math.random() * 6.28,
+          color: Math.random() < .6 ? '#ffe27a' : chestState.color
+        });
+      }
+    }
+
     ctx.save();
     ctx.translate(x, y);
+    ctx.scale(S, S);
 
-    const aura = ctx.createRadialGradient(0, -12, 4, 0, -12, 118);
-    aura.addColorStop(0, `rgba(255, 219, 111, ${.24 + pulse * .1})`);
-    aura.addColorStop(.42, 'rgba(255, 189, 74, .1)');
-    aura.addColorStop(1, 'rgba(255, 175, 53, 0)');
-    ctx.fillStyle = aura;
-    ctx.fillRect(-125, -125, 250, 230);
+    // sable, ombre portée et lueur
+    const mound = ctx.createRadialGradient(6, 33, 4, 6, 33, 72);
+    mound.addColorStop(0, 'rgba(206,181,132,.62)'); mound.addColorStop(.6, 'rgba(150,130,98,.35)'); mound.addColorStop(1, 'rgba(110,95,75,0)');
+    ctx.fillStyle = mound;
+    ctx.beginPath(); ctx.ellipse(6, 34, 72, 13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,6,14,.5)';
+    ctx.beginPath(); ctx.ellipse(8, 34, 52, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+    const auraA = (.07 + e * .32 + chestState.burst * .25) * pulse;
+    const aura = ctx.createRadialGradient(0, -14, 4, 0, -14, 120);
+    aura.addColorStop(0, 'rgba(255, 214, 110, ' + auraA.toFixed(3) + ')');
+    aura.addColorStop(.5, 'rgba(255, 180, 60, ' + (auraA * .35).toFixed(3) + ')');
+    aura.addColorStop(1, 'rgba(255, 160, 40, 0)');
+    ctx.fillStyle = aura; ctx.fillRect(-130, -130, 260, 240);
 
-    ctx.shadowColor = '#ffd867';
-    ctx.shadowBlur = 25 * pulse;
-    const glow = ctx.createLinearGradient(0, -62, 0, 7);
-    glow.addColorStop(0, 'rgba(255, 247, 185, 0)');
-    glow.addColorStop(.6, `rgba(255, 224, 120, ${.16 + pulse * .16})`);
-    glow.addColorStop(1, 'rgba(255, 188, 69, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.moveTo(-38, -7);
-    ctx.lineTo(-27, -72);
-    ctx.lineTo(26, -72);
-    ctx.lineTo(40, -7);
-    ctx.closePath();
-    ctx.fill();
+    // algues qui ondulent autour du coffre
+    [[-54, 36, 1.1, 0], [-47, 36, .8, 2], [60, 33, 1, 4], [67, 34, .75, 1.3]].forEach(w => {
+      const sw = supportsMotion ? Math.sin(time * .0016 + w[3]) * 4 : 0;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(46,124,92,.9)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(w[0], w[1]); ctx.quadraticCurveTo(w[0] + sw, w[1] - 14 * w[2], w[0] + sw * 1.6, w[1] - 28 * w[2]); ctx.stroke();
+      ctx.strokeStyle = 'rgba(130,220,160,.55)'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(w[0], w[1]); ctx.quadraticCurveTo(w[0] + sw, w[1] - 14 * w[2], w[0] + sw * 1.6, w[1] - 28 * w[2]); ctx.stroke();
+      ctx.lineCap = 'butt';
+    });
 
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#30241d';
-    ctx.strokeStyle = '#654a32';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-39, -5);
-    ctx.lineTo(-34, -22);
-    ctx.lineTo(35, -22);
-    ctx.lineTo(41, -5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    const treasureGlow = ctx.createRadialGradient(0, -21, 1, 0, -21, 40);
-    treasureGlow.addColorStop(0, `rgba(255, 244, 173, ${.88 * pulse})`);
-    treasureGlow.addColorStop(.3, `rgba(255, 191, 73, ${.6 * pulse})`);
-    treasureGlow.addColorStop(1, 'rgba(255, 154, 48, 0)');
-    ctx.fillStyle = treasureGlow;
-    ctx.fillRect(-41, -51, 82, 43);
-    for (let coin = 0; coin < 5; coin++) {
-      const coinX = -25 + coin * 12;
-      ctx.fillStyle = coin % 2 ? '#f5cb6b' : '#ffe49a';
-      ctx.beginPath();
-      ctx.ellipse(coinX, -16 - (coin % 2) * 3, 5, 2, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // intérieur du coffre et trésor (visibles seulement quand le couvercle se lève)
+    if (e > .01) {
+      const A = cP(-40, -8, 0), B = cP(40, -8, 0), C = cP(40, -8, D), E = cP(-40, -8, D), drop = 24;
+      ctx.fillStyle = '#1c100a';
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.lineTo(C[0], C[1]); ctx.lineTo(E[0], E[1]); ctx.closePath(); ctx.fill();
+      const bw = ctx.createLinearGradient(0, E[1], 0, E[1] + drop);
+      bw.addColorStop(0, '#5a3720'); bw.addColorStop(1, '#1a0f09');
+      ctx.fillStyle = bw;
+      ctx.beginPath(); ctx.moveTo(E[0], E[1]); ctx.lineTo(C[0], C[1]); ctx.lineTo(C[0], C[1] + drop); ctx.lineTo(E[0], E[1] + drop); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#2d1a10';
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(E[0], E[1]); ctx.lineTo(E[0], E[1] + drop); ctx.lineTo(A[0], A[1] + drop); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = Math.min(1, e * 2);
+      drawChestTreasure(time, e);
+      ctx.globalAlpha = 1;
     }
 
-    const lidWood = ctx.createLinearGradient(-44, -80, 48, -38);
-    lidWood.addColorStop(0, '#9b663b');
-    lidWood.addColorStop(.42, '#6d452c');
-    lidWood.addColorStop(1, '#362c27');
-    ctx.fillStyle = lidWood;
-    ctx.strokeStyle = '#d7ad64';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(-43, -30);
-    ctx.lineTo(-39, -55);
-    ctx.quadraticCurveTo(-35, -76, 0, -82);
-    ctx.quadraticCurveTo(35, -76, 40, -55);
-    ctx.lineTo(44, -29);
-    ctx.lineTo(34, -24);
-    ctx.lineTo(-34, -24);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(226, 190, 127, .58)';
-    ctx.lineWidth = 1.5;
-    for (const plank of [-22, 0, 22]) {
-      ctx.beginPath();
-      ctx.moveTo(plank - 2, -76);
-      ctx.quadraticCurveTo(plank + 1, -56, plank, -30);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(43, 34, 29, .82)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-36, -43);
-    ctx.quadraticCurveTo(0, -35, 38, -43);
-    ctx.stroke();
-    ctx.fillStyle = '#49352b';
-    ctx.strokeStyle = '#b78c55';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-31, -49);
-    ctx.quadraticCurveTo(-27, -66, 0, -72);
-    ctx.quadraticCurveTo(27, -66, 31, -49);
-    ctx.quadraticCurveTo(0, -42, -31, -49);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(226, 190, 127, .5)';
-    ctx.lineWidth = 1;
-    for (const rib of [-18, 0, 18]) {
-      ctx.beginPath();
-      ctx.moveTo(rib, -67 + Math.abs(rib) * .2);
-      ctx.quadraticCurveTo(rib - 1, -56, rib, -46);
-      ctx.stroke();
+    // corps du coffre
+    ctx.drawImage(chestSprite, -52, -42, 124, 100);
+
+    // charnières (visibles quand le couvercle est levé)
+    if (theta > .15) {
+      [-27, 27].forEach(hx => {
+        const p = cP(hx, -8, D);
+        ctx.fillStyle = '#c9a050'; ctx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+        ctx.strokeStyle = '#3e2c12'; ctx.lineWidth = .7; ctx.strokeRect(p[0] - 3, p[1] - 3, 6, 6);
+        ctx.fillStyle = '#6b4d22'; ctx.beginPath(); ctx.arc(p[0], p[1], 1.2, 0, Math.PI * 2); ctx.fill();
+      });
     }
 
-    for (const hingeX of [-27, 27]) {
-      ctx.fillStyle = '#293333';
-      ctx.strokeStyle = '#9b906c';
-      ctx.lineWidth = 1;
-      ctx.fillRect(hingeX - 3, -33, 6, 24);
-      ctx.strokeRect(hingeX - 3, -33, 6, 24);
-      for (const hingeY of [-30, -21]) {
-        ctx.fillStyle = '#d6c18d';
-        ctx.beginPath();
-        ctx.arc(hingeX, hingeY, 1.3, 0, Math.PI * 2);
-        ctx.fill();
+    // --- couvercle en voûte, articulé sur la charnière arrière ---
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+    const AZ = D / 2, BH = 17, N = 14;
+    const rotLocal = (lz, ly) => { const dz = lz - D; return [D + dz * cosT + ly * sinT, -dz * sinT + ly * cosT]; };
+    const arch = phi => [AZ - AZ * Math.cos(phi), BH * Math.sin(phi)];
+    const toScreen = (wx, p) => cP(wx, -8 - p[1], p[0]);
+    const strips = [];
+    for (let i = 0; i < N; i++) {
+      const p0 = Math.PI * i / N, p1 = Math.PI * (i + 1) / N, pm = (p0 + p1) / 2;
+      const a0 = rotLocal(arch(p0)[0], arch(p0)[1]), a1 = rotLocal(arch(p1)[0], arch(p1)[1]), am = rotLocal(arch(pm)[0], arch(pm)[1]);
+      let nz = -BH * Math.cos(pm), ny = AZ * Math.sin(pm);
+      const nl = Math.hypot(nz, ny); nz /= nl; ny /= nl;
+      const rz = nz * cosT + ny * sinT, ry = -nz * sinT + ny * cosT;
+      strips.push({ a0: a0, a1: a1, depth: am[0], rz: rz, ry: ry, outer: (-rz + .3 * ry) > 0, i: i });
+    }
+    strips.sort((s, t) => t.depth - s.depth);
+    for (const s of strips) {
+      const q = [toScreen(-41, s.a0), toScreen(41, s.a0), toScreen(41, s.a1), toScreen(-41, s.a1)];
+      const sign = s.outer ? 1 : -1;
+      const lit = Math.max(0, sign * (s.rz * -.35 + s.ry * .94));
+      const col = s.outer ? hexMix('#33200f', '#bb8650', .2 + lit * .8) : hexMix('#1d0f08', '#7a4824', .15 + lit * .7 + .25 * e);
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = .6;
+      ctx.beginPath(); q.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(25,12,6,.55)'; ctx.lineWidth = .9;
+      [-20, 0, 20].forEach(xs => {
+        const a = toScreen(xs, s.a0), b = toScreen(xs, s.a1);
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      });
+      [-27, 27].forEach(bx => {
+        const b = [toScreen(bx - 3.5, s.a0), toScreen(bx + 3.5, s.a0), toScreen(bx + 3.5, s.a1), toScreen(bx - 3.5, s.a1)];
+        ctx.fillStyle = s.outer ? hexMix('#1c2428', '#9a9680', lit) : hexMix('#12181b', '#55574d', lit);
+        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = .6;
+        ctx.beginPath(); b.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); ctx.stroke();
+        if (s.outer && s.i % 2 === 1) {
+          const mid = [(s.a0[0] + s.a1[0]) / 2, (s.a0[1] + s.a1[1]) / 2], rp = toScreen(bx, mid);
+          ctx.fillStyle = '#e0c78e'; ctx.beginPath(); ctx.arc(rp[0], rp[1], .9, 0, Math.PI * 2); ctx.fill();
+        }
+      });
+    }
+
+    // liseré en laiton sur le bord avant du couvercle
+    {
+      const f0 = rotLocal(arch(0)[0], arch(0)[1]), a = toScreen(-41, f0), b = toScreen(41, f0);
+      ctx.strokeStyle = '#c9a050'; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,235,170,.55)'; ctx.lineWidth = .8;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1] - 1); ctx.lineTo(b[0], b[1] - 1); ctx.stroke();
+    }
+
+    // moraillon (la patte de fermeture) qui pend du couvercle sur la serrure
+    if (cosT + .3 * sinT > 0) {
+      const t0 = rotLocal(-1.2, 3), t1 = rotLocal(-1.2, -14);
+      const hq = [toScreen(-4.5, t0), toScreen(4.5, t0), toScreen(4.5, t1), toScreen(-4.5, t1)];
+      const hg = ctx.createLinearGradient(hq[0][0], 0, hq[1][0], 0);
+      hg.addColorStop(0, '#9c7a38'); hg.addColorStop(.4, '#f0d58e'); hg.addColorStop(1, '#7c5a24');
+      ctx.fillStyle = hg; ctx.strokeStyle = '#3e2c12'; ctx.lineWidth = .8;
+      ctx.beginPath(); hq.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); ctx.stroke();
+      const sl = toScreen(0, rotLocal(-1.4, -10));
+      ctx.fillStyle = '#17110c'; ctx.beginPath(); ctx.ellipse(sl[0], sl[1], 1.4, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // flanc droit du couvercle (plaque d'extrémité)
+    {
+      const pts = [];
+      for (let k = 0; k <= N; k++) { const a = arch(Math.PI * k / N); pts.push(toScreen(41, rotLocal(a[0], a[1]))); }
+      const cg = ctx.createLinearGradient(pts[0][0], pts[0][1], pts[N][0], pts[N][1]);
+      cg.addColorStop(0, '#5a3a22'); cg.addColorStop(1, '#2d1b10');
+      ctx.fillStyle = cg;
+      ctx.beginPath(); pts.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(150,148,128,.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); pts.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+      ctx.strokeStyle = '#1c120b'; ctx.lineWidth = .9;
+      ctx.beginPath(); pts.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+    }
+
+    // fine ligne de lumière qui filtre quand le coffre est fermé
+    if (e < .35) {
+      const a = Math.max(0, .5 - e * 1.4) * pulse;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = 'rgba(255,222,130,' + a.toFixed(3) + ')'; ctx.lineWidth = 1.6;
+      ctx.shadowColor = '#ffd867'; ctx.shadowBlur = 8;
+      const q0 = cP(40, -8, 0), q1 = cP(40, -8, D);
+      ctx.beginPath(); ctx.moveTo(-38, -8.4); ctx.lineTo(38, -8.4); ctx.moveTo(q0[0], q0[1] - .4); ctx.lineTo(q1[0], q1[1] - .4); ctx.stroke();
+      ctx.restore();
+    }
+
+    // lumière dorée et rayons qui jaillissent du coffre ouvert
+    if (e > .01) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const k = e * (1 + chestState.burst * 1.2);
+      const gl = ctx.createRadialGradient(0, -18, 2, 0, -18, 72);
+      gl.addColorStop(0, 'rgba(255,236,160,' + Math.min(.9, .7 * k).toFixed(3) + ')');
+      gl.addColorStop(.35, 'rgba(255,190,70,' + Math.min(.6, .32 * k).toFixed(3) + ')');
+      gl.addColorStop(1, 'rgba(255,150,40,0)');
+      ctx.fillStyle = gl; ctx.fillRect(-90, -120, 180, 150);
+      for (let r = 0; r < 9; r++) {
+        const ang = -Math.PI / 2 + (r - 4) * .17 + Math.sin(time * .0008 + r) * .03;
+        const len = 100 + 25 * Math.sin(time * .002 + r * 1.7), w = .075;
+        const ex = Math.cos(ang) * len, ey = -18 + Math.sin(ang) * len;
+        const rg2 = ctx.createLinearGradient(0, -18, ex, ey);
+        rg2.addColorStop(0, 'rgba(255,230,150,' + Math.min(.5, .26 * k).toFixed(3) + ')');
+        rg2.addColorStop(1, 'rgba(255,200,90,0)');
+        ctx.fillStyle = rg2;
+        ctx.beginPath(); ctx.moveTo(0, -18);
+        ctx.lineTo(Math.cos(ang - w) * len, -18 + Math.sin(ang - w) * len);
+        ctx.lineTo(Math.cos(ang + w) * len, -18 + Math.sin(ang + w) * len);
+        ctx.closePath(); ctx.fill();
       }
+      ctx.restore();
     }
-
-    const side = ctx.createLinearGradient(35, -9, 52, 33);
-    side.addColorStop(0, '#805334');
-    side.addColorStop(1, '#302922');
-    ctx.fillStyle = side;
-    ctx.strokeStyle = '#bc8e52';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(34, -8);
-    ctx.lineTo(48, -15);
-    ctx.lineTo(48, 25);
-    ctx.lineTo(38, 35);
-    ctx.lineTo(34, 31);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(218, 179, 113, .45)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(41, -9);
-    ctx.lineTo(41, 31);
-    ctx.moveTo(47, -11);
-    ctx.lineTo(47, 24);
-    ctx.stroke();
-
-    const wood = ctx.createLinearGradient(-40, -4, 40, 40);
-    wood.addColorStop(0, '#a16a3d');
-    wood.addColorStop(.38, '#744a30');
-    wood.addColorStop(1, '#382b25');
-    ctx.fillStyle = wood;
-    ctx.strokeStyle = '#d6ad66';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(-41, -8);
-    ctx.lineTo(37, -8);
-    ctx.lineTo(39, 32);
-    ctx.quadraticCurveTo(0, 40, -40, 32);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(42, 31, 25, .6)';
-    ctx.lineWidth = 1.5;
-    for (const plankY of [3, 16, 29]) {
-      ctx.beginPath();
-      ctx.moveTo(-36, plankY);
-      ctx.quadraticCurveTo(-4, plankY + 3, 34, plankY - 1);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = '#c9a765';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-36, 7);
-    ctx.lineTo(34, 7);
-    ctx.moveTo(-37, 25);
-    ctx.lineTo(36, 25);
-    ctx.stroke();
-
-    const iron = ctx.createLinearGradient(-5, 0, 6, 0);
-    iron.addColorStop(0, '#374044');
-    iron.addColorStop(.4, '#a49a7e');
-    iron.addColorStop(.7, '#5d625b');
-    iron.addColorStop(1, '#262f32');
-    ctx.fillStyle = iron;
-    for (const bandX of [-28, 27]) {
-      ctx.fillRect(bandX - 3, -9, 6, 42);
-      ctx.strokeStyle = 'rgba(221, 207, 165, .62)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(bandX - 3, -9, 6, 42);
-    }
-    ctx.fillStyle = '#b7a16d';
-    ctx.strokeStyle = '#443a2d';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-8, -8);
-    ctx.lineTo(8, -8);
-    ctx.lineTo(10, 7);
-    ctx.quadraticCurveTo(0, 13, -10, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#252b2b';
-    ctx.beginPath();
-    ctx.arc(0, 1, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(-1.1, 2, 2.2, 4);
-
-    for (const rivetX of [-34, -21, 20, 33]) {
-      for (const rivetY of [-4, 34]) {
-        ctx.fillStyle = '#d9c18a';
-        ctx.beginPath();
-        ctx.arc(rivetX, rivetY, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(34, 31, 26, .65)';
-        ctx.beginPath();
-        ctx.arc(rivetX + .5, rivetY + .5, .6, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    ctx.strokeStyle = 'rgba(255, 236, 168, .78)';
-    ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#ffe49b';
-    ctx.shadowBlur = 8 * pulse;
-    ctx.beginPath();
-    ctx.moveTo(-3, -79);
-    ctx.lineTo(4, -80);
-    ctx.stroke();
     ctx.restore();
   }
   function drawSonar() {
@@ -1251,26 +1752,31 @@
     const depthRatio = run.coins / MAX_COINS;
     const subX = WIDTH * .18 + (supportsMotion ? Math.sin(clock * .001 * speed) * 4 : 0);
     const subY = HEIGHT * (.38 + depthRatio * .28) + (supportsMotion ? Math.sin(clock * .002 * speed) * 5 : 0);
+    if (lastSubY !== null) {
+      const vy = (subY - lastSubY) / Math.max(1, delta);
+      subPitch += (Math.max(-.07, Math.min(.07, vy * 1.2)) - subPitch) * .05;
+    }
+    lastSubY = subY;
     ctx.save();
-    const route = ctx.createLinearGradient(subX + 65, subY, WIDTH - 90, subY);
+    const route = ctx.createLinearGradient(subX + 90, subY, WIDTH - 90, subY);
     route.addColorStop(0, 'rgba(192, 230, 213, .33)');
     route.addColorStop(1, 'rgba(115, 197, 194, .03)');
     ctx.strokeStyle = route;
     ctx.setLineDash([2, 11]);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(subX + 83, subY);
+    ctx.moveTo(subX + 108, subY);
     ctx.lineTo(WIDTH - 90, subY);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
     drawSonar();
     drawBubbles(delta, subX, subY);
-    drawSubmarine(subX, subY, clock);
-    const chestX = WIDTH * (.8 - depthRatio * .4), chestY = HEIGHT * (.78 - depthRatio * .3);
+    drawSubmarine(subX, subY, clock, subPitch);
+    const { x: chestX, y: chestY } = getChestPosition();
     drawChest(chestX, chestY, clock);
     ctx.font = '800 13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a';
-    ctx.fillText(nextMilestone()?.name || 'MISSION ACCOMPLIE', chestX, chestY + 62);
+    ctx.fillText(nextMilestone()?.name || 'MISSION ACCOMPLIE', chestX, chestY + 76);
     sparkles = sparkles.filter(particle => particle.life > 0);
     sparkles.forEach(particle => {
       const fade = Math.min(1, particle.life / 22);
@@ -1321,7 +1827,6 @@
   $('speed-range').addEventListener('input', event => setSpeed(event.target.value));
   $('panel-show').addEventListener('click', () => togglePanel(true));
   $('panel-close').addEventListener('click', () => togglePanel(false));
-  $('backdrop').addEventListener('click', () => togglePanel(false));
   $('queue-hide').addEventListener('click', () => toggleQueue(false));
   $('queue-show').addEventListener('click', () => toggleQueue(true));
   $('queue-toggle').addEventListener('click', () => toggleQueue());
@@ -1335,7 +1840,10 @@
     $('ranking-toggle').textContent = board.hidden ? 'Afficher le classement' : 'Masquer le classement';
   });
   $('sound-toggle').addEventListener('click', () => setSound(!soundOn));
-  window.addEventListener('resize', clampQueuePosition);
+  window.addEventListener('resize', () => {
+    clampQueuePosition();
+    if (document.body.classList.contains('panel-open')) placePanelWithoutObscuringGame();
+  });
   window.addEventListener('arcade:wallet-run', event => {
     const detail = event.detail || {}, player = detail.player || {}, spent = Math.floor(Number(detail.spent));
     if (spent > 0 && player.username) receiveGift(player.username, spent, { runEvent: true });
@@ -1345,6 +1853,8 @@
   restoreRun();
   renderProgress();
   setSound(true);
+  initPanelDrag();
+  initPanelResize();
   initQueueDrag();
   toggleQueue(false);
   if (run.pending.length) processAwards();
