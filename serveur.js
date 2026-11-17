@@ -3379,6 +3379,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/tir-a-la-corde.png', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.png'), 'image/png']],
         ['/images-vitrine/pont-de-verre.svg', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/pont-de-verre.png', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.png'), 'image/png']],
         ['/images-vitrine/noyau-des-abysses.svg', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.svg'), 'image/svg+xml; charset=utf-8']],
