@@ -234,6 +234,7 @@ const protectedRoutes = new Set([
     '/apex-formula.html',
     '/city-hunter-tiktok.html',
     '/pokefight-live.html',
+    '/grand-prix-pokemon.html',
     '/course-de-billes-controle.html',
     '/gryphon-plinko',
     '/index.html',
@@ -263,6 +264,7 @@ const freeTrialRoutes = new Set([
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
+    '/grand-prix-pokemon.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -328,6 +330,7 @@ store.grantGameAccessToExistingCreators('/rallye-neon.html');
 store.grantGameAccessToExistingCreators('/apex-formula.html');
 store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 store.grantGameAccessToExistingCreators('/pokefight-live.html');
+store.grantGameAccessToExistingCreators('/grand-prix-pokemon.html');
 store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
@@ -391,6 +394,7 @@ const staticGameTitles = {
     '/apex-formula.html': 'Apex Formula',
     '/city-hunter-tiktok.html': 'City Hunter — TikTok Live Battle',
     '/pokefight-live.html': 'PokéFight x TikTok Live',
+    '/grand-prix-pokemon.html': 'Grand Prix Poké',
     '/coffre-incandescent.html': 'Le Coffre Incandescent',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
@@ -465,6 +469,7 @@ const gameRouteIds = new Map([
     ['/apex-formula.html', '/apex-formula.html'],
     ['/city-hunter-tiktok.html', '/city-hunter-tiktok.html'],
     ['/pokefight-live.html', '/pokefight-live.html'],
+    ['/grand-prix-pokemon.html', '/grand-prix-pokemon.html'],
     ['/coffre-incandescent.html', '/coffre-incandescent.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
@@ -3303,6 +3308,8 @@ const server = http.createServer((req, res) => {
         ...apexFormulaAssetRoutes,
         ['/city-hunter-tiktok.html', [path.join(__dirname, 'city-hunter-tiktok.html'), 'text/html; charset=utf-8']],
         ['/pokefight-live.html', [path.join(__dirname, 'pokefight-live.html'), 'text/html; charset=utf-8']],
+        ['/grand-prix-pokemon.html', [path.join(__dirname, 'grand-prix-pokemon.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/grand-prix-pokemon.png', [path.join(__dirname, 'images-vitrine', 'grand-prix-pokemon.png'), 'image/png']],
         ['/images-vitrine/pokefight-live.png', [path.join(__dirname, 'images-vitrine', 'pokefight-live.png'), 'image/png']],
         ['/images-vitrine/pokefight-space-loop.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-space-loop.mp4'), 'video/mp4']],
         ['/images-vitrine/pokefight-live-arena.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-live-arena.mp4'), 'video/mp4']],
