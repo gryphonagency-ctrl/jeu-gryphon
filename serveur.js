@@ -333,6 +333,7 @@ store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 store.grantGameAccessToExistingCreators('/pokefight-live.html');
 store.grantGameAccessToExistingCreators('/grand-prix-pokemon.html');
 store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
+store.grantGameAccessToExistingCreators('/bataille-des-planetes.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',

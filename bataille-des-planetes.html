@@ -257,10 +257,9 @@
         location.protocol==='http:'?`ws://${location.host}`:'wss://jeu6boite.onrender.com';
       let scene,camera,renderer,starfield,starGlow,clock,baseCamera,shootingStarCanvas,shootingStarContext,shootingStarProgress=null;
       let audioContext=null;
+      let molten=null,moltenLight=null;
       const colorHex=value=>`#${value.toString(16).padStart(6,'0')}`;
       const animatedPlanetAssets={
-        saturn:{src:'/bataille-planetes-centre-frames.webp',scale:2.1,frameCount:14,columns:7,frameWidth:448,frameHeight:347,frameDuration:300},
-        moon:{src:'/bataille-planetes-blanche-frames.webp',scale:1.9,frameCount:68,columns:8,frameWidth:448,frameHeight:448,frameDuration:150}
       };
 
       function valueNoise(grid,x,y){
@@ -611,13 +610,196 @@
         shootingStarContext.setTransform(pixelRatio,0,0,pixelRatio,0,0);
       }
 
+      const MOLTEN_VERT=`varying vec3 vP;varying vec3 vN;varying vec3 vV;
+void main(){vP=position;vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
+      const MOLTEN_FRAG=`uniform float uTime;uniform float uHeat;varying vec3 vP;varying vec3 vN;varying vec3 vV;
+float h(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float n(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+return mix(mix(mix(h(i),h(i+vec3(1.,0.,0.)),f.x),mix(h(i+vec3(0.,1.,0.)),h(i+vec3(1.,1.,0.)),f.x),f.y),
+mix(mix(h(i+vec3(0.,0.,1.)),h(i+vec3(1.,0.,1.)),f.x),mix(h(i+vec3(0.,1.,1.)),h(i+vec3(1.,1.,1.)),f.x),f.y),f.z);}
+float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*n(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+void main(){
+vec3 p=normalize(vP)*2.4;
+vec3 w=vec3(fbm(p+uTime*.05),fbm(p+7.1-uTime*.04),fbm(p+3.3));
+float f=fbm(p*1.3+w*1.6+uTime*.03);
+float crack=1.-smoothstep(0.,.07+.05*uHeat,abs(f-.5));
+float pool=smoothstep(.62-.15*uHeat,.8,f);
+float glow=clamp(crack+pool*.8,0.,1.);
+float pulse=.75+.25*sin(uTime*(2.+uHeat*9.)+f*6.);
+vec3 crust=mix(vec3(.05,.025,.02),vec3(.16,.06,.03),fbm(p*3.));
+vec3 lava=mix(vec3(.9,.12,.02),vec3(1.,.75,.2),smoothstep(.3,1.,glow*pulse*(.6+.6*uHeat)));
+lava=mix(lava,vec3(1.,.95,.7),smoothstep(.85,1.,glow)*uHeat);
+vec3 col=mix(crust,lava*(1.2+1.6*uHeat),glow);
+float fr=pow(1.-max(dot(normalize(vN),normalize(vV)),0.),2.2);
+col+=vec3(1.,.35,.05)*fr*(.7+1.8*uHeat)*pulse;
+gl_FragColor=vec4(col,1.);}`;
+
+      function createMoltenMaterial(){
+        return new THREE.ShaderMaterial({uniforms:{uTime:{value:0},uHeat:{value:.4}},vertexShader:MOLTEN_VERT,fragmentShader:MOLTEN_FRAG});
+      }
+
+      function createMolten(mesh,size,index){
+        const canvas=document.createElement('canvas');
+        canvas.width=canvas.height=128;
+        const context=canvas.getContext('2d');
+        const gradient=context.createRadialGradient(64,64,0,64,64,64);
+        gradient.addColorStop(0,'rgba(255,255,255,1)');gradient.addColorStop(.35,'rgba(255,255,255,.45)');gradient.addColorStop(1,'rgba(255,255,255,0)');
+        context.fillStyle=gradient;context.fillRect(0,0,128,128);
+        const map=new THREE.CanvasTexture(canvas);
+        const glowSprite=color=>new THREE.Sprite(new THREE.SpriteMaterial({map,color,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));
+        const halo=glowSprite(0xff5a14),corona=glowSprite(0xffb347);
+        scene.add(halo);scene.add(corona);
+        const count=240,pos=new Float32Array(count*3),col=new Float32Array(count*3),vel=new Float32Array(count*3),life=new Float32Array(count);
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute('position',new THREE.BufferAttribute(pos,3));
+        geometry.setAttribute('color',new THREE.BufferAttribute(col,3));
+        const points=new THREE.Points(geometry,new THREE.PointsMaterial({size:.55,map,vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));
+        points.frustumCulled=false;
+        scene.add(points);
+        molten={mesh,size,index,halo,corona,points,pos,col,vel,life,count};
+      }
+
+      function updateMolten(delta){
+        if(!molten)return;
+        const {mesh,size,index,halo,corona,points,pos,col,vel,life,count}=molten;
+        const alive=mesh.userData.alive;
+        halo.visible=corona.visible=points.visible=alive;
+        if(!alive)return;
+        const progress=game.index===index?Math.min(1,game.points/planets[index].goal):0;
+        const heat=Math.min(1,.4+.15*Math.min(1,game.index/index)+.45*progress);
+        const t=performance.now()/1000,beat=.5+.5*Math.sin(t*(2+heat*7));
+        mesh.material.uniforms.uTime.value=t;
+        mesh.material.uniforms.uHeat.value=heat;
+        mesh.scale.setScalar(1+.025*heat*beat);
+        const jitter=Math.max(0,heat-.75)*.16;
+        mesh.position.set((Math.random()-.5)*jitter,(Math.random()-.5)*jitter,(Math.random()-.5)*jitter);
+        halo.scale.setScalar(size*(4.6+1.2*heat+.5*beat*heat));
+        halo.material.opacity=.55+.4*heat*(.7+.3*beat);
+        corona.scale.setScalar(size*(7+3*heat));
+        corona.material.opacity=.18+.3*heat*beat;
+        if(moltenLight)moltenLight.intensity=18+34*heat*(.6+.4*beat);
+        const active=Math.floor(count*heat);
+        for(let i=0;i<count;i++){
+          const k=i*3;
+          if(life[i]<=0){
+            if(i>=active){col[k]=col[k+1]=col[k+2]=0;continue;}
+            let x=Math.random()-.5,y=Math.random()-.5,z=Math.random()-.5;
+            const l=Math.hypot(x,y,z)||1;x/=l;y/=l;z/=l;
+            const speed=.8+Math.random()*2.2*(.5+heat);
+            pos[k]=x*size*1.02;pos[k+1]=y*size*1.02;pos[k+2]=z*size*1.02;
+            vel[k]=x*speed;vel[k+1]=y*speed;vel[k+2]=z*speed;
+            life[i]=.6+Math.random()*1.2;
+          }
+          life[i]-=delta*.7;
+          pos[k]+=vel[k]*delta;pos[k+1]+=vel[k+1]*delta;pos[k+2]+=vel[k+2]*delta;
+          const f=Math.max(0,life[i]);
+          col[k]=f;col[k+1]=f*.45;col[k+2]=f*.1;
+        }
+        points.geometry.attributes.position.needsUpdate=true;
+        points.geometry.attributes.color.needsUpdate=true;
+      }
+
+      const realisticTypes={earth:0,moon:1,fire:4,forest:3};
+      const realistic={clouds:[],time:{value:0},sun:{value:null}};
+      const PLANET_VERT=`varying vec3 vP;varying vec3 vWN;varying vec3 vWP;
+void main(){vP=position;vWN=normalize(mat3(modelMatrix)*normal);vec4 wp=modelMatrix*vec4(position,1.);vWP=wp.xyz;gl_Position=projectionMatrix*viewMatrix*wp;}`;
+      const NOISE_GLSL=`float h(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float n(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+return mix(mix(mix(h(i),h(i+vec3(1.,0.,0.)),f.x),mix(h(i+vec3(0.,1.,0.)),h(i+vec3(1.,1.,0.)),f.x),f.y),
+mix(mix(h(i+vec3(0.,0.,1.)),h(i+vec3(1.,0.,1.)),f.x),mix(h(i+vec3(0.,1.,1.)),h(i+vec3(1.,1.,1.)),f.x),f.y),f.z);}
+float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*n(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}`;
+      const PLANET_FRAG=`uniform float uType;uniform float uTime;uniform vec3 uSun;
+varying vec3 vP;varying vec3 vWN;varying vec3 vWP;
+${NOISE_GLSL}
+float craters(vec3 p){vec3 i=floor(p),f=fract(p);float v=0.;
+for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
+vec3 g=vec3(float(x),float(y),float(z));vec3 o=vec3(h(i+g),h(i+g+17.3),h(i+g+41.7));
+float r=.16+.22*h(i+g+9.1);float d=length(g+o-f)/r;
+v+=-.55*(1.-smoothstep(0.,.9,d))+.5*smoothstep(.8,1.,d)*(1.-smoothstep(1.,1.3,d));}
+return v;}
+void main(){
+vec3 p=normalize(vP);vec3 N=normalize(vWN);vec3 V=normalize(cameraPosition-vWP);
+vec3 col=vec3(.5);float spec=0.;float landMask=0.;vec3 emit=vec3(0.);float lat=abs(p.y);
+bool isEarth=uType<.5;bool isMoon=(uType>.5&&uType<1.5)||uType>3.5;bool isVolcano=uType>1.5&&uType<2.5;
+if(!isMoon&&!isVolcano){
+float e=fbm(p*1.6+vec3(3.,1.,7.))+.25*fbm(p*5.);
+float sea=isEarth?.52:.46;
+float land=smoothstep(sea,sea+.02,e);
+vec3 deep=isEarth?vec3(.01,.07,.26):vec3(.01,.16,.17);
+vec3 shallow=isEarth?vec3(.05,.35,.62):vec3(.05,.42,.38);
+vec3 ocean=mix(deep,shallow,smoothstep(sea-.2,sea,e));
+float m=fbm(p*4.+9.);
+vec3 landc=isEarth?mix(mix(vec3(.12,.32,.1),vec3(.5,.42,.24),m),vec3(.58,.52,.42),smoothstep(.6,.85,e+m*.2)):mix(vec3(.03,.2,.06),vec3(.14,.4,.1),m);
+col=mix(ocean,landc,land);
+float ice=isEarth?smoothstep(.78,.9,lat+(fbm(p*6.)-.5)*.15):0.;
+col=mix(col,vec3(.93,.96,1.),ice);
+spec=(1.-land)*(1.-ice);landMask=land*(1.-ice);
+}else if(isMoon){
+vec3 q=p+(uType>3.5?vec3(5.3,2.1,8.7):vec3(0.));
+float base=.5+.4*(fbm(q*3.)-.5);
+float maria=smoothstep(.5,.6,fbm(q*1.2+4.));
+float c=craters(q*4.)+.6*craters(q*9.);
+float g=base*(1.-.35*maria)+c*.2;
+col=vec3(g)*vec3(1.,.98,.93);
+}else{
+float f=fbm(p*2.+fbm(p*3.)*1.5);float crust=fbm(p*6.);
+col=mix(vec3(.09,.045,.035),vec3(.3,.13,.07),crust);
+float vein=1.-smoothstep(0.,.045,abs(f-.5));
+emit=vec3(1.,.38,.05)*vein*(.8+.3*sin(uTime*1.5+f*10.))*1.5;
+}
+float nd=dot(N,uSun);float diff=max(nd,0.);
+vec3 cen=normalize(-vWP);float diffC=max(dot(N,cen),0.)*.25;
+vec3 lit=col*(.1+diff*1.05)+col*vec3(1.,.5,.2)*diffC;
+vec3 H=normalize(uSun+V);lit+=vec3(.9,.95,1.)*spec*pow(max(dot(N,H),0.),70.)*.9*step(0.,nd);
+if(isEarth){float night=smoothstep(.08,-.15,nd);lit+=vec3(1.,.8,.4)*step(.8,fbm(p*18.))*landMask*night*.9;}
+lit+=emit*(isVolcano?1.:0.);
+gl_FragColor=vec4(lit,1.);}`;
+      const CLOUD_FRAG=`uniform vec3 uSun;uniform vec3 uTint;varying vec3 vP;varying vec3 vWN;varying vec3 vWP;
+${NOISE_GLSL}
+void main(){vec3 p=normalize(vP);vec3 N=normalize(vWN);
+float a=smoothstep(.5,.78,fbm(p*3.2+fbm(p*6.)*.6))*.9;
+float d=max(dot(N,uSun),0.)*.95+.1;
+gl_FragColor=vec4(uTint*d,a);}`;
+      const ATMO_FRAG=`uniform vec3 uColor;uniform vec3 uSun;uniform float uStrength;varying vec3 vP;varying vec3 vWN;varying vec3 vWP;
+void main(){vec3 N=normalize(vWN);vec3 V=normalize(cameraPosition-vWP);
+float fr=pow(1.-max(dot(N,V),0.),3.);float sunlit=smoothstep(-.3,.5,dot(N,uSun));
+gl_FragColor=vec4(uColor,fr*(.25+.75*sunlit)*uStrength);}`;
+
+      function createRealisticMaterial(type){
+        if(!realistic.sun.value)realistic.sun.value=new THREE.Vector3(-14,20,16).normalize();
+        return new THREE.ShaderMaterial({uniforms:{uType:{value:type},uTime:realistic.time,uSun:realistic.sun},vertexShader:PLANET_VERT,fragmentShader:PLANET_FRAG});
+      }
+
+      function createPlanetLayers(mesh,data){
+        const layer=(radius,fragment,uniforms,additive)=>{
+          const sphere=new THREE.Mesh(new THREE.SphereGeometry(data.size*radius,56,40),new THREE.ShaderMaterial({
+            uniforms:{uSun:realistic.sun,...uniforms},vertexShader:PLANET_VERT,fragmentShader:fragment,
+            transparent:true,depthWrite:false,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending
+          }));
+          mesh.add(sphere);
+          return sphere;
+        };
+        const type=data.type;
+        if(type==='earth'||type==='forest'){
+          const tint=type==='earth'?new THREE.Color(1,1,1):new THREE.Color(.85,1,.9);
+          realistic.clouds.push(layer(1.018,CLOUD_FRAG,{uTint:{value:tint}},false));
+        }
+        const atmosphere={earth:[0x4aa8ff,1.7],forest:[0x6dffb0,1.3],fire:[0xcfd6e6,.25],moon:[0xcfd6e6,.25]}[type];
+        if(atmosphere)layer(1.1,ATMO_FRAG,{uColor:{value:new THREE.Color(atmosphere[0])},uStrength:{value:atmosphere[1]}},true);
+      }
+
+      function updateRealistic(delta){
+        realistic.time.value=performance.now()/1000;
+        realistic.clouds.forEach(cloud=>{cloud.rotation.y+=delta*.05;});
+      }
+
       function createPlanets(){
         const orbitalPlanets=planets.filter(planet=>planet.orbit>0);
         let orbitingIndex=0;
         planets.forEach((data,index)=>{
           const orbit=new THREE.Group();
           scene.add(orbit);
-          const material=new THREE.MeshStandardMaterial({map:createTexture(data.type,data.color),roughness:.82,metalness:.05});
+          const material=data.type==='saturn'?createMoltenMaterial():realisticTypes[data.type]!==undefined?createRealisticMaterial(realisticTypes[data.type]):new THREE.MeshStandardMaterial({map:createTexture(data.type,data.color),roughness:.82,metalness:.05});
           const mesh=new THREE.Mesh(new THREE.SphereGeometry(data.size,56,40),material);
           const angle=data.orbit?orbitingIndex++*Math.PI*2/orbitalPlanets.length:0;
           if(data.orbit){
@@ -631,11 +813,13 @@
             scene.add(mesh);
           }
           if(data.type==='saturn'&&!animatedPlanetAssets[data.type]){
-            const ring=makeRing(data.size+.45,data.size+1.7,0xd4c09a,.74,-Math.PI/2.6);
+            const ring=makeRing(data.size+.45,data.size+1.7,0xff7a2a,.45,-Math.PI/2.6);
             scene.add(ring);
             planetRings[index]=ring;
           }
           mesh.userData={index,angle,alive:true};
+          if(data.type==='saturn')createMolten(mesh,data.size,index);
+          if(realisticTypes[data.type]!==undefined)createPlanetLayers(mesh,data);
           meshes.push(mesh);
           const sprite=createAnimatedPlanetSprite(data.type,data.size,index,mesh);
           if(sprite){
@@ -663,7 +847,7 @@
         const sun=new THREE.DirectionalLight(0xffe6ce,3.2);
         sun.position.set(-14,20,16);scene.add(sun);
         const core=new THREE.PointLight(0xff8a45,26,70,1.7);
-        core.position.set(0,0,0);scene.add(core);
+        core.position.set(0,0,0);scene.add(core);moltenLight=core;
         createStarfield();
         createPlanets();
         createShootingStar();
@@ -1176,6 +1360,7 @@
         const position=new THREE.Vector3();
         mesh.getWorldPosition(position);
         triggerExplosion(position,data.color);
+        if(data.type==='saturn'){triggerExplosion(position,0xff7a1a);triggerExplosion(position,0xffe08a);game.cameraShake=1.4;}
         mesh.userData.alive=false;
         mesh.visible=false;
         if(planetSprites[game.index])planetSprites[game.index].visible=false;
@@ -1349,6 +1534,8 @@
           }
         });
         updateAnimatedPlanetTextures();
+        updateMolten(delta);
+        updateRealistic(delta);
         if(starfield)starfield.rotation.y+=delta*.012;
         if(starGlow)starGlow.rotation.y+=delta*.012;
         updateShootingStar(delta);
