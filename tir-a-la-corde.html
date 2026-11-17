@@ -77,6 +77,19 @@
             background: #020406;
         }
 
+        #background-video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.35;
+            z-index: 2;
+            pointer-events: none;
+            display: none;
+        }
+        #background-video.is-active { display: block; }
+
         .bg-svg {
             position: absolute;
             top: 0;
@@ -147,10 +160,10 @@
             justify-content: space-between;
             align-items: flex-end;
             z-index: 15;
-            transition: left 0.05s ease-out;
+            will-change: left;
         }
-        #team-a { left: 50px; }
-        #team-b { left: 980px; }
+        #team-a { left: 50px; --lean: 1; }
+        #team-b { left: 980px; --lean: -1; }
 
         .char {
             width: 90px;
@@ -163,15 +176,16 @@
             transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), top 0.5s ease;
         }
 
-        .svg-char { width: 100%; height: 100%; overflow: visible; }
+        /* Le corps pivote autour des pieds (skewX piloté par le JS) : les mains restent à la hauteur de la corde (Y=225) */
+        .svg-char {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            transform-origin: 50% 118px;
+        }
 
-        #team-a .char.pulling .svg-char { transform: skewX(15deg) translateY(-2px); }
-        #team-b .char.pulling .svg-char { transform: skewX(-15deg) translateY(-2px); }
-
-        .leg { transform-origin: top center; }
-        @keyframes walk { 0%, 100% { transform: rotate(20deg); } 50% { transform: rotate(-20deg); } }
-        .char.walking .leg-l { animation: walk 0.1s linear infinite; }
-        .char.walking .leg-r { animation: walk 0.1s linear infinite reverse; }
+        /* Les jambes pivotent autour de la hanche (origine posée en JS, en unités du viewBox) */
+        .leg { transform-box: view-box; }
 
         @keyframes flail {
             0% { transform: rotate(35deg) scaleY(0.9); }
@@ -230,6 +244,20 @@
             font-size: 19px;
             cursor: pointer;
         }
+        #fullscreen-exit {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            z-index: 310;
+            padding: 10px 14px;
+            color: white;
+            background: rgba(15, 17, 22, .95);
+            border: 1px solid #ff007f;
+            border-radius: 8px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        #fullscreen-exit[hidden] { display: none; }
         #live-controls {
             position: fixed;
             z-index: 210;
@@ -274,7 +302,11 @@
         }
         #live-controls label { display: flex; align-items: center; gap: 6px; cursor: default; }
         #live-controls input[type="range"] { width: 75px; accent-color: #ff007f; }
-        #live-status { flex-basis: 100%; color: #e8c8d7; text-align: center; }
+        #live-status, #background-video-status, #fullscreen-status {
+            flex-basis: 100%;
+            color: #e8c8d7;
+            text-align: center;
+        }
         #team-roster {
             position: fixed;
             z-index: 230;
@@ -301,6 +333,51 @@
             #toggle-controls { top: auto; bottom: 12px; }
             #live-controls { top: 12px; right: 58px; width: min(460px, calc(100vw - 82px)); }
         }
+        body.is-fullscreen {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            padding: 0;
+        }
+        body.is-fullscreen #top-bar {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100vw - 80px);
+            max-width: 700px;
+            gap: 6px;
+            margin: 0;
+            padding: 6px;
+            background: rgba(1, 2, 3, .72);
+            border-radius: 8px;
+            z-index: 100;
+        }
+        body.is-fullscreen #top-bar .action-btn {
+            flex: 0 1 auto;
+            width: clamp(72px, 14vw, 170px);
+            height: clamp(32px, 5vh, 48px);
+            font-size: clamp(10px, 1.1vw, 15px);
+        }
+        body.is-fullscreen #game-title {
+            font-size: clamp(14px, 2vw, 26px);
+            letter-spacing: clamp(1px, .3vw, 4px);
+            white-space: nowrap;
+        }
+        body.is-fullscreen #viewport {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            z-index: 0;
+        }
+        body.is-fullscreen #toggle-controls { top: 10px; bottom: auto; }
+        body.is-fullscreen #live-controls { top: 58px; right: 10px; }
     </style>
 </head>
 <body>
@@ -326,8 +403,15 @@
         <button id="sim-big-rose" type="button">GROS CADEAU ROSE</button>
         <label for="sound-enabled">Sons <input id="sound-enabled" type="checkbox" checked></label>
         <label for="sound-volume">Volume <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <button id="choose-background-video" type="button">CHOISIR UNE VIDÉO</button>
+        <input id="background-video-input" type="file" accept="video/*" hidden>
+        <button id="remove-background-video" type="button">RETIRER LA VIDÉO</button>
+        <span id="background-video-status" role="status">Aucune vidéo sélectionnée.</span>
+        <button id="fullscreen-toggle" type="button">PLEIN ÉCRAN LARGE</button>
+        <span id="fullscreen-status" role="status"></span>
         <div data-save-key="tir-a-la-corde-save"></div>
     </div>
+    <button id="fullscreen-exit" type="button" hidden>QUITTER LE PLEIN ÉCRAN</button>
     <aside id="team-roster" hidden aria-label="File des équipes">
         <div id="roster-title">JOUEURS · GLISSER POUR DÉPLACER</div>
         <div id="roster-list">En attente des choix dans le chat.</div>
@@ -438,14 +522,15 @@
                 </g>
             </svg>
 
+            <video id="background-video" autoplay muted loop playsinline aria-hidden="true"></video>
             <div id="score-a" class="score-card">Vert : <span id="fa">0</span></div>
             <div id="ui-meter">0</div>
             <div id="score-b" class="score-card">Rose : <span id="fb">0</span></div>
 
             <!-- CORDE FIXÉE EXACTEMENT À Y=225px (HAUTEUR DES MAINS) -->
             <svg id="rope-svg-container" viewBox="0 0 1366 768">
-                <line id="rope-path-left" class="rope-path" x1="120" y1="225" x2="683" y2="225" />
-                <line id="rope-path-right" class="rope-path" x1="683" y1="225" x2="1246" y2="225" />
+                <line id="rope-path-left" class="rope-path" x1="90" y1="225" x2="683" y2="225" />
+                <line id="rope-path-right" class="rope-path" x1="683" y1="225" x2="1276" y2="225" />
                 <circle id="rope-marker-svg" cx="683" cy="225" r="7" fill="#ff0000" stroke="#ffffff" stroke-width="2"/>
             </svg>
 
@@ -580,7 +665,7 @@
     </div>
 
     <script>
-        let pos = 0, active = false, ca = 0, cb = 0, tA, tB, speed = 1, socket = null;
+        let pos = 0, shown = 0, ropeCut = false, active = false, ca = 0, cb = 0, tA, tB, speed = 1, socket = null;
         const limit = 220;
         const teams = new Map();
         const seenGiftIds = new Set();
@@ -590,15 +675,89 @@
         const liveStatus = document.getElementById('live-status');
         const roster = document.getElementById('team-roster');
         const rosterList = document.getElementById('roster-list');
+        const backgroundVideo = document.getElementById('background-video');
+        const backgroundVideoInput = document.getElementById('background-video-input');
+        const backgroundVideoStatus = document.getElementById('background-video-status');
+        let backgroundVideoUrl = null;
 
         function resizeViewport() {
             const vp = document.getElementById('viewport');
             const gc = document.getElementById('game-container');
-            const scale = vp.clientWidth / 1366;
+            const scale = Math.min(vp.clientWidth / 1366, vp.clientHeight / 768);
             gc.style.transform = `scale(${scale})`;
+            gc.style.left = `${(vp.clientWidth - 1366 * scale) / 2}px`;
+            gc.style.top = `${(vp.clientHeight - 768 * scale) / 2}px`;
         }
         window.addEventListener('resize', resizeViewport);
         resizeViewport();
+
+        function clearBackgroundVideo(message) {
+            backgroundVideo.pause();
+            backgroundVideo.removeAttribute('src');
+            backgroundVideo.classList.remove('is-active');
+            backgroundVideoInput.value = '';
+            if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+            backgroundVideoUrl = null;
+            backgroundVideo.load();
+            backgroundVideoStatus.textContent = message;
+        }
+
+        document.getElementById('choose-background-video').addEventListener('click', () => {
+            backgroundVideoInput.click();
+        });
+        backgroundVideoInput.addEventListener('change', async () => {
+            const file = backgroundVideoInput.files && backgroundVideoInput.files[0];
+            if (!file) return;
+
+            if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+            backgroundVideoUrl = URL.createObjectURL(file);
+            backgroundVideo.src = backgroundVideoUrl;
+            backgroundVideo.classList.add('is-active');
+            backgroundVideo.load();
+            try {
+                await backgroundVideo.play();
+                backgroundVideoStatus.textContent = `Vidéo active : ${file.name}`;
+            } catch (error) {
+                console.warn('Lecture de la vidéo d’arrière-plan impossible :', error);
+                backgroundVideoStatus.textContent = 'Lecture impossible. Essaie un format vidéo compatible.';
+            }
+        });
+        backgroundVideo.addEventListener('error', () => {
+            if (backgroundVideoUrl) {
+                clearBackgroundVideo('Format ou codec vidéo non pris en charge par ce navigateur.');
+            }
+        });
+        document.getElementById('remove-background-video').addEventListener('click', () => {
+            clearBackgroundVideo('Aucune vidéo sélectionnée.');
+        });
+
+        const fullscreenToggle = document.getElementById('fullscreen-toggle');
+        const fullscreenExit = document.getElementById('fullscreen-exit');
+        const fullscreenStatus = document.getElementById('fullscreen-status');
+        async function toggleFullscreen() {
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                } else if (document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen();
+                } else {
+                    fullscreenStatus.textContent = 'Le plein écran n’est pas disponible dans ce navigateur.';
+                }
+            } catch (error) {
+                console.warn('Impossible de changer le mode plein écran :', error);
+                fullscreenStatus.textContent = 'Impossible de changer le mode plein écran.';
+            }
+        }
+        fullscreenToggle.addEventListener('click', toggleFullscreen);
+        fullscreenExit.addEventListener('click', toggleFullscreen);
+        document.addEventListener('fullscreenchange', () => {
+            const isFullscreen = Boolean(document.fullscreenElement);
+            document.body.classList.toggle('is-fullscreen', isFullscreen);
+            fullscreenToggle.textContent = isFullscreen ? 'QUITTER LE PLEIN ÉCRAN' : 'PLEIN ÉCRAN LARGE';
+            fullscreenExit.hidden = !isFullscreen;
+            if (isFullscreen) document.getElementById('live-controls').hidden = true;
+            resizeViewport();
+        });
 
         function resetChars() {
             document.querySelectorAll('.char').forEach(c => {
@@ -607,65 +766,107 @@
                 c.style.transform = "rotate(0deg)";
             });
             blade.style.transform = "translateY(0px)";
-
-            rLeft.setAttribute('x1', 120 + pos);
-            rLeft.setAttribute('x2', 683 + pos);
+            ropeCut = false;
             rLeft.setAttribute('y1', 225);
             rLeft.setAttribute('y2', 225);
-
-            rRight.setAttribute('x1', 683 + pos);
-            rRight.setAttribute('x2', 1246 + pos);
             rRight.setAttribute('y1', 225);
             rRight.setAttribute('y2', 225);
+            render();
         }
 
+        /* Affichage fluide : la position affichée (shown) rattrape la position réelle (pos) à chaque image */
+        function render() {
+            const centerPos = 683 + shown;
+            tA_el.style.left = (50 + shown) + "px";
+            tB_el.style.left = (980 + shown) + "px";
+            if (!ropeCut) {
+                rLeft.setAttribute('x1', 90 + shown);
+                rLeft.setAttribute('x2', centerPos);
+                rRight.setAttribute('x1', centerPos);
+                rRight.setAttribute('x2', 1276 + shown);
+            }
+            rMarker.setAttribute('cx', centerPos);
+        }
+
+        /* ===== Animation des joueurs =====
+           Chaque joueur a : une inclinaison (lean) qui suit une cible par ressort, et deux jambes qui font de vrais pas
+           (le pied se lève de quelques pixels puis se repose, il ne balance plus dans le vide). */
+        const rig = [];
+        [['a', 1, 77], ['b', -1, 81]].forEach(([t, s, hip]) => {
+            document.querySelectorAll(`#team-${t} .char`).forEach((c, i) => {
+                const l = c.querySelector('.leg-l'), r = c.querySelector('.leg-r');
+                l.style.transformOrigin = `38.5px ${hip}px`;
+                r.style.transformOrigin = `51.5px ${hip}px`;
+                rig.push({ c, t, s, i, svg: c.querySelector('.svg-char'), l, r, e: 0, lean: 0, ph: i * 1.9, vs: 0 });
+            });
+        });
+        let prevShown = 0, clock = 0;
+
+        function pulse(team, amount) {
+            rig.filter(p => p.t === team).forEach(p => {
+                setTimeout(() => { p.e = Math.min(1.6, p.e + amount); }, p.i * 55);
+            });
+        }
+
+        function animateRig(v) {
+            clock += 1;
+            rig.forEach(p => {
+                p.e *= 0.94;
+                const sway = active ? 1.3 * Math.sin(clock / 26 + p.i * 1.7) : 0;
+                const target = active ? 8 + 11 * p.e + sway : 0;
+                p.lean += (target - p.lean) * 0.2;
+                p.svg.style.transform = `skewX(${(p.s * p.lean).toFixed(2)}deg)`;
+
+                /* pas : la phase avance avec la vitesse réelle de l'équipe */
+                p.vs += (Math.abs(v) - p.vs) * 0.15;
+                p.ph += p.vs * 0.55;
+                const amp = Math.min(1, p.vs / 1.2) * 6;
+                const liftL = Math.max(0, Math.sin(p.ph)) * amp;
+                const liftR = Math.max(0, -Math.sin(p.ph)) * amp;
+                /* posture : jambe avant vers la corde, jambe arrière en appui, pieds au sol */
+                const front = -p.s * 8, back = p.s * 8;
+                const dir = Math.sign(v) * p.s;   /* >0 : l'équipe recule */
+                const aL = (p.s === 1 ? back : front) + (liftL > 0 ? -dir * 3 : 0);
+                const aR = (p.s === 1 ? front : back) + (liftR > 0 ? -dir * 3 : 0);
+                p.l.style.transform = `translateY(${(-liftL).toFixed(2)}px) rotate(${aL.toFixed(2)}deg)`;
+                p.r.style.transform = `translateY(${(-liftR).toFixed(2)}px) rotate(${aR.toFixed(2)}deg)`;
+            });
+        }
+
+        function frame() {
+            const diff = pos - shown;
+            shown = Math.abs(diff) < 0.05 ? pos : shown + diff * 0.2;
+            render();
+            animateRig(shown - prevShown);
+            prevShown = shown;
+            requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+
         function startGame() {
-            pos = 0; ca = 0; cb = 0; active = true;
+            pos = 0; shown = 0; ca = 0; cb = 0; active = true;
             document.getElementById('overlay').style.display = 'none';
+            document.getElementById('game-container').classList.add('playing');
             resetChars();
-            tA_el.style.left = "50px"; tB_el.style.left = "980px";
             tA_el.style.top = "180px"; tB_el.style.top = "180px";
             update();
         }
 
         function update() {
-            tA_el.style.left = (50 + pos) + "px";
-            tB_el.style.left = (980 + pos) + "px";
-
-            const centerPos = 683 + pos;
-
-            if (active) {
-                rLeft.setAttribute('x1', 120 + pos);
-                rLeft.setAttribute('x2', centerPos);
-
-                rRight.setAttribute('x1', centerPos);
-                rRight.setAttribute('x2', 1246 + pos);
-            }
-
-            rMarker.setAttribute('cx', centerPos);
-
             document.getElementById('ui-meter').innerText = Math.abs(Math.round(pos / 5));
             document.getElementById('ui-meter').style.color = pos < 0 ? "#00ffaa" : (pos > 0 ? "#ff007f" : "#ffcc00");
             document.getElementById('fa').innerText = ca;
             document.getElementById('fb').innerText = cb;
         }
 
-        function fx(id, t) {
-            const list = document.querySelectorAll(`#${id} .char`);
-            list.forEach(c => c.classList.add('pulling', 'walking'));
-            setTimeout(() => list.forEach(c => c.classList.remove('pulling')), 90);
-            clearTimeout(t);
-            return setTimeout(() => list.forEach(c => c.classList.remove('walking')), 220);
-        }
-
         function pullA(force = 10) {
             if (!active) return; pos -= force * speed; ca++; update();
-            tA = fx('team-a', tA); check();
+            pulse('a', 0.9); pulse('b', 0.3); check();
         }
 
         function pullB(force = 10) {
             if (!active) return; pos += force * speed; cb++; update();
-            tB = fx('team-b', tB); check();
+            pulse('b', 0.9); pulse('a', 0.3); check();
         }
 
         function triggerChainFall(losingTeam) {
@@ -675,6 +876,7 @@
             blade.style.transform = "translateY(55px)";
 
             setTimeout(() => {
+                ropeCut = true;
                 if (isTeamA) {
                     rLeft.setAttribute('x2', 450);
                     rLeft.setAttribute('y2', 500);
@@ -719,6 +921,7 @@
 
         function end(txt) {
             active = false;
+            document.getElementById('game-container').classList.remove('playing');
             document.getElementById('win-txt').innerText = txt;
             setTimeout(() => {
                 document.getElementById('overlay').style.display = 'flex';
