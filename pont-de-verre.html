@@ -9,17 +9,29 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:radial-gradient(circle at center,#11071f 0%,#030106 100%);color:var(--fg);font-family:Inter,system-ui,-apple-system,sans-serif;user-select:none;display:flex;flex-direction:column;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) 8px calc(8px + env(safe-area-inset-bottom,0px))}
-header{width:100%;max-width:900px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid rgba(236,72,153,.3);border-radius:12px;padding:8px 14px}
+header{width:100%;max-width:900px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid rgba(236,72,153,.3);border-radius:12px;padding:8px 56px 8px 14px}
 h1{margin:0;font-size:16px;font-weight:900;letter-spacing:.15em;color:var(--pink);text-transform:uppercase;text-shadow:0 0 10px rgba(255,0,127,.7)}
 .stats{display:flex;flex-wrap:wrap;gap:8px;font-size:12px;font-weight:600}
 .stats div{background:rgba(0,0,0,.6);border:1px solid #262626;border-radius:8px;padding:4px 10px}
 main{position:relative;flex:1;min-height:0;width:100%;max-width:900px;background:rgba(0,0,0,.8);border:2px solid rgba(236,72,153,.4);border-radius:16px;box-shadow:0 0 35px rgba(255,0,127,.25);overflow:hidden}
-svg{width:100%;height:100%;display:block}
-#banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:8px 20px;border-radius:12px;background:rgba(0,0,0,.9);border:1px solid var(--pink);font-weight:700;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
+svg{position:relative;z-index:1;width:100%;height:100%;display:block}
+#background-video{width:100%;height:100%;object-fit:cover;opacity:.42;pointer-events:none;display:none}
+#background-video.is-active{display:block}
+#banner{position:absolute;z-index:3;top:14px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:8px 20px;border-radius:12px;background:rgba(0,0,0,.9);border:1px solid var(--pink);font-weight:700;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 .bar{width:100%;max-width:900px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .bar button{min-height:36px;padding:6px 12px;border:1px solid #554455;border-radius:8px;color:#fff;background:#211722;font-size:11px;font-weight:800;cursor:pointer}
 .bar button:hover{border-color:var(--pink)}
 #status{flex-basis:100%;text-align:center;font-size:12px;color:#f3d9e8}
+#configuration-toggle{position:fixed;top:12px;right:12px;z-index:80;width:40px;height:40px;border:1px solid var(--pink);border-radius:50%;color:#fff;background:rgba(10,10,12,.95);font-size:19px;cursor:pointer}
+#configuration-panel{position:fixed;top:60px;right:12px;z-index:90;display:flex;flex-wrap:wrap;gap:8px;width:min(380px,calc(100vw - 24px));max-height:calc(100vh - 76px);overflow:auto;padding:12px;color:#fff;background:rgba(10,10,12,.97);border:1px solid var(--pink);border-radius:12px;box-shadow:0 0 24px rgba(0,0,0,.75);font:12px Arial,sans-serif}
+#configuration-panel[hidden]{display:none}
+#configuration-panel button{min-height:36px;padding:7px 10px;border:1px solid #554455;border-radius:8px;color:#fff;background:#211722;font-size:11px;font-weight:800;cursor:pointer}
+#configuration-panel button:hover{border-color:var(--pink)}
+#background-video-status,#fullscreen-status{flex-basis:100%;text-align:center;color:#f3d9e8}
+body.is-fullscreen{display:block;height:100vh;overflow:hidden;padding:0}
+body.is-fullscreen main{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;min-height:0;border:0;border-radius:0;box-shadow:none}
+body.is-fullscreen header{position:fixed;top:10px;left:50%;transform:translateX(-50%);width:calc(100vw - 84px);max-width:900px;z-index:10;background:rgba(10,10,12,.9)}
+body.is-fullscreen .bar{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:min(900px,calc(100vw - 24px));max-height:25vh;overflow:auto;padding:8px;background:rgba(10,10,12,.9);border:1px solid rgba(236,72,153,.45);border-radius:12px;z-index:10}
 </style>
 </head>
 <body>
@@ -32,8 +44,17 @@ svg{width:100%;height:100%;display:block}
     <div>LIVE : <b id="game-status" style="color:#34d399">En cours</b></div>
   </div>
 </header>
+<button id="configuration-toggle" type="button" aria-label="Afficher ou masquer la configuration" title="Configuration">⚙</button>
+<div id="configuration-panel" aria-label="Configuration du jeu" hidden>
+  <button id="choose-background-video" type="button">CHOISIR UNE VIDÉO DE FOND</button>
+  <input id="background-video-input" type="file" accept="video/*" hidden>
+  <button id="remove-background-video" type="button">RETIRER LA VIDÉO</button>
+  <span id="background-video-status" role="status">Aucune vidéo sélectionnée.</span>
+  <button id="fullscreen-toggle" type="button">PLEIN ÉCRAN</button>
+  <span id="fullscreen-status" role="status"></span>
+</div>
 
-<main>
+<main id="game-stage">
 <svg id="svg" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet">
   <defs>
     <linearGradient id="abyss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0512"/><stop offset=".5" stop-color="#030105"/><stop offset="1" stop-color="#000"/></linearGradient>
@@ -42,6 +63,11 @@ svg{width:100%;height:100%;display:block}
   <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8f2ff" stop-opacity=".55"/><stop offset=".5" stop-color="#8fd0ff" stop-opacity=".2"/><stop offset="1" stop-color="#bfe6ff" stop-opacity=".42"/></linearGradient>
   </defs>
   <rect width="1000" height="700" fill="url(#abyss)"/>
+  <foreignObject x="0" y="0" width="1000" height="700" pointer-events="none">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">
+      <video id="background-video" autoplay muted loop playsinline aria-hidden="true"></video>
+    </div>
+  </foreignObject>
   <path d="M0,420H1000V700H0Z" fill="#0b533e" stroke="#063224" stroke-width="4"/>
   <rect x="220" width="70" height="700" fill="url(#pillar)"/>
   <rect x="710" width="70" height="700" fill="url(#pillar)"/>
@@ -369,6 +395,74 @@ $("b-right").onclick = () => choose("right");
 $("g-left").onclick = () => gift("left");
 $("g-right").onclick = () => gift("right");
 all.forEach(p => $("p-" + p).onclick = () => pickPlayer(p));
+
+const backgroundVideo = $("background-video");
+const backgroundVideoInput = $("background-video-input");
+const backgroundVideoStatus = $("background-video-status");
+let backgroundVideoUrl = null;
+
+function clearBackgroundVideo(message){
+  backgroundVideo.pause();
+  backgroundVideo.removeAttribute("src");
+  backgroundVideo.classList.remove("is-active");
+  backgroundVideoInput.value = "";
+  if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+  backgroundVideoUrl = null;
+  backgroundVideo.load();
+  backgroundVideoStatus.textContent = message;
+}
+
+$("configuration-toggle").addEventListener("click", () => {
+  const panel = $("configuration-panel");
+  panel.hidden = !panel.hidden;
+});
+$("choose-background-video").addEventListener("click", () => backgroundVideoInput.click());
+backgroundVideoInput.addEventListener("change", async () => {
+  const file = backgroundVideoInput.files && backgroundVideoInput.files[0];
+  if (!file) return;
+  if (backgroundVideoUrl) URL.revokeObjectURL(backgroundVideoUrl);
+  backgroundVideoUrl = URL.createObjectURL(file);
+  backgroundVideo.src = backgroundVideoUrl;
+  backgroundVideo.classList.add("is-active");
+  backgroundVideo.load();
+  try {
+    await backgroundVideo.play();
+    backgroundVideoStatus.textContent = `Vidéo active : ${file.name}`;
+  } catch (error) {
+    console.warn("Lecture de la vidéo d’arrière-plan impossible :", error);
+    backgroundVideoStatus.textContent = error && (error.name === "AbortError" || error.name === "NotAllowedError")
+      ? "Le navigateur a bloqué ou suspendu la lecture automatique."
+      : "Lecture impossible. Essaie un format vidéo compatible.";
+  }
+});
+backgroundVideo.addEventListener("error", () => {
+  if (backgroundVideoUrl) clearBackgroundVideo("Format ou codec vidéo non pris en charge par ce navigateur.");
+});
+$("remove-background-video").addEventListener("click", () => clearBackgroundVideo("Aucune vidéo sélectionnée."));
+
+function updateFullscreenState(){
+  const isFullscreen = Boolean(document.fullscreenElement);
+  document.body.classList.toggle("is-fullscreen", isFullscreen);
+  $("fullscreen-toggle").textContent = isFullscreen ? "QUITTER LE PLEIN ÉCRAN" : "PLEIN ÉCRAN";
+  $("fullscreen-status").textContent = "";
+  if (isFullscreen) $("configuration-panel").hidden = true;
+}
+async function toggleFullscreen(){
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+    else {
+      $("fullscreen-status").textContent = "Le plein écran n’est pas disponible dans ce navigateur.";
+      return;
+    }
+    updateFullscreenState();
+  } catch (error) {
+    console.warn("Impossible de changer le mode plein écran :", error);
+    $("fullscreen-status").textContent = "Impossible de changer le mode plein écran.";
+  }
+}
+$("fullscreen-toggle").addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", updateFullscreenState);
 
 renderBridge(); reset(false);
 </script>
