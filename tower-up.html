@@ -95,8 +95,15 @@
     .control-error { color: #ff9aab; font-size: 12px; line-height: 1.5; }
     .queue-window { position: fixed; z-index: 6; left: 18px; bottom: 18px; width: min(320px, calc(100vw - 36px)); max-height: 38vh; overflow: hidden; border: 1px solid rgba(120,240,193,.28); border-radius: 14px; background: rgba(13,20,34,.95); box-shadow: 0 12px 40px rgba(0,0,0,.34); }
     .queue-window[hidden] { display: none; }
+    .queue-window.duel-mode { width: min(640px, calc(100vw - 36px)); }
     .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--mint); font-size: 11px; font-weight: 800; letter-spacing: .13em; cursor: move; touch-action: none; user-select: none; }
     .queue-list { max-height: calc(38vh - 42px); overflow: auto; padding: 8px; }
+    .queue-list[hidden] { display: none; }
+    .duel-queues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: calc(38vh - 42px); overflow: auto; padding: 8px; }
+    .duel-queues[hidden] { display: none; }
+    .duel-queue { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
+    .duel-queue-heading { display: flex; justify-content: space-between; gap: 6px; padding: 8px; color: var(--mint); font-size: 10px; font-weight: 800; }
+    .duel-queue-list { max-height: calc(38vh - 78px); overflow: auto; padding: 0 6px 6px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
     @media (max-width: 850px) {
       .play-row { grid-template-columns: 1fr; }
@@ -234,8 +241,18 @@
   </aside>
 
   <section class="queue-window" id="queue-window" aria-label="File d’attente détachable">
-    <div class="queue-head" id="queue-head"><span>FILE DES BÂTISSEURS · <b id="queue-count">0</b></span><button class="btn small" id="queue-close" type="button">Masquer</button></div>
+    <div class="queue-head" id="queue-head"><span><span id="queue-title">FILE DES BÂTISSEURS ·</span> <b id="queue-count">0</b></span><button class="btn small" id="queue-close" type="button">Masquer</button></div>
     <div class="queue-list" id="queue-list"><div class="empty-state">La file est vide.</div></div>
+    <div class="duel-queues" id="duel-queues" hidden>
+      <section class="duel-queue" aria-label="File du joueur 1">
+        <div class="duel-queue-heading"><span>JOUEUR 1 · FILE 1</span><b id="duel-queue-count-1">0</b></div>
+        <div class="duel-queue-list" id="duel-queue-list-1"></div>
+      </section>
+      <section class="duel-queue" aria-label="File du joueur 2">
+        <div class="duel-queue-heading"><span>JOUEUR 2 · FILE 2</span><b id="duel-queue-count-2">0</b></div>
+        <div class="duel-queue-list" id="duel-queue-list-2"></div>
+      </section>
+    </div>
   </section>
 
   <script>
@@ -245,8 +262,9 @@
       const BASE_WIDTH = 700;
       const TOWER_BLOCK_WIDTH = 160;
       const MAX_VISIBLE = 14;
-      const duel = { on: false, over: false, cur: -1, t: [], wins: [0, 0], lastText: '' };
-      const TOWER_KEYS = ['blocks', 'height', 'active', 'fallingBlock', 'gameOver', 'streak'];
+      const duel = { on: false, over: false, cur: -1, t: [], wins: [0, 0], nextGiftPlayer: 0, pendingGifts: [] };
+      const TOWER_KEYS = ['blocks', 'height', 'active', 'fallingBlock', 'gameOver', 'streak', 'queue'];
+      let duelQueueDirty = false;
       const MAX_TOWER_FLOORS = 100000;
       const FLOOR_HEIGHT = 26;
       const BASE_HEIGHT = 24;
@@ -263,7 +281,8 @@
         'live-label','connect-open','connect-button','connect-close','control-open','control-close','control-panel',
         'panel-backdrop','tiktok-username','connection-status','control-error','speed-range','speed-output',
         'sound-toggle','volume-range','volume-output','queue-toggle','queue-window','queue-head','queue-close',
-        'queue-visible','queue-count','queue-list','board-toggle','board-hide','board-visible','leaderboard-card',
+        'queue-visible','queue-title','queue-count','queue-list','duel-queues','duel-queue-count-1','duel-queue-list-1',
+        'duel-queue-count-2','duel-queue-list-2','board-toggle','board-hide','board-visible','leaderboard-card',
         'drop-button','duel-button','restart-button','sim-gift','sim-big','sim-share','sim-follow'
       ].map(id => [id, document.getElementById(id)]));
 
@@ -435,17 +454,15 @@
         ui['support-count'].textContent = `${builderCount} bâtisseur${builderCount === 1 ? '' : 's'}`;
       }
 
-      function refreshQueue() {
-        const waiting = state.queue.reduce((sum, item) => sum + item.count, 0) + (state.active ? 1 : 0);
-        ui['queue-count'].textContent = String(waiting);
-        ui['queue-list'].replaceChildren();
-        const visibleItems = state.queue.slice(0, 7);
-        if (state.active) visibleItems.unshift({ username: state.active.username, count: 1, simulated: state.active.simulated, current: true });
+      function renderQueueList(list, queue, active) {
+        list.replaceChildren();
+        const visibleItems = queue.slice(0, 7);
+        if (active) visibleItems.unshift({ username: active.username, count: 1, simulated: active.simulated, current: true });
         if (!visibleItems.length) {
           const empty = document.createElement('div');
           empty.className = 'empty-state';
           empty.textContent = 'La file est vide.';
-          ui['queue-list'].append(empty);
+          list.append(empty);
         } else {
           visibleItems.forEach(item => {
             const row = document.createElement('div');
@@ -456,8 +473,41 @@
             const count = document.createElement('b');
             count.textContent = `×${item.count}`;
             row.append(label, count);
-            ui['queue-list'].append(row);
+            list.append(row);
           });
+        }
+      }
+
+      function refreshQueue() {
+        if (duel.on && duel.cur >= 0) {
+          duelQueueDirty = true;
+          return;
+        }
+        if (duel.on && duel.t.length === 2) {
+          ui['queue-window'].classList.add('duel-mode');
+          ui['queue-title'].textContent = 'FILES JOUEURS ·';
+          ui['queue-list'].hidden = true;
+          ui['duel-queues'].hidden = false;
+          const waiting = duel.t.map((tower, index) =>
+            tower.queue.reduce((sum, item) => sum + item.count, 0) +
+            duel.pendingGifts.filter(gift => gift.player === index).length +
+            (tower.active ? 1 : 0));
+          ui['queue-count'].textContent = String(waiting[0] + waiting[1]);
+          [0, 1].forEach(index => {
+            ui[`duel-queue-count-${index + 1}`].textContent = String(waiting[index]);
+            const pending = duel.pendingGifts
+              .filter(gift => gift.player === index)
+              .map(gift => ({ username: gift.username, count: 1, simulated: gift.simulated }));
+            renderQueueList(ui[`duel-queue-list-${index + 1}`], [...duel.t[index].queue, ...pending], duel.t[index].active);
+          });
+        } else {
+          ui['queue-window'].classList.remove('duel-mode');
+          ui['queue-title'].textContent = 'FILE DES BÂTISSEURS ·';
+          ui['queue-list'].hidden = false;
+          ui['duel-queues'].hidden = true;
+          const waiting = state.queue.reduce((sum, item) => sum + item.count, 0) + (state.active ? 1 : 0);
+          ui['queue-count'].textContent = String(waiting);
+          renderQueueList(ui['queue-list'], state.queue, state.active);
         }
         ui['queue-window'].hidden = !state.queueVisible;
       }
@@ -488,6 +538,9 @@
       }
 
       function enqueue(username, count, simulated = false, source = 'cadeau', playerId = undefined) {
+        if (duel.on && duel.cur < 0 && duel.t.length === 2) {
+          return withTower(duel.nextGiftPlayer, () => enqueue(username, count, simulated, source, playerId));
+        }
         const name = normalizedName(username) || (simulated ? 'Simulation' : 'visiteur');
         if (!Number.isSafeInteger(count) || count < 1) return 0;
         if (state.gameOver) {
@@ -510,11 +563,11 @@
         return accepted;
       }
 
-      const newTower = () => ({ blocks: [], height: 0, active: null, fallingBlock: null, gameOver: false, streak: 0 });
+      const newTower = () => ({ blocks: [], height: 0, active: null, fallingBlock: null, gameOver: false, streak: 0, queue: [] });
       function duelStatus() {
         if (!duel.on || duel.t.length < 2) return;
         const txt = `⚔️ DUEL · J1 (Q) ${duel.t[0].height} – ${duel.t[1].height} J2 (P) · Manches ${duel.wins[0]} – ${duel.wins[1]}`;
-        if (txt !== duel.lastText) { duel.lastText = txt; ui['round-status'].textContent = txt; }
+        ui['round-status'].textContent = txt;
       }
       function withTower(p, fn) {
         const saved = {};
@@ -522,12 +575,18 @@
         Object.assign(state, duel.t[p]);
         const prev = duel.cur;
         duel.cur = p;
-        try { fn(); } finally {
+        let result;
+        try { result = fn(); } finally {
           TOWER_KEYS.forEach(k => { duel.t[p][k] = state[k]; });
           Object.assign(state, saved);
           duel.cur = prev;
+          if (duel.cur < 0 && duelQueueDirty) {
+            duelQueueDirty = false;
+            refreshQueue();
+          }
         }
         duelStatus();
+        return result;
       }
       function duelDrop(p) {
         if (duel.over) { showToast('Manche terminée · la suivante arrive…', 1200); return; }
@@ -538,6 +597,9 @@
         duel.over = false;
         duel.t = [newTower(), newTower()];
         [0, 1].forEach(p => withTower(p, startNext));
+        const pending = duel.pendingGifts.splice(0);
+        pending.forEach(gift => withTower(gift.player, () => dropForGift(gift.username, gift.simulated)));
+        refreshQueue();
       }
 
       function startNext() {
@@ -688,7 +750,7 @@
         const name = normalizedName(username) || (simulated ? 'Simulation' : 'visiteur');
         if (state.gameOver) {
           report(`Cadeau de @${name} reçu, mais la partie est terminée.`);
-          return;
+          return false;
         }
         if (state.active && !state.active.dropping) {
           state.active.username = name;
@@ -702,8 +764,10 @@
         } else {
           enqueue(name, 1, simulated, 'cadeau');
         }
-        addActivity(`🎁 @${name} déclenche la chute d’un bloc`);
-        showToast(`🎁 Cadeau de @${name} · le bloc tombe !`);
+        refreshQueue();
+        const playerLabel = duel.on && duel.cur >= 0 ? ` · Joueur ${duel.cur + 1} · file ${duel.cur + 1}` : '';
+        addActivity(`🎁 @${name} déclenche la chute d’un bloc${playerLabel}`);
+        return true;
       }
 
       const SKY = [
@@ -1103,8 +1167,27 @@
       function handleGift(gift, simulated = false) {
         const username = normalizedName(gift.uniqueId || gift.username || gift.nickname || gift.user) || (simulated ? 'Simulation' : 'visiteur');
         const name = String(gift.giftName || gift.gift || 'Cadeau');
-        dropForGift(username, simulated);
-        showToast(`🎁 @${username} · ${name} · le bloc tombe !`);
+        let player = null;
+        let dropped = false;
+        if (duel.on && duel.t.length === 2) {
+          player = duel.nextGiftPlayer;
+          duel.nextGiftPlayer = 1 - player;
+          if (duel.over) {
+            duel.pendingGifts.push({ username, simulated, giftName: name, player });
+            addActivity(`🎁 @${username} attend la prochaine manche · joueur ${player + 1} · file ${player + 1}`);
+            refreshQueue();
+            showToast(`🎁 @${username} · ${name} · file ${player + 1} à la prochaine manche`);
+            if (!simulated) report(`Cadeau reçu de @${username} : ${name}.`);
+            return;
+          }
+          dropped = withTower(player, () => dropForGift(username, simulated));
+        } else {
+          dropped = dropForGift(username, simulated);
+        }
+        const target = player === null ? '' : ` · Joueur ${player + 1} · file ${player + 1}`;
+        showToast(dropped
+          ? `🎁 @${username} · ${name}${target} · le bloc tombe !`
+          : `🎁 @${username} · ${name} reçu, mais la tour est terminée.`);
         if (!simulated) report(`Cadeau reçu de @${username} : ${name}.`);
       }
 
@@ -1226,6 +1309,26 @@
           refund.count += item.count;
           refunds.set(key, refund);
         };
+        if (duel.on && duel.t.length === 2) {
+          duel.t.forEach(tower => {
+            if (tower.active) collectRefund({ ...tower.active, count: 1 });
+            tower.queue.forEach(collectRefund);
+          });
+          duel.over = false;
+          duel.pendingGifts = [];
+          duel.nextGiftPlayer = 0;
+          duel.t = [newTower(), newTower()];
+          duel.wins = [0, 0];
+          state.roundId++;
+          [0, 1].forEach(player => withTower(player, startNext));
+          refreshQueue();
+          refreshStats();
+          duelStatus();
+          showToast('NOUVEAU DUEL · LES DEUX TOURS REPARTENT');
+          report('Nouvelle manche prête pour le LIVE.');
+          refunds.forEach(refund => refundRunStars(refund.username, refund.count, refund.playerId, 'annulation du duel'));
+          return;
+        }
         if (state.active) collectRefund({ ...state.active, count: 1 });
         state.queue.forEach(collectRefund);
         state.blocks = [];
@@ -1273,9 +1376,14 @@
         const username = normalizedName(player.username || player.uniqueId || player.nickname);
         const spent = Math.floor(Number(detail.spent) || 0);
         if (!username || spent < 1) return;
-        const queued = state.queue.reduce((sum, item) => sum + item.count, 0) + (state.active ? 1 : 0);
-        const accepted = Math.min(spent, Math.max(0, MAX_TOWER_FLOORS - state.height - queued));
-        if (accepted) enqueue(username, accepted, false, 'run', player.id);
+        let accepted = 0;
+        const queueRun = () => {
+          const queued = state.queue.reduce((sum, item) => sum + item.count, 0) + (state.active ? 1 : 0);
+          accepted = Math.min(spent, Math.max(0, MAX_TOWER_FLOORS - state.height - queued));
+          if (accepted) enqueue(username, accepted, false, 'run', player.id);
+        };
+        if (duel.on && duel.t.length === 2) withTower(duel.nextGiftPlayer, queueRun);
+        else queueRun();
         const refund = spent - accepted;
         if (refund) refundRunStars(username, refund, player.id, 'hauteur maximale de la tour atteinte');
       }
@@ -1310,7 +1418,8 @@
       ui['restart-button'].addEventListener('click', resetTower);
       ui['duel-button'].addEventListener('click', () => {
         duel.on = !duel.on;
-        duel.wins = [0, 0]; duel.over = false; duel.lastText = '';
+        duel.wins = [0, 0]; duel.over = false;
+        duel.nextGiftPlayer = 0; duel.pendingGifts = [];
         duel.t = [newTower(), newTower()];
         ui['duel-button'].textContent = duel.on ? '⚔️ DUEL ACTIF · QUITTER' : '⚔️ DUEL 2 JOUEURS';
         if (duel.on) {
