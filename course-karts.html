@@ -101,7 +101,7 @@
     const W = 960, H = 540;
     const TOTAL = 1000, MIN_DURATION = 60, BASE_TIME = 75, MAX_RACERS = 8, LOBBY_DELAY = 25;
     const LIKE_STEP = TOTAL * 0.0025;
-    const LAPS = 3, TRACK_W = 100, MAX_ITEMS = 14, ITEM_LIFE = 45;
+    const LAPS = 3, TRACK_W = 156, MAX_ITEMS = 14, ITEM_LIFE = 45;
     // Zones d'obstacles et bosses, en fraction de tour (le croisement du 8 est vers 0,375 et 0,875).
     const ZONES = [0.12, 0.27, 0.62, 0.77];
     const BUMPS = [0.04, 0.20, 0.46, 0.55, 0.70, 0.92];
@@ -292,7 +292,7 @@
       }
       if (state.phase !== 'lobby' || state.racers.length >= MAX_RACERS) return null;
       const racer = {
-        key, name, color: COLORS[state.racers.length % COLORS.length], character: pickCharacter(user.character),
+        key, name, simulated: Boolean(user.simulated), color: COLORS[state.racers.length % COLORS.length], character: pickCharacter(user.character),
         raw: 0, shown: 0, stun: 0, stunType: '', spin: 0, skid: 0, grace: 0, dir: 1, queue: 0,
         off: 0, vlat: 0, hitCool: 0, jolt: 0, vel: 0,
         comp: 0, compV: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, lastH: null, lastHv: 0, lastVel: 0, lastAng: null, mark: null,
@@ -420,8 +420,8 @@
       dAng = Math.atan2(Math.sin(dAng), Math.cos(dAng));
       const turn = Math.max(-3, Math.min(3, dAng / dt));
       r.lastH = h; r.lastHv = hv; r.lastVel = r.vel; r.lastAng = ang;
-      const rollT = Math.max(-0.3, Math.min(0.3, turn * 0.1 + r.vlat * 0.0025 * r.dir));
-      const pitchT = Math.max(-0.14, Math.min(0.14, -acc * 0.0004));
+      const rollT = Math.max(-0.18, Math.min(0.18, turn * 0.06 + r.vlat * 0.0015 * r.dir));
+      const pitchT = Math.max(-0.03, Math.min(0.015, -acc * 0.00025));
       for (let i = 0; i < 2; i++) {
         const d = dt / 2;
         r.compV += (-190 * r.comp - 13 * r.compV - ha * 0.5) * d; r.comp += r.compV * d;
@@ -430,7 +430,7 @@
       }
       r.comp = Math.max(-9, Math.min(9, r.comp));
       r.roll = Math.max(-0.45, Math.min(0.45, r.roll));
-      r.pitch = Math.max(-0.25, Math.min(0.25, r.pitch));
+      r.pitch = Math.max(-0.05, Math.min(0.03, r.pitch));
     }
     // Traces de gomme persistantes : on dessine sur un calque conservé jusqu'à la fin de la course.
     function stampMarks(r) {
@@ -471,6 +471,23 @@
       w.wy = Math.sin(w.wa) * w.ws * gust;
     }
 
+    function kartScale() { return Math.max(0.62, Math.min(0.85, 1.0 - state.racers.length * 0.04)); }
+    // Fumée de pneus en dérapage, poussière sur le gravier, gerbes d'eau sous la pluie, fumée noire après une bombe.
+    function emitSmoke(r, dt) {
+      if (state.particles.length > 450) return;
+      const burnt = r.stun > 0 && r.stunType === 'bomb';
+      const slide = r.skid > 0 || (r.stun > 0 && !burnt);
+      const wet = state.weather.rain > 0.4;
+      const rate = burnt ? 45 : slide ? 70 : Math.abs(r.vlat) > 70 ? 28 : r.vel > 60 ? (wet ? 22 : 7) : 0;
+      if (!rate || Math.random() > rate * dt) return;
+      const p = pos(r), s = kartScale(), moto = state.vehicle === 'moto', life = 0.5 + Math.random() * 0.5;
+      state.particles.push({
+        x: p.x - r.dir * (moto ? 26 : 23) * s + (Math.random() - 0.5) * 6, y: p.y - p.lift + 24 * s,
+        vx: -r.dir * (10 + Math.random() * 30), vy: -(6 + Math.random() * 14), g: -14, life, max: life, r: 2.4 + Math.random() * 2.4, smoke: true,
+        color: burnt ? 'rgba(40,40,40,.6)' : slide ? 'rgba(235,235,235,.55)' : wet ? 'rgba(185,205,235,.6)' : 'rgba(205,185,140,.45)'
+      });
+    }
+
     function stepPhysics(dt) {
       const lim = TRACK_W / 2 - 12;
       for (const item of state.items) {
@@ -491,14 +508,16 @@
         if (Math.abs(total) > edge) { r.off = Math.sign(total) * edge - latBase(r); r.vlat *= -0.4; }
         stepSuspension(r, dt);
         stampMarks(r);
+        emitSmoke(r, dt);
       }
       // Contacts entre karts : ils se poussent sur le côté au lieu de se traverser.
       for (let i = 0; i < state.racers.length; i++) {
         for (let j = i + 1; j < state.racers.length; j++) {
           const a = state.racers[i], b = state.racers[j];
           const dx = (b.shown - a.shown) * PX_PER_UNIT, dy = latOf(b) - latOf(a);
-          if (Math.abs(dx) < 34 && Math.abs(dy) < 16) {
-            const s = Math.sign(dy) || (i % 2 ? 1 : -1), push = (16 - Math.abs(dy)) * 25 * dt;
+          const sc = kartScale() / 0.6;
+          if (Math.abs(dx) < 34 * sc && Math.abs(dy) < 16 * sc) {
+            const s = Math.sign(dy) || (i % 2 ? 1 : -1), push = (16 * sc - Math.abs(dy)) * 25 * dt;
             a.vlat -= s * push; b.vlat += s * push;
             sound.kart(performance.now() / 1000);
           }
@@ -526,7 +545,7 @@
     }
 
     // Circuit en 8 : courbe de Lissajous rééchantillonnée à vitesse constante, départ sur la ligne droite du bas.
-    const CX = 480, CY = 292, AX = 340, BY = 150, PATH_N = 720;
+    const CX = 480, CY = 284, AX = 360, BY = 132, PATH_N = 720;
     const PATH = [];
     let CURV_MAX = 0.001, LAP_LEN = 0;
     (function buildPath() {
@@ -573,14 +592,14 @@
         let d = Math.abs(w - b); d = Math.min(d, 1 - d);
         bump = Math.max(bump, Math.exp(-Math.pow(d / 0.011, 2)));
       }
-      return { h: 5 * Math.sin(w * 4 * Math.PI + 1) + 13 * bump, bump };
+      return { h: 2 * Math.sin(w * 4 * Math.PI + 1) + 10 * bump, bump };
     }
     function latBase(racer) {
-      const n = state.racers.length, sp = Math.min(16, 70 / Math.max(n, 1));
+      const n = state.racers.length, sp = Math.min(26, 112 / Math.max(n, 1));
       return (state.racers.indexOf(racer) - (n - 1) / 2) * sp;
     }
     function latOf(racer) {
-      const wobble = Math.sin(state.elapsed * 0.9 + racer.phase + racer.shown * 0.02) * 4;
+      const wobble = Math.sin(state.elapsed * 0.9 + racer.phase + racer.shown * 0.02) * 1.2;
       const slide = racer.skid > 0 ? Math.sin(racer.skid * 12) * 14 * (racer.skid / SKID.banana) : 0;
       return latBase(racer) + wobble + slide + racer.off;
     }
@@ -600,13 +619,13 @@
       state.scroll = (state.scroll + dt * 140) % 40;
       for (const f of state.feed) f.life -= dt;
       state.feed = state.feed.filter(f => f.life > 0);
-      for (const p of state.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; }
+      for (const p of state.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g === undefined ? 260 : p.g) * dt; }
       state.particles = state.particles.filter(p => p.life > 0);
       for (const p of state.projectiles) { p.t += dt / p.dur; if (p.t >= 1) { p.done = true; dropItem(p); } }
       state.projectiles = state.projectiles.filter(p => !p.done);
 
       if (state.phase === 'lobby') {
-        if (state.demo && state.racers.length < 4) register({ name: DEMO_NAMES[state.racers.length % DEMO_NAMES.length] });
+        if (state.demo && state.racers.length < 4) register({ name: DEMO_NAMES[state.racers.length % DEMO_NAMES.length], simulated: true });
         if (state.lobbyLeft !== null) {
           state.lobbyLeft -= dt;
           if (state.lobbyLeft <= 0) startCountdown();
@@ -653,7 +672,7 @@
           let speed = 1 - 0.14 * Math.min(1, here.curv / CURV_MAX) - 0.08 * here.bump;
           const wt = state.weather;
           speed *= 1 - 0.045 * wt.rain + 0.06 * (here.tx * wt.wx + here.ty * wt.wy);
-          r.vlat += (-here.ty * wt.wx + here.tx * wt.wy) * 60 * (1 + wt.rain * 0.5) * dt;
+          r.vlat += (-here.ty * wt.wx + here.tx * wt.wy) * 30 * (1 + wt.rain * 0.5) * dt;
           if (r.skid > 0) { r.skid = Math.max(0, r.skid - dt); speed *= 0.3; if (r.skid === 0) r.grace = Math.max(r.grace, 1); }
           const surge = 1 + 0.12 * Math.sin(state.elapsed * (0.45 + r.pace * 0.3) + r.phase);
           let draft = 1;
@@ -681,15 +700,28 @@
       }
     }
 
-    // Récompense : 10 étoiles pour le gagnant de chaque course, cumulées par spectateur.
+    // Récompense : 10 étoiles créditées au portefeuille du gagnant.
     const STARS_PER_WIN = 10;
-    function creditStars(winner) {
-      let book = {};
-      try { book = JSON.parse(localStorage.getItem('karts-stars') || '{}'); } catch (e) { book = {}; }
-      book[winner.key] = (book[winner.key] || 0) + STARS_PER_WIN;
-      try { localStorage.setItem('karts-stars', JSON.stringify(book)); } catch (e) { /* stockage indisponible */ }
-      addFeed(`${winner.name} gagne ${STARS_PER_WIN} étoiles ⭐`);
-      return book[winner.key];
+    function awardRacePrize(winner) {
+      if (state.demo || state.racers.some(r => r.simulated)) {
+        $('w-stars').textContent = 'Simulation · aucun gain réel';
+        return;
+      }
+      $('w-stars').textContent = `+${STARS_PER_WIN} ⭐ · crédit en cours`;
+      if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+        console.error('ArcadeStars.award est indisponible; les étoiles ne sont pas créditées.');
+        $('w-stars').textContent = 'Crédit du portefeuille indisponible';
+        setStatus('Victoire enregistrée, mais crédit du portefeuille indisponible.', 'error');
+        return;
+      }
+      Promise.resolve()
+        .then(() => window.ArcadeStars.award({ username: winner.key || winner.name, amount: STARS_PER_WIN }))
+        .then(() => { $('w-stars').textContent = `+${STARS_PER_WIN} ⭐ · créditées au portefeuille`; })
+        .catch(error => {
+          console.error('Étoiles Course de karts non créditées :', error);
+          $('w-stars').textContent = 'Échec du crédit des étoiles';
+          setStatus('Victoire enregistrée, mais les étoiles n’ont pas été créditées.', 'error');
+        });
     }
 
     function endRace(winner) {
@@ -697,8 +729,6 @@
       state.winner = winner;
       state.resetIn = 15;
       sound.win();
-      const total = creditStars(winner);
-      $('w-stars').textContent = `+${STARS_PER_WIN} ⭐ · total ${total} ⭐`;
       $('w-name').textContent = winner.name;
       $('w-initial').textContent = winner.name.slice(0, 1).toUpperCase();
       $('w-time').textContent = `Arrivée en ${Math.round(state.elapsed)} s`;
@@ -708,6 +738,7 @@
       $('winner').hidden = false;
       setStatus(`${winner.name} remporte la course !`, 'online');
       renderPanel();
+      awardRacePrize(winner);
     }
 
     function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
@@ -719,13 +750,13 @@
     function rng(seed) {
       return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
     }
-    const HOLES = [{ x: 295, y: 291 }, { x: 665, y: 291 }];
+    const HOLES = [{ x: CX - 226, y: CY + 1 }, { x: CX + 226, y: CY + 1 }];
     const farFromTrack = (x, y, margin) => PATH.every(p => Math.hypot(p.x - x, p.y - y) > TRACK_W / 2 + margin);
     const inHole = (x, y) => HOLES.some(h => ((x - h.x) / 105) ** 2 + ((y - h.y) / 85) ** 2 < 1);
 
     // Château de pierre dans la boucle de droite (vue de trois quarts), centré sur (cx, cy).
     const CASTLE_FLAGS = [];
-    const CASTLE_T = { x: HOLES[1].x, y: HOLES[1].y + 6, s: 0.5 };
+    const CASTLE_T = { x: HOLES[1].x + 4, y: HOLES[1].y + 4, s: 0.27 };
     function paintCastle(cx, cy) {
       CASTLE_FLAGS.length = 0;
       const stone = (x, y, w, h, base) => {
@@ -990,12 +1021,12 @@
       }
       // Bande de gravier le long de la piste.
       ctx.lineJoin = 'round';
-      ctx.lineWidth = TRACK_W + 58; ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.stroke(TRACK_PATH);
-      ctx.lineWidth = TRACK_W + 48; ctx.strokeStyle = '#cdbb8d'; ctx.stroke(TRACK_PATH);
-      ctx.lineWidth = TRACK_W + 48; ctx.strokeStyle = 'rgba(120,100,60,.35)'; ctx.setLineDash([2, 5]); ctx.stroke(TRACK_PATH); ctx.setLineDash([]);
+      ctx.lineWidth = TRACK_W + 46; ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.stroke(TRACK_PATH);
+      ctx.lineWidth = TRACK_W + 36; ctx.strokeStyle = '#cdbb8d'; ctx.stroke(TRACK_PATH);
+      ctx.lineWidth = TRACK_W + 36; ctx.strokeStyle = 'rgba(120,100,60,.35)'; ctx.setLineDash([2, 5]); ctx.stroke(TRACK_PATH); ctx.setLineDash([]);
 
       // Étang dans la boucle de gauche.
-      paintCamp(HOLES[0].x, HOLES[0].y);
+      ctx.save(); ctx.translate(HOLES[0].x - 4, HOLES[0].y); ctx.scale(0.42, 0.42); paintCamp(0, 0); ctx.restore();
 
       ctx.save(); ctx.translate(CASTLE_T.x, CASTLE_T.y); ctx.scale(CASTLE_T.s, CASTLE_T.s);
       paintCastle(0, 0);
@@ -1054,25 +1085,78 @@
 
     function paintScene() {
       paintBackground();
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = TRACK_W + 18; ctx.strokeStyle = '#d33'; ctx.stroke(TRACK_PATH);
-      ctx.setLineDash([16, 16]); ctx.strokeStyle = '#eee'; ctx.stroke(TRACK_PATH); ctx.setLineDash([]);
-      ctx.lineWidth = TRACK_W; ctx.strokeStyle = '#33363f'; ctx.stroke(TRACK_PATH);
-      // Grain d'asphalte, trace de gomme et reflets sur le bord des bordures.
+      ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+      const offsetPath = off => { ctx.beginPath(); PATH.forEach((p, j) => { const x = p.x - p.ty * off, y = p.y + p.tx * off; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); };
+      const lineAt = (off, w, color, dash) => { offsetPath(off); ctx.lineWidth = w; ctx.strokeStyle = color; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]); };
+      const at = (j, off) => { const p = PATH[((j % PATH_N) + PATH_N) % PATH_N]; return [p.x - p.ty * off, p.y + p.tx * off]; };
+      // Ombre portée, puis bordures rouges et blanches en relief
+      ctx.lineWidth = TRACK_W + 32; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.stroke(TRACK_PATH);
+      ctx.lineWidth = TRACK_W + 22; ctx.strokeStyle = '#d33'; ctx.stroke(TRACK_PATH);
+      ctx.setLineDash([18, 18]); ctx.strokeStyle = '#f1f1f1'; ctx.stroke(TRACK_PATH); ctx.setLineDash([]);
+      for (const side of [-1, 1]) {
+        lineAt(side * (TRACK_W / 2 + 10.5), 1.6, 'rgba(255,255,255,.3)');
+        lineAt(side * (TRACK_W / 2 + 2), 3, 'rgba(0,0,0,.4)');
+      }
+      // Asphalte : sous-couche, plaques de réparation, grain, fissures, taches d'huile
+      ctx.lineWidth = TRACK_W; ctx.strokeStyle = '#393c44'; ctx.stroke(TRACK_PATH);
+      const rp = rng(33);
+      for (let i = 0; i < 26; i++) {
+        const j0 = Math.floor(rp() * PATH_N), len = 14 + Math.floor(rp() * 46), off = (rp() - 0.5) * TRACK_W * 0.4;
+        ctx.beginPath();
+        for (let k = 0; k <= len; k++) { const [x, y] = at(j0 + k, off); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+        ctx.lineWidth = TRACK_W * (0.28 + rp() * 0.4); ctx.strokeStyle = rp() < 0.55 ? 'rgba(0,0,0,.13)' : 'rgba(255,255,255,.05)'; ctx.stroke();
+      }
       const grain = rng(21);
-      for (let i = 0; i < 5200; i++) {
+      for (let i = 0; i < 9000; i++) {
         const p = PATH[Math.floor(grain() * PATH_N)], o = (grain() - 0.5) * (TRACK_W - 8);
         ctx.fillStyle = grain() < 0.55 ? 'rgba(0,0,0,.22)' : 'rgba(255,255,255,.07)';
         ctx.fillRect(p.x - p.ty * o, p.y + p.tx * o, 1 + grain() * 1.6, 1 + grain() * 1.6);
       }
-      ctx.lineWidth = 26; ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.stroke(TRACK_PATH);
-      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.28)';
-      for (const side of [-1, 1]) {
-        ctx.beginPath();
-        PATH.forEach((p, j) => { const x = p.x - p.ty * side * (TRACK_W / 2 - 2), y = p.y + p.tx * side * (TRACK_W / 2 - 2); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-        ctx.closePath(); ctx.stroke();
+      ctx.lineCap = 'round'; ctx.lineWidth = 0.8;
+      for (let i = 0; i < 70; i++) {
+        const j = Math.floor(grain() * PATH_N), o = (grain() - 0.5) * (TRACK_W - 16);
+        let [x, y] = at(j, o), a = grain() * 6.28;
+        ctx.strokeStyle = 'rgba(8,8,10,.4)'; ctx.beginPath(); ctx.moveTo(x, y);
+        for (let k = 0; k < 4; k++) { a += (grain() - 0.5) * 1.3; x += Math.cos(a) * (3 + grain() * 5); y += Math.sin(a) * (3 + grain() * 5); ctx.lineTo(x, y); }
+        ctx.stroke();
       }
-      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.setLineDash([18, 16]); ctx.stroke(TRACK_PATH); ctx.setLineDash([]);
+      for (let i = 0; i < 12; i++) {
+        const j = Math.floor(grain() * PATH_N), o = (grain() - 0.5) * TRACK_W * 0.6, [x, y] = at(j, o), r = 5 + grain() * 9;
+        const og = ctx.createRadialGradient(x, y, 0, x, y, r);
+        og.addColorStop(0, 'rgba(10,10,14,.35)'); og.addColorStop(1, 'rgba(10,10,14,0)');
+        ctx.fillStyle = og; ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.7, grain() * 3, 0, Math.PI * 2); ctx.fill();
+      }
+      // Joints longitudinaux et trajectoire gommée : plus sombre au centre, plus claire et poussiéreuse sur les bords
+      for (const side of [-1, 1]) {
+        lineAt(side * TRACK_W * 0.17, 1, 'rgba(0,0,0,.28)');
+        lineAt(side * TRACK_W * 0.17 + 1, 0.8, 'rgba(255,255,255,.05)');
+        lineAt(side * (TRACK_W / 2 - 10), 18, 'rgba(175,165,145,.10)');
+      }
+      lineAt(0, TRACK_W * 0.4, 'rgba(0,0,0,.15)');
+      lineAt(0, TRACK_W * 0.18, 'rgba(0,0,0,.13)');
+      // Gomme déposée à l'intérieur des virages, proportionnelle à la courbure
+      ctx.lineCap = 'round';
+      for (let j = 0; j < PATH_N; j += 2) {
+        const p = PATH[j];
+        if (p.curv < CURV_MAX * 0.3) continue;
+        const A = PATH[(j + PATH_N - 4) % PATH_N], B = PATH[(j + 4) % PATH_N];
+        const inside = Math.sign(A.tx * B.ty - A.ty * B.tx) || 1, k = Math.min(1, p.curv / CURV_MAX);
+        for (const o of [0.22, 0.3]) {
+          const [x0, y0] = at(j, inside * TRACK_W * o), [x1, y1] = at(j + 3, inside * TRACK_W * o);
+          ctx.strokeStyle = `rgba(0,0,0,${0.28 * k})`; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        }
+      }
+      // Gommes et débris (« marbles ») rejetés vers les bords
+      for (let i = 0; i < 700; i++) {
+        const side = grain() < 0.5 ? -1 : 1, [x, y] = at(Math.floor(grain() * PATH_N), side * (TRACK_W / 2 - 4 - grain() * 20));
+        ctx.fillStyle = grain() < 0.7 ? 'rgba(15,15,18,.4)' : 'rgba(200,190,170,.25)'; ctx.fillRect(x, y, 1 + grain() * 2.2, 1 + grain() * 1.6);
+      }
+      // Ombre intérieure de la bordure, lignes blanches de rive et ligne de trajectoire en pointillés
+      for (const side of [-1, 1]) {
+        lineAt(side * (TRACK_W / 2 - 1), 3, 'rgba(0,0,0,.35)');
+        lineAt(side * (TRACK_W / 2 - 6), 2.4, 'rgba(250,250,250,.85)');
+      }
+      lineAt(0, 2, 'rgba(255,255,255,.26)', [18, 16]);
 
       for (const z of ZONES) {
         onTrack(z, () => {
@@ -1309,95 +1393,246 @@
       }
     }
 
-    // Kart réaliste : coque dégradée, moteur, échappement, ailerons, siège, volant. Origine = centre du châssis.
-    function drawKartChassis(racer, s, t, steer, burnt) {
-      if (state.vehicle === 'moto') return drawBikeChassis(racer, s, t, steer, burnt);
+    // ---------- Rendu des véhicules : peinture vernie, tubes chromés, carbone, pneus et jantes ----------
+    let LD = 1; // côté du soleil couchant (gauche de l'écran) dans le repère local du véhicule, qui peut être retourné
+    function tubePath(build, w, base, hi) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      build(); ctx.strokeStyle = shade(base, -0.5); ctx.lineWidth = w; ctx.stroke();
+      build(); ctx.strokeStyle = base; ctx.lineWidth = w * 0.74; ctx.stroke();
+      ctx.save(); ctx.translate(0, -w * 0.2); build();
+      ctx.globalAlpha = 0.8; ctx.strokeStyle = hi || shade(base, 0.6); ctx.lineWidth = w * 0.2; ctx.stroke(); ctx.restore();
+    }
+    function spring(x0, y0, x1, y1, n, amp, w, color) {
+      const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+      const draw = (c, lw, off) => {
+        ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x0, y0);
+        for (let i = 1; i <= n * 2; i++) { const f = i / (n * 2), a = (i % 2 ? 1 : -1) * amp; ctx.lineTo(x0 + dx * f + nx * a, y0 + dy * f + ny * a + off); }
+        ctx.stroke();
+      };
+      draw(shade(color, -0.5), w * 1.5, 0); draw(color, w, 0); draw(shade(color, 0.55), w * 0.3, -w * 0.3);
+    }
+    function carbon(x, y, w, h, r, s) {
+      ctx.save();
+      roundRect(x, y, w, h, r); ctx.fillStyle = vgrad(y, y + h, '#3d414a', '#0d0f12'); ctx.fill(); ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 0.8;
+      for (let k = -h; k < w; k += 2.4 * s) { ctx.beginPath(); ctx.moveTo(x + k, y + h); ctx.lineTo(x + k + h, y); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(x, y, w, Math.max(0.6, h * 0.14));
+      ctx.restore();
+    }
+    // Peinture vernie : dégradé vertical, lumière chaude du couchant d'un côté, ombre bleutée de l'autre, puis décors découpés dans la forme.
+    function paintBody(path, base, y0, y1, s, decals) {
+      ctx.fillStyle = vgrad(y0, y1, shade(base, 0.4), shade(base, -0.42)); ctx.fill(path);
+      ctx.save(); ctx.clip(path);
+      const g = ctx.createLinearGradient(-LD * 44 * s, 0, LD * 44 * s, 0);
+      g.addColorStop(0, 'rgba(255,205,150,.30)'); g.addColorStop(0.45, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(15,5,40,.28)');
+      ctx.fillStyle = g; ctx.fillRect(-60 * s, y0 - 12 * s, 120 * s, y1 - y0 + 24 * s);
+      if (decals) decals();
+      ctx.restore();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.stroke(path);
+    }
+    // Retour de flamme à l'échappement quand le véhicule roule vite.
+    function exhaustFlame(x, y, s, t, racer) {
+      if (racer.vel < 70 || racer.stun > 0) return;
+      const k = Math.sin(t * 41 + racer.phase * 3);
+      if (k < 0.82) return;
+      const len = (7 + 6 * k) * s;
+      const g = ctx.createLinearGradient(x, 0, x - len, 0);
+      g.addColorStop(0, 'rgba(255,240,170,.95)'); g.addColorStop(0.4, 'rgba(255,150,40,.8)'); g.addColorStop(1, 'rgba(255,60,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, y - 1.7 * s);
+      ctx.quadraticCurveTo(x - len * 0.6, y - 2.4 * s, x - len, y); ctx.quadraticCurveTo(x - len * 0.6, y + 2.4 * s, x, y + 1.7 * s);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // Kart de compétition : châssis tubulaire, plancher carbone, coque vernie à prises d'air, ailerons, siège baquet, volant. Origine = centre du châssis.
+    function drawKartChassis(racer, s, t, steer, burnt, pass = 0) {
+      if (state.vehicle === 'moto') return drawBikeChassis(racer, s, t, steer, burnt, pass);
+      if (pass) return;
       DRV.hand = null;
       const base = burnt ? '#3a3a3a' : racer.color;
       DRV.mood = racer.stun > 0 || racer.skid > 0 ? 'hurt' : 'happy';
       DRV.blink = DRV.mood === 'happy' && (t * 0.8 + racer.phase) % 3.1 < 0.13;
-      // moteur et échappement
-      ctx.fillStyle = vgrad(-14 * s, -3 * s, '#5a5f69', '#1d2026'); roundRect(-42 * s, -13 * s, 12 * s, 11 * s, 2 * s); ctx.fill();
+      // châssis tubulaire : pare-chocs arrière, longerons, pare-chocs avant
+      tubePath(() => {
+        ctx.beginPath(); ctx.moveTo(-45 * s, 2 * s); ctx.lineTo(-45 * s, 15 * s); ctx.quadraticCurveTo(-45 * s, 18.5 * s, -40 * s, 18.5 * s);
+        ctx.lineTo(36 * s, 18.5 * s); ctx.quadraticCurveTo(47 * s, 18.5 * s, 47 * s, 11 * s); ctx.lineTo(47 * s, 5 * s);
+      }, 2.4 * s, '#a3aab5');
+      carbon(-38 * s, 12.5 * s, 78 * s, 4 * s, 1.5 * s, s);
+      // moteur à ailettes, filtre à air et échappement chauffé
+      ctx.fillStyle = vgrad(-14 * s, -3 * s, '#626872', '#1d2026'); roundRect(-42 * s, -13 * s, 12 * s, 11 * s, 2 * s); ctx.fill();
       ctx.strokeStyle = '#0d0f12'; ctx.lineWidth = 1;
       for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-41 * s + i * 3 * s, -13 * s); ctx.lineTo(-41 * s + i * 3 * s, -3 * s); ctx.stroke(); }
-      ctx.fillStyle = vgrad(-2 * s, 4 * s, '#e7ebf0', '#7b8390'); roundRect(-48 * s, 0 * s, 14 * s, 4.2 * s, 2 * s); ctx.fill();
-      ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.ellipse(-48 * s, 2.1 * s, 1 * s, 2 * s, 0, 0, Math.PI * 2); ctx.fill();
-      // aileron arrière
-      ctx.fillStyle = '#15181d'; ctx.fillRect(-37 * s, -17 * s, 2.4 * s, 12 * s);
-      ctx.fillStyle = vgrad(-20 * s, -16 * s, shade(base, 0.2), shade(base, -0.4)); roundRect(-46 * s, -20 * s, 16 * s, 4.2 * s, 1.5 * s); ctx.fill();
-      // siège
-      ctx.fillStyle = vgrad(-14 * s, 0, '#2c3038', '#101216'); roundRect(-12 * s, -14 * s, 7 * s, 14 * s, 3 * s); ctx.fill();
+      ctx.fillStyle = vgrad(-19 * s, -13 * s, '#2f333a', '#0f1114'); roundRect(-40 * s, -19 * s, 8 * s, 6.5 * s, 2 * s); ctx.fill();
+      ctx.fillStyle = '#c9ccd2'; roundRect(-40.5 * s, -19.6 * s, 9 * s, 1.8 * s, 0.9 * s); ctx.fill();
+      ctx.fillStyle = vgrad(-0.2 * s, 4.4 * s, '#f3f5f8', '#6f7783'); roundRect(-50 * s, -0.2 * s, 17 * s, 4.6 * s, 2.3 * s); ctx.fill();
+      ctx.fillStyle = 'rgba(110,90,190,.55)'; roundRect(-50 * s, -0.2 * s, 5 * s, 4.6 * s, 2.3 * s); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(-45 * s, 0.4 * s, 11 * s, 0.9 * s);
+      ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.ellipse(-50 * s, 2.1 * s, 1 * s, 2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      exhaustFlame(-50.5 * s, 2.1 * s, s, t, racer);
+      // aileron arrière : jambe chromée, flasque peint et profils carbone
+      limb(-37 * s, -15 * s, -36 * s, -4 * s, 2 * s, '#9aa1ab');
+      const plate = new Path2D();
+      plate.moveTo(-48 * s, -23 * s); plate.lineTo(-29 * s, -23 * s); plate.lineTo(-31 * s, -13 * s); plate.lineTo(-46 * s, -15 * s); plate.closePath();
+      paintBody(plate, base, -23 * s, -13 * s, s, null);
+      carbon(-49 * s, -25.5 * s, 21 * s, 3 * s, 1.2 * s, s);
+      carbon(-47 * s, -19.5 * s, 17 * s, 2.2 * s, 1 * s, s);
+      // siège baquet cousu
+      const seat = new Path2D();
+      seat.moveTo(-13 * s, 0); seat.lineTo(-14 * s, -12 * s); seat.quadraticCurveTo(-12 * s, -15 * s, -8 * s, -14 * s); seat.lineTo(-5 * s, -4 * s); seat.lineTo(-5 * s, 0); seat.closePath();
+      ctx.fillStyle = vgrad(-15 * s, 0, '#343841', '#0f1114'); ctx.fill(seat);
+      ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 0.7;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-12 * s + i * 2.4 * s, -1 * s); ctx.lineTo(-12.6 * s + i * 2.4 * s, -12 * s); ctx.stroke(); }
       // pilote (derrière la coque)
       ctx.save(); ctx.translate(-2 * s, -3 * s); drawDriver(racer.character, s, t, steer, 'corps'); ctx.restore();
       // coque
       const shell = new Path2D();
-      shell.moveTo(-38 * s, 14 * s); shell.quadraticCurveTo(-40 * s, -1 * s, -31 * s, -4 * s); shell.lineTo(-8 * s, -4 * s);
-      shell.quadraticCurveTo(0, -3 * s, 9 * s, 1 * s); shell.lineTo(30 * s, 3 * s); shell.quadraticCurveTo(42 * s, 5 * s, 40 * s, 14 * s); shell.closePath();
-      ctx.fillStyle = vgrad(-4 * s, 14 * s, shade(base, 0.38), shade(base, -0.38)); ctx.fill(shell);
-      ctx.save(); ctx.clip(shell);
-      ctx.fillStyle = 'rgba(255,255,255,.55)'; roundRect(-32 * s, -2.4 * s, 44 * s, 2.2 * s, 1.1 * s); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fillRect(-40 * s, 5 * s, 82 * s, 2 * s);
-      ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-40 * s, 11 * s, 82 * s, 4 * s);
-      ctx.restore();
-      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.stroke(shell);
+      shell.moveTo(-38 * s, 14 * s); shell.quadraticCurveTo(-41 * s, 0, -32 * s, -4 * s); shell.lineTo(-10 * s, -4.5 * s);
+      shell.quadraticCurveTo(-1 * s, -4 * s, 8 * s, 0); shell.quadraticCurveTo(18 * s, 3 * s, 30 * s, 1.5 * s);
+      shell.quadraticCurveTo(43 * s, 2 * s, 42 * s, 9 * s); shell.quadraticCurveTo(42 * s, 14 * s, 38 * s, 14 * s); shell.closePath();
+      paintBody(shell, base, -4 * s, 14 * s, s, () => {
+        ctx.fillStyle = 'rgba(255,255,255,.5)'; roundRect(-30 * s, -3.4 * s, 42 * s, 2 * s, 1 * s); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillRect(-42 * s, 5 * s, 86 * s, 2 * s);
+        ctx.fillStyle = shade(base, -0.35); ctx.fillRect(-42 * s, 7.4 * s, 86 * s, 0.9 * s);
+        ctx.fillStyle = 'rgba(0,0,0,.34)'; ctx.fillRect(-42 * s, 11.5 * s, 86 * s, 4 * s);
+        // prise d'air latérale à ouïes
+        ctx.fillStyle = '#12151a'; roundRect(-27 * s, 7.8 * s, 10 * s, 4.6 * s, 1.4 * s); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 0.7;
+        for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-26 * s + i * 2.4 * s, 8.2 * s); ctx.lineTo(-27.4 * s + i * 2.4 * s, 12 * s); ctx.stroke(); }
+        // lignes de joint de la carrosserie
+        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 0.7;
+        for (const gx of [-29, 26]) { ctx.beginPath(); ctx.moveTo(gx * s, -4 * s); ctx.lineTo((gx + 1) * s, 14 * s); ctx.stroke(); }
+        // chevrons dorés sur le nez
+        ctx.fillStyle = '#ffd77a';
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo((29 + i * 3.4) * s, 10.6 * s); ctx.lineTo((31.2 + i * 3.4) * s, 10.6 * s); ctx.lineTo((33 + i * 3.4) * s, 7.9 * s); ctx.lineTo((30.8 + i * 3.4) * s, 7.9 * s); ctx.fill(); }
+        // ombre portée des roues sur la coque
+        for (const wx of [-23, 23]) {
+          const ao = ctx.createRadialGradient(wx * s, 15 * s, 4 * s, wx * s, 15 * s, 14 * s);
+          ao.addColorStop(0, 'rgba(0,0,0,.45)'); ao.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = ao; ctx.fillRect((wx - 15) * s, 0, 30 * s, 20 * s);
+        }
+      });
       // rond de numéro
       sphere(16 * s, 8 * s, 4.4 * s, '#f4f4f4');
       ctx.fillStyle = base; ctx.font = `800 ${6.2 * s}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(racer.num || (state.racers.indexOf(racer) + 1)), 16 * s, 8.4 * s);
-      // aileron avant en carbone
-      ctx.fillStyle = vgrad(10 * s, 17 * s, '#3a3e46', '#0e1014'); roundRect(30 * s, 12 * s, 16 * s, 3.6 * s, 1.4 * s); ctx.fill();
-      ctx.fillStyle = shade(base, 0.1); ctx.fillRect(43 * s, 9.5 * s, 2.4 * s, 7 * s);
+      // aileron avant en carbone et flasque peint
+      carbon(30 * s, 12 * s, 16 * s, 3.6 * s, 1.4 * s, s);
+      ctx.fillStyle = vgrad(9.5 * s, 16.5 * s, shade(base, 0.25), shade(base, -0.35)); ctx.fillRect(43 * s, 9.5 * s, 2.4 * s, 7 * s);
       // colonne et volant
       limb(21 * s, 5 * s, 15 * s, -5 * s, 2.4 * s, '#2c3038');
       ctx.save(); ctx.translate(15 * s, -6 * s); ctx.rotate(-0.5 + steer * 0.5);
       ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2 * s; ctx.beginPath(); ctx.ellipse(0, 0, 1.8 * s, 4.5 * s, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.6 * s; ctx.beginPath(); ctx.ellipse(-0.4 * s, 0, 1.5 * s, 4.2 * s, 0, -1.3, 0.2); ctx.stroke();
+      ctx.fillStyle = base; ctx.beginPath(); ctx.arc(0, -4.4 * s, 0.9 * s, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
       ctx.save(); ctx.translate(-2 * s, -3 * s); drawDriver(racer.character, s, t, steer, 'bras'); ctx.restore();
     }
 
-    // Moto de course : même niveau de détail que le kart. Origine = celle du kart, l'avant est à droite.
-    function drawBikeChassis(racer, s, t, steer, burnt) {
+    // Moto de course. pass 0 = tout ce qui passe derrière les roues ; pass 1 = ce qui passe devant (fourche, bras oscillant, échappement, garde-boue) puis les lumières.
+    function drawBikeChassis(racer, s, t, steer, burnt, pass = 0) {
       const base = burnt ? '#3a3a3a' : racer.color;
-      DRV.mood = racer.stun > 0 || racer.skid > 0 ? 'hurt' : 'happy';
+      const ch = racer.character, braking = racer.stun > 0 || racer.skid > 0;
+      if (pass === 1) {
+        tubePath(() => { ctx.beginPath(); ctx.arc(-26 * s, 13 * s, 14.6 * s, -2.75, -1.05); }, 2.6 * s, '#25282e');
+        // bras oscillant et axe
+        tubePath(() => { ctx.beginPath(); ctx.moveTo(-26 * s, 13 * s); ctx.lineTo(-8 * s, 8.6 * s); }, 4.4 * s, '#aab1bc');
+        circle(-26 * s, 13 * s, 2.3 * s, '#2a2d33'); circle(-26.4 * s, 12.6 * s, 0.9 * s, '#8d95a1');
+        // collecteur chauffé au bleu puis silencieux chromé
+        tubePath(() => { ctx.beginPath(); ctx.moveTo(4 * s, 8 * s); ctx.bezierCurveTo(-1 * s, 16 * s, -8 * s, 18.5 * s, -17 * s, 15.5 * s); ctx.lineTo(-22 * s, 12 * s); }, 2.8 * s, '#b9c0ca');
+        ctx.strokeStyle = 'rgba(110,80,200,.5)'; ctx.lineWidth = 2 * s; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(4 * s, 8 * s); ctx.bezierCurveTo(1 * s, 13 * s, -2 * s, 16 * s, -5 * s, 17 * s); ctx.stroke();
+        ctx.fillStyle = vgrad(6.4 * s, 12 * s, '#f4f6f9', '#6a717c'); roundRect(-44 * s, 6.4 * s, 23 * s, 5.6 * s, 2.8 * s); ctx.fill();
+        ctx.fillStyle = '#1a1c20'; roundRect(-44 * s, 6.4 * s, 4.6 * s, 5.6 * s, 2.5 * s); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(-39 * s, 7 * s, 17 * s, 0.9 * s);
+        ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 0.8;
+        for (const bx of [-35, -28]) { ctx.beginPath(); ctx.moveTo(bx * s, 6.6 * s); ctx.lineTo(bx * s, 11.8 * s); ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1; roundRect(-44 * s, 6.4 * s, 23 * s, 5.6 * s, 2.8 * s); ctx.stroke();
+        exhaustFlame(-44.4 * s, 9.2 * s, s, t, racer);
+        // jambe basse de fourche, étrier de frein rouge et durite
+        tubePath(() => { ctx.beginPath(); ctx.moveTo(21.8 * s, 2.4 * s); ctx.lineTo(26 * s, 13 * s); }, 2.4 * s, '#c8ced6');
+        ctx.fillStyle = vgrad(7.2 * s, 14.6 * s, '#ff5a4a', '#a81c1c'); roundRect(29.4 * s, 7.2 * s, 4.6 * s, 7.4 * s, 1.5 * s); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 0.8; ctx.stroke();
+        tubePath(() => { ctx.beginPath(); ctx.moveTo(31.5 * s, 7.2 * s); ctx.quadraticCurveTo(30 * s, 0, 23.5 * s, -2.2 * s); }, 0.9 * s, '#1b1d22');
+        // garde-boue avant peint
+        tubePath(() => { ctx.beginPath(); ctx.arc(26 * s, 13 * s, 14.6 * s, -2.45, -0.75); }, 3.2 * s, base);
+        // lumières : faisceau du phare et feu arrière (plus vif au freinage)
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const bx = 22 * s, by = -2.6 * s, L = 95 * s;
+        const bg = ctx.createLinearGradient(bx, 0, bx + L, 0);
+        bg.addColorStop(0, 'rgba(255,244,200,.16)'); bg.addColorStop(1, 'rgba(255,244,200,0)');
+        ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(bx, by - 1.2 * s); ctx.lineTo(bx + L, by - 11 * s); ctx.lineTo(bx + L, by + 13 * s); ctx.lineTo(bx, by + 1.2 * s); ctx.closePath(); ctx.fill();
+        const hg = ctx.createRadialGradient(bx, by, 0, bx, by, 9 * s);
+        hg.addColorStop(0, 'rgba(255,250,220,.7)'); hg.addColorStop(1, 'rgba(255,250,220,0)');
+        ctx.fillStyle = hg; ctx.fillRect(bx - 9 * s, by - 9 * s, 18 * s, 18 * s);
+        const tx = -34 * s, ty = -4.2 * s, tr = (braking ? 12 : 7) * s;
+        const tg = ctx.createRadialGradient(tx, ty, 0, tx, ty, tr);
+        tg.addColorStop(0, braking ? 'rgba(255,50,40,.75)' : 'rgba(255,50,40,.4)'); tg.addColorStop(1, 'rgba(255,50,40,0)');
+        ctx.fillStyle = tg; ctx.fillRect(tx - tr, ty - tr, tr * 2, tr * 2);
+        ctx.restore();
+        return;
+      }
+      DRV.mood = braking ? 'hurt' : 'happy';
       DRV.blink = DRV.mood === 'happy' && (t * 0.8 + racer.phase) % 3.1 < 0.13;
-      const ch = racer.character;
-      // bras oscillant, échappement chromé et silencieux
-      limb(-26 * s, 13 * s, -7 * s, 7 * s, 3.4 * s, '#2c3038');
-      limb(-6 * s, 12 * s, -22 * s, 9.5 * s, 3 * s, '#9aa1ab');
-      ctx.fillStyle = vgrad(5 * s, 12 * s, '#f1f3f6', '#6f7783'); roundRect(-42 * s, 6.4 * s, 22 * s, 5.4 * s, 2.7 * s); ctx.fill();
-      ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.ellipse(-42 * s, 9.1 * s, 1 * s, 2.4 * s, 0, 0, Math.PI * 2); ctx.fill();
-      // moteur à ailettes
-      ctx.fillStyle = vgrad(0, 14 * s, '#5d626c', '#1b1e24'); roundRect(-10 * s, 2 * s, 19 * s, 12 * s, 2 * s); ctx.fill();
-      ctx.save(); ctx.translate(2 * s, 0); ctx.rotate(-0.35);
-      ctx.fillStyle = vgrad(-6 * s, 4 * s, '#6a707b', '#23262d'); roundRect(-4 * s, -6 * s, 9 * s, 10 * s, 1.5 * s); ctx.fill();
-      ctx.strokeStyle = '#0d0f12'; ctx.lineWidth = 1; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-4 * s, -4.5 * s + i * 2.4 * s); ctx.lineTo(5 * s, -4.5 * s + i * 2.4 * s); ctx.stroke(); }
+      // chaîne de transmission
+      ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1c20'; ctx.lineWidth = 1.1 * s;
+      ctx.beginPath(); ctx.moveTo(-26 * s, 8.6 * s); ctx.lineTo(-5 * s, 7.4 * s); ctx.moveTo(-26 * s, 17.4 * s); ctx.lineTo(-5 * s, 12.6 * s); ctx.stroke();
+      ctx.setLineDash([1.2 * s, 1.2 * s]); ctx.strokeStyle = '#8d939c'; ctx.lineWidth = 0.9 * s;
+      ctx.beginPath(); ctx.moveTo(-26 * s, 8.6 * s); ctx.lineTo(-5 * s, 7.4 * s); ctx.moveTo(-26 * s, 17.4 * s); ctx.lineTo(-5 * s, 12.6 * s); ctx.stroke();
+      ctx.setLineDash([]);
+      circle(-5 * s, 10 * s, 3.2 * s, '#2a2d33'); circle(-5 * s, 10 * s, 1.4 * s, '#6a707b');
+      // amortisseur arrière : corps doré et ressort rouge
+      limb(-22 * s, -4 * s, -12.5 * s, 8.6 * s, 2.4 * s, '#c9a033');
+      spring(-21.4 * s, -2.8 * s, -13.2 * s, 7.4 * s, 8, 1.9 * s, 1.1 * s, '#e5484d');
+      // berceau tubulaire
+      tubePath(() => { ctx.beginPath(); ctx.moveTo(18 * s, 3 * s); ctx.quadraticCurveTo(15 * s, 15 * s, 3 * s, 15.5 * s); ctx.lineTo(-9 * s, 12.5 * s); }, 2.2 * s, '#9aa1ab');
+      // bas-moteur, carter d'embrayage et cylindre à ailettes
+      ctx.fillStyle = vgrad(0, 14 * s, '#656a74', '#1b1e24'); roundRect(-12 * s, 2 * s, 22 * s, 12 * s, 2.4 * s); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 0.8; ctx.stroke();
+      sphere(-3 * s, 9 * s, 4.3 * s, '#aeb4be');
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(-3 * s, 9 * s, 3.3 * s, 0, Math.PI * 2); ctx.stroke();
+      circle(-3 * s, 9 * s, 1.3 * s, '#4d535e');
+      ctx.save(); ctx.translate(3 * s, 2 * s); ctx.rotate(-0.35);
+      ctx.fillStyle = vgrad(-8 * s, 3 * s, '#767c87', '#23262d'); roundRect(-4.5 * s, -8 * s, 10 * s, 11 * s, 1.6 * s); ctx.fill();
+      ctx.strokeStyle = '#0d0f12'; ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(-4.5 * s, -7 * s + i * 2 * s); ctx.lineTo(5.5 * s, -7 * s + i * 2 * s); ctx.stroke(); }
+      ctx.fillStyle = vgrad(-10 * s, -6 * s, shade(base, 0.25), shade(base, -0.4)); roundRect(-5 * s, -10 * s, 11 * s, 3.6 * s, 1.4 * s); ctx.fill();
       ctx.restore();
-      // fourche avant
-      limb(26 * s, 13 * s, 17 * s, -7 * s, 3.2 * s, '#3a3e46');
-      limb(26.6 * s, 11 * s, 18.4 * s, -5 * s, 1.8 * s, '#d4d9e0');
-      // garde-boues
-      ctx.lineCap = 'round'; ctx.lineWidth = 3 * s; ctx.strokeStyle = shade(base, -0.15);
-      ctx.beginPath(); ctx.arc(-26 * s, 13 * s, 14.5 * s, -2.9, -1.0); ctx.stroke();
-      ctx.strokeStyle = base; ctx.beginPath(); ctx.arc(26 * s, 13 * s, 14.5 * s, -2.5, -0.8); ctx.stroke();
-      // carénage, réservoir et selle
+      // jambes hautes de fourche inversée (dorées) et té de fourche
+      tubePath(() => { ctx.beginPath(); ctx.moveTo(17 * s, -8 * s); ctx.lineTo(21.8 * s, 2.4 * s); }, 3.8 * s, '#d9a93c');
+      circle(17.6 * s, -7 * s, 2.4 * s, '#2c3038');
+      // carénage, réservoir et queue de selle
       const shell = new Path2D();
-      shell.moveTo(-31 * s, -1 * s); shell.lineTo(-26 * s, -7 * s); shell.quadraticCurveTo(-14 * s, -9 * s, -6 * s, -10 * s);
-      shell.quadraticCurveTo(1 * s, -15 * s, 10 * s, -11 * s); shell.lineTo(17 * s, -6 * s); shell.quadraticCurveTo(25 * s, -2 * s, 23 * s, 4 * s);
-      shell.lineTo(10 * s, 6 * s); shell.lineTo(-8 * s, 5 * s); shell.lineTo(-24 * s, 3 * s); shell.quadraticCurveTo(-32 * s, 3 * s, -31 * s, -1 * s); shell.closePath();
-      ctx.fillStyle = vgrad(-14 * s, 6 * s, shade(base, 0.4), shade(base, -0.4)); ctx.fill(shell);
-      ctx.save(); ctx.clip(shell);
-      ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(1 * s, -10 * s, 8 * s, 1.6 * s, -0.25, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fillRect(-32 * s, -1 * s, 56 * s, 1.8 * s);
-      ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-32 * s, 2 * s, 56 * s, 4 * s);
-      ctx.restore();
-      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.stroke(shell);
-      ctx.fillStyle = vgrad(-10 * s, -5 * s, '#2c3038', '#101216'); roundRect(-25 * s, -10 * s, 17 * s, 4.6 * s, 2.3 * s); ctx.fill();
+      shell.moveTo(-33 * s, -1 * s); shell.quadraticCurveTo(-31 * s, -8 * s, -22 * s, -8.6 * s); shell.lineTo(-9 * s, -9 * s);
+      shell.quadraticCurveTo(-3 * s, -9.5 * s, 0, -13.2 * s); shell.quadraticCurveTo(6 * s, -16 * s, 12 * s, -12 * s);
+      shell.lineTo(16.5 * s, -8 * s); shell.lineTo(19 * s, -9 * s); shell.quadraticCurveTo(24.5 * s, -6 * s, 24 * s, -1 * s);
+      shell.quadraticCurveTo(23.5 * s, 1 * s, 21 * s, 1.2 * s); shell.lineTo(10 * s, 5.5 * s); shell.lineTo(-8 * s, 5 * s);
+      shell.lineTo(-24 * s, 2.2 * s); shell.quadraticCurveTo(-33 * s, 2.2 * s, -33 * s, -1 * s); shell.closePath();
+      paintBody(shell, base, -16 * s, 6 * s, s, () => {
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(5 * s, -13 * s, 6.5 * s, 1.3 * s, -0.25, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillRect(-34 * s, -1 * s, 60 * s, 1.8 * s);
+        ctx.fillStyle = shade(base, -0.35); ctx.fillRect(-34 * s, 0.9 * s, 60 * s, 0.8 * s);
+        ctx.fillStyle = 'rgba(0,0,0,.34)'; ctx.fillRect(-34 * s, 2.2 * s, 62 * s, 5 * s);
+        // ouïes de refroidissement
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1.1 * s; ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo((-2 + i * 3.2) * s, 1.8 * s); ctx.lineTo((-3.4 + i * 3.2) * s, 4.8 * s); ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(-9 * s, -9 * s); ctx.lineTo(-9 * s, 5 * s); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(18 * s, -9 * s); ctx.lineTo(16 * s, 3 * s); ctx.stroke();
+      });
+      // selle cousue
+      ctx.fillStyle = vgrad(-10 * s, -5 * s, '#343841', '#101216'); roundRect(-25 * s, -10 * s, 17 * s, 4.6 * s, 2.3 * s); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(-23 * s, -8.8 * s); ctx.lineTo(-10 * s, -8.8 * s); ctx.stroke();
+      // rond de numéro, phare et feu arrière
       sphere(13 * s, -0.4 * s, 4 * s, '#f4f4f4');
       ctx.fillStyle = base; ctx.font = `800 ${5.6 * s}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(racer.num || (state.racers.indexOf(racer) + 1)), 13 * s, 0 * s);
-      ctx.fillStyle = '#fff7d6'; ctx.beginPath(); ctx.ellipse(23 * s, -1 * s, 1.7 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 0.8; ctx.stroke();
-      // pilote : penché vers l'avant, bras sur le guidon, jambe sur le repose-pied
+      const lens = ctx.createRadialGradient(21 * s, -3.4 * s, 0.2 * s, 21.4 * s, -2.6 * s, 3.4 * s);
+      lens.addColorStop(0, '#ffffff'); lens.addColorStop(1, '#ffe9a0');
+      ctx.fillStyle = lens; ctx.beginPath(); ctx.ellipse(21.4 * s, -2.6 * s, 2.3 * s, 3.3 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 0.9; ctx.stroke();
+      ctx.fillStyle = braking ? '#ff3b30' : '#b3201a'; roundRect(-33.8 * s, -5.8 * s, 2.4 * s, 3.6 * s, 1 * s); ctx.fill();
+      // pilote : penché vers l'avant, bras sur le guidon, genou au ras du sol, jambe sur le repose-pied
       const lean = 0.22, c = Math.cos(lean), sn = Math.sin(lean);
       const gx = 23.5, gy = -1; // guidon, relatif au bassin
       DRV.hand = { x: gx * c + gy * sn, y: -gx * sn + gy * c };
@@ -1405,31 +1640,63 @@
       ctx.save(); ctx.rotate(lean); drawDriver(ch, s, t, steer, 'corps'); ctx.restore();
       limb(0, -1 * s, 11 * s, 3 * s, 6.6 * s, shade(ch.suit, -0.1));
       limb(11 * s, 3 * s, 5 * s, 19 * s, 5.6 * s, shade(ch.suit, -0.1));
+      ctx.fillStyle = '#d8d8d8'; roundRect(10.2 * s, 4.2 * s, 3.4 * s, 2 * s, 1 * s); ctx.fill();
       ctx.fillStyle = '#16181d'; roundRect(1.5 * s, 17.5 * s, 9 * s, 4.4 * s, 2 * s); ctx.fill();
       ctx.restore();
-      // pare-brise translucide, guidon et rétroviseur
-      ctx.fillStyle = 'rgba(160,215,255,.38)'; ctx.beginPath(); ctx.moveTo(13 * s, -10 * s); ctx.lineTo(19 * s, -18 * s); ctx.lineTo(23 * s, -7 * s); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1; ctx.stroke();
+      // pare-brise teinté, guidon et rétroviseur
+      const wg = ctx.createLinearGradient(13 * s, -18 * s, 23 * s, -7 * s);
+      wg.addColorStop(0, 'rgba(200,235,255,.6)'); wg.addColorStop(1, 'rgba(110,160,215,.22)');
+      ctx.fillStyle = wg; ctx.beginPath(); ctx.moveTo(13 * s, -10 * s); ctx.lineTo(19 * s, -18 * s); ctx.lineTo(23 * s, -7 * s); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.65)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 0.8 * s; ctx.beginPath(); ctx.moveTo(15.6 * s, -11.5 * s); ctx.lineTo(19.4 * s, -16.4 * s); ctx.stroke();
       limb(17 * s, -8 * s, 15 * s, -10.5 * s, 2.4 * s, '#15181d');
       limb(15 * s, -10.5 * s, 10 * s, -15 * s, 1.2 * s, '#20242b');
+      ctx.fillStyle = vgrad(-17 * s, -14 * s, shade(base, 0.3), shade(base, -0.4)); ctx.beginPath(); ctx.ellipse(9.5 * s, -15.4 * s, 2.6 * s, 1.6 * s, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(190,225,255,.7)'; ctx.beginPath(); ctx.ellipse(9.2 * s, -15.4 * s, 1.5 * s, 0.9 * s, -0.3, 0, Math.PI * 2); ctx.fill();
       ctx.save(); ctx.translate(-8 * s, -9 * s); ctx.rotate(lean); drawDriver(ch, s, t, steer, 'bras'); ctx.restore();
     }
 
-    function drawWheel(s, comp, angle, k = 1) {
+    // Roue : pneu à flanc éclairci et sculptures, lettrage blanc qui tourne, jante métallique (dorée sur la moto), disque de frein, flou de rotation à grande vitesse.
+    function drawWheel(s, comp, angle, k = 1, kind = 'kart', blur = 0) {
+      const moto = kind === 'moto', R = 10.5 * s;
       ctx.scale(1, 1 + comp * 0.012);
       ctx.rotate(angle);
       ctx.scale(k, k);
-      const g = ctx.createRadialGradient(0, 0, 3 * s, 0, 0, 10.5 * s);
-      g.addColorStop(0, '#2a2d33'); g.addColorStop(1, '#0c0d10');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 10.5 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#2f333a'; ctx.lineWidth = 1.2;
-      for (let i = 0; i < 14; i++) { const a = i * Math.PI * 2 / 14; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 8.6 * s, Math.sin(a) * 8.6 * s); ctx.lineTo(Math.cos(a) * 10.4 * s, Math.sin(a) * 10.4 * s); ctx.stroke(); }
-      const rim = ctx.createRadialGradient(-1.5 * s, -1.5 * s, 0.5 * s, 0, 0, 6 * s);
-      rim.addColorStop(0, '#f2f4f7'); rim.addColorStop(1, '#7c8490');
+      const g = ctx.createRadialGradient(0, 0, 3 * s, 0, 0, R);
+      g.addColorStop(0, '#2a2d33'); g.addColorStop(0.72, '#1a1c21'); g.addColorStop(0.9, '#2f3239'); g.addColorStop(1, '#08090b');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = moto ? '#3a3e46' : '#2f333a'; ctx.lineWidth = moto ? 1.6 : 1.2;
+      const n = moto ? 26 : 16;
+      for (let i = 0; i < n; i++) { const a = i * Math.PI * 2 / n; ctx.beginPath(); ctx.moveTo(Math.cos(a) * (R - 1.9 * s), Math.sin(a) * (R - 1.9 * s)); ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R); ctx.stroke(); }
+      ctx.strokeStyle = moto ? 'rgba(240,240,240,.55)' : 'rgba(245,245,245,.8)'; ctx.lineWidth = Math.max(1, 1.2 * s); ctx.lineCap = 'butt';
+      for (const a0 of [0.3, 3.45]) { ctx.beginPath(); ctx.arc(0, 0, R * 0.8, a0, a0 + 0.7); ctx.stroke(); }
+      let rim;
+      if (ctx.createConicGradient) {
+        rim = ctx.createConicGradient(0, 0, 0);
+        const st = moto ? ['#fff0b8', '#a9791c', '#f6d77a', '#8a600f'] : ['#f4f6f9', '#7c8490', '#eef0f4', '#6b727d'];
+        rim.addColorStop(0, st[0]); rim.addColorStop(0.25, st[1]); rim.addColorStop(0.5, st[2]); rim.addColorStop(0.75, st[3]); rim.addColorStop(1, st[0]);
+      } else {
+        rim = ctx.createRadialGradient(-1.5 * s, -1.5 * s, 0.5 * s, 0, 0, 6 * s);
+        rim.addColorStop(0, moto ? '#f6d77a' : '#f2f4f7'); rim.addColorStop(1, moto ? '#8a600f' : '#7c8490');
+      }
       ctx.fillStyle = rim; ctx.beginPath(); ctx.arc(0, 0, 6 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#4b515b'; ctx.lineWidth = 1.5;
-      for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 5.6 * s, Math.sin(a) * 5.6 * s); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(20,22,28,.55)'; ctx.lineWidth = 1; ctx.stroke();
+      if (moto) { // disque de frein perforé
+        ctx.strokeStyle = '#a8aeb8'; ctx.lineWidth = 1.5 * s; ctx.beginPath(); ctx.arc(0, 0, 4.3 * s, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#15171b';
+        for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.arc(Math.cos(a) * 4.3 * s, Math.sin(a) * 4.3 * s, 0.45 * s, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1 - 0.65 * blur;
+      ctx.strokeStyle = moto ? '#7a5a14' : '#4b515b'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+      const spokes = moto ? 6 : 5;
+      for (let i = 0; i < spokes; i++) { const a = i * Math.PI * 2 / spokes; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 5.6 * s, Math.sin(a) * 5.6 * s); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      if (blur > 0.05) { ctx.fillStyle = `rgba(110,115,125,${0.4 * blur})`; ctx.beginPath(); ctx.arc(0, 0, 5.8 * s, 0, Math.PI * 2); ctx.fill(); }
       ctx.fillStyle = '#20242a'; ctx.beginPath(); ctx.arc(0, 0, 1.6 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8d95a1'; ctx.beginPath(); ctx.arc(-0.3 * s, -0.3 * s, 0.6 * s, 0, Math.PI * 2); ctx.fill();
+      // reflet fixe (ne tourne pas avec la roue)
+      ctx.rotate(-angle);
+      ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0, 0, R * 0.9, -2.6, -1.7); ctx.stroke();
     }
 
     function pickCharacter(wanted) {
@@ -1441,9 +1708,10 @@
     }
 
     function drawKart(racer) {
-      const n = state.racers.length, s = Math.max(0.5, Math.min(0.68, 0.8 - n * 0.035));
+      const n = state.racers.length, s = Math.max(0.62, Math.min(0.85, 1.0 - n * 0.04));
       const p = pos(racer), dir = racer.dir;
-      let hop = 0, rot = Math.atan2(p.ty, Math.abs(p.tx)) * 0.4;
+      LD = dir;
+      let hop = 0, rot = 0;
       if (racer.skid > 0) rot += Math.sin(racer.skid * 14) * 0.5 * (racer.skid / SKID.banana);
       rot += Math.sin(state.elapsed * 30) * 0.22 * racer.jolt;
       hop += racer.jolt * 5;
@@ -1468,17 +1736,24 @@
       const steer = Math.max(-1, Math.min(1, racer.roll * 2));
       const burnt = racer.stunType === 'bomb' && racer.stun > 0;
       // Châssis et pilote : ils tanguent (avant/arrière), roulent (virage) et rebondissent sur la suspension.
-      ctx.save();
-      ctx.translate(0, 8 * s);
-      ctx.rotate(racer.pitch * dir);
-      ctx.transform(1, 0, racer.roll * 0.35, 1, 0, 0);
-      ctx.translate(0, -8 * s - racer.comp * 0.8);
-      drawKartChassis(racer, s, state.elapsed + racer.wheel * 0.01, steer, burnt);
-      ctx.restore();
-      const moto = state.vehicle === 'moto';
+      const chassisPass = pass => {
+        ctx.save();
+        ctx.translate(0, 8 * s);
+        ctx.rotate(racer.pitch * dir);
+        ctx.transform(1, 0, racer.roll * 0.15, 1, 0, 0);
+        ctx.translate(0, -8 * s - racer.comp * 0.8);
+        drawKartChassis(racer, s, state.elapsed + racer.wheel * 0.01, steer, burnt, pass);
+        ctx.restore();
+      };
+      chassisPass(0);
+      const moto = state.vehicle === 'moto', wk = moto ? 1.2 : 1, blur = Math.min(1, racer.vel / 110);
       for (const wx of moto ? [-26, 26] : [-23, 23]) {
-        ctx.save(); ctx.translate(wx * s, (moto ? 13 : 15) * s); drawWheel(s, racer.comp, racer.wheel, moto ? 1.2 : 1); ctx.restore();
+        ctx.save(); ctx.translate(wx * s, (moto ? 13 : 15) * s);
+        ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(2 * s, 10.6 * s * wk, 9 * s * wk, 2 * s, 0, 0, Math.PI * 2); ctx.fill();
+        drawWheel(s, racer.comp, racer.wheel, wk, moto ? 'moto' : 'kart', blur);
+        ctx.restore();
       }
+      chassisPass(1);
       ctx.restore();
       drawAvatar(racer, p.x + 28 * s, p.y - lift - 38 * s, 8 * s);
 
@@ -1535,7 +1810,7 @@
       }
       for (const q of state.particles) {
         ctx.globalAlpha = Math.max(0, Math.min(1, q.life * 1.6));
-        ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(q.x, q.y, q.r ? q.r * (1 + (1 - q.life / q.max) * 1.4) : 3.5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
@@ -1552,15 +1827,15 @@
       ctx.globalCompositeOperation = 'lighter';
       for (const l of LAMPS) glow(l.x, l.y, 62, 'rgba(255,214,130,A)', 0.26);
       // Fenêtres et torches du château qui vacillent.
-      glow(HOLES[0].x + 8, HOLES[0].y + 14, 34, 'rgba(255,130,40,A)', 0.45 + 0.15 * Math.sin(t * 11) + 0.08 * Math.sin(t * 27));
-      for (const [dx, dy, r] of [[0, 0, 16], [-10.5, 18.5, 20], [10.5, 18.5, 20]]) {
+      glow(HOLES[0].x - 4 + 3.5, HOLES[0].y + 6, 16, 'rgba(255,130,40,A)', 0.45 + 0.15 * Math.sin(t * 11) + 0.08 * Math.sin(t * 27));
+      for (const [dx, dy, r] of [[0, 0, 9], [-5.7, 10, 10], [5.7, 10, 10]]) {
         glow(CASTLE_T.x + dx, CASTLE_T.y + dy, r, 'rgba(255,170,70,A)', 0.4 + 0.12 * Math.sin(t * 9 + dx) + 0.06 * Math.sin(t * 23 + dx * 3));
       }
       for (const r of state.racers) {
         const p = pos(r), y = p.y - p.lift;
         if (r.skid > 0 || r.stun > 0) glow(p.x, y, 34, r.stunType === 'bomb' ? 'rgba(255,140,40,A)' : 'rgba(255,230,120,A)', 0.35);
       }
-      for (const q of state.particles) glow(q.x, q.y, 14, 'rgba(255,200,110,A)', Math.max(0, Math.min(0.5, q.life * 0.6)));
+      for (const q of state.particles) if (!q.smoke) glow(q.x, q.y, 14, 'rgba(255,200,110,A)', Math.max(0, Math.min(0.5, q.life * 0.6)));
       ctx.restore();
     }
 
@@ -1703,7 +1978,7 @@
       state.demo = !state.demo;
       $('demo').textContent = `Mode démo : ${state.demo ? 'activé' : 'désactivé'}`;
       if (state.demo && state.phase === 'lobby') {
-        while (state.racers.length < 4) register({ name: DEMO_NAMES[state.racers.length % DEMO_NAMES.length] });
+        while (state.racers.length < 4) register({ name: DEMO_NAMES[state.racers.length % DEMO_NAMES.length], simulated: true });
       }
     });
     $('volume').addEventListener('input', e => sound.setVolume(Number(e.target.value)));
