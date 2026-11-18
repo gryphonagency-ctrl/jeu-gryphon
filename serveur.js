@@ -276,7 +276,7 @@ const freeTrialRoutes = new Set([
     '/telepusher.html',
     '/grand-prix-pokemon.html',
     '/bouteilles-colorees.html',
-    '/coin-pusher-tiktok.html',
+    '/machine-a-pinces.html',
     '/griffon-gauche.jpg'
 ]);
 const fixedGameImageIds = new Set([
