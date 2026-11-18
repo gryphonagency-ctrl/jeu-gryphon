@@ -75,7 +75,7 @@ const liveAlertTikTokUsername = resolveCreatorTikTokUsername(
 );
 const liveTikTokDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true';
 const liveTikTokMonitorUsername = String(
-    process.env.LIVE_TIKTOK_MONITOR_USERNAME || liveAlertTikTokUsername
+    process.env.LIVE_TIKTOK_MONITOR_USERNAME || 'cityhunter698'
 ).trim().replace(/^@/, '').toLocaleLowerCase();
 const shouldLogTikTokDiagnostics = username =>
     liveTikTokDiagnostics ||

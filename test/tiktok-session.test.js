@@ -150,6 +150,39 @@ test('enables diagnostics for the monitored TikTok account', async () => {
     }
 });
 
+test('defaults monitoring to cityhunter698, not other accounts', async () => {
+    const previousMonitor = process.env.LIVE_TIKTOK_MONITOR_USERNAME;
+    const previousDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS;
+    const originalInfo = console.info;
+    const logs = [];
+    delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
+    process.env.LIVE_TIKTOK_DIAGNOSTICS = 'false';
+    console.info = (...values) => logs.push(values.join(' '));
+    try {
+        const monitored = createHarness({ diagnostics: true, username: 'CityHunter698' });
+        try {
+            await new Promise(resolve => setImmediate(resolve));
+            assert(logs.some(line => line.includes('[TikTok diagnostic] connexion')));
+        } finally {
+            await monitored.restore();
+        }
+        logs.length = 0;
+        const other = createHarness({ diagnostics: true, username: 'other_account' });
+        try {
+            await new Promise(resolve => setImmediate(resolve));
+            assert(!logs.some(line => line.includes('[TikTok diagnostic]')));
+        } finally {
+            await other.restore();
+        }
+    } finally {
+        console.info = originalInfo;
+        if (previousMonitor === undefined) delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
+        else process.env.LIVE_TIKTOK_MONITOR_USERNAME = previousMonitor;
+        if (previousDiagnostics === undefined) delete process.env.LIVE_TIKTOK_DIAGNOSTICS;
+        else process.env.LIVE_TIKTOK_DIAGNOSTICS = previousDiagnostics;
+    }
+});
+
 test('reconnects after websocket frames stop arriving', async () => {
     const harness = createHarness();
     try {
