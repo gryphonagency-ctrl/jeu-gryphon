@@ -272,47 +272,117 @@
             ctx.closePath();
         }
 
+        /* ---------- rendu réaliste : tore (cerceau) et quille 3D ---------- */
+        function shade(hex, amt) {
+            if (hex.length === 4) hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+            const n = parseInt(hex.slice(1), 16);
+            let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+            const f = amt < 0 ? 0 : 255, k = Math.abs(amt);
+            r = Math.round(r + (f - r) * k); g = Math.round(g + (f - g) * k); b = Math.round(b + (f - b) * k);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        /* Cerceau en plastique : arête sombre, corps, reflet clair et petit éclat brillant */
+        function torus(cx, cy, rx, ry, rot, color, lw, a0, a1) {
+            const path = dy => { ctx.beginPath(); ctx.ellipse(cx, cy + dy, rx, ry, rot, a0, a1); };
+            ctx.lineCap = 'butt';
+            path(0); ctx.strokeStyle = shade(color, -0.55); ctx.lineWidth = lw * 1.08; ctx.stroke();
+            path(0); ctx.strokeStyle = color; ctx.lineWidth = lw * 0.82; ctx.stroke();
+            path(-lw * 0.14); ctx.strokeStyle = shade(color, 0.45); ctx.lineWidth = lw * 0.34; ctx.stroke();
+            path(-lw * 0.2); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = lw * 0.1;
+            ctx.setLineDash([lw * 1.2, lw * 3.5]); ctx.stroke(); ctx.setLineDash([]);
+        }
+
         function ringHalf(x, y, s, p, front) {
             ctx.save();
-            ctx.strokeStyle = p.ringColor; ctx.lineWidth = s * 0.26;
-            ctx.shadowColor = p.ringColor; ctx.shadowBlur = s * 0.4;
-            ctx.beginPath();
-            ctx.ellipse(x, y + p.ringY * s, s * RING_RX, s * RING_RY, 0, front ? 0 : Math.PI, front ? Math.PI : Math.PI * 2);
-            ctx.stroke();
+            torus(x, y + p.ringY * s, s * RING_RX, s * RING_RY, 0, p.ringColor, s * 0.24, front ? 0 : Math.PI, front ? Math.PI : Math.PI * 2);
             ctx.restore();
         }
 
         function drawPin(p) {
             const { x, y, s } = pinGeom(p);
+            const base = y + s * 1.1;
+            const age = clock - (p.wobT === undefined ? -99 : p.wobT), wob = Math.max(0, 1 - age / 0.7);
+
+            /* ombre de contact douce */
             ctx.save();
-            ctx.fillStyle = 'rgba(0,0,0,.3)';
-            ctx.beginPath(); ctx.ellipse(x + s * 0.1, y + s * 1.08, s * 0.7, s * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.translate(x + s * 0.15, base - s * 0.02); ctx.scale(1, 0.28);
+            const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.95);
+            sg.addColorStop(0, 'rgba(0,0,0,.6)'); sg.addColorStop(0.6, 'rgba(0,0,0,.28)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = sg; ctx.fillRect(-s, -s, s * 2, s * 2);
+            ctx.restore();
+
+            ctx.save();
+            /* léger balancement quand un cerceau se pose, autour du pied de la quille */
+            if (wob > 0) { ctx.translate(x, base); ctx.rotate(Math.sin(age * 26) * 0.07 * wob); ctx.translate(-x, -base); }
+
             if (p.hasRing) ringHalf(x, y, s, p, false);
-            const g = ctx.createLinearGradient(x - s * 0.62, 0, x + s * 0.62, 0);
-            g.addColorStop(0, '#9da3b8'); g.addColorStop(0.28, '#ffffff'); g.addColorStop(0.55, '#f1f2f8'); g.addColorStop(1, '#8c92aa');
-            ctx.fillStyle = g; ctx.strokeStyle = 'rgba(40,30,60,.55)'; ctx.lineWidth = Math.max(1, s * 0.05);
-            pinPath(x, y, s); ctx.fill(); ctx.stroke();
+
+            /* corps en plastique brillant, ombrage cylindrique */
+            const g = ctx.createLinearGradient(x - s * 0.64, 0, x + s * 0.64, 0);
+            g.addColorStop(0, '#8e94ac'); g.addColorStop(0.16, '#d9dce8'); g.addColorStop(0.32, '#ffffff');
+            g.addColorStop(0.5, '#eef0f7'); g.addColorStop(0.78, '#b9bfd1'); g.addColorStop(1, '#7c829b');
+            ctx.fillStyle = g; pinPath(x, y, s); ctx.fill();
+
             ctx.save();
             pinPath(x, y, s); ctx.clip();
-            ctx.fillStyle = '#d62828';
-            ctx.fillRect(x - s, y - s * 0.84, s * 2, s * 0.13);
-            ctx.fillRect(x - s, y - s * 0.6, s * 2, s * 0.1);
-            const sh = ctx.createLinearGradient(x - s * 0.62, 0, x + s * 0.62, 0);
-            sh.addColorStop(0, 'rgba(0,0,0,.18)'); sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.22)');
+            /* bandes rouges courbées (vues légèrement du dessus) */
+            const band = (y0, y1) => {
+                ctx.beginPath();
+                ctx.moveTo(x - s, y + y0 * s); ctx.quadraticCurveTo(x, y + (y0 + 0.16) * s, x + s, y + y0 * s);
+                ctx.lineTo(x + s, y + y1 * s); ctx.quadraticCurveTo(x, y + (y1 + 0.16) * s, x - s, y + y1 * s);
+                ctx.closePath(); ctx.fill();
+            };
+            const rg = ctx.createLinearGradient(x - s * 0.62, 0, x + s * 0.62, 0);
+            rg.addColorStop(0, '#8a0f14'); rg.addColorStop(0.3, '#f23a3a'); rg.addColorStop(0.6, '#d42424'); rg.addColorStop(1, '#7a0c12');
+            ctx.fillStyle = rg; band(-0.88, -0.74); band(-0.66, -0.54);
+            /* occlusion ambiante vers le pied */
+            const ao = ctx.createLinearGradient(0, y - s * 0.2, 0, base);
+            ao.addColorStop(0, 'rgba(25,10,45,0)'); ao.addColorStop(1, 'rgba(25,10,45,.3)');
+            ctx.fillStyle = ao; ctx.fillRect(x - s, y - s * 0.2, s * 2, s * 1.4);
+            /* assombrissement des bords pour le volume */
+            const sh = ctx.createLinearGradient(x - s * 0.64, 0, x + s * 0.64, 0);
+            sh.addColorStop(0, 'rgba(0,0,0,.22)'); sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(0.75, 'rgba(0,0,0,.06)'); sh.addColorStop(1, 'rgba(0,0,0,.3)');
             ctx.fillStyle = sh; ctx.fillRect(x - s, y - s * 1.7, s * 2, s * 2.9);
+            /* socle un peu plus sombre */
+            ctx.fillStyle = 'rgba(30,20,50,.18)';
+            ctx.beginPath(); ctx.ellipse(x, base, s * 0.5, s * 0.1, 0, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
-            ctx.fillStyle = 'rgba(255,255,255,.75)';
-            ctx.beginPath(); ctx.ellipse(x - s * 0.17, y + s * 0.15, s * 0.07, s * 0.38, 0.05, 0, Math.PI * 2); ctx.fill();
+
+            ctx.lineWidth = Math.max(1, s * 0.045); ctx.strokeStyle = 'rgba(40,30,60,.5)';
+            pinPath(x, y, s); ctx.stroke();
+
+            /* reflets spéculaires (ventre, cou, tête) */
+            ctx.fillStyle = 'rgba(255,255,255,.8)';
+            ctx.beginPath(); ctx.ellipse(x - s * 0.2, y + s * 0.15, s * 0.07, s * 0.4, 0.05, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,.55)';
+            ctx.beginPath(); ctx.ellipse(x - s * 0.13, y - s * 0.78, s * 0.035, s * 0.2, 0.08, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,.8)';
             ctx.beginPath(); ctx.ellipse(x - s * 0.1, y - s * 1.32, s * 0.06, s * 0.1, 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = Math.max(1, s * 0.05);
+            ctx.beginPath(); ctx.moveTo(x + s * 0.5, y - s * 0.1); ctx.quadraticCurveTo(x + s * 0.55, y + s * 0.5, x + s * 0.34, y + s * 0.95); ctx.stroke();
+
+            if (p.hasRing) {
+                /* ombre portée du cerceau sur la quille */
+                ctx.save();
+                pinPath(x, y, s); ctx.clip();
+                ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = s * 0.16;
+                ctx.beginPath(); ctx.ellipse(x, y + p.ringY * s + s * 0.2, s * RING_RX * 0.9, s * RING_RY, 0, 0, Math.PI); ctx.stroke();
+                ctx.restore();
+                ringHalf(x, y, s, p, true);
+            }
             ctx.restore();
-            if (p.hasRing) ringHalf(x, y, s, p, true);
         }
 
         function drawRing(r) {
             ctx.save();
-            ctx.strokeStyle = r.color; ctx.lineWidth = r.size * 0.2; ctx.globalAlpha = r.alpha;
-            ctx.shadowColor = r.color; ctx.shadowBlur = r.size * 0.4;
-            ctx.beginPath(); ctx.ellipse(r.x, r.y, r.size, r.size * 0.38, r.rot, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = r.alpha;
+            /* ombre au sol : plus nette et sombre quand le cerceau est bas */
+            const gy = r.gy === undefined ? r.ty : r.gy;
+            const k = Math.min(1, Math.max(0.2, 1 - Math.abs(gy - r.y) / (canvas.height * 0.45)));
+            ctx.fillStyle = `rgba(0,0,0,${0.34 * k})`;
+            ctx.beginPath(); ctx.ellipse(r.x, gy, r.size * (0.7 + 0.3 * k), r.size * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+            torus(r.x, r.y, r.size, r.size * (r.tilt || 0.38), r.rot, r.color, r.size * 0.2, 0, Math.PI * 2);
             ctx.restore();
         }
 
@@ -346,7 +416,7 @@
                     if (clear(cand)) break;
                 }
             }
-            rings.push({ t: 0, hit, pin: target, color, ox: o.x, oy: o.y, tx, ty, x: o.x, y: o.y, size: 40, rot: 0, alpha: 1, phase: 'fly', run });
+            rings.push({ t: 0, hit, pin: target, color, ox: o.x, oy: o.y, tx, ty, x: o.x, y: o.y, gy: o.y, gyT: hit ? g.y + g.s * RING_REST : ty, tilt: 0.38, size: 40, rot: 0, alpha: 1, phase: 'fly', run });
             run.left--; run.thrown++;
             sndThrow();
         }
@@ -364,7 +434,7 @@
 
         function settled(r) {
             const owner = r.run.entry;
-            r.pin.pending = false; r.pin.filled = true; r.pin.color = r.color; r.pin.ringY = RING_REST;
+            r.pin.pending = false; r.pin.filled = true; r.pin.wobT = clock; r.pin.color = r.color; r.pin.ringY = RING_REST;
             r.run.hits++;
             award(owner.viewer, settings.ringStars, owner.sim);
             const g = pinGeom(r.pin);
@@ -392,7 +462,9 @@
                 r.x = r.ox + (r.tx - r.ox) * t;
                 r.y = r.oy + (r.ty - r.oy) * t - 4 * arc * t * (1 - t);
                 r.size = 40 + (Math.max(10, pinGeom(r.pin).s * RING_RX) - 40) * t;
-                r.rot = Math.sin(t * 9) * 0.25;
+                r.rot = Math.sin(t * 9) * 0.25 * (1 - t * 0.6);
+                r.gy = r.oy + (r.gyT - r.oy) * t;
+                r.tilt = 0.38 + 0.16 * Math.sin(t * 10) * (1 - t);
                 if (t >= 1) landed(r);
             } else if (r.phase === 'drop') {
                 r.dt += dt / 0.45;
@@ -403,10 +475,14 @@
                 if (t >= 1) settled(r);
             } else if (r.phase === 'bounce') {
                 r.bt += dt;
-                r.x = r.bx + r.vx * r.bt;
-                r.y = r.by - Math.abs(Math.sin(r.bt * 8)) * 30 * Math.max(0, 1 - r.bt);
-                r.alpha = Math.max(0, 1 - r.bt / 0.9);
-                if (r.bt > 0.9) r.phase = 'done';
+                /* rebonds amortis, glissade, puis le cerceau se couche en oscillant */
+                r.x = r.bx + r.vx * (1 - Math.exp(-r.bt * 3.5)) / 3.5;
+                r.y = r.by - Math.abs(Math.sin(r.bt * 9)) * 34 * Math.exp(-r.bt * 2.8);
+                r.gy = r.by;
+                r.rot = Math.sin(r.bt * 14) * 0.12 * Math.exp(-r.bt * 3);
+                r.tilt = 0.38 + 0.1 * Math.sin(r.bt * 30) * Math.exp(-r.bt * 4);
+                r.alpha = r.bt < 1 ? 1 : Math.max(0, 1 - (r.bt - 1) / 0.6);
+                if (r.bt > 1.6) r.phase = 'done';
             }
         }
 
