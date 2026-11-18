@@ -249,16 +249,23 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     });
 
     connection.on('streamEnd', event => {
+        if (!active || streamEnded) return;
         liveMatchActive = false;
         streamEnded = true;
         lastWebSocketDataAt = 0;
         teamMemberLevels.clear();
         notifiedTeamMemberLevels.clear();
+        send({ type: 'STATUS', message: `Direct TikTok terminé · @${username}` });
         send({
             type: 'LIVE_END',
             action: Number(event?.action) || null
         });
         onRoomState({ connected: false, roomId: null });
+        connection.disconnect()
+            .catch(error => {
+                console.warn(`Impossible de fermer l’ancien flux TikTok pour @${username} :`, error.message);
+            })
+            .finally(scheduleReconnect);
     });
 
     connection.on('gift', async gift => {

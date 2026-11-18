@@ -9,11 +9,13 @@ class MockTikTokLiveConnection extends EventEmitter {
     constructor(username) {
         super();
         this.username = username;
+        this.connectCalls = 0;
         this.disconnectCalls = 0;
         connectionInstance = this;
     }
 
     connect() {
+        this.connectCalls++;
         this.emit('websocketConnected');
         return Promise.resolve({ roomId: 'test-room' });
     }
@@ -46,9 +48,12 @@ function createHarness() {
     const messages = [];
     let now = 1000;
     let watchdog;
+    let reconnect;
     const originalNow = Date.now;
     const originalSetInterval = global.setInterval;
     const originalClearInterval = global.clearInterval;
+    const originalSetTimeout = global.setTimeout;
+    const originalClearTimeout = global.clearTimeout;
 
     Date.now = () => now;
     global.setInterval = (callback, delay) => {
@@ -59,6 +64,14 @@ function createHarness() {
         return originalSetInterval(callback, delay);
     };
     global.clearInterval = () => {};
+    global.setTimeout = (callback, delay, ...args) => {
+        if (delay === 30_000) {
+            reconnect = callback;
+            return { unref() {} };
+        }
+        return originalSetTimeout(callback, delay, ...args);
+    };
+    global.clearTimeout = () => {};
 
     const stop = createTikTokSession(message => messages.push(message), 'test_user');
     return {
@@ -67,11 +80,19 @@ function createHarness() {
         get now() { return now; },
         set now(value) { now = value; },
         watchdog: () => watchdog(),
+        runReconnect: () => {
+            assert.equal(typeof reconnect, 'function');
+            const callback = reconnect;
+            reconnect = null;
+            callback();
+        },
         async restore() {
             await stop();
             Date.now = originalNow;
             global.setInterval = originalSetInterval;
             global.clearInterval = originalClearInterval;
+            global.setTimeout = originalSetTimeout;
+            global.clearTimeout = originalClearTimeout;
         }
     };
 }
@@ -119,6 +140,31 @@ test('reconnects after websocket frames stop arriving', async () => {
         assert.equal(harness.connection.disconnectCalls, 1);
         assert(harness.messages.some(message =>
             message.type === 'STATUS' && message.message.includes('Flux TikTok silencieux')
+        ));
+    } finally {
+        await harness.restore();
+    }
+});
+
+test('disconnects and reconnects after a live stream ends', async () => {
+    const harness = createHarness();
+    try {
+        await new Promise(resolve => setImmediate(resolve));
+        harness.connection.emit('streamEnd', { action: 3 });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(harness.connection.disconnectCalls, 1);
+        assert(harness.messages.some(message =>
+            message.type === 'STATUS' && message.message.includes('Direct TikTok terminé')
+        ));
+        assert(harness.messages.some(message => message.type === 'LIVE_END'));
+
+        harness.runReconnect();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(harness.connection.connectCalls, 2);
+        assert(harness.messages.some(message =>
+            message.type === 'STATUS' && message.message.includes('Direct TikTok connecté')
         ));
     } finally {
         await harness.restore();
