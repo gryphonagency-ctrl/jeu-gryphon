@@ -93,11 +93,11 @@ body.no-hud #left, body.no-hud #log { display: none; }
     </div>
 </div>
 <button id="eye2" class="alt" type="button" title="Masquer / afficher les tableaux (T)">📊</button>
-<button id="eye" class="alt" type="button" aria-controls="panel" aria-expanded="true" aria-label="Masquer le panneau de contrôle" title="Masquer le panneau de contrôle">👁</button>
+<button id="eye" class="alt" type="button" title="Masquer / afficher le panneau de contrôle (H)">👁</button>
 
 <script>
 const WS_URL = 'wss://jeu6boite.onrender.com';
-const TOTAL = 3000, PRIZES = 750, VISIBLE = 750;
+const TOTAL = 3000, PRIZES = 750, VISIBLE = 500;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let vw = 0, vh = 0, dpr = 1, bg = null;
@@ -319,11 +319,12 @@ function initFish() {
         len: 26 + Math.random() * 40, ph: Math.random() * 6.28, col: ['#ff9a3c', '#d9e6ee', '#7fb8c9', '#f2c14e'][i % 4]
     });
 }
-let toads = [];
+let toads = [], pads = [];
 function initToads() {
+    const spots = [[0.08, 0.28], [0.9, 0.2], [0.06, 0.72], [0.93, 0.66], [0.5, 0.93], [0.2, 0.1], [0.78, 0.92], [0.3, 0.88], [0.75, 0.08]];
+    pads = spots.map(([fx, fy], i) => ({ x: fx * vw, y: fy * vh, r: 52 + (i % 3) * 8, ph: Math.random() * 6.28, dip: 0, busy: i < 5 }));
     toads = [];
-    const spots = [[0.08, 0.28], [0.9, 0.2], [0.06, 0.72], [0.93, 0.66], [0.5, 0.93]];
-    spots.forEach(([fx, fy], i) => toads.push({ x: fx * vw, y: fy * vh, r: 34 + (i % 3) * 6, hop: 0, next: 2 + Math.random() * 5, ph: Math.random() * 6 }));
+    for (let i = 0; i < 5; i++) toads.push({ pad: pads[i], x: pads[i].x, y: pads[i].y, h: 0, r: 32 + (i % 3) * 4, dir: pads[i].x < vw / 2 ? 1 : -1, st: 0, t: 0, next: 1 + Math.random() * 4, ph: Math.random() * 6, croak: 0, c: 0, p: 0, u: 0 });
 }
 const mother = { x: 0, y: 0, a: 0 }, trail = [];
 function initBabies() { mother.x = vw * 0.3; mother.y = vh * 0.6; mother.a = 0; trail.length = 0; }
@@ -346,24 +347,89 @@ function drawLily(x, y, r, ph) {
     ctx.strokeStyle = 'rgba(20,70,20,.6)'; ctx.lineWidth = 1.2; ctx.stroke();
     ctx.restore();
 }
-function drawToad(td, t) {
-    drawLily(td.x, td.y + td.r * 0.35, td.r * 1.5, td.ph);
-    const k = td.hop > 0 ? Math.sin((1 - td.hop) * Math.PI) : 0;
-    const y = td.y - k * td.r * 1.1, r = td.r;
-    ctx.save(); ctx.translate(td.x, y);
-    ctx.fillStyle = '#5c6b2a'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.72, 0, 0, 6.28); ctx.fill();
-    ctx.fillStyle = '#7f9440'; ctx.beginPath(); ctx.ellipse(0, -r * 0.1, r * 0.8, r * 0.55, 0, 0, 6.28); ctx.fill();
-    ctx.fillStyle = '#4a561f';
-    for (const [dx, dy, rr] of [[-0.4, -0.2, 0.14], [0.3, -0.35, 0.12], [0.05, 0.1, 0.16], [-0.15, -0.5, 0.1]]) { ctx.beginPath(); ctx.arc(dx * r, dy * r, rr * r, 0, 6.28); ctx.fill(); }
-    ctx.fillStyle = '#c8d98a'; ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.55, r * 0.25, 0, 0, 6.28); ctx.fill();
-    const blink = (Math.sin(t * 0.9 + td.ph * 3) > 0.985) ? 0.2 : 1;
-    for (const sx of [-1, 1]) {
-        ctx.fillStyle = '#7f9440'; ctx.beginPath(); ctx.arc(sx * r * 0.42, -r * 0.62, r * 0.26, 0, 6.28); ctx.fill();
-        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(sx * r * 0.42, -r * 0.64, r * 0.17, r * 0.17 * blink, 0, 0, 6.28); ctx.fill();
-        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx * r * 0.42, -r * 0.64, r * 0.07, r * 0.14 * blink, 0, 0, 6.28); ctx.fill();
-    }
-    ctx.strokeStyle = '#3b4518'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.38, 0.2, Math.PI - 0.2); ctx.stroke();
+function drawFrog(td, t) {
+    const r = td.r, air = td.st === 2, L = (a, b, k) => a + (b - a) * k, p = td.p, c = td.c;
+    ctx.fillStyle = `rgba(0,20,10,${0.3 - Math.min(0.2, td.h / 400)})`;
+    ctx.beginPath(); ctx.ellipse(td.x, td.y + r * 0.1, r * (1.1 - td.h / 300), r * 0.3, 0, 0, 6.28); ctx.fill();
+    ctx.save();
+    ctx.translate(td.x, td.y - r * (0.55 - c * 0.1) - td.h + (air ? 0 : td.pad.dip * 3));
+    ctx.scale(td.dir * r, r);
+    ctx.rotate(air ? -(0.6 - td.u * 1.2) : -0.22 + c * 0.12);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    const leg = dark => {
+        const col = dark ? '#3f6e2a' : '#5b9a3a', hip = [-0.5, 0.2], knee = [L(0.25, -1.0, p), L(0.1, 0.3, p)], an = [L(-0.45, -1.6, p), L(0.65, 0.55, p)], toe = [L(0.2, -2.2, p), L(0.74, 0.6, p)];
+        for (const [w, k] of [[0.38, '#27441a'], [0.3, col]]) { ctx.strokeStyle = k; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...hip); ctx.lineTo(...knee); ctx.lineTo(...an); ctx.stroke(); }
+        ctx.strokeStyle = col; ctx.lineWidth = 0.13; ctx.beginPath(); ctx.moveTo(...an); ctx.lineTo(...toe); ctx.stroke();
+        const ang = Math.atan2(toe[1] - an[1], toe[0] - an[0]);
+        ctx.strokeStyle = '#27441a'; ctx.lineWidth = 0.05;
+        for (const d of [-0.4, 0, 0.4]) { ctx.beginPath(); ctx.moveTo(...toe); ctx.lineTo(toe[0] + Math.cos(ang + d) * 0.25, toe[1] + Math.sin(ang + d) * 0.25); ctx.stroke(); }
+    };
+    const arm = dark => {
+        const col = dark ? '#3f6e2a' : '#5b9a3a', el = [L(0.6, 0.95, p), L(0.62, 0.35, p)], ha = [L(0.85, 1.35, p), L(0.8, 0.22, p)];
+        for (const [w, k] of [[0.22, '#27441a'], [0.16, col]]) { ctx.strokeStyle = k; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(0.5, 0.3); ctx.lineTo(...el); ctx.lineTo(...ha); ctx.stroke(); }
+        ctx.strokeStyle = '#27441a'; ctx.lineWidth = 0.04;
+        for (const d of [-0.3, 0.1, 0.5]) { ctx.beginPath(); ctx.moveTo(...ha); ctx.lineTo(ha[0] + 0.14 * Math.cos(d), ha[1] + 0.14 * Math.sin(d) + 0.04); ctx.stroke(); }
+    };
+    leg(true); arm(true);
+    // corps
+    const br = 1 + 0.015 * Math.sin(t * 3 + td.ph);
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.95 * (1 + 0.12 * c), 0.6 * (1 - 0.25 * c) * br, 0, 0, 6.28);
+    const gr = ctx.createLinearGradient(0, -0.6, 0, 0.6); gr.addColorStop(0, '#4a8429'); gr.addColorStop(0.55, '#7bb446'); gr.addColorStop(1, '#d8e49c');
+    ctx.fillStyle = gr; ctx.fill(); ctx.save(); ctx.clip();
+    ctx.fillStyle = 'rgba(40,80,28,.55)';
+    for (const [x, y, a, b] of [[-0.5, -0.25, 0.16, 0.1], [-0.1, -0.38, 0.14, 0.09], [0.25, -0.3, 0.12, 0.08], [-0.3, 0, 0.12, 0.08], [0.05, -0.1, 0.1, 0.07], [-0.65, 0.05, 0.1, 0.07]]) { ctx.beginPath(); ctx.ellipse(x, y, a, b, 0.3, 0, 6.28); ctx.fill(); }
     ctx.restore();
+    ctx.strokeStyle = '#d3e58a'; ctx.lineWidth = 0.05; ctx.beginPath(); ctx.ellipse(0, 0, 0.88, 0.52, 0, Math.PI * 1.05, Math.PI * 1.85); ctx.stroke();
+    leg(false);
+    // tête
+    ctx.fillStyle = '#5d9a38'; ctx.strokeStyle = '#2d5520'; ctx.lineWidth = 0.03;
+    ctx.beginPath(); ctx.ellipse(0.85, -0.1, 0.5, 0.34, 0.1, 0, 6.28); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#26421a'; ctx.lineWidth = 0.035; ctx.beginPath(); ctx.moveTo(1.34, -0.02); ctx.quadraticCurveTo(0.95, 0.14, 0.45, 0.05); ctx.stroke();
+    ctx.fillStyle = '#26421a'; ctx.beginPath(); ctx.arc(1.2, -0.18, 0.025, 0, 6.28); ctx.fill();
+    const cr = td.croak > 0 ? Math.sin(Math.PI * (1 - td.croak / 0.7)) : 0, sac = 0.08 * Math.sin(t * 5 + td.ph) + cr * 0.9;
+    ctx.fillStyle = 'rgba(232,238,190,.92)'; ctx.strokeStyle = 'rgba(70,100,40,.5)'; ctx.lineWidth = 0.02;
+    ctx.beginPath(); ctx.ellipse(0.98, 0.16, 0.3 * (1 + sac), 0.2 * (1 + sac), 0.2, 0, 6.28); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(150,190,90,.75)'; ctx.strokeStyle = '#3f6e2a'; ctx.beginPath(); ctx.arc(0.3, -0.2, 0.12, 0, 6.28); ctx.fill(); ctx.stroke();
+    // yeux
+    ctx.fillStyle = '#5d9a38'; ctx.strokeStyle = '#2d5520'; ctx.beginPath(); ctx.ellipse(0.68, -0.46, 0.2, 0.19, 0, 0, 6.28); ctx.fill(); ctx.stroke();
+    if (Math.sin(t * 0.9 + td.ph * 3) > 0.985) { ctx.strokeStyle = '#26421a'; ctx.lineWidth = 0.04; ctx.beginPath(); ctx.moveTo(0.52, -0.46); ctx.lineTo(0.86, -0.46); ctx.stroke(); }
+    else {
+        const ig = ctx.createRadialGradient(0.68, -0.52, 0.01, 0.7, -0.48, 0.14); ig.addColorStop(0, '#f6dd6a'); ig.addColorStop(1, '#b9861e');
+        ctx.fillStyle = ig; ctx.beginPath(); ctx.arc(0.7, -0.48, 0.135, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.ellipse(0.7, -0.48, 0.1, 0.045, 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(0.65, -0.54, 0.03, 0, 6.28); ctx.fill();
+    }
+    arm(false);
+    ctx.restore();
+}
+function updateFrogs(dt) {
+    for (const td of toads) {
+        td.t += dt; if (td.croak > 0) td.croak = Math.max(0, td.croak - dt);
+        if (td.st === 0) {
+            if (!td.croak && Math.random() < dt * 0.12) td.croak = 0.7;
+            td.next -= dt;
+            if (td.next <= 0) {
+                const free = pads.filter(q => !q.busy).sort((a, b) => Math.hypot(a.x - td.x, a.y - td.y) - Math.hypot(b.x - td.x, b.y - td.y)).slice(0, 3);
+                if (free.length) { td.tgt = free[Math.floor(Math.random() * free.length)]; td.tgt.busy = true; td.dir = td.tgt.x >= td.x ? 1 : -1; td.st = 1; td.t = 0; } else td.next = 2;
+            }
+        } else if (td.st === 1) {
+            td.c = Math.min(1, td.t / 0.4); td.p = 0;
+            if (td.t >= 0.4) {
+                td.st = 2; td.t = 0; td.sx = td.x; td.sy = td.y; td.pad.busy = false; td.pad.dip = 1;
+                const d = Math.hypot(td.tgt.x - td.sx, td.tgt.y - td.sy); td.dur = 0.55 + d / 800; td.H = Math.min(120, 35 + d * 0.22);
+                splash(td.x, td.y, 0.7, td.pad.r);
+            }
+        } else if (td.st === 2) {
+            const u = Math.min(1, td.t / td.dur); td.u = u;
+            td.x = td.sx + (td.tgt.x - td.sx) * u; td.y = td.sy + (td.tgt.y - td.sy) * u; td.h = Math.sin(u * Math.PI) * td.H;
+            td.p = u < 0.15 ? u / 0.15 : (u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3 * 0.75); td.c = 0;
+            if (u >= 1) { td.st = 3; td.t = 0; td.h = 0; td.pad = td.tgt; td.pad.dip = 1.2; splash(td.x, td.y, 1.3, td.pad.r); }
+        } else {
+            td.c = Math.max(0, 1 - td.t / 0.35) * 0.8; td.p = Math.max(0, 0.25 - td.t * 0.7);
+            if (td.t >= 0.35) { td.st = 0; td.t = 0; td.next = 2.5 + Math.random() * 5; td.c = 0; td.p = 0; }
+        }
+    }
+    for (const q of pads) q.dip = Math.max(0, q.dip - dt * 2);
 }
 function drawSprite(i, x, y, sc, face, rot) {
     ctx.setTransform(dpr * sc * face, 0, 0, dpr * sc, x * dpr, y * dpr);
@@ -405,12 +471,37 @@ function buildBackground() {
 const lilies = [];
 function initLilies() { lilies.length = 0; for (let i = 0; i < 14; i++) lilies.push({ x: Math.random() * vw, y: Math.random() * vh, r: 20 + Math.random() * 22, ph: Math.random() * 6.28 }); }
 
+/* ---------- Éclaboussures ---------- */
+let drops = [];
+function splash(x, y, k, pr) {
+    const n = Math.round(16 * k);
+    for (let i = 0; i < n && drops.length < 400; i++) {
+        const ang = Math.random() * 6.28, rr = pr * (0.85 + Math.random() * 0.25), sp = 40 + Math.random() * 110 * k;
+        drops.push({ x: x + Math.cos(ang) * rr, y: y + Math.sin(ang) * rr * 0.7, z: 0, vx: Math.cos(ang) * sp * 0.5, vy: Math.sin(ang) * sp * 0.3, vz: 120 + Math.random() * 220 * k, r: 1.2 + Math.random() * 2.2 });
+    }
+    for (let j = 0; j < 3; j++) ripples.push({ x, y, r: pr * 0.9 + j * 7, a: 0.85 - j * 0.2, w: 2.2 - j * 0.5, f: j === 0 });
+}
+function updateDrops(dt) {
+    for (const d of drops) {
+        d.vz -= 600 * dt; d.z += d.vz * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+        if (d.z < 0) { d.dead = true; if (Math.random() < 0.6) ripples.push({ x: d.x, y: d.y, r: 2, a: 0.4, w: 1 }); }
+    }
+    drops = drops.filter(d => !d.dead);
+}
+function drawDrops() {
+    for (const d of drops) {
+        ctx.fillStyle = 'rgba(232,252,255,.85)'; ctx.beginPath(); ctx.ellipse(d.x, d.y - d.z, d.r * 0.8, d.r * (1 + Math.min(1, Math.abs(d.vz) / 400)), 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(d.x - d.r * 0.25, d.y - d.z - d.r * 0.3, d.r * 0.25, 0, 6.28); ctx.fill();
+    }
+}
+const glints = [];
+function initGlints() { glints.length = 0; for (let i = 0; i < 140; i++) glints.push({ x: Math.random() * vw, y: Math.random() * vh, l: 6 + Math.random() * 16, ph: Math.random() * 6.28 }); }
 function resize() {
     const ow = vw, oh = vh;
     dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
     cv.width = vw * dpr; cv.height = vh * dpr;
     duckScale = Math.max(1, Math.min(vw / 1280, vh / 720) * 1.44);
-    buildBackground(); initFish(); initToads(); initBabies(); initLilies();
+    buildBackground(); initFish(); initToads(); initBabies(); initLilies(); initGlints();
     if (ow && oh) for (const d of ducks) { d.x *= vw / ow; d.y *= vh / oh; }
 }
 addEventListener('resize', resize);
@@ -432,10 +523,7 @@ function update(dt) {
         f.a += Math.sin(clock * 0.8 + f.ph) * 0.02 * k; f.x += Math.cos(f.a) * f.s * 1.4 * k; f.y += Math.sin(f.a) * f.s * 1.4 * k;
         if (f.x < -60) f.x = vw + 40; if (f.x > vw + 60) f.x = -40; if (f.y < -60) f.y = vh + 40; if (f.y > vh + 60) f.y = -40;
     }
-    for (const td of toads) {
-        if (td.hop > 0) td.hop = Math.max(0, td.hop - dt * 1.6);
-        else { td.next -= dt; if (td.next <= 0) { td.hop = 1; td.next = 3 + Math.random() * 6; } }
-    }
+    updateFrogs(dt); updateDrops(dt);
     mother.a += (Math.sin(clock * 0.31) * 0.03) * k;
     mother.x += Math.cos(mother.a) * 0.9 * k; mother.y += Math.sin(mother.a) * 0.9 * k;
     if (mother.x < p || mother.x > vw - p) mother.a = Math.PI - mother.a;
@@ -445,6 +533,7 @@ function update(dt) {
     for (const r of ripples) { r.r += 40 * dt; r.a -= dt * 0.7; }
     ripples = ripples.filter(r => r.a > 0);
     if (Math.random() < dt * 3) ripples.push({ x: Math.random() * vw, y: Math.random() * vh, r: 4, a: 0.25 });
+    if (ducks.length && Math.random() < dt * 8) { const d = ducks[(Math.random() * ducks.length) | 0], sc = duckScale * 1.4; ripples.push({ x: d.x - 5.5 * sc * d.face, y: d.y + 10 * sc, r: 4, a: 0.3, w: 1 }); }
     for (const q of popups) q.t += dt;
     popups = popups.filter(q => q.t < 1.9);
     if (pending.length) processQueue();
@@ -460,10 +549,15 @@ function render() {
         ctx.fillStyle = p; ctx.fillRect(x - r, y - r, r * 2, r * 2);
     }
     ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(200,255,255,.04)';
+    for (let i = 0; i < 14; i++) { ctx.beginPath(); const by = (i + 0.5) * vh / 14; for (let x = 0; x <= vw + 20; x += 20) { const y = by + Math.sin(x * 0.011 + clock * 0.6 + i * 1.3) * 7 + Math.sin(x * 0.027 - clock * 0.9 + i) * 3; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 1.2;
+    for (const gl of glints) { const a = Math.sin(clock * 1.6 + gl.ph); if (a <= 0.2) continue; ctx.strokeStyle = `rgba(230,255,255,${a * 0.28})`; ctx.beginPath(); ctx.moveTo(gl.x, gl.y); ctx.lineTo(gl.x + gl.l, gl.y + Math.sin(clock + gl.ph)); ctx.stroke(); }
+    ctx.globalCompositeOperation = 'source-over';
     for (const f of fish) drawFish(f, clock);
     for (const l of lilies) drawLily(l.x, l.y, l.r, l.ph);
-    for (const r of ripples) { ctx.strokeStyle = `rgba(220,255,255,${Math.max(0, r.a)})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.55, 0, 0, 6.28); ctx.stroke(); }
-    for (const td of toads) drawToad(td, clock);
+    for (const r of ripples) { const a = Math.max(0, r.a); if (r.f) { ctx.fillStyle = `rgba(235,255,255,${a * 0.3})`; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.55, 0, 0, 6.28); ctx.fill(); } ctx.strokeStyle = `rgba(220,255,255,${a})`; ctx.lineWidth = r.w || 1.5; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.55, 0, 0, 6.28); ctx.stroke(); }
+    for (const q of pads) drawLily(q.x, q.y + q.dip * 3, q.r, q.ph);
     // ombres puis canards
     ctx.fillStyle = 'rgba(0,25,35,.28)';
     { const sc = duckScale * 1.4;
@@ -473,6 +567,8 @@ function render() {
       ctx.stroke(); }
     for (const d of ducks) drawSprite(d.col, d.x, d.y + Math.sin(d.t * 2.2) * 1.2, duckScale * 1.4, d.face, Math.sin(d.t * 1.6) * 0.05 * d.face);
     resetT();
+    for (const td of toads) drawFrog(td, clock);
+    drawDrops();
     // maman canard et ses bébés
     const mf = Math.cos(mother.a) >= 0 ? 1 : -1;
     for (let i = 5; i >= 0; i--) {
@@ -584,16 +680,7 @@ $('x-add').onclick = () => {
     extras.push({ stars, count }); saveExtras(); renderExtras(); addExtraDucks(stars, count);
 };
 renderExtras();
-const togglePanel = () => {
-    const panel = $('panel');
-    const visible = panel.style.display === 'none';
-    panel.style.display = visible ? 'grid' : 'none';
-    const eye = $('eye');
-    const label = visible ? 'Masquer le panneau de contrôle' : 'Afficher le panneau de contrôle';
-    eye.setAttribute('aria-expanded', String(visible));
-    eye.setAttribute('aria-label', label);
-    eye.title = label;
-};
+const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
 $('eye').onclick = togglePanel;
 const toggleHud = () => { const off = document.body.classList.toggle('no-hud'); $('b-hud').textContent = off ? '📊 Afficher les tableaux (T)' : '📊 Cacher les tableaux (T)'; };
 $('eye2').onclick = toggleHud; $('b-hud').onclick = toggleHud;
