@@ -1,0 +1,1941 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stand de Tir Néon — Griffon Arcade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            background: #05050a;
+        }
+        .arcade-font {
+            font-family: 'Fredoka One', cursive;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        #control-panel {
+            position: fixed;
+            top: 5.25rem;
+            left: .75rem;
+            z-index: 60;
+            width: min(21rem, calc(100vw - 1.5rem));
+            max-height: calc(100vh - 6rem);
+            overflow: auto;
+            transition: transform .24s ease, visibility 0s linear .24s;
+        }
+        #control-panel:not(.is-offscreen) {
+            visibility: visible;
+            transition: transform .24s ease, visibility 0s;
+        }
+        #control-panel.is-offscreen {
+            transform: translateX(calc(-100% - 1.5rem));
+            visibility: hidden;
+            pointer-events: none;
+        }
+        #shot-feed.detached {
+            position: fixed;
+            right: .75rem;
+            bottom: .75rem;
+            z-index: 45;
+            width: min(18rem, calc(100vw - 1.5rem));
+        }
+        @media (max-width: 700px) {
+            header { padding: .5rem !important; flex-wrap: wrap; gap: .35rem; }
+            header > div:first-child { width: 100%; justify-content: space-between; }
+            #header-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+            #header-title { font-size: 1rem !important; }
+            #header-actions { gap: .5rem !important; }
+            #start-game-btn, #pause-btn, #controls-toggle { padding: .4rem .55rem; font-size: .7rem; }
+            #weapon-sprite svg { width: 110px; height: 150px; }
+            #control-panel { top: 4.25rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #control-panel { transition: none; }
+        }
+        @keyframes recoil {
+            0% { transform: translateY(0) rotate(0deg); }
+            30% { transform: translateY(14px) rotate(-3deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+        .recoil-anim {
+            animation: recoil 0.08s ease-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between text-white relative">
+
+    <!-- En-tête -->
+    <header class="bg-slate-950/80 backdrop-blur-md border-b border-purple-500/30 px-6 py-3 flex justify-between items-center z-20 shadow-2xl">
+        <div class="flex items-center">
+            <span id="header-title" class="arcade-font text-2xl text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-amber-400">🎪 STAND DE TIR NÉON</span>
+        </div>
+        <div id="header-actions" class="flex items-center space-x-3">
+            <button id="start-game-btn" type="button" onclick="startGame()" class="bg-emerald-700 hover:bg-emerald-600 border border-emerald-400 px-4 py-2 rounded-xl font-bold transition shadow text-sm">JOUER 🎯</button>
+            <button onclick="togglePause()" id="pause-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-4 py-2 rounded-xl font-bold transition shadow text-sm">Pause</button>
+            <button id="controls-toggle" type="button" aria-controls="control-panel" aria-expanded="false" class="bg-purple-700 hover:bg-purple-600 border border-purple-400 px-3 py-2 rounded-xl font-bold text-sm">⚙ Réglages</button>
+        </div>
+    </header>
+
+    <!-- Zone de jeu Canvas principale -->
+    <main id="game-container" class="relative flex-1 w-full h-full overflow-hidden bg-slate-950">
+        <canvas id="gameCanvas" class="absolute inset-0 w-full h-full"></canvas>
+
+        <!-- Effet flash de tir -->
+        <div id="muzzle-flash" class="absolute inset-0 bg-purple-500 opacity-0 pointer-events-none transition-opacity duration-75 z-30 mix-blend-screen"></div>
+
+        <!-- Arme et HUD de munitions -->
+        <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 pointer-events-none z-20 flex flex-col items-center">
+            <div id="weapon-sprite" class="transition-transform duration-75 origin-bottom">
+                <div id="weapon-aim" style="transform-origin:50% 100%;transition:transform 60ms linear">
+                <svg width="170" height="230" viewBox="0 0 200 270" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 14px 14px rgba(0,0,0,0.75))">
+                    <defs>
+                        <linearGradient id="gMetal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#475569"/><stop offset="0.35" stop-color="#e2e8f0"/><stop offset="0.65" stop-color="#94a3b8"/><stop offset="1" stop-color="#334155"/></linearGradient>
+                        <linearGradient id="gBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="0.5" stop-color="#2563eb"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient>
+                        <linearGradient id="gCell" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a16207"/><stop offset="0.4" stop-color="#fde047"/><stop offset="1" stop-color="#a16207"/></linearGradient>
+                        <radialGradient id="gLens" cx="0.35" cy="0.35" r="0.8"><stop offset="0" stop-color="#ecfeff"/><stop offset="0.4" stop-color="#22d3ee"/><stop offset="1" stop-color="#0e3a5f"/></radialGradient>
+                        <filter id="gGlow" x="-100%" y="-20%" width="300%" height="140%"><feGaussianBlur stdDeviation="3"/></filter>
+                    </defs>
+                    <rect x="88" y="14" width="24" height="110" rx="5" fill="url(#gMetal)" stroke="#0f172a" stroke-width="3"/>
+                    <path d="M86 44h28M86 60h28M86 76h28" stroke="#1e293b" stroke-width="4"/>
+                    <rect x="97" y="30" width="6" height="86" rx="3" fill="#c084fc" filter="url(#gGlow)"/>
+                    <rect x="98.5" y="30" width="3" height="86" rx="1.5" fill="#f5d0fe"/>
+                    <rect x="84" y="4" width="32" height="20" rx="5" fill="#1e293b" stroke="#0f172a" stroke-width="3"/>
+                    <path d="M91 8v12M100 8v12M109 8v12" stroke="#475569" stroke-width="2"/>
+                    <path d="M66 118H134L152 214H48Z" fill="url(#gBody)" stroke="#172554" stroke-width="4" stroke-linejoin="round"/>
+                    <path d="M72 122H92L80 206H58Z" fill="#ffffff" opacity="0.18"/>
+                    <path d="M62 150h14M62 160h14M62 170h14M124 150h14M124 160h14M124 170h14" stroke="#172554" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M100 126v70" stroke="#f472b6" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+                    <rect x="82" y="96" width="36" height="26" rx="8" fill="#0f172a" stroke="#020617" stroke-width="3"/>
+                    <circle cx="100" cy="108" r="9" fill="url(#gLens)" stroke="#020617" stroke-width="2"/>
+                    <ellipse cx="96" cy="104" rx="3" ry="2" fill="#fff" opacity="0.85"/>
+                    <rect x="84" y="214" width="32" height="54" rx="8" fill="url(#gCell)" stroke="#713f12" stroke-width="3"/>
+                    <path d="M90 226h20M90 238h20M90 250h20" stroke="#713f12" stroke-width="3" stroke-linecap="round"/>
+                    <circle id="muzzle-point" cx="100" cy="4" r="1" fill="none"/>
+                </svg>
+                </div>
+            </div>
+            <div class="bg-slate-900/90 border border-purple-500/40 px-6 py-2 rounded-full mb-3 flex items-center space-x-3 shadow-2xl backdrop-blur">
+                <span id="ammo-label" class="text-xs text-slate-400 font-bold uppercase tracking-wider">MUNITIONS :</span>
+                <span id="ammo-display" class="arcade-font text-amber-400 text-lg">30/30</span>
+                <span id="reload-indicator" class="text-[10px] text-purple-300 ml-2 animate-pulse">(R pour recharger)</span>
+                <button id="reload-button" type="button" class="pointer-events-auto rounded-lg bg-purple-700 hover:bg-purple-600 px-2 py-1 text-xs font-bold">Recharger</button>
+            </div>
+        </div>
+    </main>
+
+    <aside id="control-panel" class="is-offscreen bg-slate-950/95 border border-purple-400/60 rounded-2xl p-4 text-sm shadow-2xl backdrop-blur" aria-label="Panneau de contrôle" aria-hidden="true">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="arcade-font text-lg text-purple-200">Panneau de contrôle</h2>
+            <button id="controls-hide" type="button" class="text-slate-300 hover:text-white px-2 py-1 rounded bg-slate-800">Masquer (Échap)</button>
+        </div>
+        <label for="tiktok-username" class="block text-slate-300 text-xs mb-1">Compte TikTok du créateur (connexion au live)</label>
+        <div class="flex gap-2">
+            <input id="tiktok-username" autocomplete="username" maxlength="32" placeholder="ex. griffonarcade" class="min-w-0 flex-1 rounded-lg bg-slate-800 border border-slate-600 px-3 py-2 text-white">
+            <button id="connect-button" type="button" class="rounded-lg bg-cyan-700 hover:bg-cyan-600 px-3 py-2 font-bold">Connecter</button>
+        </div>
+        <label for="player-name" class="block text-slate-300 text-xs mt-3 mb-1">Nom affiché pour les tirs manuels (facultatif)</label>
+        <input id="player-name" maxlength="32" placeholder="Tireur" class="w-full rounded-lg bg-slate-800 border border-slate-600 px-3 py-2 text-white">
+        <p id="connection-status" class="text-xs text-slate-300 mt-2" role="status">En live, cadeaux et J’aime sont associés automatiquement : aucun pseudo à saisir.</p>
+        <p id="room-status" class="text-xs text-cyan-200 mt-1">Partie non connectée</p>
+        <label for="speed-control" class="block text-slate-300 text-xs mt-3">Vitesse des cibles : <span id="speed-value">1,0×</span></label>
+        <input id="speed-control" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full accent-pink-500">
+        <section id="target-rewards" class="mt-3 rounded-xl bg-slate-900 p-3">
+            <h3 class="font-bold text-amber-200 mb-1">Récompense des cibles</h3>
+            <p class="text-[10px] text-slate-400 mb-2">Par défaut, chaque cible cache 0 ou 1 étoile. Coche une animation pour mettre ses cibles à 2 étoiles.</p>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="gloop" class="accent-amber-400"><span>Gloop · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="bruno" class="accent-amber-400"><span>Bruno · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="mochi" class="accent-amber-400"><span>Mochi · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="tonko" class="accent-amber-400"><span>Tonko · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="cone" class="accent-amber-400"><span>Capitaine Cône · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="zigzag" class="accent-amber-400"><span>Zigzag · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="pip" class="accent-amber-400"><span>Pip · 2 ⭐</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" data-double-reward="rocket" class="accent-amber-400"><span>Ruby Rocket · 2 ⭐</span></label>
+            </div>
+        </section>
+        <section class="mt-3 rounded-xl bg-slate-900 p-3">
+            <h3 class="font-bold text-cyan-200 mb-2">Arrière-plan</h3>
+            <label for="background-file" class="block text-slate-300 text-xs mb-1">Choisir une image ou une vidéo</label>
+            <input id="background-file" type="file" accept="image/*,video/*,.heic,.heif,.mkv,.mov,.avi,.wmv,.flv,.m4v,.3gp,.ogv,.tif,.tiff,.avif" class="block w-full text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-purple-700 file:px-3 file:py-2 file:text-white">
+            <p id="background-status" class="text-[11px] text-slate-400 mt-2">Chargement du fond intégré…</p>
+            <p class="text-[10px] text-slate-500 mt-1">Les remplacements sont mémorisés sur cet appareil ; les formats lus dépendent du navigateur.</p>
+            <button id="background-clear" type="button" class="mt-2 w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-2 py-2 text-xs font-bold" disabled>Restaurer le fond d’origine</button>
+        </section>
+        <div class="flex gap-2 mt-3">
+            <button id="feed-detach" type="button" class="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-2 py-2">Détacher les tirs</button>
+        </div>
+        <section id="shot-feed" class="mt-3 rounded-xl bg-slate-900 p-3">
+            <h3 class="font-bold text-cyan-200 mb-2">Derniers tirs</h3>
+            <ol id="shot-list" class="space-y-1 text-slate-300"><li>En attente des joueurs…</li></ol>
+        </section>
+        <div data-save-key="stand-de-tir-neon-save"></div>
+        <div class="grid grid-cols-2 gap-2 mt-3">
+            <button id="simulate-big-gift" type="button" class="rounded-lg bg-pink-700 hover:bg-pink-600 px-2 py-2">Simuler cadeau 100</button>
+            <button id="simulate-share" type="button" class="rounded-lg bg-sky-700 hover:bg-sky-600 px-2 py-2">Simuler partage</button>
+        </div>
+    </aside>
+
+    <script>
+        // ---------- Audio (Web Audio API) ----------
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        function tone(type, f0, f1, dur, vol = 0.2, delay = 0) {
+            if (!audioCtx) return;
+            try {
+                const t0 = audioCtx.currentTime + delay;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(f0, t0);
+                osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+                gain.gain.setValueAtTime(vol, t0);
+                gain.gain.exponentialRampToValueAtTime(0.01, t0 + dur);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur);
+            } catch (e) {}
+        }
+        const playShootSound = () => tone('sawtooth', 320, 30, 0.15);
+        const playHitSound = () => tone('sine', 600, 1000, 0.1);
+        const playHeadshotSound = () => { tone('sine', 900, 1400, 0.1); tone('triangle', 1400, 2000, 0.16, 0.2, 0.08); };
+        const playReloadSound = () => { tone('triangle', 200, 210, 0.15); tone('triangle', 400, 410, 0.15, 0.2, 0.15); };
+        const playEmptySound = () => tone('square', 140, 100, 0.05, 0.12);
+
+        // ---------- Canvas ----------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameContainer = document.getElementById('game-container');
+        const WEBSOCKET_URL = 'wss://jeu6boite.onrender.com';
+        const DEFAULT_BACKGROUND_URL = '/images-vitrine/stand-de-tir-neon-fond.png';
+        const BACKGROUND_DB_NAME = 'griffon-arcade-stand-de-tir';
+        const BACKGROUND_DB_STORE = 'settings';
+        const BACKGROUND_IMAGE_TYPES = {
+            apng: 'image/apng', avif: 'image/avif', bmp: 'image/bmp', gif: 'image/gif',
+            heic: 'image/heic', heif: 'image/heif', jpeg: 'image/jpeg', jpg: 'image/jpeg',
+            png: 'image/png', svg: 'image/svg+xml', tif: 'image/tiff', tiff: 'image/tiff', webp: 'image/webp'
+        };
+        const BACKGROUND_VIDEO_TYPES = {
+            '3gp': 'video/3gpp', avi: 'video/x-msvideo', flv: 'video/x-flv', m4v: 'video/x-m4v',
+            mkv: 'video/x-matroska', mov: 'video/quicktime', mp4: 'video/mp4', mpeg: 'video/mpeg',
+            mpg: 'video/mpeg', ogv: 'video/ogg', webm: 'video/webm', wmv: 'video/x-ms-wmv'
+        };
+        let backgroundMedia = null;
+        let backgroundObjectUrl = '';
+        let backgroundIsVideo = false;
+        let backgroundSelectionVersion = 0;
+
+        function resizeCanvas() {
+            canvas.width = gameContainer.clientWidth || window.innerWidth;
+            canvas.height = gameContainer.clientHeight || (window.innerHeight - 80);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const maxAmmo = 30;
+        let currentAmmo = 30;
+        let isPlaying = false;
+        let isPaused = false;
+        let stateSyncInterval = null;
+        let targets = [];
+        let particles = [];
+        let floatTexts = [];
+        let lasers = [];
+        let recentShots = [];
+        let nextTargetId = 0;
+        let socket = null;
+        let roomConnected = false;
+        let isRoomOwner = true;
+        let roomPlayers = 1;
+        let liveModeRequired = false;
+        let liveTikTokUsername = '';
+        const liveShotCredits = new Map();
+        const liveShotQueue = [];
+        const runShotCredits = new Map();
+        let gameSpeed = 1;
+        let shake = 0;
+        let frame = 0;
+        let lastLiveShotFrame = 0;
+
+        // ---------- Dessin des personnages ----------
+        const INK = '#1a1033';
+        const SC = 1.15;           // échelle globale des personnages
+        const FX = 280;            // taille du canvas hors-écran (sert au flash blanc)
+        const fx = document.createElement('canvas');
+        fx.width = FX; fx.height = FX;
+        const fxCtx = fx.getContext('2d');
+        // Texture de grain (matière) réutilisée sur tous les personnages
+        const grain = document.createElement('canvas'); grain.width = grain.height = 64;
+        (() => {
+            const g = grain.getContext('2d'), im = g.createImageData(64, 64);
+            for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 22; }
+            g.putImageData(im, 0, 0);
+        })();
+        const grainPattern = fxCtx.createPattern(grain, 'repeat');
+        let mouseGX = -999, mouseGY = -999, lookX = 0, lookY = 0, curT = 0;
+
+        function fillStroke(c, fill, lw = 4) {
+            c.fillStyle = fill; c.fill();
+            c.lineWidth = lw; c.lineJoin = 'round'; c.lineCap = 'round';
+            c.strokeStyle = INK; c.stroke();
+        }
+        function starPath(c, cx, cy, ro, ri, n) {
+            c.beginPath();
+            for (let i = 0; i < n * 2; i++) {
+                const a = -Math.PI / 2 + i * Math.PI / n;
+                const r = i % 2 === 0 ? ro : ri;
+                const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+                if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.closePath();
+        }
+        // Yeux : normaux, ou en croix quand le personnage est touché
+        function eyes(c, xs, y, r, dz, o = {}) {
+            xs.forEach(x => {
+                if (dz) {
+                    const k = r * 0.7;
+                    c.strokeStyle = o.x || INK; c.lineWidth = 3; c.lineCap = 'round';
+                    c.beginPath();
+                    c.moveTo(x - k, y - k); c.lineTo(x + k, y + k);
+                    c.moveTo(x + k, y - k); c.lineTo(x - k, y + k);
+                    c.stroke();
+                } else {
+                    if (((curT * 10) | 0) % 80 < 3) {   // clignement
+                        c.strokeStyle = INK; c.lineWidth = 2.5; c.lineCap = 'round';
+                        c.beginPath(); c.moveTo(x - r, y); c.lineTo(x + r, y); c.stroke();
+                        return;
+                    }
+                    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+                    c.fillStyle = o.fill || '#fff'; c.fill();
+                    c.lineWidth = 2; c.strokeStyle = INK; c.stroke();
+                    const px = x + (o.off || 0) + lookX * r * 0.45, py = y + lookY * r * 0.35;
+                    c.beginPath(); c.arc(px, py, r * 0.5, 0, Math.PI * 2);
+                    c.fillStyle = o.pupil || INK; c.fill();
+                    c.beginPath(); c.arc(px - r * 0.18, py - r * 0.2, r * 0.16, 0, Math.PI * 2);
+                    c.fillStyle = 'rgba(255,255,255,0.9)'; c.fill();
+                    c.save(); c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.clip();
+                    c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(x - r, y - r, r * 2, r * 0.55); c.restore();
+                }
+            });
+        }
+
+        const DRAWERS = {
+            // Gloop : blob de slime vert, silhouette en goutte large
+            gloop(c, t, dz) {
+                const w = Math.sin(t * 2) * 2;
+                [-22, 0, 22].forEach((x, i) => {
+                    c.beginPath(); c.arc(x, 46 + Math.sin(t * 2 + i) * 2, 6, 0, Math.PI * 2); fillStroke(c, '#65a30d', 3);
+                });
+                c.beginPath(); c.ellipse(0, 14, 38 + w, 30 - w * 0.5, 0, 0, Math.PI * 2); fillStroke(c, '#65a30d');
+                c.beginPath(); c.ellipse(-20, 6, 9, 4, -0.5, 0, Math.PI * 2); c.fillStyle = 'rgba(255,255,255,0.35)'; c.fill();
+                c.beginPath(); c.arc(0, -18, 19, 0, Math.PI * 2); fillStroke(c, '#a3e635');
+                c.beginPath(); c.ellipse(-9, -28, 5, 3, -0.6, 0, Math.PI * 2); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill();
+                eyes(c, [-7, 7], -19, 6, dz, { off: 1 });
+                c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath();
+                if (dz) c.ellipse(0, -8, 4, 5, 0, 0, Math.PI * 2); else c.arc(0, -11, 6, 0.1, Math.PI - 0.1);
+                c.stroke();
+            },
+
+            // Tonko : robot grand et fin avec antenne clignotante
+            tonko(c, t, dz) {
+                c.beginPath(); c.roundRect(-14, 40, 10, 14, 3); fillStroke(c, '#475569', 3);
+                c.beginPath(); c.roundRect(4, 40, 10, 14, 3); fillStroke(c, '#475569', 3);
+                c.beginPath(); c.roundRect(-26, -4, 9, 32, 4); fillStroke(c, '#94a3b8', 3);
+                c.beginPath(); c.roundRect(17, -4, 9, 32, 4); fillStroke(c, '#94a3b8', 3);
+                c.beginPath(); c.roundRect(-16, -8, 32, 50, 6); fillStroke(c, '#60a5fa');
+                c.beginPath(); c.roundRect(-9, 2, 18, 14, 3); fillStroke(c, '#fde047', 2.5);
+                c.fillStyle = INK; c.beginPath(); c.arc(-3, 9, 2, 0, Math.PI * 2); c.arc(4, 9, 2, 0, Math.PI * 2); c.fill();
+                c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.moveTo(0, -44); c.lineTo(0, -55); c.stroke();
+                c.beginPath(); c.arc(0, -58, 5, 0, Math.PI * 2); fillStroke(c, Math.sin(t * 3) > 0 ? '#ef4444' : '#fca5a5', 3);
+                c.beginPath(); c.roundRect(-19, -44, 38, 34, 8); fillStroke(c, '#cbd5e1');
+                c.beginPath(); c.roundRect(-14, -37, 28, 16, 6); fillStroke(c, '#0f172a', 2.5);
+                eyes(c, [-6, 6], -29, 4, dz, { fill: '#67e8f9', x: '#67e8f9' });
+            },
+
+            // Pip : petit poussin rond et rapide
+            pip(c, t, dz) {
+                c.strokeStyle = '#ea580c'; c.lineWidth = 3; c.lineCap = 'round';
+                c.beginPath(); c.moveTo(-8, 34); c.lineTo(-8, 40); c.moveTo(8, 34); c.lineTo(8, 40); c.stroke();
+                c.beginPath(); c.ellipse(-8, 42, 7, 3.5, 0, 0, Math.PI * 2); fillStroke(c, '#fb923c', 2.5);
+                c.beginPath(); c.ellipse(8, 42, 7, 3.5, 0, 0, Math.PI * 2); fillStroke(c, '#fb923c', 2.5);
+                c.beginPath(); c.ellipse(0, 18, 17, 18, 0, 0, Math.PI * 2); fillStroke(c, '#fde047');
+                const fl = Math.sin(t * 4) * 0.25;
+                c.beginPath(); c.ellipse(-18, 18, 6, 10, 0.3 + fl, 0, Math.PI * 2); fillStroke(c, '#facc15', 3);
+                c.beginPath(); c.ellipse(18, 18, 6, 10, -0.3 - fl, 0, Math.PI * 2); fillStroke(c, '#facc15', 3);
+                c.beginPath(); c.arc(0, -6, 21, 0, Math.PI * 2); fillStroke(c, '#fde047');
+                c.strokeStyle = INK; c.lineWidth = 3; c.beginPath();
+                c.moveTo(0, -26); c.lineTo(-4, -35); c.moveTo(0, -26); c.lineTo(3, -36); c.moveTo(0, -26); c.lineTo(8, -33); c.stroke();
+                c.fillStyle = '#fda4af';
+                c.beginPath(); c.arc(-15, 0, 4, 0, Math.PI * 2); c.arc(15, 0, 4, 0, Math.PI * 2); c.fill();
+                eyes(c, [-9, 9], -9, 4.5, dz);
+                c.beginPath(); c.moveTo(-5, -1); c.lineTo(5, -1); c.lineTo(0, 7); c.closePath(); fillStroke(c, '#fb923c', 2.5);
+            },
+
+            // Bruno : gros ours aux épaules larges, silhouette en trapèze
+            bruno(c, t, dz) {
+                c.beginPath(); c.roundRect(-30, 38, 22, 16, 6); fillStroke(c, '#78350f', 3);
+                c.beginPath(); c.roundRect(8, 38, 22, 16, 6); fillStroke(c, '#78350f', 3);
+                c.beginPath(); c.roundRect(-44, -8, 88, 52, 22); fillStroke(c, '#b45309');
+                c.beginPath(); c.ellipse(0, 20, 22, 20, 0, 0, Math.PI * 2); fillStroke(c, '#fcd34d', 3);
+                c.beginPath(); c.arc(-44, 12, 13, 0, Math.PI * 2); fillStroke(c, '#92400e', 3);
+                c.beginPath(); c.arc(44, 12, 13, 0, Math.PI * 2); fillStroke(c, '#92400e', 3);
+                c.beginPath(); c.roundRect(-17, -10, 34, 9, 4); fillStroke(c, '#ef4444', 3);
+                c.beginPath(); c.arc(-14, -36, 7, 0, Math.PI * 2); fillStroke(c, '#92400e', 3);
+                c.beginPath(); c.arc(14, -36, 7, 0, Math.PI * 2); fillStroke(c, '#92400e', 3);
+                c.beginPath(); c.arc(0, -22, 17, 0, Math.PI * 2); fillStroke(c, '#d97706');
+                c.beginPath(); c.ellipse(0, -16, 9, 7, 0, 0, Math.PI * 2); fillStroke(c, '#fde68a', 2.5);
+                c.beginPath(); c.ellipse(0, -19, 3.5, 2.5, 0, 0, Math.PI * 2); c.fillStyle = INK; c.fill();
+                eyes(c, [-7, 7], -27, 3.6, dz);
+            },
+
+            // Zigzag : alien cyclope en étoile avec crête
+            zigzag(c, t, dz) {
+                c.rotate(Math.sin(t * 2) * 0.08);
+                starPath(c, 0, 14, 42, 25, 8); fillStroke(c, '#ec4899');
+                c.beginPath(); c.moveTo(5, -2); c.lineTo(-9, 18); c.lineTo(0, 18); c.lineTo(-5, 34); c.lineTo(11, 10); c.lineTo(2, 10); c.closePath(); fillStroke(c, '#fde047', 2.5);
+                c.beginPath(); c.moveTo(-11, -30); c.lineTo(-8, -50); c.lineTo(-2, -37); c.lineTo(3, -55); c.lineTo(8, -37); c.lineTo(14, -48); c.lineTo(12, -28); c.closePath(); fillStroke(c, '#22d3ee');
+                c.beginPath(); c.arc(0, -20, 17, 0, Math.PI * 2); fillStroke(c, '#f9a8d4');
+                eyes(c, [0], -22, 9, dz, { pupil: '#16a34a', off: Math.sin(t) * 2 });
+                c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath();
+                c.moveTo(-8, -9); c.lineTo(-4, -6); c.lineTo(0, -9); c.lineTo(4, -6); c.lineTo(8, -9); c.stroke();
+            },
+
+            // Capitaine Cône : magicien triangulaire à chapeau pointu
+            cone(c, t, dz) {
+                const robe = () => { c.beginPath(); c.moveTo(-34, 54); c.lineTo(34, 54); c.lineTo(0, -8); c.closePath(); };
+                robe(); fillStroke(c, '#f97316');
+                c.save(); robe(); c.clip(); c.fillStyle = '#fde047'; c.fillRect(-40, 22, 80, 9); c.fillRect(-40, 40, 80, 8); c.restore();
+                robe(); c.lineWidth = 4; c.strokeStyle = INK; c.lineJoin = 'round'; c.stroke();
+                c.beginPath(); c.arc(-26, 36, 6, 0, Math.PI * 2); fillStroke(c, '#fed7aa', 3);
+                c.beginPath(); c.arc(26, 36, 6, 0, Math.PI * 2); fillStroke(c, '#fed7aa', 3);
+                c.beginPath(); c.arc(0, -20, 15, 0, Math.PI * 2); fillStroke(c, '#fed7aa');
+                eyes(c, [-5.5, 5.5], -19, 3, dz);
+                c.beginPath(); c.moveTo(-11, -12); c.lineTo(11, -12); c.lineTo(0, 10); c.closePath(); fillStroke(c, '#ffffff', 3);
+                const tip = 5 + Math.sin(t * 3) * 2;
+                c.beginPath(); c.moveTo(-17, -29); c.lineTo(17, -29); c.lineTo(tip, -70); c.closePath(); fillStroke(c, '#7c3aed');
+                starPath(c, 2, -46, 5, 2.2, 5); c.fillStyle = '#fde047'; c.fill();
+                c.beginPath(); c.ellipse(0, -28, 23, 6, 0, 0, Math.PI * 2); fillStroke(c, '#6d28d9', 3);
+                c.beginPath(); c.arc(tip, -71, 5, 0, Math.PI * 2); fillStroke(c, '#fde047', 3);
+            },
+
+            // Mochi : petit fantôme flottant avec nœud rose
+            mochi(c, t, dz) {
+                c.beginPath(); c.ellipse(-29, 14, 6, 8, 0.4, 0, Math.PI * 2); fillStroke(c, '#e0f2fe', 3);
+                c.beginPath(); c.ellipse(29, 14, 6, 8, -0.4, 0, Math.PI * 2); fillStroke(c, '#e0f2fe', 3);
+                c.beginPath(); c.moveTo(-26, 40); c.lineTo(-26, -4); c.arc(0, -4, 26, Math.PI, 0); c.lineTo(26, 40);
+                for (let i = 0; i < 4; i++) { const x0 = 26 - 13 * i; c.quadraticCurveTo(x0 - 6.5, 54, x0 - 13, 40); }
+                c.closePath(); fillStroke(c, '#e0f2fe');
+                c.fillStyle = 'rgba(244,114,182,0.55)';
+                c.beginPath(); c.ellipse(-15, 6, 5, 3, 0, 0, Math.PI * 2); c.ellipse(15, 6, 5, 3, 0, 0, Math.PI * 2); c.fill();
+                if (dz) {
+                    eyes(c, [-9, 9], -6, 5, true);
+                } else {
+                    [-9, 9].forEach(x => {
+                        c.beginPath(); c.ellipse(x, -6, 3.5, 5, 0, 0, Math.PI * 2); c.fillStyle = INK; c.fill();
+                        c.beginPath(); c.arc(x - 1, -8, 1.3, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
+                    });
+                }
+                c.beginPath(); c.ellipse(0, 9, 3, dz ? 5 : 3.5, 0, 0, Math.PI * 2); c.fillStyle = INK; c.fill();
+                c.beginPath(); c.moveTo(15, -25); c.lineTo(26, -33); c.lineTo(26, -17); c.closePath(); fillStroke(c, '#f472b6', 2.5);
+                c.beginPath(); c.moveTo(15, -25); c.lineTo(4, -33); c.lineTo(4, -17); c.closePath(); fillStroke(c, '#f472b6', 2.5);
+                c.beginPath(); c.arc(15, -25, 3.5, 0, Math.PI * 2); fillStroke(c, '#fbcfe8', 2);
+            },
+
+            // Ruby Rocket : fusée rouge avec pilote dans le hublot
+            rocket(c, t, dz) {
+                const fl = Math.sin(t * 5) * 5;
+                c.beginPath(); c.moveTo(-10, 40); c.lineTo(10, 40); c.lineTo(0, 58 + fl); c.closePath(); fillStroke(c, '#fb923c', 3);
+                c.beginPath(); c.moveTo(-5, 40); c.lineTo(5, 40); c.lineTo(0, 50 + fl * 0.6); c.closePath(); c.fillStyle = '#fde047'; c.fill();
+                c.beginPath(); c.moveTo(-18, 8); c.lineTo(-36, 38); c.lineTo(-36, 48); c.lineTo(-18, 36); c.closePath(); fillStroke(c, '#1d4ed8');
+                c.beginPath(); c.moveTo(18, 8); c.lineTo(36, 38); c.lineTo(36, 48); c.lineTo(18, 36); c.closePath(); fillStroke(c, '#1d4ed8');
+                const body = () => {
+                    c.beginPath(); c.moveTo(-18, 40); c.lineTo(-18, -14);
+                    c.quadraticCurveTo(-18, -50, 0, -64); c.quadraticCurveTo(18, -50, 18, -14);
+                    c.lineTo(18, 40); c.closePath();
+                };
+                body(); fillStroke(c, '#ef4444');
+                c.save(); body(); c.clip(); c.fillStyle = '#fff'; c.fillRect(-20, 24, 40, 8); c.restore();
+                body(); c.lineWidth = 4; c.strokeStyle = INK; c.lineJoin = 'round'; c.stroke();
+                c.beginPath(); c.arc(0, -18, 13, 0, Math.PI * 2); fillStroke(c, '#bae6fd');
+                c.beginPath(); c.arc(0, -17, 8, 0, Math.PI * 2); fillStroke(c, '#fed7aa', 2);
+                if (dz) {
+                    eyes(c, [-3, 3], -18, 2.6, true);
+                } else {
+                    c.fillStyle = INK; c.beginPath(); c.arc(-3, -18, 1.8, 0, Math.PI * 2); c.arc(3, -18, 1.8, 0, Math.PI * 2); c.fill();
+                    c.strokeStyle = INK; c.lineWidth = 1.5; c.beginPath(); c.arc(0, -15, 3, 0.2, Math.PI - 0.2); c.stroke();
+                }
+                c.beginPath(); c.ellipse(-6, -24, 3, 1.6, -0.6, 0, Math.PI * 2); c.fillStyle = 'rgba(255,255,255,0.8)'; c.fill();
+            }
+        };
+
+        // Roster : silhouettes distinctes, zone de tête (cercle) + zone de corps (rectangle) en coordonnées locales
+        const CHARACTERS = [
+            { type: 'gloop',   name: 'Gloop',          speed: 2.0, bobAmp: 6,  bobSpeed: 1.6, top: -42, head: { x: 0, y: -18, r: 21 }, body: { x: -40, y: -4,  w: 80, h: 58 },  colors: ['#a3e635', '#65a30d', '#ffffff'] },
+            { type: 'bruno',   name: 'Bruno',          speed: 1.4, bobAmp: 3,  bobSpeed: 1.2, top: -45, head: { x: 0, y: -24, r: 19 }, body: { x: -48, y: -8,  w: 96, h: 62 },  colors: ['#d97706', '#b45309', '#fde68a'] },
+            { type: 'mochi',   name: 'Mochi',          speed: 1.9, bobAmp: 12, bobSpeed: 1.2, top: -34, head: { x: 0, y: -8,  r: 24 }, body: { x: -28, y: 10,  w: 56, h: 44 },  colors: ['#e0f2fe', '#f472b6', '#7dd3fc'] },
+            { type: 'tonko',   name: 'Tonko',          speed: 2.6, bobAmp: 4,  bobSpeed: 2.0, top: -66, head: { x: 0, y: -30, r: 21 }, body: { x: -26, y: -8,  w: 52, h: 62 },  colors: ['#60a5fa', '#cbd5e1', '#fde047'] },
+            { type: 'cone',    name: 'Capitaine Cône', speed: 2.8, bobAmp: 5,  bobSpeed: 1.8, top: -76, head: { x: 0, y: -32, r: 22 }, body: { x: -34, y: -8,  w: 68, h: 64 },  colors: ['#f97316', '#7c3aed', '#fde047'] },
+            { type: 'zigzag',  name: 'Zigzag',         speed: 3.4, bobAmp: 6,  bobSpeed: 2.2, top: -56, head: { x: 0, y: -22, r: 19 }, body: { x: -42, y: -6,  w: 84, h: 62 },  colors: ['#ec4899', '#22d3ee', '#fde047'] },
+            { type: 'pip',     name: 'Pip',            speed: 4.2, bobAmp: 8,  bobSpeed: 2.6, top: -38, head: { x: 0, y: -6,  r: 23 }, body: { x: -22, y: 6,   w: 44, h: 42 },  colors: ['#fde047', '#fb923c', '#fda4af'] },
+            { type: 'rocket',  name: 'Ruby Rocket',    speed: 3.8, bobAmp: 7,  bobSpeed: 2.0, top: -66, head: { x: 0, y: -18, r: 15 }, body: { x: -36, y: -64, w: 72, h: 112 }, colors: ['#ef4444', '#1d4ed8', '#fb923c'] }
+        ];
+        const DOUBLE_REWARD_STORAGE_KEY = 'stand-de-tir-neon-double-rewards';
+        const characterTypes = new Set(CHARACTERS.map(character => character.type));
+
+        function loadDoubleRewardTypes() {
+            try {
+                const saved = localStorage.getItem(DOUBLE_REWARD_STORAGE_KEY);
+                if (!saved) return new Set();
+                const types = JSON.parse(saved);
+                if (!Array.isArray(types) || types.some(type => !characterTypes.has(type))) {
+                    throw new Error('La liste des récompenses enregistrée est invalide.');
+                }
+                return new Set(types);
+            } catch (error) {
+                console.error('Réglages de récompense illisibles :', error);
+                setConnectionStatus('Réglages de récompense illisibles : valeurs par défaut utilisées.');
+                return new Set();
+            }
+        }
+
+        const doubleRewardTypes = loadDoubleRewardTypes();
+
+        class Target {
+            constructor() {
+                this.id = nextTargetId++;
+                this.def = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+                this.state = 'alive';          // alive -> hit -> falling
+                this.dead = false;
+                this.direction = Math.random() > 0.5 ? 1 : -1;
+                this.x = this.direction === 1 ? -90 : canvas.width + 90;
+                this.y = canvas.height * 0.2 + Math.random() * canvas.height * 0.36;
+                this.speed = (this.def.speed + Math.random() * 1.2) * this.direction;
+                this.stars = doubleRewardTypes.has(this.def.type) ? 2 : (Math.random() < 0.5 ? 0 : 1);
+                this.t = Math.random() * 10;
+                this.offY = 0;
+                this.rot = 0;
+                this.sx = 1; this.sy = 1;
+                this.kx = 0; this.vx = 0; this.vy = 0; this.vr = 0;
+                this.hitTimer = 0;
+                this.zone = null;
+                this.holes = [];
+            }
+
+            get cy() { return this.y + this.offY; }
+
+            // Renvoie 'head', 'body' ou null
+            hitTest(px, py) {
+                if (this.state !== 'alive') return null;
+                const lx = (px - this.x) / SC, ly = (py - this.cy) / SC;
+                const h = this.def.head, b = this.def.body;
+                if (Math.hypot(lx - h.x, ly - h.y) <= h.r + 3) return 'head';
+                if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) return 'body';
+                return null;
+            }
+
+            onHit(zone, px, py) {
+                if (px !== undefined && this.holes.length < 4) {
+                    this.holes.push({
+                        x: (px - this.x) / SC, y: (py - this.cy) / SC,
+                        cr: Array.from({ length: 6 }, () => ({ a: Math.random() * 6.28, l: 7 + Math.random() * 9 }))
+                    });
+                }
+                this.state = 'hit';
+                this.zone = zone;
+                this.hitTimer = zone === 'head' ? 12 : 9;
+                this.kx = -this.direction * (zone === 'head' ? 5 : 3);
+                this.sx = 1.35; this.sy = 0.7;   // écrasement à l'impact
+            }
+
+            update() {
+                this.t += 0.1 * gameSpeed;
+                const d = this.def;
+                if (this.state === 'alive') {
+                    this.x += this.speed * gameSpeed;
+                    this.offY = Math.sin(this.t * d.bobSpeed) * d.bobAmp;
+                    const sq = Math.sin(this.t * d.bobSpeed * 2) * 0.04;
+                    this.sx = 1 + sq; this.sy = 1 - sq;
+                    this.rot = Math.sin(this.t * d.bobSpeed) * 0.04;
+                    if ((this.direction === 1 && this.x > canvas.width + 120) || (this.direction === -1 && this.x < -120)) this.dead = true;
+                } else if (this.state === 'hit') {
+                    this.hitTimer--;
+                    this.x += this.kx; this.kx *= 0.85;
+                    this.sx += (1 - this.sx) * 0.25;
+                    this.sy += (1 - this.sy) * 0.25;
+                    this.rot += (this.zone === 'head' ? -0.04 : -0.015) * this.direction;
+                    if (this.hitTimer <= 0) {
+                        const head = this.zone === 'head';
+                        this.state = 'falling';
+                        this.vy = head ? -11 : -6;                       // petit saut avant la chute
+                        this.vx = -this.direction * (head ? 1.5 : 2.5);
+                        this.vr = (head ? -0.32 : -0.12) * this.direction; // saut périlleux arrière sur headshot
+                    }
+                } else {
+                    this.x += this.vx;
+                    this.offY += this.vy;
+                    this.vy += 0.65;
+                    this.rot += this.vr;
+                    if (this.cy > canvas.height + 130) this.dead = true;
+                }
+            }
+
+            draw() {
+                const d = this.def;
+                const dazed = this.state !== 'alive';
+
+                // Rendu du personnage sur un canvas hors-écran (permet le flash blanc à l'impact)
+                fxCtx.clearRect(0, 0, FX, FX);
+                fxCtx.save();
+                fxCtx.translate(FX / 2, FX / 2);
+                fxCtx.scale(SC, SC);
+                curT = this.t;
+                lookX = Math.max(-1, Math.min(1, (mouseGX - this.x) / 250));
+                lookY = Math.max(-1, Math.min(1, (mouseGY - this.cy) / 250));
+                DRAWERS[d.type](fxCtx, this.t, dazed);
+                fxCtx.restore();
+
+                // --- Réalisme : volume, matière, reflet et impacts (uniquement sur les pixels du personnage)
+                fxCtx.globalCompositeOperation = 'source-atop';
+                const c0 = FX / 2, R = 70 * SC;
+                const lg = fxCtx.createRadialGradient(c0 - 0.35 * R, c0 - 0.6 * R, 4, c0, c0, R * 1.25);
+                lg.addColorStop(0, 'rgba(255,255,255,0.40)');
+                lg.addColorStop(0.4, 'rgba(255,255,255,0.05)');
+                lg.addColorStop(0.75, 'rgba(20,10,50,0.22)');
+                lg.addColorStop(1, 'rgba(10,5,35,0.55)');
+                fxCtx.fillStyle = lg; fxCtx.fillRect(0, 0, FX, FX);
+                fxCtx.fillStyle = grainPattern; fxCtx.fillRect(0, 0, FX, FX);
+                const sw = ((this.t * 0.35) % 2.5 - 0.7) * FX;
+                const sg = fxCtx.createLinearGradient(sw - 30, 0, sw + 30, FX * 0.6);
+                sg.addColorStop(0, 'rgba(255,255,255,0)');
+                sg.addColorStop(0.5, 'rgba(255,255,255,0.22)');
+                sg.addColorStop(1, 'rgba(255,255,255,0)');
+                fxCtx.fillStyle = sg; fxCtx.fillRect(0, 0, FX, FX);
+                fxCtx.save();
+                fxCtx.translate(FX / 2, FX / 2); fxCtx.scale(SC, SC);
+                const hd = d.head, bd = d.body;
+                const ao = fxCtx.createRadialGradient(hd.x, hd.y + hd.r, 2, hd.x, hd.y + hd.r, hd.r * 1.1);
+                ao.addColorStop(0, 'rgba(10,5,35,0.35)'); ao.addColorStop(1, 'rgba(10,5,35,0)');
+                fxCtx.fillStyle = ao; fxCtx.beginPath(); fxCtx.arc(hd.x, hd.y + hd.r, hd.r * 1.1, 0, Math.PI * 2); fxCtx.fill();
+                const hx = hd.x - hd.r * 0.4, hy = hd.y - hd.r * 0.45;
+                const spc = fxCtx.createRadialGradient(hx, hy, 0, hx, hy, hd.r * 0.55);
+                spc.addColorStop(0, 'rgba(255,255,255,0.75)'); spc.addColorStop(1, 'rgba(255,255,255,0)');
+                fxCtx.fillStyle = spc; fxCtx.beginPath(); fxCtx.arc(hx, hy, hd.r * 0.55, 0, Math.PI * 2); fxCtx.fill();
+                const rim = fxCtx.createLinearGradient(bd.x, bd.y, bd.x + bd.w, bd.y + bd.h);
+                rim.addColorStop(0.6, 'rgba(34,211,238,0)'); rim.addColorStop(1, 'rgba(168,85,247,0.38)');
+                fxCtx.fillStyle = rim; fxCtx.fillRect(-100, -110, 200, 220);
+                const bn = fxCtx.createLinearGradient(0, 20, 0, 60);
+                bn.addColorStop(0, 'rgba(192,132,252,0)'); bn.addColorStop(1, 'rgba(192,132,252,0.30)');
+                fxCtx.fillStyle = bn; fxCtx.fillRect(-100, 20, 200, 60);
+                this.holes.forEach(h => {
+                    fxCtx.strokeStyle = 'rgba(0,0,0,0.45)'; fxCtx.lineWidth = 1.2; fxCtx.lineCap = 'round';
+                    h.cr.forEach(k => {
+                        fxCtx.beginPath(); fxCtx.moveTo(h.x, h.y);
+                        fxCtx.lineTo(h.x + Math.cos(k.a) * k.l, h.y + Math.sin(k.a) * k.l); fxCtx.stroke();
+                    });
+                    const hg = fxCtx.createRadialGradient(h.x, h.y, 0, h.x, h.y, 9);
+                    hg.addColorStop(0, 'rgba(0,0,0,0.95)');
+                    hg.addColorStop(0.45, 'rgba(0,0,0,0.85)');
+                    hg.addColorStop(0.7, 'rgba(40,25,10,0.45)');
+                    hg.addColorStop(1, 'rgba(0,0,0,0)');
+                    fxCtx.fillStyle = hg; fxCtx.beginPath(); fxCtx.arc(h.x, h.y, 9, 0, Math.PI * 2); fxCtx.fill();
+                    fxCtx.strokeStyle = 'rgba(255,255,255,0.45)'; fxCtx.lineWidth = 1;
+                    fxCtx.beginPath(); fxCtx.arc(h.x, h.y, 4.4, 0.6, 2.6); fxCtx.stroke();
+                });
+                fxCtx.restore();
+                fxCtx.globalCompositeOperation = 'source-over';
+
+                if (this.state === 'hit') {
+                    fxCtx.globalCompositeOperation = 'source-atop';
+                    fxCtx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.45 * (this.hitTimer / 12)) + ')';
+                    fxCtx.fillRect(0, 0, FX, FX);
+                    fxCtx.globalCompositeOperation = 'source-over';
+                }
+
+                ctx.save();
+                ctx.translate(this.x, this.cy);
+                ctx.rotate(this.rot);
+                ctx.scale(this.sx, this.sy);
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 16; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 12;
+                ctx.drawImage(fx, -FX / 2, -FX / 2);
+                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+                ctx.scale(SC, SC);
+                if (this.state === 'alive') {
+                    // Anneau pointillé = zone de tête
+                    ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = 'rgba(255,255,255,' + (0.35 + 0.15 * Math.sin(frame * 0.15)) + ')';
+                    ctx.beginPath(); ctx.arc(d.head.x, d.head.y, d.head.r, 0, Math.PI * 2); ctx.stroke();
+                    ctx.setLineDash([]);
+                } else {
+                    // Étoiles étourdies qui tournent autour de la tête
+                    for (let i = 0; i < 3; i++) {
+                        const a = this.t * 4 + i * 2.09;
+                        const sx = d.head.x + Math.cos(a) * (d.head.r + 6);
+                        const sy = d.head.y - d.head.r * 0.8 + Math.sin(a) * 5;
+                        starPath(ctx, sx, sy, 5, 2.2, 5);
+                        ctx.fillStyle = '#fde047'; ctx.fill();
+                        ctx.lineWidth = 1.5; ctx.strokeStyle = INK; ctx.stroke();
+                    }
+                }
+                ctx.restore();
+
+                if (this.state !== 'alive') {
+                    ctx.save();
+                    ctx.translate(this.x, this.cy + (d.body.y + d.body.h / 2) * SC);
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                    ctx.strokeStyle = this.stars ? '#facc15' : '#94a3b8';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.roundRect(-30, -13, 60, 26, 7); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = this.stars ? '#fde68a' : '#e2e8f0';
+                    ctx.font = 'bold 16px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(this.stars + ' ⭐', 0, 6);
+                    ctx.restore();
+                }
+            }
+        }
+
+        class Laser {
+            constructor(x0, y0, x1, y1) { this.x0 = x0; this.y0 = y0; this.x1 = x1; this.y1 = y1; this.age = 0; this.life = 10; this.alpha = 1; }
+            update() { this.age++; this.alpha = 1 - this.age / this.life; }
+            glow(x, y, r, a) {
+                const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+                g.addColorStop(0, 'rgba(255,255,255,' + a + ')');
+                g.addColorStop(0.35, 'rgba(244,114,182,' + a * 0.7 + ')');
+                g.addColorStop(1, 'rgba(168,85,247,0)');
+                ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            }
+            draw() {
+                const head = Math.min(1, (this.age + 1) / 3);
+                const tail = this.age < 3 ? 0 : Math.min(0.95, (this.age - 3) / 7);
+                const dx = this.x1 - this.x0, dy = this.y1 - this.y0;
+                const ax = this.x0 + dx * tail, ay = this.y0 + dy * tail;
+                const bx = this.x0 + dx * head, by = this.y0 + dy * head;
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.lineCap = 'round';
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                [[14, 'rgba(168,85,247,0.35)'], [7, 'rgba(244,114,182,0.7)'], [3.5, 'rgba(103,232,249,0.95)'], [1.4, '#ffffff']].forEach(([w, col]) => {
+                    ctx.strokeStyle = col; ctx.lineWidth = w;
+                    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+                });
+                if (this.age < 3) this.glow(this.x0, this.y0, 30, 0.9);
+                if (head >= 1) this.glow(this.x1, this.y1, 14 + 22 * (this.age / this.life), 0.9);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color, star = false) {
+                this.x = x; this.y = y; this.color = color; this.star = star;
+                this.size = star ? Math.random() * 6 + 7 : Math.random() * 7 + 4;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 7 + 2;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1;
+                this.rot = Math.random() * 6;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.vy += 0.12;
+                this.rot += 0.15;
+                this.alpha -= 0.03;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                if (this.star) {
+                    ctx.translate(this.x, this.y); ctx.rotate(this.rot);
+                    starPath(ctx, 0, 0, this.size, this.size * 0.45, 5);
+                    ctx.fill();
+                } else {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color = '#facc15', size = 24) {
+                this.x = x; this.y = y; this.text = text; this.color = color; this.size = size;
+                this.alpha = 1; this.vy = -1.5;
+            }
+            update() { this.y += this.vy; this.alpha -= 0.022; }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.font = 'bold ' + this.size + 'px "Fredoka One", cursive';
+                ctx.fillStyle = this.color;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 4;
+                ctx.textAlign = 'center';
+                ctx.strokeText(this.text, this.x, this.y);
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        // ---------- Cycle de jeu ----------
+        function startGame() {
+            if (roomConnected && !isRoomOwner) {
+                document.getElementById('connection-status').textContent =
+                    'Seul l’hôte peut lancer ou relancer la partie.';
+                return;
+            }
+            initAudio();
+            document.getElementById('start-game-btn').hidden = true;
+
+            currentAmmo = maxAmmo;
+            isPlaying = true; isPaused = false;
+            targets = []; particles = []; floatTexts = []; lasers = [];
+            recentShots = []; nextTargetId = 0;
+            document.getElementById('pause-btn').innerText = 'Pause';
+            updateUI();
+            renderShotFeed();
+            syncRangeState();
+        }
+
+        function togglePause() {
+            if (!isPlaying || (roomConnected && !isRoomOwner)) return;
+            isPaused = !isPaused;
+            document.getElementById('pause-btn').innerText = isPaused ? 'Reprendre' : 'Pause';
+            syncRangeState();
+        }
+
+        function getPlayerName() {
+            return document.getElementById('player-name').value.trim().replace(/^@/, '').slice(0, 32) ||
+                'Tireur';
+        }
+
+        function renderShotFeed() {
+            const feed = document.getElementById('shot-list');
+            feed.replaceChildren();
+            if (!recentShots.length) recentShots = ['En attente des joueurs…'];
+            recentShots.slice(0, 5).forEach(entry => {
+                const item = document.createElement('li');
+                item.textContent = entry;
+                feed.appendChild(item);
+            });
+        }
+
+        function serializeRangeState() {
+            return {
+                active: isPlaying,
+                paused: isPaused,
+                speed: gameSpeed,
+                doubleRewards: [...doubleRewardTypes].sort(),
+                targets: targets.map(target => ({
+                    id: target.id,
+                    type: target.def.type,
+                    state: target.state,
+                    dead: target.dead,
+                    direction: target.direction,
+                    x: target.x / canvas.width,
+                    y: target.y / canvas.height,
+                    speed: target.speed / canvas.width,
+                    stars: target.stars,
+                    t: target.t,
+                    offY: target.offY / canvas.height,
+                    rot: target.rot,
+                    sx: target.sx,
+                    sy: target.sy,
+                    kx: target.kx / canvas.width,
+                    vx: target.vx / canvas.width,
+                    vy: target.vy / canvas.height,
+                    vr: target.vr,
+                    hitTimer: target.hitTimer,
+                    zone: target.zone
+                })),
+                recentShots: recentShots.slice(0, 5)
+            };
+        }
+
+        function syncRangeState() {
+            if (!roomConnected || !isRoomOwner || !socket || socket.readyState !== WebSocket.OPEN) return;
+            socket.send(JSON.stringify({
+                action: 'SHOOTING_RANGE_SYNC',
+                state: serializeRangeState()
+            }));
+        }
+
+        function applySharedState(state) {
+            if (!state || typeof state !== 'object') return;
+            isPlaying = state.active === true;
+            isPaused = state.paused === true;
+            gameSpeed = Number.isFinite(state.speed) ? state.speed : 1;
+            document.getElementById('speed-control').value = String(gameSpeed);
+            document.getElementById('speed-value').textContent = gameSpeed.toFixed(1).replace('.', ',') + '×';
+            if (Array.isArray(state.doubleRewards)) {
+                doubleRewardTypes.clear();
+                state.doubleRewards.forEach(type => {
+                    if (characterTypes.has(type)) doubleRewardTypes.add(type);
+                });
+                renderDoubleRewardControls();
+            }
+            const previousTargets = new Map(targets.map(target => [target.id, target]));
+            targets = (Array.isArray(state.targets) ? state.targets : []).map(data => {
+                const definition = CHARACTERS.find(character => character.type === data.type);
+                if (!definition) return null;
+                const target = previousTargets.get(data.id) || new Target();
+                target.id = data.id;
+                target.def = definition;
+                target.state = data.state;
+                target.dead = data.dead;
+                target.direction = data.direction;
+                target.x = data.x * canvas.width;
+                target.y = data.y * canvas.height;
+                target.speed = data.speed * canvas.width;
+                target.stars = data.stars === 2 ? 2 : data.stars === 1 ? 1 : 0;
+                target.t = data.t;
+                target.offY = data.offY * canvas.height;
+                target.rot = data.rot;
+                target.sx = data.sx;
+                target.sy = data.sy;
+                target.kx = data.kx * canvas.width;
+                target.vx = data.vx * canvas.width;
+                target.vy = data.vy * canvas.height;
+                target.vr = data.vr;
+                target.hitTimer = data.hitTimer;
+                target.zone = data.zone;
+                target.holes = [];
+                return target;
+            }).filter(Boolean);
+            nextTargetId = Math.max(nextTargetId, ...targets.map(target => target.id + 1), 0);
+            recentShots = Array.isArray(state.recentShots) ? state.recentShots.slice(0, 5) : [];
+            document.getElementById('pause-btn').innerText = isPaused ? 'Reprendre' : 'Pause';
+            updateUI();
+            renderShotFeed();
+            const startButton = document.getElementById('start-game-btn');
+            startButton.hidden = isPlaying;
+            startButton.textContent = 'JOUER 🎯';
+        }
+
+        function addShotToFeed(username, zone) {
+            recentShots.unshift(`${username} · ${zone === 'head' ? 'tête' : zone === 'body' ? 'corps' : 'manqué'}`);
+            recentShots = recentShots.slice(0, 5);
+        }
+
+        function registerShot(x, y, username, requestedTargetId, requestedZone, canAwardStars = false) {
+            let target = null;
+            let zone = null;
+            if (Number.isSafeInteger(requestedTargetId)) {
+                target = targets.find(item => item.id === requestedTargetId && item.state === 'alive') || null;
+                zone = target ? requestedZone : null;
+            } else if (requestedTargetId === undefined) {
+                for (let i = targets.length - 1; i >= 0; i--) {
+                    zone = targets[i].hitTest(x, y);
+                    if (zone) {
+                        target = targets[i];
+                        break;
+                    }
+                }
+            }
+
+            if (!target || !zone) {
+                addShotToFeed(username, null);
+                updateUI();
+                renderShotFeed();
+                syncRangeState();
+                return;
+            }
+
+            const isHead = zone === 'head';
+            if (isHead) {
+                playHeadshotSound();
+                shake = 9;
+                for (let p = 0; p < 10; p++) {
+                    particles.push(new Particle(x, y, ['#fde047', '#f472b6', '#ffffff'][p % 3], true));
+                }
+            } else {
+                playHitSound();
+            }
+            for (let p = 0; p < 14; p++) {
+                particles.push(new Particle(x, y, target.def.colors[Math.floor(Math.random() * 3)]));
+            }
+            for (let p = 0; p < 9; p++) {
+                const spark = new Particle(x, y, ['#fff7d6', '#fbbf24', '#e5e7eb'][p % 3]);
+                spark.size = Math.random() * 2 + 1.5;
+                spark.vx *= 1.4;
+                spark.vy *= 1.4;
+                particles.push(spark);
+            }
+            target.onHit(zone, x, y);
+            if (canAwardStars && target.stars > 0) {
+                awardTargetStars(target.stars, username);
+            }
+            addShotToFeed(username, zone);
+            updateUI();
+            renderShotFeed();
+            syncRangeState();
+        }
+
+        function drawShot(x, y) {
+            const rect = canvas.getBoundingClientRect();
+            const muzzle = document.getElementById('muzzle-point').getBoundingClientRect();
+            const muzzleX = (muzzle.left + muzzle.width / 2 - rect.left) * (canvas.width / rect.width);
+            const muzzleY = (muzzle.top + muzzle.height / 2 - rect.top) * (canvas.height / rect.height);
+            lasers.push(new Laser(muzzleX, muzzleY, x, y));
+            playShootSound();
+            const weapon = document.getElementById('weapon-sprite');
+            weapon.classList.remove('recoil-anim');
+            void weapon.offsetWidth;
+            weapon.classList.add('recoil-anim');
+            setTimeout(() => weapon.classList.remove('recoil-anim'), 80);
+            const flash = document.getElementById('muzzle-flash');
+            flash.style.opacity = '0.6';
+            setTimeout(() => flash.style.opacity = '0', 50);
+        }
+
+        function normalizeLiveUsername(value) {
+            const username = String(value || '').trim().replace(/^@/, '').slice(0, 32);
+            return /^[a-zA-Z0-9._]{1,32}$/.test(username) ? username : '';
+        }
+
+        function awardTargetStars(amount, rawUsername) {
+            const username = normalizeLiveUsername(rawUsername);
+            if (!username) {
+                console.error('Étoile non créditée : pseudo TikTok invalide.');
+                setConnectionStatus('Étoile non créditée : pseudo TikTok invalide.');
+                return;
+            }
+            if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+                console.error('Étoile non créditée : le portefeuille Arcade est indisponible.');
+                setConnectionStatus('Étoile non créditée : portefeuille Arcade indisponible.');
+                return;
+            }
+            window.ArcadeStars.award({ username, amount })
+                .then(player => setConnectionStatus(
+                    `@${username} : ${amount} étoile gagnée · solde global ${Number(player.stars || 0).toLocaleString('fr-FR')}.`
+                ))
+                .catch(error => {
+                    console.error(`Étoile de @${username} non enregistrée :`, error);
+                    setConnectionStatus(`Étoile de @${username} non confirmée : ${error.message}`);
+                });
+        }
+
+        function getLiveCreditTotal() {
+            let total = 0;
+            for (const entry of liveShotCredits.values()) {
+                total = Math.min(Number.MAX_SAFE_INTEGER, total + entry.credits);
+            }
+            return total;
+        }
+
+        function grantLiveShotCredits(rawUsername, rawCount) {
+            const username = normalizeLiveUsername(rawUsername);
+            const count = Math.floor(Number(rawCount));
+            if (!username || !Number.isSafeInteger(count) || count <= 0) {
+                console.warn('Crédit de tir ignoré : identité ou nombre de pièces invalide.');
+                return 0;
+            }
+
+            const key = username.toLowerCase();
+            const existing = liveShotCredits.get(key);
+            const current = existing ? existing.credits : 0;
+            const granted = Math.min(count, Number.MAX_SAFE_INTEGER - current);
+            if (granted <= 0) {
+                console.warn(`Crédit de tir ignoré : plafond atteint pour @${username}.`);
+                return 0;
+            }
+            liveShotCredits.set(key, {
+                username: existing ? existing.username : username,
+                credits: current + granted
+            });
+            floatTexts.push(new FloatingText(canvas.width / 2, Math.max(50, canvas.height * 0.25),
+                `@${username} : +${granted} TIRS`, '#22d3ee', 20));
+            setConnectionStatus(`@${username} : ${granted} crédit(s) de tir ajouté(s). Un J’aime consomme 1 crédit.`);
+            updateUI();
+            return granted;
+        }
+
+        function consumeLiveShotCredits(rawUsername, rawCount) {
+            const username = normalizeLiveUsername(rawUsername);
+            const count = Math.floor(Number(rawCount));
+            if (!username || !Number.isSafeInteger(count) || count <= 0) return 0;
+
+            const entry = liveShotCredits.get(username.toLowerCase());
+            if (!entry || entry.credits <= 0) return 0;
+            const consumed = Math.min(count, entry.credits);
+            entry.credits -= consumed;
+            updateUI();
+            return consumed;
+        }
+
+        function getRunShotCreditTotal() {
+            let total = 0;
+            for (const entry of runShotCredits.values()) {
+                if (entry.owner === liveTikTokUsername) {
+                    total = Math.min(Number.MAX_SAFE_INTEGER, total + entry.count);
+                }
+            }
+            return total;
+        }
+
+        function queueRunShots(rawUsername, rawCount) {
+            const username = normalizeLiveUsername(rawUsername);
+            const count = Math.floor(Number(rawCount));
+            if (!username || !Number.isSafeInteger(count) || count <= 0) {
+                console.warn('RUN ignoré : identité ou nombre d’étoiles invalide.');
+                return;
+            }
+
+            const key = `${liveTikTokUsername}|${username.toLowerCase()}`;
+            const existing = runShotCredits.get(key);
+            const available = existing ? existing.count : 0;
+            const granted = Math.min(count, Number.MAX_SAFE_INTEGER - available);
+            if (granted <= 0) {
+                console.error(`RUN non ajouté : plafond de tirs atteint pour @${username}.`);
+                setConnectionStatus(`Impossible d’ajouter les tirs RUN de @${username} : plafond atteint.`);
+                return;
+            }
+            runShotCredits.set(key, {
+                owner: liveTikTokUsername,
+                username: existing ? existing.username : username,
+                count: available + granted
+            });
+            updateUI();
+            setConnectionStatus(`@${username} : ${granted} tir(s) RUN disponible(s). Touchez l’écran pour tirer.`);
+        }
+
+        function consumeRunShotCredit() {
+            for (const [key, entry] of runShotCredits) {
+                if (entry.owner !== liveTikTokUsername) continue;
+                entry.count--;
+                const username = entry.username;
+                if (entry.count <= 0) runShotCredits.delete(key);
+                updateUI();
+                return username;
+            }
+            return '';
+        }
+
+        function queueLiveShots(username, count) {
+            const shots = Math.floor(Number(count));
+            if (!normalizeLiveUsername(username) || !Number.isSafeInteger(shots) || shots <= 0) return;
+            const previous = liveShotQueue[liveShotQueue.length - 1];
+            if (previous && previous.username.toLowerCase() === username.toLowerCase() &&
+                previous.count <= Number.MAX_SAFE_INTEGER - shots) {
+                previous.count += shots;
+                return;
+            }
+            liveShotQueue.push({ username, count: shots });
+        }
+
+        function handleLiveTikTokEvent(data) {
+            if (!liveModeRequired || !roomConnected || !isRoomOwner) return;
+            if (data.type === 'gift') {
+                const gift = data.gift || {};
+                const profile = data.walletPlayer || {};
+                const username = gift.uniqueId || gift.username || profile.uniqueId || profile.username;
+                const coinCount = Number(gift.coinCount);
+                grantLiveShotCredits(username, coinCount);
+                return;
+            }
+            if (data.type === 'like') {
+                if (!isPlaying || isPaused) return;
+                const likeData = data.likeData || {};
+                const profile = data.walletPlayer || {};
+                const username = likeData.uniqueId || likeData.username || profile.uniqueId || profile.username;
+                const likeCount = Math.floor(Number(likeData.likeCount));
+                if (!Number.isSafeInteger(likeCount) || likeCount <= 0) return;
+                const consumed = consumeLiveShotCredits(username, likeCount);
+                if (consumed <= 0) return;
+                queueLiveShots(normalizeLiveUsername(username), consumed);
+                setConnectionStatus(`@${normalizeLiveUsername(username)} : ${consumed} tir(s) déclenché(s) par J’aime · ${getLiveCreditTotal()} crédit(s) restant(s).`);
+            }
+        }
+
+        function processQueuedLiveShot() {
+            if (!isPlaying || isPaused || !isRoomOwner || liveShotQueue.length === 0 ||
+                frame - lastLiveShotFrame < 8) return;
+            const pending = liveShotQueue[0];
+            const x = Math.random() * canvas.width;
+            const y = 30 + Math.random() * Math.max(1, canvas.height - 80);
+            drawShot(x, y);
+            registerShot(x, y, pending.username, undefined, undefined, true);
+            pending.count--;
+            lastLiveShotFrame = frame;
+            if (pending.count <= 0) liveShotQueue.shift();
+        }
+
+        function receiveRemoteShot(data) {
+            if (!isRoomOwner || !isPlaying || isPaused) return;
+            let username = normalizeLiveUsername(data.username);
+            let canAwardStars = false;
+            if (liveModeRequired) {
+                const runUsername = consumeRunShotCredit();
+                if (runUsername) {
+                    username = runUsername;
+                    canAwardStars = true;
+                } else if (consumeLiveShotCredits(username, 1) !== 1) {
+                    setConnectionStatus('Tir refusé : ce joueur doit d’abord recevoir un cadeau ou un RUN.');
+                    return;
+                } else {
+                    canAwardStars = true;
+                }
+            }
+            const x = data.x * canvas.width;
+            const y = data.y * canvas.height;
+            drawShot(x, y);
+            registerShot(x, y, username || 'Joueur', data.targetId, data.zone, canAwardStars);
+        }
+
+        function setConnectionStatus(message) {
+            document.getElementById('connection-status').textContent = message;
+        }
+
+        function renderDoubleRewardControls() {
+            document.querySelectorAll('[data-double-reward]').forEach(control => {
+                control.checked = doubleRewardTypes.has(control.dataset.doubleReward);
+                control.disabled = roomConnected && !isRoomOwner;
+            });
+        }
+
+        function changeDoubleReward(control) {
+            const type = control.dataset.doubleReward;
+            if (!characterTypes.has(type)) {
+                console.error('Réglage de récompense ignoré : animation inconnue.');
+                setConnectionStatus('Impossible de modifier la récompense de cette animation.');
+                renderDoubleRewardControls();
+                return;
+            }
+            if (roomConnected && !isRoomOwner) {
+                setConnectionStatus('Seul l’hôte peut modifier les récompenses.');
+                renderDoubleRewardControls();
+                return;
+            }
+
+            if (control.checked) doubleRewardTypes.add(type);
+            else doubleRewardTypes.delete(type);
+            targets.forEach(target => {
+                if (target.def.type !== type || target.state !== 'alive') return;
+                target.stars = control.checked ? 2 : (Math.random() < 0.5 ? 0 : 1);
+            });
+
+            try {
+                localStorage.setItem(DOUBLE_REWARD_STORAGE_KEY, JSON.stringify([...doubleRewardTypes]));
+            } catch (error) {
+                console.error('Réglage de récompense non sauvegardé :', error);
+                setConnectionStatus(`Réglage actif pour cette partie, mais non sauvegardé : ${error.message}`);
+            }
+            setConnectionStatus(`${CHARACTERS.find(character => character.type === type).name} : ${control.checked ? '2 étoiles garanties' : 'tirage entre 0 et 1 étoile'}.`);
+            syncRangeState();
+        }
+
+        window.addEventListener('arcade:wallet-run', event => {
+            const data = event.detail || {};
+            const player = data.player || {};
+            const username = player.username || player.uniqueId || player.nickname;
+            queueRunShots(username, data.spent);
+        });
+        window.addEventListener('arcade:wallet-run-rejected', event => {
+            const message = event.detail && event.detail.message;
+            if (message) setConnectionStatus(String(message));
+        });
+
+        function updateRoomStatus() {
+            document.getElementById('room-status').textContent = roomConnected
+                ? `${isRoomOwner ? 'Hôte' : 'Participant'} · ${roomPlayers}/30 joueurs`
+                : 'Partie non connectée';
+            document.getElementById('pause-btn').disabled = roomConnected && !isRoomOwner;
+            document.getElementById('speed-control').disabled = roomConnected && !isRoomOwner;
+            renderDoubleRewardControls();
+            updateUI();
+        }
+
+        function connectLive() {
+            const username = document.getElementById('tiktok-username').value.trim().replace(/^@/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                setConnectionStatus('Saisis un pseudo TikTok valide (1 à 32 caractères).');
+                return;
+            }
+            const roomKey = username.toLowerCase();
+            if (liveTikTokUsername && liveTikTokUsername !== roomKey) {
+                liveShotCredits.clear();
+                liveShotQueue.length = 0;
+            }
+            liveTikTokUsername = roomKey;
+            liveModeRequired = true;
+            updateUI();
+            if (stateSyncInterval) clearInterval(stateSyncInterval);
+            stateSyncInterval = null;
+            if (socket) socket.close();
+            roomConnected = false;
+            isRoomOwner = false;
+            setConnectionStatus('Connexion au serveur de la partie…');
+            try {
+                socket = new WebSocket(WEBSOCKET_URL);
+            } catch (error) {
+                setConnectionStatus(`Connexion impossible : ${error.message}`);
+                return;
+            }
+            const activeSocket = socket;
+            activeSocket.addEventListener('open', () => {
+                if (socket !== activeSocket) return;
+                activeSocket.send(JSON.stringify({
+                    action: 'CONNECT_TIKTOK',
+                    username,
+                    gameMode: 'shooting-range'
+                }));
+            });
+            activeSocket.addEventListener('message', event => {
+                if (socket !== activeSocket) return;
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    console.warn('Message de partie invalide :', error.message);
+                    setConnectionStatus('Le serveur a envoyé un message illisible.');
+                    return;
+                }
+                if (data.type === 'SHOOTING_RANGE_ROLE') {
+                    roomConnected = true;
+                    isRoomOwner = data.owner === true;
+                    roomPlayers = Number.isSafeInteger(data.players) ? data.players : 1;
+                    updateRoomStatus();
+                    setConnectionStatus(isRoomOwner
+                        ? 'Chaque pièce offerte ajoute un crédit. Les J’aime TikTok déclenchent les tirs automatiquement, sans pseudo à saisir.'
+                        : 'Partie rejointe : cadeau puis J’aime TikTok pour tirer ; aucun pseudo à saisir.');
+                    if (data.state) applySharedState(data.state);
+                    else if (isRoomOwner) syncRangeState();
+                    if (isRoomOwner && !stateSyncInterval) {
+                        stateSyncInterval = setInterval(syncRangeState, 120);
+                    }
+                    return;
+                }
+                if (data.type === 'gift' || data.type === 'like') {
+                    handleLiveTikTokEvent(data);
+                    return;
+                }
+                if (data.type === 'SHOOTING_RANGE_PLAYERS') {
+                    roomPlayers = Number.isSafeInteger(data.players) ? data.players : roomPlayers;
+                    updateRoomStatus();
+                    return;
+                }
+                if (data.type === 'SHOOTING_RANGE_STATE') {
+                    roomPlayers = Number.isSafeInteger(data.players) ? data.players : roomPlayers;
+                    updateRoomStatus();
+                    if (!isRoomOwner) applySharedState(data.state);
+                    return;
+                }
+                if (data.type === 'SHOOTING_RANGE_SHOT') {
+                    receiveRemoteShot(data);
+                    return;
+                }
+                if (data.type === 'SHOOTING_RANGE_ERROR') {
+                    setConnectionStatus(String(data.message || 'La partie ne peut pas accepter cette action.'));
+                    return;
+                }
+                if (data.type === 'STATUS') {
+                    setConnectionStatus(String(data.message || 'Statut du direct reçu.'));
+                }
+            });
+            activeSocket.addEventListener('close', () => {
+                if (socket !== activeSocket) return;
+                roomConnected = false;
+                isRoomOwner = true;
+                roomPlayers = 1;
+                if (stateSyncInterval) clearInterval(stateSyncInterval);
+                stateSyncInterval = null;
+                updateRoomStatus();
+                setConnectionStatus('Connexion fermée · tirs bloqués jusqu’à la reconnexion à la partie.');
+            });
+            activeSocket.addEventListener('error', () => {
+                if (socket === activeSocket) {
+                    setConnectionStatus('Connexion impossible au relais de partie.');
+                }
+            });
+        }
+
+        // ---------- Tirs tactiles et souris ----------
+        function updateAim(clientX, clientY) {
+            const r = canvas.getBoundingClientRect();
+            mouseGX = (clientX - r.left) * (canvas.width / r.width);
+            mouseGY = (clientY - r.top) * (canvas.height / r.height);
+            const sp = document.getElementById('weapon-sprite').getBoundingClientRect();
+            const ang = Math.atan2(clientX - (sp.left + sp.width / 2), sp.bottom - clientY);
+            document.getElementById('weapon-aim').style.transform = 'rotate(' + Math.max(-0.55, Math.min(0.55, ang)) + 'rad)';
+        }
+
+        canvas.addEventListener('pointermove', event => updateAim(event.clientX, event.clientY));
+
+        canvas.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            if (!event.isPrimary || !isPlaying || isPaused) return;
+            updateAim(event.clientX, event.clientY);
+            if (liveModeRequired && !roomConnected) {
+                setConnectionStatus('Tir refusé : connecte le Stand à la partie TikTok.');
+                return;
+            }
+            let username = getPlayerName();
+            let canAwardStars = false;
+            if (liveModeRequired && isRoomOwner) {
+                const runUsername = consumeRunShotCredit();
+                if (runUsername) {
+                    username = runUsername;
+                    canAwardStars = true;
+                } else if (consumeLiveShotCredits(username, 1) === 1) {
+                    canAwardStars = true;
+                } else {
+                    setConnectionStatus('Tir refusé : ce joueur doit d’abord recevoir un cadeau ou un RUN.');
+                    return;
+                }
+            } else if (!liveModeRequired && getRunShotCreditTotal() > 0) {
+                username = consumeRunShotCredit();
+                canAwardStars = true;
+            } else if (!liveModeRequired && currentAmmo <= 0) {
+                playEmptySound();
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left) * (canvas.width / rect.width);
+            const mouseY = (event.clientY - rect.top) * (canvas.height / rect.height);
+            if (!liveModeRequired && !canAwardStars) currentAmmo--;
+            drawShot(mouseX, mouseY);
+            let hitTarget = null;
+            let hitZone = null;
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const zone = targets[i].hitTest(mouseX, mouseY);
+                if (!zone) continue;
+                hitTarget = targets[i];
+                hitZone = zone;
+                break;
+            }
+            if (roomConnected && !isRoomOwner) {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({
+                        action: 'SHOOTING_RANGE_SHOT',
+                        targetId: hitTarget ? hitTarget.id : null,
+                        zone: hitZone,
+                        x: mouseX / canvas.width,
+                        y: mouseY / canvas.height,
+                        username
+                    }));
+                }
+            } else {
+                registerShot(mouseX, mouseY, username, undefined, undefined, canAwardStars);
+            }
+            updateUI();
+        });
+
+        function reloadAmmo() {
+            if (!isPlaying || isPaused || liveModeRequired) return;
+            currentAmmo = maxAmmo;
+            playReloadSound();
+            updateUI();
+        }
+
+        document.getElementById('reload-button').addEventListener('click', reloadAmmo);
+
+        window.addEventListener('keydown', (e) => {
+            if ((e.key === 'r' || e.key === 'R') && isPlaying && !isPaused) {
+                reloadAmmo();
+            }
+        });
+
+        function updateUI() {
+            const ammo = document.getElementById('ammo-display');
+            const ammoLabel = document.getElementById('ammo-label');
+            const reloadIndicator = document.getElementById('reload-indicator');
+            const reloadButton = document.getElementById('reload-button');
+            if (liveModeRequired) {
+                const credits = getLiveCreditTotal() + getRunShotCreditTotal();
+                ammoLabel.innerText = 'TIRS DISPONIBLES :';
+                ammo.innerText = credits.toLocaleString('fr-FR');
+                ammo.style.color = credits <= 0 ? '#ef4444' : '';
+                reloadIndicator.hidden = true;
+                reloadButton.hidden = true;
+            } else {
+                ammoLabel.innerText = 'MUNITIONS :';
+                ammo.innerText = currentAmmo + '/' + maxAmmo;
+                ammo.style.color = currentAmmo <= 0 ? '#ef4444' : '';
+                reloadIndicator.hidden = false;
+                reloadButton.hidden = false;
+            }
+        }
+
+        function openBackgroundDatabase() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject(new Error('IndexedDB est indisponible dans ce navigateur.'));
+                    return;
+                }
+                let settled = false;
+                const request = window.indexedDB.open(BACKGROUND_DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    const database = request.result;
+                    if (!database.objectStoreNames.contains(BACKGROUND_DB_STORE)) {
+                        database.createObjectStore(BACKGROUND_DB_STORE);
+                    }
+                };
+                request.onsuccess = () => {
+                    if (settled) {
+                        request.result.close();
+                        return;
+                    }
+                    settled = true;
+                    resolve(request.result);
+                };
+                request.onerror = () => {
+                    if (settled) return;
+                    settled = true;
+                    reject(request.error || new Error('Ouverture du stockage du fond impossible.'));
+                };
+                request.onblocked = () => {
+                    if (settled) return;
+                    settled = true;
+                    reject(new Error('Le stockage du fond est bloqué par un autre onglet.'));
+                };
+            });
+        }
+
+        function readStoredBackground() {
+            return openBackgroundDatabase().then(database => new Promise((resolve, reject) => {
+                const transaction = database.transaction(BACKGROUND_DB_STORE, 'readonly');
+                const request = transaction.objectStore(BACKGROUND_DB_STORE).get('selected');
+                request.onsuccess = () => {
+                    database.close();
+                    resolve(request.result || null);
+                };
+                request.onerror = () => {
+                    const error = request.error || new Error('Lecture du fond personnalisé impossible.');
+                    database.close();
+                    reject(error);
+                };
+                transaction.onabort = () => {
+                    const error = transaction.error || new Error('Lecture du fond personnalisé annulée.');
+                    database.close();
+                    reject(error);
+                };
+            }));
+        }
+
+        function saveStoredBackground(file) {
+            return openBackgroundDatabase().then(database => new Promise((resolve, reject) => {
+                const transaction = database.transaction(BACKGROUND_DB_STORE, 'readwrite');
+                transaction.objectStore(BACKGROUND_DB_STORE).put({
+                    blob: file.slice(0, file.size, file.type),
+                    name: file.name,
+                    type: file.type
+                }, 'selected');
+                transaction.oncomplete = () => {
+                    database.close();
+                    resolve();
+                };
+                transaction.onerror = () => {
+                    const error = transaction.error || new Error('Enregistrement du fond personnalisé impossible.');
+                    database.close();
+                    reject(error);
+                };
+                transaction.onabort = () => {
+                    const error = transaction.error || new Error('Enregistrement du fond personnalisé annulé.');
+                    database.close();
+                    reject(error);
+                };
+            }));
+        }
+
+        function deleteStoredBackground() {
+            return openBackgroundDatabase().then(database => new Promise((resolve, reject) => {
+                const transaction = database.transaction(BACKGROUND_DB_STORE, 'readwrite');
+                transaction.objectStore(BACKGROUND_DB_STORE).delete('selected');
+                transaction.oncomplete = () => {
+                    database.close();
+                    resolve();
+                };
+                transaction.onerror = () => {
+                    const error = transaction.error || new Error('Suppression du fond personnalisé impossible.');
+                    database.close();
+                    reject(error);
+                };
+                transaction.onabort = () => {
+                    const error = transaction.error || new Error('Suppression du fond personnalisé annulée.');
+                    database.close();
+                    reject(error);
+                };
+            }));
+        }
+
+        function releaseBackgroundMedia() {
+            if (backgroundIsVideo && backgroundMedia) {
+                backgroundMedia.pause();
+                backgroundMedia.removeAttribute('src');
+                backgroundMedia.load();
+            }
+            if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+            backgroundMedia = null;
+            backgroundObjectUrl = '';
+            backgroundIsVideo = false;
+        }
+
+        function loadDefaultBackground(statusMessage = 'Fond intégré au jeu actif.') {
+            const version = ++backgroundSelectionVersion;
+            releaseBackgroundMedia();
+            document.getElementById('background-clear').disabled = true;
+            const status = document.getElementById('background-status');
+            status.textContent = 'Chargement du fond intégré…';
+            const image = new Image();
+            image.addEventListener('load', () => {
+                if (version !== backgroundSelectionVersion) return;
+                backgroundMedia = image;
+                backgroundIsVideo = false;
+                status.textContent = statusMessage;
+            }, { once: true });
+            image.addEventListener('error', () => {
+                if (version !== backgroundSelectionVersion) return;
+                console.error('Image de fond intégrée introuvable :', DEFAULT_BACKGROUND_URL);
+                status.textContent = 'Impossible de charger le fond intégré au jeu.';
+            }, { once: true });
+            image.src = DEFAULT_BACKGROUND_URL;
+        }
+
+        function initializeBackground() {
+            const version = ++backgroundSelectionVersion;
+            document.getElementById('background-status').textContent = 'Restauration du fond enregistré…';
+            readStoredBackground().then(record => {
+                if (version !== backgroundSelectionVersion) return;
+                if (!record) {
+                    loadDefaultBackground();
+                    return;
+                }
+                if (!(record.blob instanceof Blob)) {
+                    deleteStoredBackground().then(() => {
+                        if (version === backgroundSelectionVersion) {
+                            loadDefaultBackground('Sauvegarde invalide supprimée · fond intégré restauré.');
+                        }
+                    }).catch(error => {
+                        console.error('Suppression de la sauvegarde de fond invalide impossible :', error);
+                        if (version === backgroundSelectionVersion) {
+                            loadDefaultBackground('Sauvegarde invalide · fond intégré restauré.');
+                        }
+                    });
+                    return;
+                }
+                const file = new File([record.blob], record.name || 'arriere-plan', {
+                    type: record.type || record.blob.type
+                });
+                loadBackgroundFile(file, false);
+            }).catch(error => {
+                console.error('Lecture du fond personnalisé impossible :', error);
+                if (version === backgroundSelectionVersion) {
+                    loadDefaultBackground('Fond intégré actif · le fond personnalisé n’a pas pu être lu.');
+                }
+            });
+        }
+
+        function clearBackground() {
+            const version = ++backgroundSelectionVersion;
+            const status = document.getElementById('background-status');
+            status.textContent = 'Restauration du fond d’origine…';
+            deleteStoredBackground().then(() => {
+                if (version === backgroundSelectionVersion) loadDefaultBackground();
+            }).catch(error => {
+                if (version !== backgroundSelectionVersion) return;
+                console.error('Restauration du fond d’origine impossible :', error);
+                status.textContent = 'Impossible d’effacer le fond enregistré : ' + error.message;
+            });
+        }
+
+        function loadBackgroundFile(file, persist = true) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            const isVideo = file.type.toLowerCase().startsWith('video/') ||
+                ['3gp', 'avi', 'flv', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm', 'wmv'].includes(extension);
+            const isImage = file.type.toLowerCase().startsWith('image/') ||
+                ['apng', 'avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'svg', 'tif', 'tiff', 'webp'].includes(extension);
+            const status = document.getElementById('background-status');
+            if (!isVideo && !isImage) {
+                status.textContent = 'Ce format image/vidéo n’est pas reconnu par le navigateur.';
+                return;
+            }
+
+            const detectedType = isVideo ? BACKGROUND_VIDEO_TYPES[extension] : BACKGROUND_IMAGE_TYPES[extension];
+            const mediaType = file.type.toLowerCase().startsWith(isVideo ? 'video/' : 'image/')
+                ? file.type
+                : detectedType || file.type;
+            const mediaFile = mediaType === file.type
+                ? file
+                : new File([file], file.name, { type: mediaType });
+            const version = ++backgroundSelectionVersion;
+            const objectUrl = URL.createObjectURL(mediaFile);
+            releaseBackgroundMedia();
+            backgroundObjectUrl = objectUrl;
+            const clearButton = document.getElementById('background-clear');
+            clearButton.disabled = false;
+            status.textContent = `Chargement de ${file.name}…`;
+
+            const activate = media => {
+                if (version !== backgroundSelectionVersion || backgroundObjectUrl !== objectUrl) return;
+                backgroundMedia = media;
+                backgroundIsVideo = isVideo;
+                let storageStatus = persist ? ' · sauvegarde en cours…' : ' · enregistré sur cet appareil';
+                let playbackStatus = '';
+                const updateStatus = () => {
+                    status.textContent = `${isVideo ? 'Vidéo' : 'Image'} active : ${file.name}${storageStatus}${playbackStatus}`;
+                };
+                updateStatus();
+                if (isVideo) {
+                    media.play().catch(error => {
+                        console.warn('Lecture de la vidéo de fond bloquée :', error.message);
+                        playbackStatus = ' · lecture bloquée par le navigateur';
+                        updateStatus();
+                    });
+                }
+                if (persist) {
+                    saveStoredBackground(mediaFile).then(() => {
+                        if (version !== backgroundSelectionVersion) return;
+                        storageStatus = ' · enregistré sur cet appareil';
+                        updateStatus();
+                    }).catch(error => {
+                        console.error('Enregistrement du fond personnalisé impossible :', error);
+                        if (version !== backgroundSelectionVersion) return;
+                        storageStatus = ' · non conservé après fermeture';
+                        updateStatus();
+                    });
+                }
+            };
+
+            const handleMediaError = () => {
+                if (version !== backgroundSelectionVersion || backgroundObjectUrl !== objectUrl) return;
+                releaseBackgroundMedia();
+                clearButton.disabled = true;
+                if (persist) {
+                    initializeBackground();
+                    return;
+                }
+                deleteStoredBackground().then(() => {
+                    loadDefaultBackground('Vidéo ou image enregistrée illisible · fond intégré restauré.');
+                }).catch(error => {
+                    console.error('Suppression du fond enregistré illisible impossible :', error);
+                    loadDefaultBackground('Fond intégré restauré · sauvegarde illisible non supprimée.');
+                });
+            };
+
+            if (isVideo) {
+                const video = document.createElement('video');
+                video.muted = true;
+                video.loop = true;
+                video.playsInline = true;
+                video.preload = 'auto';
+                video.addEventListener('loadeddata', () => activate(video), { once: true });
+                video.addEventListener('error', handleMediaError, { once: true });
+                video.src = objectUrl;
+                video.load();
+                return;
+            }
+
+            const image = new Image();
+            image.addEventListener('load', () => activate(image), { once: true });
+            image.addEventListener('error', handleMediaError, { once: true });
+            image.src = objectUrl;
+        }
+
+        // ---------- Décor du stand ----------
+        function drawAwning() {
+            const w = canvas.width, sw = 60;
+            for (let x = 0; x < w; x += sw) {
+                ctx.fillStyle = (x / sw) % 2 === 0 ? '#ef4444' : '#fff7ed';
+                ctx.fillRect(x, 0, sw, 26);
+                ctx.beginPath(); ctx.arc(x + sw / 2, 26, sw / 2, 0, Math.PI); ctx.fill();
+            }
+            const cols = ['#fde047', '#f472b6', '#22d3ee', '#a3e635'];
+            for (let x = 15; x < w; x += 45) {
+                const y = 66 + Math.sin(x / w * Math.PI * 6) * 6;
+                ctx.fillStyle = cols[((x / 45 | 0) + (frame / 20 | 0)) % 4];
+                ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        function drawCounter() {
+            const w = canvas.width, h = canvas.height, y = h - 46;
+            const g = ctx.createLinearGradient(0, y, 0, h);
+            g.addColorStop(0, '#7c3aed');
+            g.addColorStop(1, '#2e1065');
+            ctx.fillStyle = g; ctx.fillRect(0, y, w, 46);
+            ctx.fillStyle = '#c084fc'; ctx.fillRect(0, y, w, 5);
+            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+            for (let x = 0; x < w; x += 40) ctx.fillRect(x, y + 5, 3, 41);
+        }
+
+        // ---------- Boucle principale ----------
+        let spawnTimer = 0;
+        let stormAngle = 0;
+
+        function gameLoop() {
+            frame++;
+            const w = canvas.width, h = canvas.height;
+            const running = isPlaying && !isPaused;
+            const advancesWorld = running && (!roomConnected || isRoomOwner);
+
+            ctx.save();
+            if (shake > 0) {
+                ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+                shake *= 0.8;
+                if (shake < 0.3) shake = 0;
+            }
+
+            stormAngle += 0.01;
+            const mediaWidth = backgroundMedia
+                ? (backgroundIsVideo ? backgroundMedia.videoWidth : backgroundMedia.naturalWidth)
+                : 0;
+            const mediaHeight = backgroundMedia
+                ? (backgroundIsVideo ? backgroundMedia.videoHeight : backgroundMedia.naturalHeight)
+                : 0;
+            if (mediaWidth > 0 && mediaHeight > 0) {
+                const scale = Math.max(w / mediaWidth, h / mediaHeight);
+                const drawWidth = mediaWidth * scale;
+                const drawHeight = mediaHeight * scale;
+                ctx.drawImage(backgroundMedia, (w - drawWidth) / 2, (h - drawHeight) / 2, drawWidth, drawHeight);
+                ctx.fillStyle = 'rgba(9, 9, 20, 0.28)';
+                ctx.fillRect(0, 0, w, h);
+            } else {
+                const gradient = ctx.createRadialGradient(
+                    w / 2 + Math.sin(stormAngle) * 100,
+                    h / 2 + Math.cos(stormAngle) * 50,
+                    50, w / 2, h / 2, Math.max(w, h)
+                );
+                gradient.addColorStop(0, '#1e1b4b');
+                gradient.addColorStop(0.5, '#312e81');
+                gradient.addColorStop(1, '#09090b');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-10, -10, w + 20, h + 20);
+            }
+
+            for (let x = 0; x < w; x += 100) {
+                ctx.fillStyle = (x / 100) % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.06)';
+                ctx.fillRect(x, 0, 100, h);
+            }
+            ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < w; x += 50) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+            }
+
+            drawAwning();
+
+            if (advancesWorld) {
+                spawnTimer++;
+                if (spawnTimer > Math.max(12, Math.round(38 / gameSpeed)) &&
+                    targets.filter(t => t.state === 'alive').length < 8) {
+                    targets.push(new Target());
+                    spawnTimer = 0;
+                }
+            }
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const t = targets[i];
+                if (advancesWorld) t.update();
+                t.draw();
+                if (t.dead) targets.splice(i, 1);
+            }
+            processQueuedLiveShot();
+
+            drawCounter();
+
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                if (!isPaused) lasers[i].update();
+                lasers[i].draw();
+                if (lasers[i].age >= lasers[i].life) lasers.splice(i, 1);
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (!isPaused) particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+            for (let i = floatTexts.length - 1; i >= 0; i--) {
+                if (!isPaused) floatTexts[i].update();
+                floatTexts[i].draw();
+                if (floatTexts[i].alpha <= 0) floatTexts.splice(i, 1);
+            }
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+
+        const controlPanel = document.getElementById('control-panel');
+        const controlsToggle = document.getElementById('controls-toggle');
+        function setControlPanelVisible(visible) {
+            controlPanel.classList.toggle('is-offscreen', !visible);
+            controlPanel.setAttribute('aria-hidden', String(!visible));
+            controlsToggle.setAttribute('aria-expanded', String(visible));
+            if (!visible) controlsToggle.focus({ preventScroll: true });
+        }
+        controlsToggle.addEventListener('click', () => {
+            setControlPanelVisible(controlPanel.classList.contains('is-offscreen'));
+        });
+        document.getElementById('controls-hide').addEventListener('click', () => {
+            setControlPanelVisible(false);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'k') {
+                event.preventDefault();
+                setControlPanelVisible(true);
+            } else if (event.key === 'Escape' && !controlPanel.classList.contains('is-offscreen')) {
+                setControlPanelVisible(false);
+            }
+        });
+        document.querySelectorAll('[data-double-reward]').forEach(control => {
+            control.addEventListener('change', () => changeDoubleReward(control));
+        });
+        renderDoubleRewardControls();
+        document.getElementById('background-file').addEventListener('change', event => {
+            const input = event.currentTarget;
+            const file = input.files && input.files[0];
+            input.value = '';
+            if (file) loadBackgroundFile(file);
+        });
+        document.getElementById('background-clear').addEventListener('click', clearBackground);
+        document.getElementById('connect-button').addEventListener('click', connectLive);
+        document.getElementById('feed-detach').addEventListener('click', event => {
+            const feed = document.getElementById('shot-feed');
+            const detached = feed.classList.toggle('detached');
+            event.currentTarget.textContent = detached ? 'Rattacher les tirs' : 'Détacher les tirs';
+        });
+        document.getElementById('speed-control').addEventListener('input', event => {
+            if (roomConnected && !isRoomOwner) {
+                event.currentTarget.value = String(gameSpeed);
+                setConnectionStatus('Seul l’hôte peut régler la vitesse des cibles.');
+                return;
+            }
+            gameSpeed = Number(event.currentTarget.value);
+            document.getElementById('speed-value').textContent =
+                gameSpeed.toFixed(1).replace('.', ',') + '×';
+            syncRangeState();
+        });
+        document.getElementById('simulate-big-gift').addEventListener('click', () => {
+            if (!window.ArcadeEffects || typeof window.ArcadeEffects.simulateBigGift !== 'function') {
+                setConnectionStatus('Le simulateur est disponible lorsque le jeu est servi par Griffon Arcade.');
+                return;
+            }
+            window.ArcadeEffects.simulateBigGift(getPlayerName(), 100);
+        });
+        document.getElementById('simulate-share').addEventListener('click', () => {
+            if (!window.ArcadeEffects || typeof window.ArcadeEffects.simulateShare !== 'function') {
+                setConnectionStatus('Le simulateur est disponible lorsque le jeu est servi par Griffon Arcade.');
+                return;
+            }
+            window.ArcadeEffects.simulateShare();
+        });
+        initializeBackground();
+        updateRoomStatus();
+        renderShotFeed();
+    </script>
+</body>
+</html>

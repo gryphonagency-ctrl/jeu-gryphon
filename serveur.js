@@ -10,6 +10,10 @@ const paypal = require('./paypal');
 const store = require('./account-store');
 const dbSync = require('./db-sync');
 const { createMediaAdmin } = require('./media-admin');
+const {
+    normalizeShootingRangeShot,
+    normalizeShootingRangeState
+} = require('./shooting-range-protocol');
 
 // Filet de sécurité : evite le plantage au demarrage si account-store.js / db-sync.js sont en retard sur ce fichier.
 // Ces valeurs ne servent que lorsque la vraie fonction est absente.
@@ -125,6 +129,7 @@ const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
 const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
+const shootingRangeFile = path.join(__dirname, 'stand-de-tir-neon.html');
 const plushGameFile = path.join(__dirname, 'peluches-mutantes.html');
 const bottleGameFile = path.join(__dirname, 'bouteilles-colorees.html');
 const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
@@ -207,6 +212,7 @@ const protectedRoutes = new Set([
     '/bataille-des-planetes.html',
     '/maya-island.html',
     '/monde-du-ballon.html',
+    '/stand-de-tir-neon.html',
     '/peluches-mutantes.html',
     '/noyau-des-abysses.html',
     '/machine-cadeaux.html',
@@ -282,6 +288,7 @@ const fixedGameImageIds = new Set([
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
+store.grantGameAccessToExistingCreators('/stand-de-tir-neon.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/escape-bunker.html');
 store.grantGameAccessToExistingCreators('/defi-des-questions.html');
@@ -369,6 +376,7 @@ const staticGameTitles = {
     '/bataille-des-planetes.html': 'Bataille des planètes',
     '/maya-island.html': 'Maya Island',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
+    '/stand-de-tir-neon.html': 'Stand de Tir Néon',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/noyau-des-abysses.html': 'Le Noyau des Abysses',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
@@ -439,6 +447,7 @@ const gameRouteIds = new Map([
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
     ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
+    ['/stand-de-tir-neon.html', '/stand-de-tir-neon.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/noyau-des-abysses.html', '/noyau-des-abysses.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
@@ -3274,6 +3283,7 @@ const server = http.createServer((req, res) => {
         ['/maya-island/assets/maya-water-mask.png', [path.join(mayaIslandDirectory, 'assets', 'maya-water-mask.png'), 'image/png']],
         ['/maya-island/assets/horse-racer.svg', [path.join(mayaIslandDirectory, 'assets', 'horse-racer.svg'), 'image/svg+xml']],
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
+        ['/stand-de-tir-neon.html', [shootingRangeFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/noyau-des-abysses.html', [path.join(__dirname, 'noyau-des-abysses.html'), 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
@@ -3352,6 +3362,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/six-boites.png', [path.join(__dirname, 'images-vitrine', 'six-boites.png'), 'image/png']],
         ['/images-vitrine/petit-trot.png', [path.join(__dirname, 'images-vitrine', 'petit-trot.png'), 'image/png']],
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
+        ['/images-vitrine/stand-de-tir-neon.png', [path.join(__dirname, 'images-vitrine', 'stand-de-tir-neon.png'), 'image/png']],
+        ['/images-vitrine/stand-de-tir-neon-fond.png', [path.join(__dirname, 'images-vitrine', 'stand-de-tir-neon-fond.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux-circulaire.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux-circulaire.png'), 'image/png']],
@@ -3777,7 +3789,10 @@ setInterval(() => {
 const sessions = new Map();
 const clientSessions = new Map();
 const balloonShotRates = new WeakMap();
+const shootingRangeShotRates = new WeakMap();
 const MAX_BALLOON_GAME_PLAYERS = 30;
+const MAX_SHOOTING_RANGE_PLAYERS = 30;
+const MAX_SHOOTING_RANGE_SHOTS_PER_SECOND = 20;
 const centralTikTokSessionKey = /^[a-zA-Z0-9._]{1,32}$/.test(liveAlertTikTokUsername)
     ? liveAlertTikTokUsername.toLocaleLowerCase()
     : '';
@@ -3992,6 +4007,54 @@ function removeBalloonGameClient(session, socket) {
     }
 }
 
+function sendShootingRangeRole(session, socket) {
+    socket.send(JSON.stringify({
+        type: 'SHOOTING_RANGE_ROLE',
+        owner: session.shootingRangeOwner === socket,
+        players: session.shootingRangeClients.size,
+        maxPlayers: MAX_SHOOTING_RANGE_PLAYERS,
+        state: session.shootingRangeLastState
+    }));
+}
+
+function broadcastShootingRangePlayers(session) {
+    const status = JSON.stringify({
+        type: 'SHOOTING_RANGE_PLAYERS',
+        players: session.shootingRangeClients.size,
+        maxPlayers: MAX_SHOOTING_RANGE_PLAYERS
+    });
+    for (const client of session.shootingRangeClients) {
+        if (client.readyState === WebSocket.OPEN) client.send(status);
+    }
+}
+
+function addShootingRangeClient(session, socket) {
+    if (session.shootingRangeClients.has(socket)) return true;
+    if (session.shootingRangeClients.size >= MAX_SHOOTING_RANGE_PLAYERS) {
+        socket.send(JSON.stringify({
+            type: 'SHOOTING_RANGE_ERROR',
+            message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
+        }));
+        return false;
+    }
+    session.shootingRangeClients.add(socket);
+    if (!session.shootingRangeOwner) session.shootingRangeOwner = socket;
+    sendShootingRangeRole(session, socket);
+    broadcastShootingRangePlayers(session);
+    return true;
+}
+
+function removeShootingRangeClient(session, socket) {
+    if (!session.shootingRangeClients.delete(socket)) return;
+    if (session.shootingRangeOwner === socket) {
+        session.shootingRangeOwner = session.shootingRangeClients.values().next().value || null;
+        if (session.shootingRangeOwner) {
+            sendShootingRangeRole(session, session.shootingRangeOwner);
+        }
+    }
+    broadcastShootingRangePlayers(session);
+}
+
 function detachClient(socket) {
     const sessionKey = clientSessions.get(socket);
     if (!sessionKey) return;
@@ -3999,6 +4062,7 @@ function detachClient(socket) {
     const session = sessions.get(sessionKey);
     if (!session) return;
     removeBalloonGameClient(session, socket);
+    removeShootingRangeClient(session, socket);
     session.clients.delete(socket);
     session.walletCommandsEnabled = [...session.clients].some(client => !treasureOverlaySocketOwners.has(client));
     if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
@@ -4234,6 +4298,67 @@ wss.on('connection', (socket, req) => {
             console.warn('Message reçu du jeu invalide :', error.message);
             return;
         }
+        if (request.action === 'SHOOTING_RANGE_SYNC') {
+            const session = sessions.get(clientSessions.get(socket));
+            if (!session || session.shootingRangeOwner !== socket) return;
+            const state = normalizeShootingRangeState(request.state);
+            if (!state) {
+                socket.send(JSON.stringify({
+                    type: 'SHOOTING_RANGE_ERROR',
+                    message: 'État de partie invalide : la synchronisation a été refusée.'
+                }));
+                return;
+            }
+            const encoded = JSON.stringify({
+                type: 'SHOOTING_RANGE_STATE',
+                state,
+                players: session.shootingRangeClients.size,
+                maxPlayers: MAX_SHOOTING_RANGE_PLAYERS
+            });
+            if (Buffer.byteLength(encoded, 'utf8') > 64 * 1024) {
+                socket.send(JSON.stringify({
+                    type: 'SHOOTING_RANGE_ERROR',
+                    message: 'La synchronisation dépasse la taille autorisée.'
+                }));
+                return;
+            }
+            session.shootingRangeLastState = state;
+            for (const client of session.shootingRangeClients) {
+                if (client !== socket && client.readyState === WebSocket.OPEN) client.send(encoded);
+            }
+            return;
+        }
+        if (request.action === 'SHOOTING_RANGE_SHOT') {
+            const session = sessions.get(clientSessions.get(socket));
+            if (!session?.shootingRangeClients.has(socket) || !session.shootingRangeOwner ||
+                session.shootingRangeOwner === socket) return;
+            const shot = normalizeShootingRangeShot(request);
+            if (!shot) return;
+            const now = Date.now();
+            let rate = shootingRangeShotRates.get(socket);
+            if (!rate || now - rate.startedAt >= 1000) {
+                rate = { startedAt: now, count: 0, notified: false };
+                shootingRangeShotRates.set(socket, rate);
+            }
+            if (rate.count >= MAX_SHOOTING_RANGE_SHOTS_PER_SECOND) {
+                if (!rate.notified) {
+                    rate.notified = true;
+                    socket.send(JSON.stringify({
+                        type: 'SHOOTING_RANGE_ERROR',
+                        message: 'Limite de tirs atteinte : réessaie dans un instant.'
+                    }));
+                }
+                return;
+            }
+            rate.count++;
+            if (session.shootingRangeOwner.readyState === WebSocket.OPEN) {
+                session.shootingRangeOwner.send(JSON.stringify({
+                    type: 'SHOOTING_RANGE_SHOT',
+                    ...shot
+                }));
+            }
+            return;
+        }
         if (request.action === 'BALLOON_GAME_SYNC') {
             const session = sessions.get(clientSessions.get(socket));
             if (!session || session.balloonOwner !== socket ||
@@ -4337,6 +4462,7 @@ wss.on('connection', (socket, req) => {
 
         const sessionKey = username.toLocaleLowerCase();
         const wantsBalloonGame = request.gameMode === 'balloon';
+        const wantsShootingRangeGame = request.gameMode === 'shooting-range';
         const currentSessionKey = clientSessions.get(socket);
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
@@ -4353,6 +4479,7 @@ wss.on('connection', (socket, req) => {
                 if (!currentSession.balloonOwner) currentSession.balloonOwner = socket;
                 sendBalloonGameRole(currentSession, socket);
             }
+            if (wantsShootingRangeGame && !addShootingRangeClient(currentSession, socket)) return;
             if (currentSession && !currentSession.isLive &&
                 /erreur de connexion tiktok|connexion tiktok interrompue/i.test(currentSession.statusMessage)) {
                 void currentSession.disconnect();
@@ -4391,6 +4518,9 @@ wss.on('connection', (socket, req) => {
                 balloonClients: new Set(),
                 balloonOwner: null,
                 balloonLastState: null,
+                shootingRangeClients: new Set(),
+                shootingRangeOwner: null,
+                shootingRangeLastState: null,
                 seenPlayerIds: new Set(),
                 walletProfiles: new Map(),
                 walletCommandsEnabled: false,
@@ -4413,6 +4543,14 @@ wss.on('connection', (socket, req) => {
             }));
             return;
         }
+        if (wantsShootingRangeGame &&
+            session.shootingRangeClients.size >= MAX_SHOOTING_RANGE_PLAYERS) {
+            socket.send(JSON.stringify({
+                type: 'SHOOTING_RANGE_ERROR',
+                message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
+            }));
+            return;
+        }
         session.clients.add(socket);
         clientSessions.set(socket, sessionKey);
         if (wantsBalloonGame) {
@@ -4427,6 +4565,7 @@ wss.on('connection', (socket, req) => {
                 }));
             }
         }
+        if (wantsShootingRangeGame) addShootingRangeClient(session, socket);
         socket.send(JSON.stringify({
             type: 'STATUS',
             message: session.statusMessage || `Connexion TikTok en cours · @${username}`
