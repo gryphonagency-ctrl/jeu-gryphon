@@ -18,6 +18,9 @@
         .panel.hidden-panel:hover { opacity: 1; }
         .panel.hidden-panel .panel-head { padding: 4px; border: 0; }
         .panel.hidden-panel .panel-title, .panel.hidden-panel .panel-body { display: none; }
+        .queue-detached { position: fixed; z-index: 12; top: 16px; left: 16px; width: 240px; }
+        .queue-detached .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .queue-detached #queue-status { margin: 0; font-size: 11px; color: #cfc6ee; overflow-wrap: anywhere; }
         .box { display: grid; gap: 6px; padding: 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.04); }
         .box h3 { margin: 0; color: #ffd36b; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
         .row { display: flex; gap: 6px; }
@@ -44,8 +47,8 @@
             <button id="eye" class="eye" type="button" aria-expanded="true" title="Masquer / afficher le panneau" aria-label="Masquer le panneau">👁</button>
         </header>
         <div id="panel-body" class="panel-body">
-            <section class="box"> 
-                
+            <section class="box">
+
                 <h3>Connexion TikTok</h3>
                 <input id="username" type="text" maxlength="32" placeholder="Pseudo TikTok" autocomplete="off">
                 <input id="ws-url" type="hidden" value="wss://jeu6boite.onrender.com" aria-label="Adresse WebSocket">
@@ -56,6 +59,12 @@
                 <h3>Chance de touche (RTP)</h3>
                 <label for="rtp">Probabilité <output id="rtp-out">85%</output></label>
                 <input id="rtp" type="range" min="10" max="100" value="85">
+                <label for="speed">Vitesse <output id="speed-out">100%</output></label>
+                <input id="speed" type="range" min="50" max="200" value="100">
+            </section>
+            <section id="queue-box" class="box">
+                <div class="queue-head"><h3>File des tirs</h3><button id="queue-detach" class="btn alt" type="button">Détacher</button></div>
+                <p id="queue-status" role="status">Aucun tir en attente</p>
             </section>
             <section class="box">
                 <h3>Éditeur de récompenses ✏️</h3>
@@ -70,6 +79,12 @@
                 <button id="voice" class="btn alt" type="button" aria-pressed="false">🔇 Activer l'accueil vocal</button>
             </section>
             <section class="box">
+                <h3>Sons du live</h3>
+                <label for="effects-sound">Activer les effets sonores <input id="effects-sound" type="checkbox" checked></label>
+                <label for="effects-volume">Volume <output id="effects-volume-out">70%</output></label>
+                <input id="effects-volume" type="range" min="0" max="100" value="70">
+            </section>
+            <section class="box">
                 <h3>Simulateur</h3>
                 <input id="sim-name" type="text" value="Alex_TikTok 🚀" aria-label="Pseudo simulé">
                 <div class="row">
@@ -80,13 +95,14 @@
                     <button id="sim-join" class="btn alt" type="button">👋 Arrivée</button>
                     <button id="sim-star" class="btn alt" type="button">!étoile</button>
                 </div>
+                <div class="row">
+                    <button id="sim-big-gift" class="btn" type="button">🎆 Gros cadeau</button>
+                    <button id="sim-share" class="btn alt" type="button">✈️ Partage</button>
+                </div>
             </section>
             <section class="box">
-                <h3>Sauvegarde</h3>
-                <div class="row">
-                    <button id="save" class="btn alt" type="button">💾 Enregistrer</button>
-                    <button id="export" class="btn alt" type="button">📤 Exporter</button>
-                </div>
+                <h3>Partie</h3>
+                <div data-save-key="bouteilles-colorees-save"></div>
             </section>
         </div>
     </aside>
@@ -104,18 +120,18 @@
         const $ = id => document.getElementById(id);
 
         const defs = [
-            { kind: 'wine', c1: '#d63a3a', c2: '#ff9a9a' },
-            { kind: 'soda', c1: '#ff4fa3', c2: '#ffb3d6' },
-            { kind: 'flask', c1: '#2fc4f0', c2: '#aeeaff' },
-            { kind: 'tall', c1: '#ffb62e', c2: '#ffe08a' },
-            { kind: 'wine', c1: '#6bd44a', c2: '#c3f2a8' },
-            { kind: 'soda', c1: '#a45cf0', c2: '#d6b3ff' },
-            { kind: 'flask', c1: '#ff7a2e', c2: '#ffc79a' },
-            { kind: 'tall', c1: '#3dd6b0', c2: '#aef2e0' },
-            { kind: 'wine', c1: '#4a7bff', c2: '#a9c0ff' },
-            { kind: 'soda', c1: '#ffe600', c2: '#fff6a0' }];
+            { kind: 'wine', c1: '#d63a3a', c2: '#ff9a9a', label: 'band' },
+            { kind: 'soda', c1: '#ff4fa3', c2: '#ffb3d6', label: 'wrap' },
+            { kind: 'flask', c1: '#2fc4f0', c2: '#aeeaff', label: 'badge' },
+            { kind: 'beer', c1: '#ffb62e', c2: '#ffe08a', label: 'band' },
+            { kind: 'champagne', c1: '#6bd44a', c2: '#c3f2a8', label: 'badge' },
+            { kind: 'carafe', c1: '#a45cf0', c2: '#d6b3ff', label: 'diag' },
+            { kind: 'soda', c1: '#ff7a2e', c2: '#ffc79a', label: 'wrap' },
+            { kind: 'tall', c1: '#3dd6b0', c2: '#aef2e0', label: 'band' },
+            { kind: 'wine', c1: '#4a7bff', c2: '#a9c0ff', label: 'diag' },
+            { kind: 'beer', c1: '#ffe600', c2: '#fff6a0', label: 'badge' }];
 
-        const settings = { rtp: 85, min: 1, max: 50 };
+        const settings = { rtp: 85, min: 1, max: 50, speed: 100 };
         let queue = [];
         let queueIndex = 0;
         let starsGiven = 0;
@@ -162,6 +178,7 @@
             pendingShots.length = 0;
             slots.forEach(slot => Object.assign(slot, { state: 'empty', plush: null, t: 0, wobble: 0 }));
             fillSlots(true);
+            renderQueue();
             banner = null;
         }
 
@@ -271,17 +288,26 @@
         }
 
         /* ---------- Tirs ---------- */
-        function queueShots(viewer, count) {
-            for (let i = 0; i < count; i++) pendingShots.push(viewer);
+        function renderQueue() {
+            const names = pendingShots.slice(0, 4).map(shot => cleanName(shot.viewer.username));
+            const remainder = pendingShots.length > names.length ? ` +${pendingShots.length - names.length}` : '';
+            $('queue-status').textContent = pendingShots.length
+                ? `${pendingShots.length} tir${pendingShots.length > 1 ? 's' : ''} en attente : ${names.join(', ')}${remainder}`
+                : 'Aucun tir en attente';
         }
 
-        function launchShot(viewer) {
+        function queueShots(viewer, count, simulated) {
+            for (let i = 0; i < count; i++) pendingShots.push({ viewer, simulated: Boolean(simulated) });
+            renderQueue();
+        }
+
+        function launchShot(shot) {
             const idle = slots.map((s, i) => ({ s, i })).filter(o => o.s.state === 'idle');
             if (!idle.length) return false;
             const free = idle.filter(o => !o.s.targeted);
             const pick = (free.length ? free : idle)[Math.floor(Math.random() * (free.length || idle.length))];
             pick.s.targeted = true;
-            balls.push({ viewer, slot: pick.i, plush: pick.s.plush, t: 0, dur: 0.85, x: 707, y: 540 });
+            balls.push({ ...shot, slot: pick.i, plush: pick.s.plush, t: 0, dur: 0.85, x: 707, y: 540 });
             return true;
         }
 
@@ -293,7 +319,19 @@
             if (valid && Math.random() * 100 < settings.rtp) {
                 const reward = slot.plush.reward;
                 ball.viewer.stars += reward;
-                try { window.ArcadeStars?.record?.(ball.viewer.username, reward); } catch (e) {}
+                if (!ball.simulated) {
+                    const award = window.ArcadeStars?.award;
+                    if (typeof award !== 'function') {
+                        console.error('Le portefeuille ArcadeStars est indisponible.');
+                        showToast('Impossible de créditer le portefeuille : service indisponible.');
+                    } else {
+                        Promise.resolve(award.call(window.ArcadeStars, { username: ball.viewer.username, amount: reward }))
+                            .catch(error => {
+                                console.error('Étoiles non créditées :', error);
+                                showToast(`Erreur de crédit pour ${cleanName(ball.viewer.username)}.`);
+                            });
+                    }
+                }
                 starsGiven += reward;
                 knocked += 1;
                 slot.state = 'falling';
@@ -331,7 +369,11 @@
         function update(dt) {
             shotTimer -= dt;
             if (pendingShots.length && shotTimer <= 0) {
-                if (launchShot(pendingShots[0])) { pendingShots.shift(); shotTimer = 0.4; } else { shotTimer = 0.3; }
+                if (launchShot(pendingShots[0])) {
+                    pendingShots.shift();
+                    renderQueue();
+                    shotTimer = 0.4;
+                } else { shotTimer = 0.3; }
             }
             slots.forEach((slot, i) => {
                 slot.t += dt;
@@ -395,64 +437,288 @@
             c.fill();
         }
 
-        function bottlePath(c, kind) {
-            c.beginPath();
-            if (kind === 'wine') {
-                c.moveTo(-26, -2); c.lineTo(-26, -70); c.quadraticCurveTo(-26, -86, -9, -92); c.lineTo(-9, -118);
-                c.lineTo(9, -118); c.lineTo(9, -92); c.quadraticCurveTo(26, -86, 26, -70); c.lineTo(26, -2);
-            } else if (kind === 'flask') {
-                c.moveTo(-9, -118); c.lineTo(9, -118); c.lineTo(9, -90); c.quadraticCurveTo(34, -70, 34, -30);
-                c.quadraticCurveTo(34, -2, 18, -2); c.lineTo(-18, -2); c.quadraticCurveTo(-34, -2, -34, -30);
-                c.quadraticCurveTo(-34, -70, -9, -90);
-            } else if (kind === 'soda') {
-                c.moveTo(-24, -2); c.lineTo(-24, -62); c.quadraticCurveTo(-24, -78, -12, -88); c.lineTo(-10, -112);
-                c.lineTo(10, -112); c.lineTo(12, -88); c.quadraticCurveTo(24, -78, 24, -62); c.lineTo(24, -2);
-            } else {
-                c.moveTo(-20, -2); c.lineTo(-20, -96); c.quadraticCurveTo(-20, -104, -12, -106); c.lineTo(-8, -120);
-                c.lineTo(8, -120); c.lineTo(12, -106); c.quadraticCurveTo(20, -104, 20, -96); c.lineTo(20, -2);
-            }
-            c.closePath();
+        /* Profils (y, demi-largeur) du bas vers le haut, pour chaque style de bouteille */
+        const BOTTLES = {
+            wine: { pts: [[0, 19], [-1.5, 23], [-4, 25], [-62, 25], [-72, 24], [-82, 18], [-90, 11], [-97, 7.8], [-112, 7.2], [-119, 7.8], [-121, 9.4], [-125, 9.4]], level: -104, label: [-58, -22], fizz: false, punt: true },
+            champagne: { pts: [[0, 22], [-1.5, 26], [-4, 28.5], [-60, 29], [-68, 28], [-80, 22], [-92, 14], [-103, 10.5], [-117, 9.8], [-121, 11.2], [-124, 11.2]], level: -98, label: [-60, -24], fizz: true, punt: true },
+            soda: { pts: [[0, 17], [-1.5, 20], [-4, 22], [-14, 24], [-26, 22], [-36, 17.5], [-46, 18.5], [-60, 23], [-76, 25], [-88, 22], [-96, 14], [-104, 8.5], [-112, 8.2], [-115, 9.8], [-117, 9.8]], level: -92, label: [-74, -20], fizz: true },
+            beer: { pts: [[0, 17], [-1.5, 20.5], [-4, 22], [-58, 22], [-68, 21.4], [-80, 17], [-92, 10], [-100, 8.2], [-122, 7.8], [-126, 9.2], [-128, 9.2]], level: -100, label: [-56, -18], fizz: true, neckLabel: [-114, -100] },
+            flask: { pts: [[0, 13], [-2, 20], [-7, 28], [-16, 33.5], [-30, 36], [-44, 34.5], [-56, 29], [-65, 21], [-71, 13], [-77, 8.6], [-92, 8], [-96, 9.6], [-99, 9.6]], level: -54, label: [-46, -14], fizz: false },
+            carafe: { pts: [[0, 27], [-2, 31], [-6, 33], [-24, 33], [-42, 29], [-58, 20], [-68, 12], [-80, 8.5], [-96, 8.8], [-104, 12], [-108, 13.2], [-110, 13.2]], level: -66, label: [-52, -12], fizz: false },
+            tall: { pts: [[0, 17], [-1.5, 19.5], [-4, 20.5], [-86, 20.5], [-90, 20], [-96, 15], [-101, 9.5], [-104, 8.5], [-108, 8.5]], level: -90, label: [-70, -26], fizz: false, facets: true }
+        };
+
+        const hexRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+        function shade(h, amt, alpha = 1) {
+            const [r, g, b] = hexRgb(h), t = amt < 0 ? 0 : 255, k = Math.abs(amt);
+            return `rgba(${Math.round(r + (t - r) * k)},${Math.round(g + (t - g) * k)},${Math.round(b + (t - b) * k)},${alpha})`;
         }
 
-        function drawBottle(c, def) {
-            const { kind, c1, c2 } = def;
-            ell(c, 0, 0, 34, 7, 'rgba(0,0,0,.3)');
-            c.save();
-            bottlePath(c, kind);
-            const body = c.createLinearGradient(-34, 0, 34, 0);
-            body.addColorStop(0, c1);
-            body.addColorStop(0.45, c2);
-            body.addColorStop(1, c1);
-            c.fillStyle = body;
-            c.globalAlpha = 0.92;
-            c.fill();
-            c.globalAlpha = 1;
-            c.lineWidth = 3;
-            c.strokeStyle = 'rgba(255,255,255,.75)';
-            c.stroke();
-            c.clip();
-            // Liquide et étiquette
-            c.fillStyle = 'rgba(255,255,255,.28)';
-            c.fillRect(-40, -50, 80, 6);
-            c.fillStyle = 'rgba(255,255,255,.85)';
-            c.fillRect(-40, -44, 80, 26);
-            c.restore();
-            c.fillStyle = c1;
-            c.font = '900 13px Orbitron, Poppins, sans-serif';
-            c.textAlign = 'center';
-            c.textBaseline = 'middle';
-            c.fillText('★', 0, -31);
-            // Reflet
-            c.fillStyle = 'rgba(255,255,255,.55)';
-            c.beginPath(); c.roundRect(-18, -84, 5, 36, 3); c.fill();
-            // Bouchon
-            const top = kind === 'flask' || kind === 'wine' ? -118 : kind === 'soda' ? -112 : -120;
-            c.fillStyle = '#ffd36b';
-            c.beginPath(); c.roundRect(-9, top - 8, 18, 10, 3); c.fill();
-            c.strokeStyle = 'rgba(0,0,0,.35)';
-            c.lineWidth = 1.5;
-            c.stroke();
+        function smoothProfile(pts) {
+            const out = [], P = [pts[0], ...pts, pts[pts.length - 1]];
+            for (let i = 1; i < P.length - 2; i++) {
+                const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2];
+                for (let s = 0; s < 8; s++) {
+                    const t = s / 8, t2 = t * t, t3 = t2 * t;
+                    const f = k => 0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3);
+                    out.push([Math.min(0, f(0)), Math.max(1, f(1))]);
+                }
+            }
+            out.push(pts[pts.length - 1].slice());
+            return out;
         }
+
+        function widthAt(dense, y) {
+            if (y >= dense[0][0]) return dense[0][1];
+            for (let i = 1; i < dense.length; i++) {
+                if (y >= dense[i][0]) {
+                    const a = dense[i - 1], b = dense[i], t = (y - a[0]) / ((b[0] - a[0]) || 1);
+                    return a[1] + (b[1] - a[1]) * t;
+                }
+            }
+            return dense[dense.length - 1][1];
+        }
+
+        function starAt(g, x, y, R, fill) {
+            g.beginPath();
+            for (let i = 0; i < 10; i++) {
+                const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? R * 0.45 : R;
+                g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+            }
+            g.closePath(); g.fillStyle = fill; g.fill();
+        }
+
+        function metalGradient(g, x0, x1, base) {
+            const m = g.createLinearGradient(x0, 0, x1, 0);
+            m.addColorStop(0, shade(base, -0.55)); m.addColorStop(0.25, shade(base, 0.45));
+            m.addColorStop(0.5, shade(base, 0.1)); m.addColorStop(0.8, shade(base, -0.4)); m.addColorStop(1, shade(base, -0.65));
+            return m;
+        }
+
+        function drawLabel(g, def, S, dense) {
+            const [y1, y2] = S.label, mid = (y1 + y2) / 2, hgt = y2 - y1, c1 = def.c1;
+            const paper = g.createLinearGradient(0, y1, 0, y2);
+            paper.addColorStop(0, '#fffaf0'); paper.addColorStop(1, '#eddcb8');
+            g.save();
+            if (def.label === 'band') {
+                g.fillStyle = paper; g.fillRect(-40, y1, 80, hgt);
+                g.fillStyle = shade(c1, -0.4); g.fillRect(-40, y1 + 2.2, 80, 2.4); g.fillRect(-40, y2 - 4.6, 80, 2.4);
+                starAt(g, 0, mid - 1, Math.min(7, hgt * 0.24), shade(c1, -0.15));
+                g.fillStyle = 'rgba(60,35,20,.55)'; g.fillRect(-9, mid + hgt * 0.2, 18, 1.5); g.fillRect(-6, mid + hgt * 0.2 + 3.4, 12, 1.2);
+            } else if (def.label === 'badge') {
+                g.fillStyle = paper; g.fillRect(-40, y1, 80, hgt);
+                g.fillStyle = shade(c1, -0.35); g.fillRect(-40, y1, 80, 2.2); g.fillRect(-40, y2 - 2.2, 80, 2.2);
+                const R = Math.min(hgt * 0.34, 12);
+                g.beginPath(); g.arc(0, mid, R, 0, 7); g.fillStyle = shade(c1, -0.1); g.fill();
+                g.lineWidth = 1.4; g.strokeStyle = '#ffd36b'; g.stroke();
+                starAt(g, 0, mid, R * 0.68, '#fff6d6');
+            } else if (def.label === 'diag') {
+                g.fillStyle = shade(c1, -0.35); g.fillRect(-40, y1, 80, hgt);
+                for (let i = -6; i < 8; i++) {
+                    g.beginPath(); g.moveTo(i * 12, y2); g.lineTo(i * 12 + 7, y2); g.lineTo(i * 12 + 7 + hgt * 0.7, y1); g.lineTo(i * 12 + hgt * 0.7, y1); g.closePath();
+                    g.fillStyle = i % 2 ? 'rgba(255,255,255,.88)' : shade(c1, 0.15); g.fill();
+                }
+                g.fillStyle = '#ffd36b'; g.fillRect(-40, y1, 80, 1.8); g.fillRect(-40, y2 - 1.8, 80, 1.8);
+            } else {
+                // étiquette plastique enveloppante
+                g.fillStyle = shade(c1, -0.05); g.fillRect(-40, y1, 80, hgt);
+                g.beginPath(); g.moveTo(-40, mid + 4);
+                for (let x = -40; x <= 40; x += 4) g.lineTo(x, mid + Math.sin(x * 0.17) * 5 + 4);
+                g.lineTo(40, y2); g.lineTo(-40, y2); g.closePath(); g.fillStyle = 'rgba(255,255,255,.9)'; g.fill();
+                g.beginPath(); g.moveTo(-40, mid - 6);
+                for (let x = -40; x <= 40; x += 4) g.lineTo(x, mid - 6 + Math.sin(x * 0.17) * 5);
+                g.lineWidth = 2.2; g.strokeStyle = shade(c1, 0.5); g.stroke();
+                starAt(g, 0, mid - 12, 7, '#fff6d6');
+            }
+            // légères fibres de papier
+            g.globalAlpha = 0.07; g.fillStyle = '#000';
+            for (let i = 0; i < 26; i++) g.fillRect(-30 + ((i * 37) % 60), y1 + ((i * 53) % Math.max(1, Math.floor(hgt))), 2.5, 0.7);
+            g.restore();
+        }
+
+        function drawCap(g, def, S, dense) {
+            const top = S.pts[S.pts.length - 1][0], c1 = def.c1, hw = S.pts[S.pts.length - 1][1];
+            const kind = def.kind;
+            if (kind === 'soda' || kind === 'beer') {
+                const w = hw + 3.4, y0 = top - 1, base = kind === 'soda' ? '#ffd36b' : '#d9a21a';
+                g.beginPath(); g.moveTo(-w + 1, y0 - 7); g.quadraticCurveTo(0, y0 - 9.5, w - 1, y0 - 7);
+                for (let i = 0; i <= 12; i++) g.lineTo(w - i * (2 * w / 12), y0 + (i % 2 ? 0 : 2.4));
+                g.closePath();
+                g.fillStyle = metalGradient(g, -w, w, base); g.fill();
+                g.lineWidth = 1; g.strokeStyle = 'rgba(40,20,0,.6)'; g.stroke();
+                g.strokeStyle = 'rgba(80,40,0,.35)'; g.lineWidth = 0.7;
+                for (let i = 1; i < 12; i++) { g.beginPath(); g.moveTo(-w + i * (2 * w / 12), y0 - 6); g.lineTo(-w + i * (2 * w / 12), y0 + (i % 2 ? 0 : 1.5)); g.stroke(); }
+                g.fillStyle = 'rgba(255,255,255,.6)'; g.fillRect(-w + 3, y0 - 6.8, w * 0.8, 1.3);
+            } else if (kind === 'wine') {
+                // capsule en feuille
+                const foil = [];
+                for (const d of dense) if (d[0] <= top + 27) foil.push(d);
+                g.beginPath(); g.moveTo(-foil[0][1] - 1.4, foil[0][0]);
+                for (const d of foil) g.lineTo(-d[1] - 1.4, d[0]);
+                g.lineTo(foil[foil.length - 1][1] + 1.4, foil[foil.length - 1][0]);
+                for (let i = foil.length - 1; i >= 0; i--) g.lineTo(foil[i][1] + 1.4, foil[i][0]);
+                g.closePath();
+                g.fillStyle = metalGradient(g, -hw - 2, hw + 2, shade(c1, -0.35).replace(/rgba\((\d+),(\d+),(\d+),1\)/, (m, r, gg, b) => '#' + [r, gg, b].map(v => (+v).toString(16).padStart(2, '0')).join('')));
+                g.fill(); g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,.5)'; g.stroke();
+                g.beginPath(); g.ellipse(0, top - 0.6, hw + 1.4, 2.6, 0, 0, 7); g.fillStyle = shade(c1, -0.2); g.fill(); g.stroke();
+                g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(-hw + 1.5, top + 3, 1.8, 20);
+            } else if (kind === 'champagne') {
+                const foil = [];
+                for (const d of dense) if (d[0] <= -88) foil.push(d);
+                g.beginPath(); g.moveTo(-foil[0][1] - 1.6, foil[0][0]);
+                for (const d of foil) g.lineTo(-d[1] - 1.6, d[0]);
+                g.quadraticCurveTo(-hw - 4, top - 6, 0, top - 8.5); g.quadraticCurveTo(hw + 4, top - 6, foil[foil.length - 1][1] + 1.6, foil[foil.length - 1][0]);
+                for (let i = foil.length - 1; i >= 0; i--) g.lineTo(foil[i][1] + 1.6, foil[i][0]);
+                g.closePath();
+                g.fillStyle = metalGradient(g, -hw - 3, hw + 3, '#e6b93c'); g.fill();
+                g.lineWidth = 1; g.strokeStyle = 'rgba(70,40,0,.6)'; g.stroke();
+                // muselet (cage métallique)
+                g.strokeStyle = 'rgba(70,70,80,.85)'; g.lineWidth = 1.1;
+                for (const yy of [-104, -112, -120]) { g.beginPath(); g.moveTo(-widthAt(dense, yy) - 1.7, yy); g.lineTo(widthAt(dense, yy) + 1.7, yy); g.stroke(); }
+                g.beginPath(); g.moveTo(-hw, top + 1); g.quadraticCurveTo(-hw - 2, top - 6, 0, top - 6); g.quadraticCurveTo(hw + 2, top - 6, hw, top + 1); g.stroke();
+                g.beginPath(); g.moveTo(0, top - 6); g.lineTo(0, -92); g.stroke();
+                g.beginPath(); g.arc(0, -92.5, 2.4, 0, 7); g.stroke();
+                g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(-hw + 1.5, top + 4, 1.6, 22);
+            } else if (kind === 'flask') {
+                const y0 = top + 1, y1 = y0 - 15;
+                g.beginPath(); g.moveTo(-hw - 0.4, y0); g.lineTo(-hw - 2.8, y1); g.quadraticCurveTo(0, y1 - 3, hw + 2.8, y1); g.lineTo(hw + 0.4, y0); g.closePath();
+                const cg = g.createLinearGradient(-hw - 3, 0, hw + 3, 0);
+                cg.addColorStop(0, '#6b4220'); cg.addColorStop(0.3, '#c8935a'); cg.addColorStop(0.6, '#a8713c'); cg.addColorStop(1, '#5a3517');
+                g.fillStyle = cg; g.fill(); g.lineWidth = 1; g.strokeStyle = 'rgba(30,15,0,.65)'; g.stroke();
+                g.fillStyle = 'rgba(50,25,5,.35)';
+                for (let i = 0; i < 14; i++) g.fillRect(-hw + ((i * 29) % (hw * 2)), y1 + 2 + ((i * 17) % 11), 1.6, 0.8);
+                g.fillStyle = 'rgba(255,230,190,.4)'; g.fillRect(-hw, y1 + 1, 1.8, 12);
+            } else if (kind === 'carafe') {
+                const cy = top - 8, R = 11.5;
+                const gr = g.createRadialGradient(-R * 0.4, cy - R * 0.4, 1, 0, cy, R);
+                gr.addColorStop(0, shade(c1, 0.7, 0.95)); gr.addColorStop(0.55, shade(c1, -0.05, 0.92)); gr.addColorStop(1, shade(c1, -0.6, 0.95));
+                g.beginPath(); g.arc(0, cy, R, 0, 7); g.fillStyle = gr; g.fill();
+                g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.5)'; g.stroke();
+                g.beginPath(); g.ellipse(-R * 0.35, cy - R * 0.4, 3.2, 1.8, -0.6, 0, 7); g.fillStyle = 'rgba(255,255,255,.85)'; g.fill();
+                g.beginPath(); g.moveTo(-hw * 0.7, top); g.lineTo(-4, top - 3.5); g.lineTo(4, top - 3.5); g.lineTo(hw * 0.7, top); g.closePath(); g.fillStyle = shade(c1, -0.3, 0.95); g.fill();
+            } else {
+                // bouchon à vis en métal
+                const y0 = top + 1, y1 = y0 - 20, w = hw + 2.2;
+                g.beginPath(); g.moveTo(-w, y0); g.lineTo(-w, y1 + 3); g.quadraticCurveTo(-w, y1, -w + 3, y1); g.lineTo(w - 3, y1); g.quadraticCurveTo(w, y1, w, y1 + 3); g.lineTo(w, y0); g.closePath();
+                g.fillStyle = metalGradient(g, -w, w, '#e9c24a'); g.fill();
+                g.lineWidth = 1; g.strokeStyle = 'rgba(60,35,0,.65)'; g.stroke();
+                g.strokeStyle = 'rgba(70,40,0,.4)'; g.lineWidth = 0.7;
+                for (let i = 1; i < 10; i++) { g.beginPath(); g.moveTo(-w + i * (2 * w / 10), y1 + 2); g.lineTo(-w + i * (2 * w / 10), y0 - 6); g.stroke(); }
+                g.fillStyle = shade(c1, -0.25); g.fillRect(-w, y0 - 5, w * 2, 5);
+                g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(-w + 1.8, y1 + 2, 1.8, 13);
+            }
+        }
+
+        function buildBottleSprite(def) {
+            const S = BOTTLES[def.kind], k = 4, w = 110, h = 170, ox = 55, oy = 152;
+            const cv = document.createElement('canvas');
+            cv.width = w * k; cv.height = h * k;
+            const g = cv.getContext('2d');
+            g.setTransform(k, 0, 0, k, ox * k, oy * k);
+            const dense = smoothProfile(S.pts);
+            const top = S.pts[S.pts.length - 1][0];
+            const maxW = Math.max(...dense.map(d => d[1]));
+            const { c1, c2 } = def;
+            g.lineJoin = 'round';
+            const body = () => {
+                g.beginPath(); g.moveTo(-dense[0][1], dense[0][0]);
+                for (const d of dense) g.lineTo(-d[1], d[0]);
+                const t = dense[dense.length - 1]; g.lineTo(t[1], t[0]);
+                for (let i = dense.length - 1; i >= 0; i--) g.lineTo(dense[i][1], dense[i][0]);
+                g.closePath();
+            };
+            // ombre portée
+            const sh = g.createRadialGradient(0, 1, 2, 0, 1, maxW + 10);
+            sh.addColorStop(0, 'rgba(0,0,0,.5)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+            g.save(); g.translate(4, 0); g.scale(1, 0.22); g.fillStyle = sh; g.beginPath(); g.arc(0, 4, maxW + 10, 0, 7); g.fill(); g.restore();
+
+            // verre coloré, plus sombre sur les bords (épaisseur)
+            g.save(); body(); g.clip();
+            const glass = g.createLinearGradient(-maxW, 0, maxW, 0);
+            glass.addColorStop(0, shade(c1, -0.62, 0.97)); glass.addColorStop(0.14, shade(c1, -0.3, 0.93));
+            glass.addColorStop(0.42, shade(c1, 0.22, 0.88)); glass.addColorStop(0.75, shade(c1, -0.12, 0.92)); glass.addColorStop(1, shade(c1, -0.6, 0.97));
+            g.fillStyle = glass; g.fillRect(-maxW - 2, top - 4, maxW * 2 + 4, -top + 8);
+            g.fillStyle = 'rgba(255,255,255,.1)'; g.fillRect(-maxW - 2, top - 4, maxW * 2 + 4, S.level - top + 4);
+
+            // liquide
+            const liq = g.createLinearGradient(-maxW, 0, maxW, 0);
+            liq.addColorStop(0, shade(c1, -0.35, 0.97)); liq.addColorStop(0.3, shade(c1, 0.05, 0.97));
+            liq.addColorStop(0.5, shade(c2, 0.05, 0.97)); liq.addColorStop(0.8, shade(c1, -0.15, 0.97)); liq.addColorStop(1, shade(c1, -0.45, 0.97));
+            g.fillStyle = liq; g.fillRect(-maxW - 2, S.level, maxW * 2 + 4, -S.level + 4);
+            const lv = g.createLinearGradient(0, S.level, 0, 0);
+            lv.addColorStop(0, 'rgba(255,255,255,.22)'); lv.addColorStop(0.5, 'rgba(255,255,255,0)'); lv.addColorStop(1, 'rgba(0,0,0,.3)');
+            g.fillStyle = lv; g.fillRect(-maxW - 2, S.level, maxW * 2 + 4, -S.level + 4);
+            const lw = widthAt(dense, S.level);
+            g.beginPath(); g.ellipse(0, S.level, lw, 2.6, 0, 0, 7); g.fillStyle = shade(c2, 0.35, 0.75); g.fill();
+            g.beginPath(); g.ellipse(0, S.level + 0.8, lw - 1, 1.6, 0, 0, Math.PI); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 0.8; g.stroke();
+            // bulles
+            if (S.fizz) {
+                let seed = Math.floor(c1.charCodeAt(2) * 31 + c1.charCodeAt(4));
+                const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+                for (let i = 0; i < 34; i++) {
+                    const y = S.level + 6 + rnd() * (-S.level - 12), ww = widthAt(dense, y) - 4, x = (rnd() * 2 - 1) * ww, r = 0.5 + rnd() * 1.4;
+                    g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = 'rgba(255,255,255,.18)'; g.fill();
+                    g.lineWidth = 0.5; g.strokeStyle = 'rgba(255,255,255,.55)'; g.stroke();
+                }
+            }
+            // facettes du flacon rectangulaire
+            if (S.facets) {
+                g.lineWidth = 0.9;
+                for (const fx of [-0.45, 0.45]) { g.strokeStyle = fx < 0 ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.3)'; g.beginPath(); g.moveTo(fx * maxW, -4); g.lineTo(fx * maxW, -88); g.stroke(); }
+            }
+            // étiquettes
+            drawLabel(g, def, S, dense);
+            if (S.neckLabel) {
+                const [n1, n2] = S.neckLabel;
+                g.fillStyle = '#fffaf0'; g.beginPath(); g.moveTo(-widthAt(dense, n1) - 1, n1); g.lineTo(widthAt(dense, n1) + 1, n1); g.lineTo(widthAt(dense, n2) + 1, n2); g.lineTo(-widthAt(dense, n2) - 1, n2); g.closePath(); g.fill();
+                g.fillStyle = shade(c1, -0.4); g.fillRect(-12, n1 + 1.5, 24, 1.4);
+            }
+            // ombrage cylindrique par-dessus tout
+            const cyl = g.createLinearGradient(-maxW, 0, maxW, 0);
+            cyl.addColorStop(0, 'rgba(0,0,0,.4)'); cyl.addColorStop(0.2, 'rgba(0,0,0,0)'); cyl.addColorStop(0.34, 'rgba(255,255,255,.14)');
+            cyl.addColorStop(0.5, 'rgba(255,255,255,0)'); cyl.addColorStop(0.82, 'rgba(0,0,0,0)'); cyl.addColorStop(1, 'rgba(0,0,0,.42)');
+            g.fillStyle = cyl; g.fillRect(-maxW - 2, top - 4, maxW * 2 + 4, -top + 8);
+            // épaisseur du verre sur les bords
+            body(); g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.28)'; g.stroke();
+            g.lineWidth = 3; g.strokeStyle = shade(c1, 0.6, 0.3); g.stroke();
+            g.restore();
+
+            // contour fin
+            body(); g.lineWidth = 2.2; g.strokeStyle = 'rgba(10,0,30,.4)'; g.stroke();
+            g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.45)'; g.stroke();
+
+            // reflets
+            const streak = (frac, ya, yb, lw, alpha) => {
+                g.beginPath(); let first = true;
+                for (const d of dense) {
+                    if (d[0] > ya || d[0] < yb) continue;
+                    const x = frac * d[1];
+                    if (first) { g.moveTo(x, d[0]); first = false; } else g.lineTo(x, d[0]);
+                }
+                const gr = g.createLinearGradient(0, ya, 0, yb);
+                gr.addColorStop(0, `rgba(255,255,255,${alpha * 0.2})`); gr.addColorStop(0.2, `rgba(255,255,255,${alpha})`);
+                gr.addColorStop(0.8, `rgba(255,255,255,${alpha * 0.85})`); gr.addColorStop(1, `rgba(255,255,255,${alpha * 0.2})`);
+                g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = lw; g.strokeStyle = gr; g.stroke();
+            };
+            streak(-0.62, -8, top + 14, 4.4, 0.8);
+            streak(-0.8, -10, top + 20, 1.4, 0.45);
+            streak(0.74, -12, top + 24, 1.6, 0.32);
+            g.beginPath(); g.ellipse(-maxW * 0.36, -2.5, maxW * 0.4, 1.3, 0, 0, 7); g.fillStyle = 'rgba(255,255,255,.28)'; g.fill();
+            // fond du verre
+            if (S.punt) {
+                g.beginPath(); g.ellipse(0, -0.5, widthAt(dense, 0) * 0.55, 2.2, 0, Math.PI, 2 * Math.PI); g.fillStyle = shade(c1, -0.7, 0.35); g.fill();
+            }
+            drawCap(g, def, S, dense);
+            return { cv, ox, oy, w, h };
+        }
+
+        const bottleSprites = new Map();
+        function drawBottle(c, def) {
+            let spr = bottleSprites.get(def);
+            if (!spr) { spr = buildBottleSprite(def); bottleSprites.set(def, spr); }
+            c.drawImage(spr.cv, -spr.ox, -spr.oy, spr.w, spr.h);
+        }
+
         function drawAvatar(c, viewer, x, y, r) {
             c.save();
             c.beginPath();
@@ -814,8 +1080,7 @@
                     ctx.rotate(slot.rot);
                     ctx.globalAlpha = Math.max(0, 1 - slot.t / 1.1);
                 } else {
-                    ctx.translate(x + Math.sin(time * 1.1 + i * 1.7) * 9, y);
-                    ctx.rotate(Math.sin(time * 1.1 + i * 1.7 + 1) * 0.04);
+                    ctx.translate(x, y);
                     if (slot.state === 'spawning') {
                         const k = Math.min(1, slot.t / 0.4);
                         const pop = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.15 : 1;
@@ -888,7 +1153,7 @@
 
         let last = performance.now();
         function frame(now) {
-            const dt = Math.min(0.05, (now - last) / 1000);
+            const dt = Math.min(0.05, (now - last) / 1000) * settings.speed / 100;
             last = now;
             update(dt);
             render(now / 1000);
@@ -963,24 +1228,6 @@
                 slots: slots.map(s => (s.plush && s.state !== 'falling' ? s.plush : null)),
                 viewers: [...viewers.values()].map(v => ({ username: v.username, stars: v.stars }))
             };
-        }
-
-        function saveGame() {
-            try {
-                localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot()));
-                showToast('💾 Partie enregistrée');
-            } catch (error) {
-                showToast('Enregistrement impossible sur cet appareil.');
-            }
-        }
-
-        function exportGame() {
-            const blob = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'bouteilles-colorees.json';
-            link.click();
-            URL.revokeObjectURL(link.href);
         }
 
         function loadGame() {
@@ -1067,6 +1314,10 @@
             settings.rtp = Number($('rtp').value);
             $('rtp-out').textContent = `${settings.rtp}%`;
         });
+        $('speed').addEventListener('input', () => {
+            settings.speed = Number($('speed').value);
+            $('speed-out').textContent = `${settings.speed}%`;
+        });
         $('star-min').addEventListener('change', () => { settings.min = Number($('star-min').value) || 1; });
         $('star-max').addEventListener('change', () => { settings.max = Number($('star-max').value) || 50; });
         $('reset-pool').addEventListener('click', () => {
@@ -1077,11 +1328,39 @@
         });
         $('voice').addEventListener('click', enableVoice);
         $('connect').addEventListener('click', connect);
-        $('save').addEventListener('click', saveGame);
-        $('export').addEventListener('click', exportGame);
+        $('queue-detach').addEventListener('click', () => {
+            const detached = $('queue-box').classList.toggle('queue-detached');
+            $('queue-detach').textContent = detached ? 'Rattacher' : 'Détacher';
+        });
+        const syncEffectsSound = () => {
+            $('effects-volume-out').textContent = `${$('effects-volume').value}%`;
+            window.ArcadeEffects?.setSound?.($('effects-sound').checked, Number($('effects-volume').value) / 100);
+        };
+        $('effects-sound').addEventListener('change', syncEffectsSound);
+        $('effects-volume').addEventListener('input', syncEffectsSound);
+        addEventListener('load', syncEffectsSound, { once: true });
         const simViewer = () => getViewer($('sim-name').value || 'Spectateur');
-        $('sim-gift').addEventListener('click', () => queueShots(simViewer(), 1));
-        $('sim-burst').addEventListener('click', () => queueShots(simViewer(), 10));
+        $('sim-gift').addEventListener('click', () => queueShots(simViewer(), 1, true));
+        $('sim-burst').addEventListener('click', () => queueShots(simViewer(), 10, true));
+        $('sim-big-gift').addEventListener('click', () => {
+            const effects = window.ArcadeEffects;
+            if (typeof effects?.simulateBigGift !== 'function') {
+                showToast('Simulateur d’effets Arcade indisponible.');
+                return;
+            }
+            const viewer = simViewer();
+            const coins = Math.max(100, Number(effects.config?.bigGiftCoins) || 100);
+            queueShots(viewer, 10, true);
+            effects.simulateBigGift(viewer.username, coins);
+        });
+        $('sim-share').addEventListener('click', () => {
+            const simulateShare = window.ArcadeEffects?.simulateShare;
+            if (typeof simulateShare !== 'function') {
+                showToast('Simulateur de partage Arcade indisponible.');
+                return;
+            }
+            simulateShare.call(window.ArcadeEffects);
+        });
         $('sim-join').addEventListener('click', () => {
             const name = $('sim-name').value || 'Spectateur';
             greeted.delete(name.trim().replace(/^@/, '').toLocaleLowerCase());
@@ -1095,9 +1374,12 @@
         if (!loadGame()) resetPool();
         $('rtp').value = settings.rtp;
         $('rtp-out').textContent = `${settings.rtp}%`;
+        $('speed').value = settings.speed;
+        $('speed-out').textContent = `${settings.speed}%`;
         $('star-min').value = settings.min;
         $('star-max').value = settings.max;
         fillSlots(true);
+        renderQueue();
         applyPanel();
         resize();
         (document.fonts?.ready ?? Promise.resolve()).then(() => { buildScene(); });
