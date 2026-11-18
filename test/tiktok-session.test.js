@@ -11,6 +11,19 @@ class MockTikTokLiveConnection extends EventEmitter {
         this.username = username;
         this.connectCalls = 0;
         this.disconnectCalls = 0;
+        this.giftRequest = null;
+        this.webClient = {
+            clientParams: { aid: '1988' },
+            getJsonObjectFromWebcastApi: (...args) => {
+                this.giftRequest = args;
+                return Promise.resolve({
+                    statusCode: 0,
+                    data: {
+                        gifts: [{ id: 123, name: 'Rose', diamond_count: 1 }]
+                    }
+                });
+            }
+        };
         connectionInstance = this;
     }
 
@@ -18,10 +31,6 @@ class MockTikTokLiveConnection extends EventEmitter {
         this.connectCalls++;
         this.emit('websocketConnected');
         return Promise.resolve({ roomId: 'test-room' });
-    }
-
-    fetchAvailableGifts() {
-        return Promise.resolve([]);
     }
 
     disconnect() {
@@ -103,6 +112,18 @@ test('forwards TikTok likes and viewer counts', async () => {
     console.warn = () => {};
     try {
         await new Promise(resolve => setImmediate(resolve));
+        const giftsMessage = harness.messages.find(message => message.type === 'AVAILABLE_GIFTS');
+        assert.deepEqual(harness.connection.giftRequest, [
+            'gift/list/',
+            { aid: '1988', room_id: 'test-room' },
+            false
+        ]);
+        assert.deepEqual(giftsMessage.gifts, [{
+            id: 123,
+            name: 'Rose',
+            coinValue: 1,
+            imageUrl: ''
+        }]);
         harness.connection.emit('roomUser', { viewerCount: 77 });
         harness.connection.emit('like', {
             count: 5,

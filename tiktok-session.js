@@ -85,6 +85,23 @@ function getTikTokGiftImageUrl(gift) {
     return '';
 }
 
+async function fetchAvailableGifts(connection, roomId) {
+    const webClient = connection.webClient;
+    // The public gift-list endpoint works unsigned, avoiding EulerStream's paid signer.
+    const response = await webClient.getJsonObjectFromWebcastApi('gift/list/', {
+        ...webClient.clientParams,
+        room_id: roomId
+    }, false);
+    const statusCode = Number(response?.statusCode);
+    if (Number.isFinite(statusCode) && statusCode !== 0) {
+        throw new Error(`L’API des cadeaux TikTok a répondu avec le code ${statusCode}.`);
+    }
+    if (!Array.isArray(response?.data?.gifts)) {
+        throw new Error('Réponse invalide de l’API des cadeaux TikTok.');
+    }
+    return response.data.gifts;
+}
+
 async function getAvatarData(user, cache) {
     const avatarUrls = getAvatarUrls(user);
     try {
@@ -589,7 +606,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 });
                 console.info(`Connecté au live TikTok @${username}. Room ID : ${state.roomId}`);
                 send({ type: 'STATUS', message: `Direct TikTok connecté · @${username}` });
-                connection.fetchAvailableGifts().then(availableGifts => {
+                fetchAvailableGifts(connection, state.roomId).then(availableGifts => {
                     if (!active) return;
                     const gifts = Array.isArray(availableGifts)
                         ? availableGifts.slice(0, 2000).flatMap(gift => {
