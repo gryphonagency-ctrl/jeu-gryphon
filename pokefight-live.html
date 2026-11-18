@@ -252,7 +252,7 @@
     }
 
     .capture-award-overlay {
-      position: fixed;
+      position: absolute;
       inset: 0;
       z-index: 60;
       display: grid;
@@ -283,7 +283,7 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 48px rgba(250, 204, 21, 0.45);
       color: #fff;
       pointer-events: none;
-      animation: captureAwardPop 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation: captureAwardPop 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
 
     .capture-award-avatar,
@@ -517,7 +517,6 @@
 
   <!-- Bannière d'alerte en haut -->
   <div id="live-alert-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-full max-w-md px-4"></div>
-  <div id="walletBanner" class="capture-award-overlay" aria-live="polite"></div>
 
   <div id="game-view">
   <!-- En-tête du jeu -->
@@ -562,17 +561,18 @@
     </div>
   </header>
 
-  <!-- Zone principale : grille des créatures en plein écran large -->
-  <main class="w-full max-w-none mx-auto px-4 py-2 flex-1 flex flex-col gap-2 items-center">
+  <!-- Zone principale : grille des créatures -->
+  <main class="w-full max-w-7xl mx-auto px-4 py-2 flex-1 flex flex-col gap-2 items-center">
     <!-- Grille ultra-dense de tous les Pokémon tenant sur un seul écran -->
-    <section id="pokemon-stage" class="relative w-full max-w-none">
+    <section id="pokemon-stage" class="relative w-full max-w-6xl">
       <video id="pokemon-stage-video" class="pokemon-stage-media" autoplay muted loop playsinline preload="auto">
         <source src="images-vitrine/pokefight-live-arena.mp4" type="video/mp4">
       </video>
       <img id="pokemon-stage-gif" class="pokemon-stage-media" alt="" aria-hidden="true" hidden>
-      <div id="pokemon-grid" class="relative z-10 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12 gap-1.5 sm:gap-2">
+      <div id="pokemon-grid" class="relative z-10 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 sm:gap-2">
         <!-- Injecté dynamiquement par JS -->
       </div>
+      <div id="walletBanner" class="capture-award-overlay" aria-live="polite"></div>
     </section>
   </main>
   </div>
@@ -588,13 +588,6 @@
         </div>
         <button onclick="toggleConfigPanel()" class="text-slate-400 hover:text-white text-xl font-bold px-2">&times;</button>
       </div>
-
-      <aside id="gift-queue-panel" hidden aria-label="File privée des captures" class="w-full bg-slate-900/95 border border-pink-500/30 rounded-xl p-2.5 shadow-xl">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="text-[11px] font-extrabold uppercase tracking-wider text-pink-300">File de captures <span id="gift-queue-count">0</span></h2>
-        </div>
-        <div id="gift-queue-list" class="mt-2 flex flex-wrap gap-2 text-xs text-slate-300"></div>
-      </aside>
 
       <aside id="sidebar-feed" class="w-full max-w-6xl bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-xl p-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -849,10 +842,6 @@
     let captureSpeed = 1;
     let captureQueue = [];
     let processingCaptureQueue = false;
-    let activeCaptureJob = null;
-    let canViewCaptureQueue = false;
-    const captureAwardBannerQueue = [];
-    let captureAwardBannerVisible = false;
     let captureScores = new Map();
     const seenGiftEventIds = new Set();
     const GAME_SAVE_KEY = 'pokefight-live-save';
@@ -1346,14 +1335,6 @@
     }
 
     function showCaptureAwardBanner(job, pokemon, reward, rewardAmount) {
-      captureAwardBannerQueue.push({ job, pokemon, reward, rewardAmount });
-      displayNextCaptureAwardBanner();
-    }
-
-    function displayNextCaptureAwardBanner() {
-      if (captureAwardBannerVisible || captureAwardBannerQueue.length === 0) return;
-      captureAwardBannerVisible = true;
-      const { job, pokemon, reward, rewardAmount } = captureAwardBannerQueue.shift();
       const container = document.getElementById('walletBanner');
       const banner = document.createElement('div');
       banner.className = 'capture-award-banner';
@@ -1403,11 +1384,7 @@
       creature.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokemon.id}.png`;
       banner.append(avatar, copy, creature);
       container.replaceChildren(banner);
-      window.setTimeout(() => {
-        banner.remove();
-        captureAwardBannerVisible = false;
-        displayNextCaptureAwardBanner();
-      }, 2000);
+      banner.addEventListener('animationend', () => banner.remove(), { once: true });
     }
 
     function showWalletBalanceBanner(player) {
@@ -1480,55 +1457,6 @@
       } catch (error) {
         console.error('Récompense PokéFight non confirmée.', error);
         return { credited: false, error: error.message || 'Échec du crédit des étoiles.' };
-      }
-    }
-
-    async function loadCaptureQueuePermission() {
-      try {
-        const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
-        if (!response.ok) throw new Error(`Session HTTP ${response.status}`);
-        const session = await response.json();
-        canViewCaptureQueue = session.isAdmin === true;
-        updateCaptureQueuePanel();
-      } catch (error) {
-        console.error('Impossible de vérifier l’accès à la file privée des captures.', error);
-      }
-    }
-
-    function updateCaptureQueuePanel() {
-      const panel = document.getElementById('gift-queue-panel');
-      const list = document.getElementById('gift-queue-list');
-      const count = document.getElementById('gift-queue-count');
-      if (!canViewCaptureQueue) {
-        panel.hidden = true;
-        count.textContent = '0';
-        list.replaceChildren();
-        return;
-      }
-
-      const total = captureQueue.length + (activeCaptureJob ? 1 : 0);
-      count.textContent = String(total);
-      panel.hidden = total === 0;
-      list.replaceChildren();
-
-      if (activeCaptureJob) {
-        const active = document.createElement('span');
-        active.className = 'px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
-        active.textContent = `En cours : @${activeCaptureJob.username} · ${activeCaptureJob.giftName}`;
-        list.append(active);
-      }
-
-      captureQueue.slice(0, 8).forEach(job => {
-        const item = document.createElement('span');
-        item.className = 'px-2 py-1 rounded-lg bg-slate-800 border border-slate-700';
-        item.textContent = `@${job.username} · ${job.giftName}`;
-        list.append(item);
-      });
-      if (captureQueue.length > 8) {
-        const more = document.createElement('span');
-        more.className = 'px-2 py-1 text-slate-400';
-        more.textContent = `+${captureQueue.length - 8} autres`;
-        list.append(more);
       }
     }
 
@@ -1904,7 +1832,6 @@
           eventId
         });
       }
-      updateCaptureQueuePanel();
       const budgetMessage = coinCount
         ? `Plafond : ${rewardBudget.cap} ⭐ (40 % de ${coinCount} pièces).`
         : 'Valeur en pièces indisponible : plafond fixé à 0 ⭐.';
@@ -1926,20 +1853,15 @@
       void (async () => {
         try {
           while (captureQueue.length) {
-            activeCaptureJob = captureQueue.shift();
-            updateCaptureQueuePanel();
-            await throwPokeBallAtTarget(activeCaptureJob);
-            activeCaptureJob = null;
-            updateCaptureQueuePanel();
+            const job = captureQueue.shift();
+            await throwPokeBallAtTarget(job);
           }
         } catch (error) {
           console.error('Erreur de traitement de la file de captures.', error);
           document.getElementById('tiktok-connection-status').textContent =
             'La file de captures a rencontré une erreur. Consulte la console pour le détail.';
         } finally {
-          activeCaptureJob = null;
           processingCaptureQueue = false;
-          updateCaptureQueuePanel();
         }
       })();
     }
@@ -2166,7 +2088,6 @@
       updateSoundControls();
       window.ArcadeEffects?.setSound(soundEnabled, currentVolume);
       renderGrid();
-      void loadCaptureQueuePermission();
     };
   </script>
 </body>
