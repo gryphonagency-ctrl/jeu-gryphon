@@ -252,7 +252,7 @@
     }
 
     .capture-award-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       z-index: 60;
       display: grid;
@@ -283,7 +283,7 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 48px rgba(250, 204, 21, 0.45);
       color: #fff;
       pointer-events: none;
-      animation: captureAwardPop 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation: captureAwardPop 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
 
     .capture-award-avatar,
@@ -363,15 +363,6 @@
       .capture-award-detail {
         font-size: 14px;
       }
-    }
-
-    #gift-queue-panel.queue-detached {
-      position: fixed;
-      z-index: 35;
-      right: 12px;
-      bottom: 12px;
-      width: min(360px, calc(100vw - 24px));
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
     }
 
     .config-panel-band {
@@ -526,6 +517,7 @@
 
   <!-- Bannière d'alerte en haut -->
   <div id="live-alert-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-full max-w-md px-4"></div>
+  <div id="walletBanner" class="capture-award-overlay" aria-live="polite"></div>
 
   <div id="game-view">
   <!-- En-tête du jeu -->
@@ -570,28 +562,17 @@
     </div>
   </header>
 
-  <!-- Zone principale : grille des créatures et file TikTok -->
-  <main class="w-full max-w-7xl mx-auto px-4 py-2 flex-1 flex flex-col gap-2 items-center">
-    <aside id="gift-queue-panel" hidden class="w-full max-w-6xl bg-slate-900/95 border border-pink-500/30 rounded-xl p-2.5 shadow-xl">
-      <div class="flex items-center justify-between gap-2">
-        <h2 class="text-[11px] font-extrabold uppercase tracking-wider text-pink-300">File de captures <span id="gift-queue-count">0</span></h2>
-        <button id="gift-queue-detach" onclick="toggleQueueDetachment()" aria-pressed="false" class="text-[10px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold">
-          Détacher la file
-        </button>
-      </div>
-      <div id="gift-queue-list" class="mt-2 flex flex-wrap gap-2 text-xs text-slate-300"></div>
-    </aside>
-
+  <!-- Zone principale : grille des créatures en plein écran large -->
+  <main class="w-full max-w-none mx-auto px-4 py-2 flex-1 flex flex-col gap-2 items-center">
     <!-- Grille ultra-dense de tous les Pokémon tenant sur un seul écran -->
-    <section id="pokemon-stage" class="relative w-full max-w-6xl">
+    <section id="pokemon-stage" class="relative w-full max-w-none">
       <video id="pokemon-stage-video" class="pokemon-stage-media" autoplay muted loop playsinline preload="auto">
         <source src="images-vitrine/pokefight-live-arena.mp4" type="video/mp4">
       </video>
       <img id="pokemon-stage-gif" class="pokemon-stage-media" alt="" aria-hidden="true" hidden>
-      <div id="pokemon-grid" class="relative z-10 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 sm:gap-2">
+      <div id="pokemon-grid" class="relative z-10 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12 gap-1.5 sm:gap-2">
         <!-- Injecté dynamiquement par JS -->
       </div>
-      <div id="walletBanner" class="capture-award-overlay" aria-live="polite"></div>
     </section>
   </main>
   </div>
@@ -607,6 +588,13 @@
         </div>
         <button onclick="toggleConfigPanel()" class="text-slate-400 hover:text-white text-xl font-bold px-2">&times;</button>
       </div>
+
+      <aside id="gift-queue-panel" hidden aria-label="File privée des captures" class="w-full bg-slate-900/95 border border-pink-500/30 rounded-xl p-2.5 shadow-xl">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-[11px] font-extrabold uppercase tracking-wider text-pink-300">File de captures <span id="gift-queue-count">0</span></h2>
+        </div>
+        <div id="gift-queue-list" class="mt-2 flex flex-wrap gap-2 text-xs text-slate-300"></div>
+      </aside>
 
       <aside id="sidebar-feed" class="w-full max-w-6xl bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-xl p-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -676,10 +664,6 @@
           <input id="capture-speed" type="range" min="0.5" max="2" step="0.1" value="1" oninput="updateCaptureSpeed(this.value)" class="flex-1 accent-amber-400">
           <span id="capture-speed-label" class="w-12 text-right font-mono">1,0×</span>
         </label>
-        <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-xs text-slate-300">
-          <div class="font-bold text-pink-300">File d’attente TikTok</div>
-          <p>Les captures sont traitées dans l’ordre. La file apparaît au-dessus de la grille et peut être détachée.</p>
-        </div>
       </div>
 
       <!-- Option Vidéo d'arrière-plan personnalisée -->
@@ -866,6 +850,9 @@
     let captureQueue = [];
     let processingCaptureQueue = false;
     let activeCaptureJob = null;
+    let canViewCaptureQueue = false;
+    const captureAwardBannerQueue = [];
+    let captureAwardBannerVisible = false;
     let captureScores = new Map();
     const seenGiftEventIds = new Set();
     const GAME_SAVE_KEY = 'pokefight-live-save';
@@ -1359,6 +1346,14 @@
     }
 
     function showCaptureAwardBanner(job, pokemon, reward, rewardAmount) {
+      captureAwardBannerQueue.push({ job, pokemon, reward, rewardAmount });
+      displayNextCaptureAwardBanner();
+    }
+
+    function displayNextCaptureAwardBanner() {
+      if (captureAwardBannerVisible || captureAwardBannerQueue.length === 0) return;
+      captureAwardBannerVisible = true;
+      const { job, pokemon, reward, rewardAmount } = captureAwardBannerQueue.shift();
       const container = document.getElementById('walletBanner');
       const banner = document.createElement('div');
       banner.className = 'capture-award-banner';
@@ -1408,7 +1403,11 @@
       creature.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokemon.id}.png`;
       banner.append(avatar, copy, creature);
       container.replaceChildren(banner);
-      banner.addEventListener('animationend', () => banner.remove(), { once: true });
+      window.setTimeout(() => {
+        banner.remove();
+        captureAwardBannerVisible = false;
+        displayNextCaptureAwardBanner();
+      }, 2000);
     }
 
     function showWalletBalanceBanner(player) {
@@ -1484,10 +1483,29 @@
       }
     }
 
+    async function loadCaptureQueuePermission() {
+      try {
+        const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok) throw new Error(`Session HTTP ${response.status}`);
+        const session = await response.json();
+        canViewCaptureQueue = session.isAdmin === true;
+        updateCaptureQueuePanel();
+      } catch (error) {
+        console.error('Impossible de vérifier l’accès à la file privée des captures.', error);
+      }
+    }
+
     function updateCaptureQueuePanel() {
       const panel = document.getElementById('gift-queue-panel');
       const list = document.getElementById('gift-queue-list');
       const count = document.getElementById('gift-queue-count');
+      if (!canViewCaptureQueue) {
+        panel.hidden = true;
+        count.textContent = '0';
+        list.replaceChildren();
+        return;
+      }
+
       const total = captureQueue.length + (activeCaptureJob ? 1 : 0);
       count.textContent = String(total);
       panel.hidden = total === 0;
@@ -1522,14 +1540,6 @@
       } catch {
         return '';
       }
-    }
-
-    function toggleQueueDetachment() {
-      const panel = document.getElementById('gift-queue-panel');
-      const button = document.getElementById('gift-queue-detach');
-      const detached = panel.classList.toggle('queue-detached');
-      button.setAttribute('aria-pressed', String(detached));
-      button.textContent = detached ? 'Rattacher la file' : 'Détacher la file';
     }
 
     function updateCaptureLeaderboard(username) {
@@ -2156,6 +2166,7 @@
       updateSoundControls();
       window.ArcadeEffects?.setSound(soundEnabled, currentVolume);
       renderGrid();
+      void loadCaptureQueuePermission();
     };
   </script>
 </body>
