@@ -93,7 +93,7 @@ body.no-hud #left, body.no-hud #log { display: none; }
     </div>
 </div>
 <button id="eye2" class="alt" type="button" title="Masquer / afficher les tableaux (T)">📊</button>
-<button id="eye" class="alt" type="button" title="Masquer / afficher le panneau de contrôle (H)">👁</button>
+<button id="eye" class="alt" type="button" aria-controls="panel" aria-expanded="true" aria-label="Masquer le panneau de contrôle" title="Masquer le panneau de contrôle">👁</button>
 
 <script>
 const WS_URL = 'wss://jeu6boite.onrender.com';
@@ -111,29 +111,105 @@ function say(text) {
 }
 function setMuted(v) { muted = v; $('b-mute').textContent = muted ? '🔇 Voix coupée (M)' : '🔊 Voix (M)'; if (muted && 'speechSynthesis' in window) speechSynthesis.cancel(); }
 
-/* ---------- Sprites ---------- */
-const COLORS = ['#ffd23f', '#ff7a59', '#4dadf7', '#3ddbd0', '#ff8fc7', '#a78bfa', '#ffffff'];
+/* ---------- Sprites (canards réalistes, vue de profil) ---------- */
 function shade(hex, k) {
     const n = parseInt(hex.slice(1), 16);
     const f = c => Math.max(0, Math.min(255, Math.round(c * k)));
     return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
-function makeDuck(color) {
-    const c = document.createElement('canvas'); c.width = 80; c.height = 64;
-    const g = c.getContext('2d'); g.scale(2, 2);
-    g.fillStyle = color; g.strokeStyle = shade(color, 0.55); g.lineWidth = 1.4;
-    g.beginPath(); g.ellipse(18, 20, 14, 9.5, 0, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.beginPath(); g.moveTo(5, 17); g.quadraticCurveTo(0, 12, 3, 9); g.quadraticCurveTo(6, 13, 9, 14); g.fill(); g.stroke();
-    g.beginPath(); g.arc(29, 11, 7, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.fillStyle = '#ff9f1c'; g.strokeStyle = '#a45a00';
-    g.beginPath(); g.moveTo(34.5, 9.5); g.quadraticCurveTo(41, 10, 40, 13); g.quadraticCurveTo(37, 15, 34, 13.5); g.closePath(); g.fill(); g.stroke();
-    g.fillStyle = shade(color, 0.82); g.strokeStyle = shade(color, 0.5);
-    g.beginPath(); g.ellipse(17, 20, 8.5, 5, -0.25, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.fillStyle = '#10151a'; g.beginPath(); g.arc(31.2, 9, 1.5, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(31.7, 8.4, 0.5, 0, Math.PI * 2); g.fill();
+function rnd(seed) { let s = seed * 9301 + 49297; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+// 7 plumages : colvert mâle, colvert femelle, pékin blanc, barbarie noir, khaki campbell, bleu de Suède, fauve
+const VARIANTS = [
+    { head: '#1d6b43', headHi: '#52c98e', collar: '#f3f1ea', chest: '#7b3f2a', back: '#8f8c7e', flank: '#c9c7bd', wing: '#8a7f6a', tail: '#15191c', bill: '#d8b52b', billTip: '#2c2a10', spec: '#2f56b5', curl: true, scallop: 0.5 },
+    { head: '#8a6a43', headHi: '#bf9c6e', neck: '#a57d4d', chest: '#a57d4d', back: '#6f5233', flank: '#b08b58', wing: '#7f6140', tail: '#5d4528', bill: '#e08a1e', billTip: '#3a2a12', spec: '#2f56b5', stripe: true, scallop: 1 },
+    { head: '#fbfaf4', headHi: '#ffffff', chest: '#f6f4ec', back: '#e9e6d9', flank: '#f7f5ee', wing: '#e4e0d1', tail: '#efece0', bill: '#f7a21b', billTip: '#d97f0a', scallop: 0.3 },
+    { head: '#1b2420', headHi: '#3d7a63', chest: '#202b27', back: '#161f1c', flank: '#27342f', wing: '#f1f1ec', tail: '#101614', bill: '#c9857a', billTip: '#2a1a18', face: '#c8312c', scallop: 0.4 },
+    { head: '#4d5a33', headHi: '#86955a', chest: '#9a7f50', back: '#8a7143', flank: '#ad9160', wing: '#8c7248', tail: '#3b3220', bill: '#6e7a3a', billTip: '#2a2a14', scallop: 0.7 },
+    { head: '#2f3b45', headHi: '#667d8e', chest: '#e8ecef', back: '#566a7c', flank: '#6f8497', wing: '#52667a', tail: '#3b4a58', bill: '#a2ae4c', billTip: '#2a3010', scallop: 0.6 },
+    { head: '#c99d5b', headHi: '#ecc886', neck: '#d9b47a', chest: '#dcb97f', back: '#b88a4c', flank: '#e4c590', wing: '#a97c43', tail: '#8e6735', bill: '#e8962b', billTip: '#5a3a10', stripe: true, scallop: 0.8 }
+];
+function waterline(g) {
+    g.globalCompositeOperation = 'destination-out';
+    const w = g.createLinearGradient(0, 22.5, 0, 27.8); w.addColorStop(0, 'rgba(0,0,0,0)'); w.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = w; g.fillRect(-2, 22.5, 46, 10);
+    g.globalCompositeOperation = 'source-over';
+    g.strokeStyle = 'rgba(235,255,255,.4)'; g.lineWidth = 0.5;
+    g.beginPath(); g.ellipse(16, 25.4, 15, 2.3, 0, 0, Math.PI * 2); g.stroke();
+}
+function makeDuck(v, seed) {
+    const c = document.createElement('canvas'); c.width = 160; c.height = 128;
+    const g = c.getContext('2d'); g.scale(4, 4); g.translate(-1.5, 0);
+    const R = rnd(seed), PI = Math.PI;
+    // corps
+    const body = new Path2D();
+    body.moveTo(2.5, 13.5); body.bezierCurveTo(6, 19, 9, 14.8, 16, 14.6);
+    body.bezierCurveTo(22, 14.4, 26.5, 15.2, 28.6, 18); body.bezierCurveTo(30.2, 21.5, 27.5, 25.5, 21, 26.5);
+    body.bezierCurveTo(13, 28, 5.5, 25.5, 2.5, 13.5); body.closePath();
+    g.save(); g.clip(body);
+    let gr = g.createLinearGradient(0, 14, 0, 27);
+    gr.addColorStop(0, v.back); gr.addColorStop(0.5, v.flank); gr.addColorStop(1, shade(v.flank, 0.78));
+    g.fillStyle = gr; g.fillRect(0, 10, 40, 20);
+    g.fillStyle = v.tail; g.beginPath(); g.ellipse(4.6, 17, 3.4, 3.2, 0, 0, PI * 2); g.fill();
+    g.filter = 'blur(2.5px)';
+    g.fillStyle = v.chest; g.beginPath(); g.ellipse(26, 21.5, 5.8, 6, 0, 0, PI * 2); g.fill();
+    g.filter = 'none';
+    g.lineWidth = 0.3; g.strokeStyle = shade(v.flank, 0.62); g.globalAlpha = 0.18 + 0.3 * (v.scallop ?? 0.5);
+    for (let i = 0; i < 90; i++) { const x = 3 + R() * 25, y = 14.5 + R() * 11, r = 0.7 + R() * 0.6; g.beginPath(); g.arc(x, y, r, 0.1 * PI, 0.9 * PI); g.stroke(); }
+    g.globalAlpha = 1; g.fillStyle = 'rgba(255,255,255,.14)'; g.beginPath(); g.ellipse(15, 15.6, 8, 1.2, 0, 0, PI * 2); g.fill();
+    g.restore();
+    // aile repliée + miroir
+    const wing = new Path2D();
+    wing.moveTo(23.5, 17.4); wing.bezierCurveTo(19, 14.9, 11, 15.4, 7, 17.8); wing.lineTo(3.6, 21.2); wing.bezierCurveTo(10, 23.8, 19, 23.8, 23.5, 17.4); wing.closePath();
+    g.save(); g.clip(wing);
+    gr = g.createLinearGradient(0, 15, 0, 23.5); gr.addColorStop(0, shade(v.wing, 1.12)); gr.addColorStop(1, shade(v.wing, 0.78));
+    g.fillStyle = gr; g.fillRect(0, 14, 30, 11);
+    if (v.spec) { g.fillStyle = '#f4f4ee'; g.fillRect(9, 18.9, 11, 0.5); g.fillStyle = v.spec; g.fillRect(9, 19.4, 11, 1.4); g.fillStyle = '#f4f4ee'; g.fillRect(9, 20.8, 11, 0.4); }
+    g.strokeStyle = shade(v.wing, 0.6); g.lineWidth = 0.25; g.globalAlpha = 0.5;
+    for (let i = 0; i < 7; i++) { g.beginPath(); g.moveTo(22 - i * 1.2, 17.6 + i * 0.35); g.lineTo(5 + i * 0.5, 21.2 - i * 0.2); g.stroke(); }
+    g.globalAlpha = 0.7; g.restore(); g.strokeStyle = shade(v.wing, 0.55); g.lineWidth = 0.35; g.stroke(wing); g.globalAlpha = 1;
+    // queue relevée (colvert mâle : plume bouclée)
+    if (v.curl) { g.strokeStyle = v.tail; g.lineWidth = 1.4; g.lineCap = 'round'; g.beginPath(); g.moveTo(4.5, 15.2); g.quadraticCurveTo(1.8, 15, 2.3, 12.4); g.stroke(); g.lineCap = 'butt'; }
+    // cou + collier
+    gr = g.createLinearGradient(0, 9, 0, 19); gr.addColorStop(0, v.head); gr.addColorStop(1, v.neck || v.head);
+    g.fillStyle = gr; g.beginPath(); g.moveTo(24.8, 18.6); g.bezierCurveTo(25.4, 14.5, 26.6, 11.8, 28.4, 9.4); g.lineTo(34.2, 11.2); g.bezierCurveTo(33.4, 13.6, 31.6, 16, 30.8, 19.6); g.closePath(); g.fill();
+    if (v.collar) { g.strokeStyle = v.collar; g.lineWidth = 1.1; g.lineCap = 'round'; g.beginPath(); g.moveTo(25.2, 16.9); g.quadraticCurveTo(28.2, 18.2, 31.2, 17.9); g.stroke(); g.lineCap = 'butt'; }
+    // tête
+    gr = g.createRadialGradient(30, 8.4, 0.5, 31, 10, 5.5); gr.addColorStop(0, v.headHi); gr.addColorStop(1, v.head);
+    g.fillStyle = gr; g.beginPath(); g.ellipse(31, 10, 4.7, 4.3, 0.1, 0, PI * 2); g.fill();
+    if (v.stripe) { g.strokeStyle = '#3b2a17'; g.lineWidth = 0.8; g.lineCap = 'round'; g.beginPath(); g.moveTo(34.6, 10.3); g.lineTo(27.8, 8.9); g.stroke(); g.lineCap = 'butt'; g.fillStyle = 'rgba(50,35,20,.35)'; g.beginPath(); g.ellipse(30.5, 7.2, 3.6, 1.6, 0, 0, PI * 2); g.fill(); }
+    if (v.face) { g.fillStyle = v.face; g.beginPath(); g.ellipse(33.6, 10.4, 2, 2.3, 0, 0, PI * 2); g.fill(); }
+    // bec
+    gr = g.createLinearGradient(0, 8.6, 0, 13); gr.addColorStop(0, shade(v.bill, 1.12)); gr.addColorStop(1, shade(v.bill, 0.85));
+    g.fillStyle = gr; g.strokeStyle = shade(v.bill, 0.5); g.lineWidth = 0.3;
+    g.beginPath(); g.moveTo(34.2, 8.9); g.bezierCurveTo(37, 8.4, 39.6, 9.4, 40, 11); g.bezierCurveTo(40.1, 12, 38.8, 12.7, 37, 12.9); g.bezierCurveTo(35.6, 13, 34.6, 12.6, 34, 12); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = v.billTip; g.beginPath(); g.ellipse(39.3, 10.9, 0.75, 0.55, 0.3, 0, PI * 2); g.fill();
+    g.strokeStyle = shade(v.bill, 0.5); g.globalAlpha = 0.6; g.beginPath(); g.moveTo(34.8, 11.3); g.quadraticCurveTo(37.5, 11.9, 39.4, 11.4); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = shade(v.bill, 0.45); g.beginPath(); g.arc(36, 9.8, 0.28, 0, PI * 2); g.fill();
+    // œil
+    g.fillStyle = '#0c0c0c'; g.beginPath(); g.arc(31.7, 9.6, 0.85, 0, PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(32, 9.3, 0.3, 0, PI * 2); g.fill();
+    waterline(g);
     return c;
 }
-const SPRITES = COLORS.map(makeDuck);
+function makeDuckling() {
+    const c = document.createElement('canvas'); c.width = 160; c.height = 128;
+    const g = c.getContext('2d'); g.scale(4, 4);
+    const PI = Math.PI;
+    let gr = g.createLinearGradient(0, 12, 0, 27); gr.addColorStop(0, '#ffe680'); gr.addColorStop(1, '#f1bf2e');
+    g.fillStyle = gr; g.beginPath(); g.ellipse(15, 20, 11.5, 7.5, 0, 0, PI * 2); g.fill();
+    g.fillStyle = 'rgba(110,72,26,.6)'; g.beginPath(); g.ellipse(13, 15.4, 8, 2.2, -0.06, 0, PI * 2); g.fill();
+    g.fillStyle = '#f2c23a'; g.strokeStyle = 'rgba(160,110,20,.7)'; g.lineWidth = 0.35; g.beginPath(); g.ellipse(13, 19.6, 5, 3, -0.2, 0, PI * 2); g.fill(); g.stroke();
+    gr = g.createRadialGradient(25, 9.5, 0.5, 26, 11, 6); gr.addColorStop(0, '#fff2a8'); gr.addColorStop(1, '#f6cb45');
+    g.fillStyle = gr; g.beginPath(); g.arc(26, 11.5, 5.6, 0, PI * 2); g.fill();
+    g.strokeStyle = 'rgba(95,62,22,.85)'; g.lineWidth = 0.8; g.lineCap = 'round'; g.beginPath(); g.moveTo(30.4, 11.3); g.lineTo(24.5, 10.4); g.stroke();
+    g.fillStyle = '#f39a22'; g.beginPath(); g.moveTo(30.6, 10.8); g.quadraticCurveTo(35.5, 10.6, 35.2, 12.6); g.quadraticCurveTo(33, 14, 30.2, 13); g.closePath(); g.fill();
+    g.fillStyle = '#0c0c0c'; g.beginPath(); g.arc(28.2, 11, 0.8, 0, PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(28.5, 10.7, 0.28, 0, PI * 2); g.fill();
+    waterline(g);
+    return c;
+}
+const SPRITES = VARIANTS.map((v, i) => makeDuck(v, i + 1)); SPRITES.push(makeDuckling());
+const BABY = SPRITES.length - 1;
 const SPR_W = 40, SPR_H = 32;
 
 /* ---------- Canards ---------- */
@@ -175,7 +251,7 @@ function spawnDuck() {
         x: pad() + Math.random() * Math.max(10, vw - pad() * 2),
         y: pad() + 40 + Math.random() * Math.max(10, vh - pad() * 2 - 40),
         a: Math.random() * Math.PI * 2, s: 0.12 + Math.random() * 0.35, t: Math.random() * 6.28,
-        col: Math.floor(Math.random() * COLORS.length), face: 1, prize: reserve.pop()
+        col: Math.floor(Math.random() * VARIANTS.length), face: 1, prize: reserve.pop()
     });
 }
 function newGame() {
@@ -333,7 +409,7 @@ function resize() {
     const ow = vw, oh = vh;
     dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
     cv.width = vw * dpr; cv.height = vh * dpr;
-    duckScale = Math.max(0.5, Math.min(vw / 1280, vh / 720) * 0.72);
+    duckScale = Math.max(1, Math.min(vw / 1280, vh / 720) * 1.44);
     buildBackground(); initFish(); initToads(); initBabies(); initLilies();
     if (ow && oh) for (const d of ducks) { d.x *= vw / ow; d.y *= vh / oh; }
 }
@@ -390,16 +466,20 @@ function render() {
     for (const td of toads) drawToad(td, clock);
     // ombres puis canards
     ctx.fillStyle = 'rgba(0,25,35,.28)';
-    for (const d of ducks) { ctx.beginPath(); ctx.ellipse(d.x + 2, d.y + 9 * duckScale * 1.6, 13 * duckScale * 1.4, 4 * duckScale * 1.4, 0, 0, 6.28); ctx.fill(); }
+    { const sc = duckScale * 1.4;
+      for (const d of ducks) { ctx.beginPath(); ctx.ellipse(d.x - 5.5 * sc * d.face, d.y + 10 * sc, 16 * sc, 3.4 * sc, 0, 0, 6.28); ctx.fill(); }
+      ctx.strokeStyle = 'rgba(225,255,255,.22)'; ctx.lineWidth = 1; ctx.beginPath();
+      for (const d of ducks) { const ex = d.x - 5.5 * sc * d.face, rx = (19 + Math.sin(d.t * 2.2)) * sc; ctx.moveTo(ex + rx, d.y + 10 * sc); ctx.ellipse(ex, d.y + 10 * sc, rx, 3.8 * sc, 0, 0, 6.28); }
+      ctx.stroke(); }
     for (const d of ducks) drawSprite(d.col, d.x, d.y + Math.sin(d.t * 2.2) * 1.2, duckScale * 1.4, d.face, Math.sin(d.t * 1.6) * 0.05 * d.face);
     resetT();
     // maman canard et ses bébés
     const mf = Math.cos(mother.a) >= 0 ? 1 : -1;
     for (let i = 5; i >= 0; i--) {
         const pt = trail[Math.min(trail.length - 1, 14 + i * 16)] || mother;
-        drawSprite(0, pt.x, pt.y + Math.sin(clock * 3 + i) * 1.2, duckScale * 0.8, mf, 0);
+        drawSprite(BABY, pt.x, pt.y + Math.sin(clock * 3 + i) * 1.2, duckScale * 0.8, mf, 0);
     }
-    drawSprite(4, mother.x, mother.y, duckScale * 1.8, mf, 0);
+    drawSprite(1, mother.x, mother.y, duckScale * 1.8, mf, 0);
     resetT();
     // canards pêchés
     for (const q of popups) {
@@ -504,7 +584,16 @@ $('x-add').onclick = () => {
     extras.push({ stars, count }); saveExtras(); renderExtras(); addExtraDucks(stars, count);
 };
 renderExtras();
-const togglePanel = () => { const p = $('panel'); p.style.display = p.style.display === 'none' ? 'grid' : 'none'; };
+const togglePanel = () => {
+    const panel = $('panel');
+    const visible = panel.style.display === 'none';
+    panel.style.display = visible ? 'grid' : 'none';
+    const eye = $('eye');
+    const label = visible ? 'Masquer le panneau de contrôle' : 'Afficher le panneau de contrôle';
+    eye.setAttribute('aria-expanded', String(visible));
+    eye.setAttribute('aria-label', label);
+    eye.title = label;
+};
 $('eye').onclick = togglePanel;
 const toggleHud = () => { const off = document.body.classList.toggle('no-hud'); $('b-hud').textContent = off ? '📊 Afficher les tableaux (T)' : '📊 Cacher les tableaux (T)'; };
 $('eye2').onclick = toggleHud; $('b-hud').onclick = toggleHud;
