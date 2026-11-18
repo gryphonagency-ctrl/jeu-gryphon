@@ -74,6 +74,12 @@ const liveAlertTikTokUsername = resolveCreatorTikTokUsername(
     process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'cityhunter698'
 );
 const liveTikTokDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true';
+const liveTikTokMonitorUsername = String(
+    process.env.LIVE_TIKTOK_MONITOR_USERNAME || liveAlertTikTokUsername
+).trim().replace(/^@/, '').toLocaleLowerCase();
+const shouldLogTikTokDiagnostics = username =>
+    liveTikTokDiagnostics ||
+    String(username || '').trim().replace(/^@/, '').toLocaleLowerCase() === liveTikTokMonitorUsername;
 const liveAlertVapidKeys = loadLiveAlertVapidKeys();
 webPush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'https://jeu6boite.onrender.com',
@@ -4103,7 +4109,7 @@ function deliverTikTokMessage(session, messageData) {
             recipients++;
         }
     }
-    if (liveTikTokDiagnostics &&
+    if (shouldLogTikTokDiagnostics(session.username) &&
         ['gift', 'comment', 'like', 'share', 'follow', 'subscribe', 'viewerCount'].includes(messageData.type)) {
         console.info(`[TikTok diagnostic] routage ${JSON.stringify({
             account: session.username,
@@ -4155,13 +4161,13 @@ function updateCentralTikTokRoomState({ connected, roomId }) {
 }
 
 function startCentralTikTokListener() {
-    if (liveTikTokDiagnostics) {
+    if (shouldLogTikTokDiagnostics(liveAlertTikTokUsername)) {
         console.info(`[TikTok diagnostic] surveillance activée pour @${liveAlertTikTokUsername}`);
     }
     createTikTokSession(messageData => {
         if (messageData.type === 'STATUS') centralTikTokStatusMessage = messageData.message;
         const session = sessions.get(centralTikTokSessionKey);
-        if (liveTikTokDiagnostics && messageData.type === 'gift') {
+        if (shouldLogTikTokDiagnostics(liveAlertTikTokUsername) && messageData.type === 'gift') {
             console.info(`[TikTok diagnostic] routage cadeau ${JSON.stringify({
                 giftId: messageData.gift?.giftId ?? null,
                 giftName: messageData.gift?.giftName || '',

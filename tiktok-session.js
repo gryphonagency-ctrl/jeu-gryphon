@@ -112,6 +112,17 @@ async function getAvatarData(user, cache) {
 
 function createTikTokSession(sendToClients, username, onRoomState = () => {}, { diagnostics = false } = {}) {
     const connection = new TikTokLiveConnection(username, {});
+    const accountKey = String(username || '').trim().replace(/^@/, '').toLocaleLowerCase();
+    const monitoredAccountKey = String(
+        process.env.LIVE_TIKTOK_MONITOR_USERNAME ||
+        process.env.LIVE_ALERT_TIKTOK_USERNAME ||
+        process.env.TIKTOK_USERNAME ||
+        'cityhunter698'
+    ).trim().replace(/^@/, '').toLocaleLowerCase();
+    const accountDiagnosticsEnabled = diagnostics && (
+        process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true' ||
+        accountKey === monitoredAccountKey
+    );
     const processedGiftMessageIds = new Set();
     const processedFollowMessageIds = new Set();
     const processedShareMessageIds = new Set();
@@ -120,7 +131,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     const avatarLookupTimes = new Map();
     const avatarCache = new Map();
     const logDiagnostic = (event, details) => {
-        if (diagnostics && process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true') {
+        if (accountDiagnosticsEnabled) {
             console.info(`[TikTok diagnostic] ${event} ${JSON.stringify(details)}`);
         }
     };
@@ -423,6 +434,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             }
         });
         logDiagnostic('commentaire', {
+            account: username,
             result: 'transmis',
             timestamp: new Date().toISOString()
         });

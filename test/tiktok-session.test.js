@@ -44,7 +44,7 @@ try {
     Module._load = originalLoad;
 }
 
-function createHarness() {
+function createHarness({ diagnostics = false, username = 'test_user' } = {}) {
     const messages = [];
     let now = 1000;
     let watchdog;
@@ -73,7 +73,7 @@ function createHarness() {
     };
     global.clearTimeout = () => {};
 
-    const stop = createTikTokSession(message => messages.push(message), 'test_user');
+    const stop = createTikTokSession(message => messages.push(message), username, undefined, { diagnostics });
     return {
         messages,
         connection: connectionInstance,
@@ -109,6 +109,7 @@ test('forwards TikTok likes and viewer counts', async () => {
             common: { msgId: 'like-1' },
             user: { uniqueId: 'viewer1', nickname: 'Viewer' }
         });
+
         await new Promise(resolve => setImmediate(resolve));
 
         assert(harness.messages.some(message =>
@@ -120,6 +121,32 @@ test('forwards TikTok likes and viewer counts', async () => {
     } finally {
         console.warn = originalWarn;
         await harness.restore();
+    }
+});
+
+test('enables diagnostics for the monitored TikTok account', async () => {
+    const previousMonitor = process.env.LIVE_TIKTOK_MONITOR_USERNAME;
+    const previousDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS;
+    const originalInfo = console.info;
+    const logs = [];
+    process.env.LIVE_TIKTOK_MONITOR_USERNAME = 'test_user';
+    process.env.LIVE_TIKTOK_DIAGNOSTICS = 'false';
+    console.info = (...values) => logs.push(values.join(' '));
+    const harness = createHarness({ diagnostics: true });
+
+    try {
+        await new Promise(resolve => setImmediate(resolve));
+        assert(logs.some(line =>
+            line.includes('[TikTok diagnostic] connexion') &&
+            line.includes('"state":"connectee"')
+        ));
+    } finally {
+        console.info = originalInfo;
+        await harness.restore();
+        if (previousMonitor === undefined) delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
+        else process.env.LIVE_TIKTOK_MONITOR_USERNAME = previousMonitor;
+        if (previousDiagnostics === undefined) delete process.env.LIVE_TIKTOK_DIAGNOSTICS;
+        else process.env.LIVE_TIKTOK_DIAGNOSTICS = previousDiagnostics;
     }
 });
 
