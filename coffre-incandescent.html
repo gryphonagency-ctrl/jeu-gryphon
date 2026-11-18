@@ -438,6 +438,9 @@
         const awardedRewardIds = new Set();
         const processedLiveGiftIds = new Set();
         let activeReward = null;
+        let activeRewardWinner = null;
+        let pendingProgressWinner = null;
+        let rewardSeriesId = crypto.randomUUID();
         let isExploded = false;
         let rewardRevealTimer = null;
         let rewardAdvanceTimer = null;
@@ -1351,6 +1354,10 @@
             simT += dt;
 
             const ratio = visualGiftCount / maxVisualGifts;
+            const doorReward = activeReward || getNextReward();
+            const doorProgress = doorReward
+                ? Math.min(totalProgressCount / doorReward.coinThreshold, 1)
+                : 0;
             if (isExploded && !wasExploded) triggerBlast();
             wasExploded = isExploded;
             const flash = flashT > 0 ? Math.min(1.5, flashT / 0.7) : 0;
@@ -1425,7 +1432,7 @@
 
             // La porte avant (avec la roue) ouvre le coffre
             if (doorPivot) {
-                const target = isExploded ? -1.95 : (ratio > 0.7 ? -(ratio - 0.7) * 0.8 : 0);
+                const target = isExploded ? -1.95 : (doorProgress > 0.8 ? -(doorProgress - 0.8) * 1.2 : 0);
                 doorPivot.rotation.y += (target - doorPivot.rotation.y) * 0.06;
                 doorGlow.visible = false;
                 doorLight.intensity = 0;
@@ -1729,16 +1736,12 @@
 
         let manualAwardTimer = null;
         let pendingManualAward = null;
-        const pendingVipRewards = new Map();
         let vipRewardBannerTimer = null;
-        let vipRewardRevealTimer = null;
         const manualAwardModal = document.getElementById('manualAwardModal');
 
         function hideVipRewardBanner() {
             clearTimeout(vipRewardBannerTimer);
-            clearTimeout(vipRewardRevealTimer);
             vipRewardBannerTimer = null;
-            vipRewardRevealTimer = null;
             const banner = document.getElementById('vipRewardBanner');
             banner.classList.remove('is-visible');
             banner.setAttribute('aria-hidden', 'true');
@@ -1784,8 +1787,6 @@
             }
 
             clearTimeout(vipRewardBannerTimer);
-            clearTimeout(vipRewardRevealTimer);
-            vipRewardRevealTimer = null;
             banner.setAttribute('aria-hidden', 'false');
             banner.classList.remove('is-visible');
             void banner.offsetWidth;
@@ -1899,17 +1900,9 @@
                 avatarUrl: awardedPlayer.avatarUrl || (winnerProfile && winnerProfile.avatarUrl) || '',
                 stars: reward.stars
             };
-            const rewardIsOpen = activeReward && activeReward.id === reward.id;
-            if (rewardIsOpen || awardedRewardIds.has(reward.id)) {
-                pendingVipRewards.delete(reward.id);
-                showVipRewardBanner(vipReward);
-                document.getElementById('giftStatus').textContent =
-                    `Récompense créditée pour @${vipReward.username} : bannière VIP affichée.`;
-            } else {
-                pendingVipRewards.set(reward.id, vipReward);
-                document.getElementById('giftStatus').textContent =
-                    `Récompense créditée pour @${vipReward.username} : bannière VIP à l’ouverture du coffre.`;
-            }
+            showVipRewardBanner(vipReward);
+            document.getElementById('giftStatus').textContent =
+                `Attribution manuelle confirmée pour @${vipReward.username} : ${formatTikTokNumber(reward.stars)} étoiles.`;
             form.reset();
             closeManualAward();
         });
@@ -2053,7 +2046,7 @@
                     console.warn('Cadeau TikTok ignoré : nombre de pièces invalide.', gift);
                     return;
                 }
-                processProgress(coinAmount);
+                processProgress(coinAmount, giftProfile);
             });
             socket.addEventListener('error', () => {
                 setLiveConnectionStatus('Connexion au serveur impossible. Vérifie que le jeu est ouvert sur Griffon Arcade.');
@@ -2080,7 +2073,7 @@
             setLiveConnectionStatus('Live déconnecté. Les cadeaux simulés restent disponibles.');
         });
 
-        function processProgress(amount) {
+        function processProgress(amount, contributor = null) {
             if (!Number.isSafeInteger(amount) || amount <= 0) return false;
             if (isExploded) {
                 if (!Number.isSafeInteger(totalProgressCount + pendingProgressCount + amount)) {
@@ -2088,6 +2081,7 @@
                     return false;
                 }
                 pendingProgressCount += amount;
+                pendingProgressWinner = contributor;
                 updateUI();
                 return true;
             }
@@ -2105,7 +2099,7 @@
 
             const nextReward = getNextReward();
             if (nextReward && totalProgressCount >= nextReward.coinThreshold) {
-                triggerExplosion(nextReward);
+                triggerExplosion(nextReward, contributor);
             }
             return true;
         }
@@ -2119,7 +2113,7 @@
                 console.warn('Commande RUN ignorée : identité TikTok ou montant invalide.', detail);
                 return;
             }
-            if (!processProgress(spent)) return;
+            if (!processProgress(spent, player)) return;
             const message = `@${username} a joué ${formatTikTokNumber(spent)} étoiles RUN : ${formatTikTokNumber(spent)} unités de progression.`;
             document.getElementById('giftStatus').textContent = message;
             setLiveConnectionStatus(message);
@@ -2152,19 +2146,53 @@
             }
         });
 
-        function triggerExplosion(reward) {
+        async function creditChestReward(reward, winner) {
+            const username = String(winner && (winner.uniqueId || winner.username) || '')
+                .trim()
+                .replace(/^@+/, '');
+            if (!username) {
+                document.getElementById('giftStatus').textContent =
+                    'Coffre ouvert, mais le pseudo du gagnant n’a pas pu être identifié : récompense non créditée.';
+                return;
+            }
+
+            try {
+                if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+                    throw new Error('Le portefeuille global Griffon Arcade est indisponible.');
+                }
+                const awardedPlayer = await window.ArcadeStars.award({
+                    username,
+                    amount: reward.stars,
+                    transactionId: `coffre-incandescent:${rewardSeriesId}:${reward.id}`
+                });
+                if (!awardedPlayer || typeof awardedPlayer !== 'object') {
+                    throw new Error('Le portefeuille n’a pas confirmé le solde du gagnant.');
+                }
+
+                const winnerUsername = String(awardedPlayer.username || awardedPlayer.uniqueId || username)
+                    .replace(/^@+/, '');
+                const profile = livePlayerProfiles.get(normalizeTikTokHandle(winnerUsername));
+                showVipRewardBanner({
+                    username: winnerUsername,
+                    avatarUrl: awardedPlayer.avatarUrl || (profile && profile.avatarUrl) || '',
+                    stars: reward.stars
+                });
+                document.getElementById('giftStatus').textContent =
+                    `Récompense créditée pour @${winnerUsername} : ${formatTikTokNumber(reward.stars)} étoiles. Solde du portefeuille : ${formatTikTokNumber(Number(awardedPlayer.stars) || 0)}.`;
+            } catch (error) {
+                console.error(`Impossible de créditer la récompense du coffre pour @${username} :`, error);
+                document.getElementById('giftStatus').textContent =
+                    `Coffre ouvert, mais crédit non confirmé pour @${username} : ${error.message || 'erreur inconnue'}.`;
+            }
+        }
+
+        function triggerExplosion(reward, winner = null) {
             if (!reward || isExploded) return;
             activeReward = reward;
+            activeRewardWinner = winner;
             isExploded = true;
             hideVipRewardBanner();
-            const vipReward = pendingVipRewards.get(reward.id);
-            if (vipReward) {
-                pendingVipRewards.delete(reward.id);
-                vipRewardRevealTimer = setTimeout(() => {
-                    vipRewardRevealTimer = null;
-                    showVipRewardBanner(vipReward);
-                }, 350);
-            }
+            if (winner) creditChestReward(reward, winner);
             document.getElementById('giftBtn').disabled = true;
             document.getElementById('giftBtn').classList.add('opacity-50', 'cursor-not-allowed');
 
@@ -2212,27 +2240,35 @@
             }
 
             awardedRewardIds.add(activeReward.id);
+            const carryoverWinner = activeRewardWinner;
             activeReward = null;
+            activeRewardWinner = null;
             const nextReward = getNextReward();
 
             if (!nextReward) {
                 const progressForNextSeries = pendingProgressCount;
+                const nextSeriesWinner = progressForNextSeries > 0 ? pendingProgressWinner : carryoverWinner;
                 pendingProgressCount = 0;
+                pendingProgressWinner = null;
                 resetGame();
                 totalProgressCount = progressForNextSeries;
                 updateUI();
                 const firstReward = getNextReward();
                 if (firstReward && totalProgressCount >= firstReward.coinThreshold) {
-                    triggerExplosion(firstReward);
+                    triggerExplosion(firstReward, nextSeriesWinner);
                 }
                 return;
             }
 
+            const hasPendingProgress = pendingProgressCount > 0;
+            const nextWinner = hasPendingProgress ? pendingProgressWinner : carryoverWinner;
             totalProgressCount += pendingProgressCount;
             pendingProgressCount = 0;
+            pendingProgressWinner = null;
+            activeRewardWinner = null;
             resetChestVisuals();
             if (totalProgressCount >= nextReward.coinThreshold) {
-                triggerExplosion(nextReward);
+                triggerExplosion(nextReward, nextWinner);
             }
         }
 
@@ -2243,8 +2279,11 @@
             rewardAdvanceTimer = null;
             totalProgressCount = 0;
             pendingProgressCount = 0;
+            pendingProgressWinner = null;
+            rewardSeriesId = crypto.randomUUID();
             awardedRewardIds.clear();
             activeReward = null;
+            activeRewardWinner = null;
             resetChestVisuals();
         }
 
