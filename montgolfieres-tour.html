@@ -390,6 +390,7 @@
     }
 
     #control-feedback { min-height: 1.4em; margin: 0; color: #ffd600; line-height: 1.4; }
+    #round-pot { margin: 0; color: #ffe680; font-size: 11px; line-height: 1.5; }
     #queue-panel { top: 60px; left: 16px; width: min(270px, calc(100vw - 32px)); }
     #queue-handle { cursor: move; touch-action: none; }
     #queue-list, #leaderboard-list { margin: 10px 0 0; padding-left: 22px; line-height: 1.7; }
@@ -435,6 +436,7 @@
     </section>
     <section class="control-section">
       <h3>Partie</h3>
+      <p id="round-pot" aria-live="polite">Cadeaux LIVE : 0 pièce · gain prévu : 0 étoile (40 %).</p>
       <div data-save-key="montgolfieres-tour-save"></div>
     </section>
     <section class="control-section">
@@ -489,6 +491,7 @@
   const liveStatus = document.getElementById('live-status');
   const liveDot = document.getElementById('live-dot');
   const liveDetail = document.getElementById('live-detail');
+  const roundPot = document.getElementById('round-pot');
   const LIVE_WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 
   // Monde virtuel écran large, très haut et étendu
@@ -503,6 +506,10 @@
   let wantLive = false;
   let reconnectTimer = 0;
   let gameSpeed = 1;
+  let roundGiftCoins = 0;
+  let roundId = crypto.randomUUID();
+  let roundClosed = false;
+  const seenLiveEventIds = new Set();
   const winnerCounts = new Map();
 
   try {
@@ -794,8 +801,9 @@
   const SHIRT_COLORS = ['#1565c0', '#c62828', '#2e7d32', '#f9a825', '#6a1b9a', '#ef6c00'];
 
   class Balloon {
-    constructor(username, styleIndex) {
+    constructor(username, styleIndex, simulated = true) {
       this.username = username || 'Aéronaute';
+      this.simulated = simulated;
       const idx = styleIndex !== undefined ? styleIndex : Math.floor(Math.random() * BALLOON_PALETTES.length);
       this.palette = BALLOON_PALETTES[idx % BALLOON_PALETTES.length];
 
@@ -881,7 +889,7 @@
       }
     }
 
-    draw() {
+    draw(viewScale = 1) {
       // Traînée d'air chaud discrète
       for (let i = 0; i < this.trail.length; i++) {
         const t = this.trail[i];
@@ -1256,39 +1264,127 @@
       ctx.restore(); // montgolfière
 
       ctx.save();
-      ctx.font = '800 12px Montserrat, sans-serif';
+      const labelScale = Math.max(0.1, viewScale);
+      const label = this.username.slice(0, 32);
+      ctx.translate(this.x, this.y - this.radiusY - 18 / labelScale);
+      ctx.scale(1 / labelScale, 1 / labelScale);
+      ctx.font = '800 16px Montserrat, sans-serif';
       ctx.textAlign = 'center';
+      const labelWidth = Math.min(340, ctx.measureText(label).width) + 18;
+      ctx.beginPath();
+      ctx.roundRect(-labelWidth / 2, -14, labelWidth, 25, 12);
+      ctx.fillStyle = 'rgba(10, 6, 28, 0.88)';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255, 214, 0, 0.9)';
+      ctx.stroke();
       ctx.fillStyle = '#ffffff';
       ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 5;
-      ctx.fillText(this.username, this.x, this.y - this.radiusY - 16);
+      ctx.shadowBlur = 3;
+      ctx.fillText(label, 0, 4, 340);
       ctx.restore();
+    }
+  }
+
+  function updateRoundPot() {
+    const prize = Math.floor(roundGiftCoins * 0.4);
+    roundPot.textContent = `Cadeaux LIVE : ${roundGiftCoins.toLocaleString('fr-FR')} pièces · gain prévu : ${prize.toLocaleString('fr-FR')} étoiles (40 %).`;
+  }
+
+  function beginLiveRound() {
+    if (roundClosed) roundClosed = false;
+  }
+
+  async function awardRoundWinner(balloon, prize, payoutRoundId) {
+    if (typeof window.ArcadeStars?.award !== 'function') {
+      controlFeedback.textContent = 'Erreur : portefeuille indisponible, récompense non enregistrée.';
+      console.error('Récompense Montgolfières non enregistrée : ArcadeStars.award indisponible.');
+      return;
+    }
+
+    let remaining = prize;
+    let credited = 0;
+    let part = 0;
+    try {
+      while (remaining > 0) {
+        const amount = Math.min(remaining, 250000);
+        await window.ArcadeStars.award({
+          username: balloon.username,
+          amount,
+          transactionId: `montgolfieres-tour:${payoutRoundId}:${part}`
+        });
+        remaining -= amount;
+        credited += amount;
+        part++;
+      }
+      controlFeedback.textContent = `${credited.toLocaleString('fr-FR')} étoiles confirmées pour @${balloon.username} (40 % des cadeaux LIVE).`;
+    } catch (error) {
+      console.error('Récompense Montgolfières non confirmée :', error);
+      controlFeedback.textContent = credited
+        ? `Crédit partiel confirmé : ${credited.toLocaleString('fr-FR')} / ${prize.toLocaleString('fr-FR')} étoiles.`
+        : `Échec du crédit de ${prize.toLocaleString('fr-FR')} étoiles : ${error.message}`;
     }
   }
 
   function onBalloonWin(balloon) {
     spawnConfetti(balloon.x, balloon.y, 45);
+    if (balloon.simulated) {
+      popBadges.push({
+        x: balloon.x,
+        y: balloon.y - 38,
+        text: `🎈 ${balloon.username}`,
+        sub: 'SIMULATION · AUCUN GAIN',
+        color: '#b8c5d8',
+        vy: -0.9,
+        alpha: 1,
+        scale: 1.1
+      });
+      return;
+    }
+    if (roundClosed) return;
+
+    roundClosed = true;
+    const prize = Math.floor(roundGiftCoins * 0.4);
+    const payoutRoundId = roundId;
+    roundGiftCoins = 0;
+    roundId = crypto.randomUUID();
+    balloons.forEach(other => {
+      if (other !== balloon && !other.simulated) {
+        other.finished = true;
+        other.finishTimer = 40;
+      }
+    });
+    updateRoundPot();
+
     popBadges.push({
       x: balloon.x,
       y: balloon.y - 38,
       text: `🏆 ${balloon.username}`,
-      sub: 'STRATOSPHÈRE ATTEINTE !',
+      sub: prize > 0
+        ? `GAGNANT · ${prize.toLocaleString('fr-FR')} étoiles (40 %)`
+        : 'GAGNANT · aucun cadeau dans le pot',
       color: '#ffd600',
       vy: -0.9,
       alpha: 1,
       scale: 1.3
     });
     winnerCounts.set(balloon.username, (winnerCounts.get(balloon.username) || 0) + 1);
+    if (prize > 0) {
+      void awardRoundWinner(balloon, prize, payoutRoundId);
+    } else {
+      controlFeedback.textContent = `Manche gagnée par @${balloon.username} · aucun cadeau LIVE à redistribuer.`;
+    }
     renderLeaderboard();
     renderQueue();
   }
 
-  function launchBalloon(playerName, showGoBurst = true) {
-    const name = (playerName && playerName.trim())
-      ? playerName.trim()
+  function launchBalloon(playerName, showGoBurst = true, simulated = true) {
+    const requestedName = String(playerName || '').trim();
+    const name = requestedName
+      ? requestedName.slice(0, 32)
       : LIVE_PLAYERS[Math.floor(Math.random() * LIVE_PLAYERS.length)];
 
-    const balloon = new Balloon(name);
+    const balloon = new Balloon(name, undefined, simulated);
     balloons.push(balloon);
     renderQueue();
     spawnSparkles(balloon.x, balloon.y, balloon.palette.band, 16);
@@ -1334,7 +1430,7 @@
   function handleTikTokMessage(data) {
     if (!data || typeof data !== 'object') return;
 
-    if (data.type === 'STATUS') {
+    if (String(data.type || '').toUpperCase() === 'STATUS') {
       const text = String(data.message || '');
       const connected = /connect|live|rejoint|direct/i.test(text) &&
         !/impossible|erreur|invalide|pas en direct|hors/i.test(text);
@@ -1348,15 +1444,24 @@
 
     if (String(data.type || '').toLowerCase() === 'gift') {
       const gift = data.gift || data.giftData || data;
+      if (hasSeenLiveEvent(data, gift)) return;
+      beginLiveRound();
+      const coins = giftCoinValue(gift);
+      if (coins > 0) {
+        roundGiftCoins = Math.min(Number.MAX_SAFE_INTEGER, roundGiftCoins + coins);
+        updateRoundPot();
+      }
       const giftName = gift.giftName || gift.name || 'Cadeau TikTok';
-      const sender = gift.username || gift.uniqueId || gift.nickname || data.username || data.uniqueId || '';
-      const giftCount = Math.max(1, Number(gift.repeatCount || gift.count || data.repeatCount || 1) || 1);
-      window.declencherEvenement(giftName, sender, giftCount);
+      const sender = String(gift.username || gift.uniqueId || gift.nickname || data.username || data.uniqueId || '').trim();
+      const giftCountValue = Number(gift.repeatCount || gift.count || data.repeatCount || 1);
+      const giftCount = Math.max(1, Number.isFinite(giftCountValue) ? giftCountValue : 1);
+      applyGiftBoost(giftName, sender, giftCount);
       return;
     }
 
     if (String(data.type || '').toLowerCase() !== 'comment') return;
-    const comment = data.commentData || {};
+    const comment = data.commentData || data;
+    if (hasSeenLiveEvent(data, comment)) return;
     const command = String(comment.comment || '').trim().toLowerCase();
     if (command !== 'go' && command !== '!go') return;
 
@@ -1368,10 +1473,10 @@
     return String(name || '').trim().replace(/^@/, '').toLowerCase();
   }
 
-  window.ajouterBille = pseudo => launchBalloon(pseudo, true);
-  window.declencherEvenement = (nomDuCadeau, senderName = '', giftCount = 1) => {
-    const activeBalloons = balloons.filter(b => !b.finished);
-    const normalizedSender = normalizePlayerName(senderName);
+  function applyGiftBoost(nomDuCadeau, senderName = '', giftCount = 1, simulated = false) {
+    const activeBalloons = balloons.filter(b => !b.finished && (simulated || !b.simulated));
+    const sender = String(senderName || '').trim();
+    const normalizedSender = normalizePlayerName(sender);
     const impulseFactor = Math.min(2.5, 1 + Math.max(0, giftCount - 1) * 0.25);
     const impulseGain = 5.4 * impulseFactor;
 
@@ -1379,9 +1484,10 @@
     if (normalizedSender) {
       targetedBalloons = activeBalloons.filter(b => normalizePlayerName(b.username) === normalizedSender);
       if (!targetedBalloons.length) {
-        launchBalloon(senderName.trim(), true);
+        launchBalloon(sender, true, simulated);
         const newlyLaunched = balloons.filter(
-          b => !b.finished && normalizePlayerName(b.username) === normalizedSender
+          b => !b.finished && (simulated || !b.simulated) &&
+            normalizePlayerName(b.username) === normalizedSender
         );
         targetedBalloons = newlyLaunched;
       }
@@ -1405,11 +1511,79 @@
 
     if (targets.length) {
       const labelTarget = normalizedSender && targetedBalloons.length
-        ? `la montgolfière de ${senderName.trim()}`
+        ? `la montgolfière de ${sender}`
         : `${targets.length} montgolfière(s)`;
       controlFeedback.textContent = `${nomDuCadeau} : impulsion donnée à ${labelTarget} !`;
     }
+  }
+
+  window.ajouterBille = pseudo => {
+    beginLiveRound();
+    launchBalloon(pseudo, true, false);
   };
+  window.declencherEvenement = (nomDuCadeau, senderName = '', giftCount = 1) =>
+    applyGiftBoost(nomDuCadeau, senderName, giftCount, true);
+
+  function hasSeenLiveEvent(data, eventData) {
+    const messageId = String(eventData.messageId || data.messageId || '').trim();
+    if (!messageId) return false;
+    if (seenLiveEventIds.has(messageId)) return true;
+    seenLiveEventIds.add(messageId);
+    if (seenLiveEventIds.size > 2000) {
+      seenLiveEventIds.delete(seenLiveEventIds.values().next().value);
+    }
+    return false;
+  }
+
+  function giftCoinValue(gift) {
+    const value = Number(gift.coinCount ?? gift.coinValue ?? gift.diamonds ?? gift.diamondCount);
+    return Number.isSafeInteger(value) && value > 0 ? value : 0;
+  }
+
+  function handleWalletRun(event) {
+    const data = event.detail || {};
+    const player = data.player || {};
+    const username = String(player.username || player.uniqueId || player.nickname || '').trim();
+    const spent = Number(data.spent);
+    if (!username || !Number.isSafeInteger(spent) || spent < 1) return;
+
+    beginLiveRound();
+    const normalizedUsername = normalizePlayerName(username);
+    let targets = balloons.filter(b =>
+      !b.finished && !b.simulated && normalizePlayerName(b.username) === normalizedUsername
+    );
+    if (!targets.length) {
+      launchBalloon(username, true, false);
+      targets = balloons.filter(b =>
+        !b.finished && !b.simulated && normalizePlayerName(b.username) === normalizedUsername
+      );
+    }
+
+    const boost = Math.min(5, spent * 0.2); // Un RUN reste moins fort qu'un cadeau LIVE, qui donne au moins 5,4.
+    targets.forEach(balloon => {
+      balloon.boost = Math.min(11, balloon.boost + boost);
+      popBadges.push({
+        x: balloon.x,
+        y: balloon.y - balloon.radiusY - 24,
+        text: '🏃 RUN',
+        sub: `${username} · ${spent.toLocaleString('fr-FR')} étoiles`,
+        color: '#67e8f9',
+        vy: -0.95,
+        alpha: 1,
+        scale: 1.05
+      });
+    });
+    controlFeedback.textContent = `RUN de @${username} : impulsion appliquée à son ballon. Les cadeaux LIVE gardent la priorité.`;
+  }
+
+  window.addEventListener('arcade:wallet-run', handleWalletRun);
+  window.addEventListener('arcade:wallet-run-rejected', event => {
+    const data = event.detail || {};
+    const player = data.player || {};
+    const username = String(player.username || player.uniqueId || player.nickname || 'Spectateur').trim();
+    controlFeedback.textContent = `RUN refusé pour @${username} : ${String(data.message || 'étoiles non dépensées')}.`;
+  });
+
   window.handleTikTokMessage = handleTikTokMessage;
 
   function renderQueue() {
@@ -2010,7 +2184,7 @@
     for (let i = balloons.length - 1; i >= 0; i--) {
       const b = balloons[i];
       b.update();
-      b.draw();
+      b.draw(viewScale);
       if (b.finished && b.finishTimer > 40) {
         balloons.splice(i, 1);
         renderQueue();

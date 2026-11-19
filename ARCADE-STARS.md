@@ -15,6 +15,8 @@ N’appelez pas cette méthode pour des points, des dégâts, des pièces ou des
 
 Le solde peut être lu depuis un jeu avec `await window.ArcadeStars.getBalance(username)`. Les erreurs de lecture et d’attribution sont rejetées par les méthodes; les jeux doivent les signaler plutôt que présenter un crédit réussi.
 
+Dans Montgolfières Tour, « étoile » affiche la bannière du portefeuille avec le pseudo, la photo et le solde. Le premier ballon LIVE à atteindre la stratosphère clôt la manche et reçoit 40 % des pièces des cadeaux LIVE de cette manche, converties en étoiles avec un arrondi à l’étoile inférieure. Les autres ballons LIVE sont retirés et le pot est remis à zéro. `RUN` dépense les étoiles du joueur pour accélérer son ballon, mais n’alimente pas le pot; son impulsion est volontairement inférieure à celle des cadeaux. Les ballons et cadeaux simulés ne peuvent pas gagner ni créditer d’étoiles.
+
 Dans SQUID STORM, les étoiles d’un personnage tombé sont créditées au joueur associé au cadeau ou au `RUN` qui l’a lancé. Une étoile dépensée avec `RUN` lance un personnage; si la réserve ne permet pas de tous les jouer, les étoiles inutilisées sont remboursées. Les simulations ne créditent jamais le portefeuille. Le jeu ne présente une récompense comme créditée qu’après confirmation du serveur; les erreurs sont signalées dans le panneau de contrôle.
 
 Dans Tower Up, un bonus d’une étoile est attribué au bâtisseur LIVE après chaque cinquième étage posé. Les actions simulées n’attribuent aucune étoile; `RUN` ajoute des étages à la file de construction et les éventuelles actions refusées sont remboursées.
