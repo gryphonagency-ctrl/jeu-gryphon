@@ -3391,7 +3391,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/course-de-billes-apercu.png', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.png'), 'image/png']],
         ['/images-vitrine/billes-tour.png', [path.join(__dirname, 'images-vitrine', 'billes-tour.png'), 'image/png']],
         ['/images-vitrine/billes-tour-final.svg', [path.join(__dirname, 'images-vitrine', 'billes-tour-final.svg'), 'image/svg+xml; charset=utf-8']],
-        ['/images-vitrine/montgolfieres-tour.svg', [path.join(__dirname, 'images-vitrine', 'montgolfieres-tour.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/montgolfieres-tour.png', [path.join(__dirname, 'images-vitrine', 'montgolfieres-tour.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
