@@ -42,10 +42,11 @@ const PUSHER_H = 4.8;
 const WALL_H = PUSHER_H;
 const PUSHER_D = 0.35;
 const SIDE_WALL_THICKNESS = 0.12;
-const CHARACTER_COLLISION_HALF_WIDTH = 0.25;
-const CHARACTER_COLLISION_HALF_HEIGHT = 0.4;
-const CHARACTER_COLLISION_HALF_DEPTH = 0.18;
-const CHARACTER_SPRITE_SIZE = 1.15;
+const CHARACTER_SIZE_MULTIPLIER = 2;
+const CHARACTER_COLLISION_HALF_WIDTH = 0.25 * CHARACTER_SIZE_MULTIPLIER;
+const CHARACTER_COLLISION_HALF_HEIGHT = 0.4 * CHARACTER_SIZE_MULTIPLIER;
+const CHARACTER_COLLISION_HALF_DEPTH = 0.18 * CHARACTER_SIZE_MULTIPLIER;
+const CHARACTER_SPRITE_SIZE = 1.15 * CHARACTER_SIZE_MULTIPLIER;
 const FRONT_EDGE_Z = DECK_D / 2;
 const INITIAL_CHARACTER_COUNT = 24;
 const MAX_ACTIVE_CHARACTERS = 512;
@@ -66,6 +67,24 @@ const CHARACTER_GIF_CREDIT_URL = 'https://giphy.com/stickers/Pildyk-transparent-
 type CharacterSpawnRequest = { color: string; count: number; ownerUsername?: string };
 type CharacterAnimationFrame = { bitmap: ImageBitmap; duration: number };
 type FallingHammer = { body: CANNON.Body; mesh: THREE.Group; createdAt: number };
+type CrocodileActor = {
+  group: THREE.Group;
+  jaw: THREE.Group;
+  tail: THREE.Group;
+  baseX: number;
+  range: number;
+  z: number;
+  rangeZ: number;
+  speed: number;
+  phase: number;
+};
+
+const POND_CENTER_X = 0;
+const POND_CENTER_Z = 5.8;
+const POND_WIDTH = DECK_W + 2.5;
+const POND_DEPTH = 3.4;
+const POND_WATER_Y = -2.42;
+const POND_FLOOR_Y = -3.2;
 type DecodedGifImage = CanvasImageSource & {
   displayWidth: number;
   displayHeight: number;
@@ -266,6 +285,10 @@ export class CoinPusherEngine {
   private neonStrips: THREE.Mesh[] = [];
   private cameraBaseY = 2.8;
   private cameraBaseZ = 14.5;
+  private cameraLookY = 0.1;
+  private crocodilePond: THREE.Group | null = null;
+  private crocodiles: CrocodileActor[] = [];
+  private pondWater: THREE.Mesh | null = null;
 
   constructor(container: HTMLElement, options: CoinPusherOptions = {}) {
     this.container = container;
@@ -294,9 +317,9 @@ export class CoinPusherEngine {
     this.scene.background = new THREE.Color(0x05080a);
     this.scene.fog = new THREE.Fog(0x05080a, 32, 70);
 
-    this.camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 100);
+    this.camera = new THREE.PerspectiveCamera(46, w / h, 0.1, 100);
     this.camera.position.set(0, this.cameraBaseY, this.cameraBaseZ);
-    this.camera.lookAt(0, 1.7, 0);
+    this.camera.lookAt(0, this.cameraLookY, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
@@ -319,6 +342,7 @@ export class CoinPusherEngine {
     this.buildMachine();
     this.setupCharacterRenderer();
     this.setupHangingPig();
+    this.setupCrocodilePond();
     this.setupResize();
     this.frameId = requestAnimationFrame(this.animate);
   }
@@ -747,6 +771,182 @@ export class CoinPusherEngine {
     }
   }
 
+  private createCrocodile(scale: number, bodyColor: number, bellyColor: number): Pick<CrocodileActor, 'group' | 'jaw' | 'tail'> {
+    const skin = pmaterial(bodyColor, 0.55, 0.15, 0x0a2a10, 0.15);
+    const ridge = pmaterial(0x1d3a14, 0.7, 0.1);
+    const belly = pmaterial(bellyColor, 0.6, 0.1);
+    const toothMat = pmaterial(0xf4f0dc, 0.4, 0.1, 0x444438, 0.2);
+    const eyeMat = pmaterial(0xffe14a, 0.3, 0.2, 0xffc000, 1.2);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+    const group = new THREE.Group();
+    const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+
+    // Corps (le crocodile nage vers +x)
+    add(group, new THREE.BoxGeometry(0.95, 0.22, 0.38), skin, 0, 0, 0);
+    add(group, new THREE.BoxGeometry(0.9, 0.06, 0.3), belly, 0, -0.12, 0);
+    // Crêtes dorsales
+    for (let i = 0; i < 5; i++) {
+      add(group, new THREE.ConeGeometry(0.045, 0.1, 5), ridge, -0.35 + i * 0.18, 0.15, 0);
+    }
+    // Pattes
+    for (const sx of [-0.28, 0.3]) {
+      for (const sz of [-1, 1]) {
+        const leg = add(group, new THREE.BoxGeometry(0.2, 0.06, 0.1), skin, sx, -0.1, sz * 0.26);
+        leg.rotation.y = sz * 0.5;
+      }
+    }
+
+    // Queue articulée
+    const tail = new THREE.Group();
+    tail.position.set(-0.47, 0, 0);
+    add(tail, new THREE.BoxGeometry(0.5, 0.16, 0.28), skin, -0.25, 0, 0);
+    const tailTip = new THREE.Group();
+    tailTip.position.set(-0.5, 0, 0);
+    add(tailTip, new THREE.BoxGeometry(0.45, 0.1, 0.18), skin, -0.22, 0, 0);
+    add(tailTip, new THREE.ConeGeometry(0.07, 0.3, 6), skin, -0.55, 0, 0).rotation.z = Math.PI / 2;
+    tail.add(tailTip);
+    group.add(tail);
+
+    // Tête
+    const head = new THREE.Group();
+    head.position.set(0.47, 0, 0);
+    add(head, new THREE.BoxGeometry(0.4, 0.17, 0.3), skin, 0.2, 0.03, 0);
+    add(head, new THREE.BoxGeometry(0.4, 0.09, 0.2), skin, 0.55, 0.05, 0);
+    for (const sz of [-1, 1]) {
+      add(head, new THREE.SphereGeometry(0.06, 10, 8), eyeMat, 0.22, 0.14, sz * 0.1);
+      add(head, new THREE.SphereGeometry(0.025, 6, 6), pupilMat, 0.255, 0.15, sz * 0.12);
+      add(head, new THREE.SphereGeometry(0.025, 6, 6), ridge, 0.74, 0.1, sz * 0.05);
+    }
+    // Dents du haut
+    for (let i = 0; i < 4; i++) {
+      for (const sz of [-1, 1]) {
+        const tooth = add(head, new THREE.ConeGeometry(0.018, 0.06, 4), toothMat, 0.42 + i * 0.1, 0.0, sz * 0.09);
+        tooth.rotation.z = Math.PI;
+      }
+    }
+
+    // Mâchoire inférieure qui s'ouvre
+    const jaw = new THREE.Group();
+    jaw.position.set(0.05, -0.03, 0);
+    add(jaw, new THREE.BoxGeometry(0.7, 0.06, 0.22), belly, 0.35, -0.02, 0);
+    for (let i = 0; i < 4; i++) {
+      for (const sz of [-1, 1]) {
+        add(jaw, new THREE.ConeGeometry(0.018, 0.06, 4), toothMat, 0.4 + i * 0.1, 0.03, sz * 0.08);
+      }
+    }
+    head.add(jaw);
+    group.add(head);
+
+    group.scale.setScalar(scale);
+    return { group, jaw, tail };
+  }
+
+  private setupCrocodilePond() {
+    const pond = new THREE.Group();
+    const mudMat = pmaterial(0x14281a, 0.9, 0.05);
+    const lilyMat = pmaterial(0x3fae4a, 0.6, 0.05, 0x0c3a10, 0.2);
+
+    const addPart = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, castShadow = false) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = castShadow;
+      mesh.receiveShadow = true;
+      pond.add(mesh);
+      return mesh;
+    };
+
+    addPart(new THREE.BoxGeometry(POND_WIDTH, 0.1, POND_DEPTH), mudMat, POND_CENTER_X, POND_FLOOR_Y, POND_CENTER_Z);
+
+    // Eau
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x1f7a52,
+      roughness: 0.08,
+      metalness: 0.3,
+      emissive: 0x0a4a30,
+      emissiveIntensity: 0.5,
+      transparent: true,
+      opacity: 0.82,
+    });
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(POND_WIDTH, POND_DEPTH), waterMat);
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(POND_CENTER_X, POND_WATER_Y, POND_CENTER_Z);
+    water.receiveShadow = true;
+    pond.add(water);
+    this.pondWater = water;
+
+    for (const [x, z, r] of [
+      [-6.1, -1.05, 0.22], [-4.3, 0.9, 0.18], [-2.2, -0.35, 0.2],
+      [0.3, 1.1, 0.24], [2.6, -0.9, 0.16], [4.8, 0.25, 0.21], [6.3, -0.55, 0.17],
+    ] as const) {
+      const pad = addPart(new THREE.CylinderGeometry(r, r, 0.015, 14), lilyMat, POND_CENTER_X + x, POND_WATER_Y + 0.012, POND_CENTER_Z + z);
+      pad.castShadow = false;
+    }
+
+    const specs: Array<{ scale: number; color: number; belly: number; baseX: number; range: number; z: number; rangeZ: number; speed: number; phase: number }> = [
+      { scale: 1.15, color: 0x2f6b34, belly: 0xb9c67a, baseX: -3.6, range: 3.2, z: -0.65, rangeZ: 1.0, speed: 0.32, phase: 0 },
+      { scale: 0.9, color: 0x3b7d2a, belly: 0xc7d089, baseX: -1.3, range: 3.8, z: 0.5, rangeZ: 0.95, speed: 0.27, phase: 1.7 },
+      { scale: 1.3, color: 0x25552c, belly: 0xa8b86a, baseX: 1.3, range: 3.8, z: -0.4, rangeZ: 1.1, speed: 0.3, phase: 3.1 },
+      { scale: 0.8, color: 0x4a8a30, belly: 0xd2d896, baseX: 3.6, range: 3.2, z: 0.65, rangeZ: 1.0, speed: 0.36, phase: 4.6 },
+    ];
+    for (const spec of specs) {
+      const { group, jaw, tail } = this.createCrocodile(spec.scale, spec.color, spec.belly);
+      group.position.set(POND_CENTER_X + spec.baseX, POND_WATER_Y + 0.02, POND_CENTER_Z + spec.z);
+      pond.add(group);
+      this.crocodiles.push({
+        group,
+        jaw,
+        tail,
+        baseX: POND_CENTER_X + spec.baseX,
+        range: spec.range,
+        z: POND_CENTER_Z + spec.z,
+        rangeZ: spec.rangeZ,
+        speed: spec.speed,
+        phase: spec.phase,
+      });
+    }
+
+    const pondLight = new THREE.PointLight(0x60ff9a, 1.1, 14, 2);
+    pondLight.position.set(POND_CENTER_X, POND_WATER_Y + 1.2, POND_CENTER_Z + 0.4);
+    pond.add(pondLight);
+
+    this.crocodilePond = pond;
+    this.scene.add(pond);
+  }
+
+  private updateCrocodilePond() {
+    if (!this.crocodilePond) return;
+    const t = this.elapsed;
+    for (const croc of this.crocodiles) {
+      const angle = t * croc.speed + croc.phase;
+      croc.group.position.x = croc.baseX + Math.sin(angle) * croc.range;
+      croc.group.position.y = POND_WATER_Y + 0.02 + Math.sin(t * 1.6 + croc.phase) * 0.025;
+      const depthAngle = t * croc.speed * 0.65 + croc.phase + 1.1;
+      croc.group.position.z = croc.z + Math.sin(depthAngle) * croc.rangeZ;
+      const velocityX = Math.cos(angle) * croc.range * croc.speed;
+      const velocityZ = Math.cos(depthAngle) * croc.rangeZ * croc.speed * 0.65;
+      const targetYaw = Math.atan2(-velocityZ, velocityX);
+      const yawDelta = Math.atan2(
+        Math.sin(targetYaw - croc.group.rotation.y),
+        Math.cos(targetYaw - croc.group.rotation.y),
+      );
+      croc.group.rotation.y += yawDelta * 0.08;
+      croc.group.rotation.z = Math.sin(t * 1.6 + croc.phase) * 0.03;
+      croc.tail.rotation.y = Math.sin(t * 3 + croc.phase) * 0.35;
+      const snap = Math.max(0, Math.sin(t * 0.9 + croc.phase * 2));
+      croc.jaw.rotation.z = -Math.pow(snap, 6) * 0.55;
+    }
+    if (this.pondWater) {
+      (this.pondWater.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.45 + 0.15 * Math.sin(t * 1.4);
+    }
+  }
+
   private async loadHangingPigFrames(Decoder: GifImageDecoderConstructor) {
     const response = await fetch(HANGING_PIG_GIF_PATH);
     if (!response.ok) throw new Error(`Le GIF du cochon suspendu a répondu avec le statut ${response.status}.`);
@@ -882,11 +1082,15 @@ export class CoinPusherEngine {
   }
 
   private spawnInitialCharacters(count: number) {
+    const columns = 6;
+    const columnSpacing = 2.15;
+    const rowSpacing = 1.2;
+    const rows = Math.ceil(count / columns);
     for (let i = 0; i < count; i++) {
-      const col = i % 12;
-      const row = Math.floor(i / 12);
-      const x = -3.85 + col * 0.7 + (Math.random() - 0.5) * 0.015;
-      const z = 0.35 + row * 0.38 + (Math.random() - 0.5) * 0.015;
+      const col = i % columns;
+      const row = Math.floor(i / columns);
+      const x = -((columns - 1) * columnSpacing) / 2 + col * columnSpacing + (Math.random() - 0.5) * 0.015;
+      const z = -((rows - 1) * rowSpacing) / 2 + row * rowSpacing + (Math.random() - 0.5) * 0.015;
       const colorName = i % 6 === 0 ? 'silver' : i % 9 === 0 ? 'bronze' : 'gold';
       this.spawnCharacterAt(x, CHARACTER_COLLISION_HALF_HEIGHT, z, colorName);
     }
@@ -1257,7 +1461,8 @@ export class CoinPusherEngine {
     // Camera subtle breathing
     this.camera.position.x = Math.sin(this.elapsed * 0.25) * 0.14;
     this.camera.position.y = this.cameraBaseY + Math.sin(this.elapsed * 0.35) * 0.06;
-    this.camera.lookAt(0, 1.7, 0);
+    this.camera.lookAt(0, this.cameraLookY, 0);
+    this.updateCrocodilePond();
 
     this.world.step(1 / 60, dt, 3);
     const now = performance.now();
@@ -1291,6 +1496,18 @@ export class CoinPusherEngine {
       this.scene.remove(hammer.mesh);
     }
     this.hammers = [];
+    if (this.crocodilePond) {
+      this.scene.remove(this.crocodilePond);
+      this.crocodilePond.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          (object.material as THREE.Material).dispose();
+        }
+      });
+      this.crocodilePond = null;
+      this.crocodiles = [];
+      this.pondWater = null;
+    }
     if (this.characterImage) {
       this.characterImage.onload = null;
       this.characterImage.onerror = null;
