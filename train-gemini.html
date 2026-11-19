@@ -1,0 +1,2620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train Gemini — Destruction Interactive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            user-select: none;
+            background-color: #0f172a;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* Custom scrollbar for feed */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.6);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.9);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
+        }
+        .gemini-glow {
+            animation: pulseGlow 3s infinite;
+        }
+    </style>
+</head>
+<body class="text-slate-100 flex flex-col">
+
+    <!-- En-tête moderne -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3 z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg gemini-glow">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-lg sm:text-xl font-black tracking-tight bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
+                    TRAIN GEMINI
+                </h1>
+                <p class="text-xs text-slate-400">Attaques TikTok en direct sur le train</p>
+            </div>
+        </div>
+
+        <!-- Compteurs de score et contrôles -->
+        <div class="flex items-center gap-2 sm:gap-4">
+            <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl px-3 py-1.5 flex items-center gap-3">
+                <div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Niveau</div>
+                    <div id="levelDisplay" class="text-base sm:text-lg font-black text-cyan-400">NIV. 1</div>
+                </div>
+                <div class="h-6 w-px bg-slate-700"></div>
+                <div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Dégâts Totaux</div>
+                    <div id="scoreDisplay" class="text-base sm:text-lg font-black text-amber-400">0 PTS</div>
+                </div>
+                <div class="h-6 w-px bg-slate-700"></div>
+                <div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Combo</div>
+                    <div id="comboDisplay" class="text-base sm:text-lg font-black text-rose-400">x1</div>
+                </div>
+            </div>
+
+            <!-- Badge statut TikTok Live rapide -->
+            <button id="openSettingsBtn" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition text-slate-200 flex items-center gap-2 text-xs sm:text-sm font-semibold" title="Paramètres & Connexion TikTok">
+                <span id="tiktokHeaderDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                <svg class="w-4 h-4 text-pink-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                </svg>
+                <span class="hidden md:inline" id="tiktokHeaderLabel">Configurer</span>
+            </button>
+
+            <button id="soundToggleBtn" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition text-slate-300" title="Activer/Désactiver le son">
+                <svg id="soundOnIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                </svg>
+                <svg id="soundOffIcon" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                </svg>
+            </button>
+
+            <button id="resetTrainBtn" class="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-950/50 transition active:scale-95 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>Nouveau Train</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Zone Principale : Canvas du train -->
+    <main class="flex-1 flex flex-col min-h-0 overflow-hidden">
+
+        <!-- Scène du Train (Canvas) -->
+        <div class="relative w-full min-w-0 flex-1 min-h-0 bg-slate-950 overflow-hidden" id="canvasContainer">
+            <canvas id="gameCanvas"></canvas>
+
+            <!-- Barre d'état du train en haut du canvas -->
+            <div class="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+                <div class="bg-slate-900/75 backdrop-blur-md border border-slate-700/60 rounded-xl px-3 py-1.5 flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" id="trainStatusDot"></span>
+                    <span class="text-xs font-semibold text-slate-200" id="trainStatusText">Express Gemini — En pleine vitesse (142 km/h)</span>
+                </div>
+
+                <!-- Mode rafale automatique des amis -->
+                <div class="pointer-events-auto flex items-center gap-2 bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-xl px-3 py-1.5">
+                    <span class="text-xs font-medium text-slate-300">Mode Chaos Amis :</span>
+                    <button id="autoChaosBtn" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 hover:bg-indigo-600 hover:text-white transition">
+                        OFF
+                    </button>
+                </div>
+            </div>
+
+            <div id="walletBanner" class="hidden pointer-events-none absolute top-16 left-1/2 z-30 flex w-11/12 max-w-3xl -translate-x-1/2 items-center gap-4 rounded-2xl border-4 border-amber-300/90 bg-gradient-to-r from-violet-950/95 via-indigo-950/95 to-slate-950/95 px-5 py-4 text-center shadow-2xl shadow-amber-300/30" aria-live="polite">
+                <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-amber-200 bg-slate-800 text-3xl">
+                    <img id="walletBannerAvatar" class="hidden h-full w-full object-cover" alt="">
+                    <span id="walletBannerFallback">⭐</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div id="walletBannerTitle" class="text-xs font-black uppercase tracking-widest text-amber-200">Portefeuille d'étoiles</div>
+                    <div id="walletBannerUsername" class="truncate text-lg font-black text-white"></div>
+                    <div id="walletBannerAmount" class="text-xl font-black text-amber-300"></div>
+                </div>
+            </div>
+
+            <!-- Bannière de transition de niveau -->
+            <div id="levelUpBanner" class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300">
+                <div class="bg-slate-900/90 backdrop-blur-md border border-cyan-400/50 rounded-2xl px-6 py-4 text-center shadow-2xl shadow-cyan-950/60">
+                    <div class="text-xs font-black uppercase tracking-widest text-cyan-400" id="levelBannerTag">CONVOI ANÉANTI — NIVEAU SUIVANT</div>
+                    <div class="text-xl sm:text-2xl font-black text-white mt-0.5" id="levelBannerTitle">Niveau 2 • Aurores Boréales</div>
+                    <div class="text-xs text-slate-300 mt-1" id="levelBannerDesc">Nouveau train renforcé de 6 voitures en approche !</div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modale Panneau de Configuration (TikTok Live + Volume Audio) -->
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl animate-[fadeIn_0.15s_ease-out]">
+            <!-- En-tête de la modale -->
+            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-pink-500 to-cyan-400 flex items-center justify-center text-slate-950 font-black">
+                        ⚙️
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Configuration & TikTok Live</h3>
+                        <p class="text-[11px] text-slate-400">Gère le son et la liaison avec tes viewers</p>
+                    </div>
+                </div>
+                <button id="closeSettingsBtn" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-5">
+                <!-- Section Audio -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="volumeSlider" class="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                            <span>🔊</span> Volume sonore du jeu
+                        </label>
+                        <span id="volumeValueLabel" class="text-xs font-black text-amber-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-700">80%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button id="volDownBtn" class="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center transition active:scale-95" title="Diminuer le son">-</button>
+                        <input type="range" id="volumeSlider" min="0" max="100" value="80" class="flex-1 accent-indigo-500 h-2 bg-slate-700 rounded-lg cursor-pointer">
+                        <button id="volUpBtn" class="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center transition active:scale-95" title="Augmenter le son">+</button>
+                    </div>
+                    <div class="mt-2.5 flex justify-end">
+                        <button id="testSoundBtn" class="text-[11px] text-indigo-300 hover:text-indigo-200 underline">
+                            Tester le sifflet du train
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section Connexion TikTok -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-pink-500" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                            </svg>
+                            <span class="text-xs font-bold uppercase tracking-wider text-pink-400">Connexion Compte TikTok</span>
+                        </div>
+                        <span id="tiktokStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Déconnecté</span>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Nom d'utilisateur TikTok (@pseudo) :</label>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">@</span>
+                                <input type="text" id="tiktokUsernameInput" placeholder="ton_pseudo_tiktok" maxlength="32"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-7 pr-3 py-2 text-sm text-white focus:outline-none focus:border-pink-500 transition">
+                            </div>
+                            <button id="connectTiktokBtn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg transition active:scale-95">
+                                Connecter
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Options du flux TikTok Live une fois connecté -->
+                    <div id="tiktokLiveControls" class="hidden pt-2 border-t border-slate-700/70 space-y-2.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-300">Réception auto des cadeaux Live :</span>
+                            <button id="toggleTiktokStreamBtn" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white transition">
+                                Actif 🟢
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-400 bg-slate-900/80 rounded-lg p-2.5 border border-slate-800">
+                        <div class="font-semibold text-slate-200 mb-1">Coût exact du cadeau → dégâts sur le wagon ciblé :</div>
+                        <div class="space-y-1 text-[10px]">
+                            <div class="flex justify-between gap-2"><span>🪨 Enclume Géante · 1 pièce</span><strong class="text-rose-300">−45 PV</strong></div>
+                            <div class="flex justify-between gap-2"><span>🧨 Caisse TNT · 5 pièces</span><strong class="text-rose-300">−65 PV</strong></div>
+                            <div class="flex justify-between gap-2"><span>☄️ Météorite · 20 pièces</span><strong class="text-rose-300">−90 PV</strong></div>
+                            <div class="flex justify-between gap-2"><span>⚡ Rayon Gemini · 30 pièces</span><strong class="text-rose-300">−80 PV</strong></div>
+                            <div class="flex justify-between gap-2"><span>🌪️ Bombe Tornade · 49 pièces</span><strong class="text-rose-300">−70 PV</strong></div>
+                            <div class="flex justify-between gap-2"><span>🎹 Piano à Queue · 88 pièces</span><strong class="text-rose-300">−55 PV</strong></div>
+                        </div>
+                        <p class="mt-2 text-[10px] text-slate-500">Le coût doit correspondre exactement. En plus : TNT −20 PV et météorite −27 PV aux wagons voisins.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-5 py-3 bg-slate-950/60 border-t border-slate-800 flex justify-end">
+                <button id="saveSettingsBtn" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition">
+                    Fermer et jouer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ==========================================
+         * MOTEUR AUDIO SYNTHÉTISÉ (WEB AUDIO API)
+         * ==========================================
+         */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.volume = 0.8;
+            }
+
+            setVolume(val) {
+                this.volume = Math.max(0, Math.min(1, val));
+                if (this.volume === 0) {
+                    this.enabled = false;
+                } else if (!this.enabled) {
+                    this.enabled = true;
+                }
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playWhoosh() {
+                if (!this.enabled || this.volume <= 0) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(650, now);
+                osc.frequency.exponentialRampToValueAtTime(140, now + 0.35);
+                gain.gain.setValueAtTime(0.15 * this.volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+
+            playExplosion(intensity = 1) {
+                if (!this.enabled || this.volume <= 0) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const duration = 0.45 + intensity * 0.25;
+
+                // Bruit blanc filtré pour l'explosion
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(850, now);
+                filter.frequency.exponentialRampToValueAtTime(65, now + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.42 * Math.min(intensity, 1.5) * this.volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + duration);
+            }
+
+            playMetalClang() {
+                if (!this.enabled || this.volume <= 0) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const freqs = [280, 425, 690];
+                freqs.forEach(f => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(f, now);
+                    osc.frequency.exponentialRampToValueAtTime(f * 0.6, now + 0.3);
+                    gain.gain.setValueAtTime(0.13 * this.volume, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                });
+            }
+
+            playLaser() {
+                if (!this.enabled || this.volume <= 0) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(1400, now);
+                osc.frequency.exponentialRampToValueAtTime(110, now + 0.45);
+                gain.gain.setValueAtTime(0.24 * this.volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.45);
+            }
+
+            playWhistle() {
+                if (!this.enabled || this.volume <= 0) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                [587.33, 739.99].forEach(freq => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.11 * this.volume, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.55);
+                });
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        /**
+         * ==========================================
+         * CONFIGURATION DES CADEAUX & AMIS
+         * ==========================================
+         */
+        const GIFTS = [
+            {
+                id: 'anvil',
+                name: 'Enclume Géante',
+                emoji: '🪨',
+                coinCost: 1,
+                damage: 45,
+                points: 250,
+                color: '#94a3b8',
+                desc: 'Chute lourde et métallique',
+                type: 'drop'
+            },
+            {
+                id: 'dynamite',
+                name: 'Caisse TNT',
+                emoji: '🧨',
+                coinCost: 5,
+                damage: 65,
+                points: 400,
+                color: '#ef4444',
+                desc: 'Explosion de zone massive',
+                type: 'drop'
+            },
+            {
+                id: 'meteor',
+                name: 'Météorite',
+                emoji: '☄️',
+                coinCost: 20,
+                damage: 90,
+                points: 650,
+                color: '#f97316',
+                desc: 'Impact cosmique dévastateur',
+                type: 'meteor'
+            },
+            {
+                id: 'laser',
+                name: 'Rayon Gemini',
+                emoji: '⚡',
+                coinCost: 30,
+                damage: 80,
+                points: 550,
+                color: '#8b5cf6',
+                desc: 'Faisceau orbital instantané',
+                type: 'laser'
+            },
+            {
+                id: 'tornado',
+                name: 'Bombe Tornade',
+                emoji: '🌪️',
+                coinCost: 49,
+                damage: 70,
+                points: 500,
+                color: '#06b6d4',
+                desc: 'Fait dérailler et voler les débris',
+                type: 'tornado'
+            },
+            {
+                id: 'piano',
+                name: 'Piano à Queue',
+                emoji: '🎹',
+                coinCost: 88,
+                damage: 55,
+                points: 350,
+                color: '#eab308',
+                desc: 'Classique mais efficace',
+                type: 'drop'
+            }
+        ];
+
+        const FRIEND_NAMES = [
+            'Lucas', 'Chloé', 'Maxime', 'Inès', 'enzo_92', 'Sarah', 'Thomas', 'Camille', 'Hugo', 'Léa', 'Yanis', 'Manon'
+        ];
+
+        /**
+         * ==========================================
+         * ÉTAT DU JEU & PHYSIQUE DU TRAIN
+         * ==========================================
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        let width = 800;
+        let height = 450;
+
+        let score = 0;
+        let combo = 1;
+        let comboTimer = 0;
+        let currentLevel = 1;
+        let levelTransitionTimer = 0;
+        let trainEntryOffset = 0;
+        let shakeTime = 0;
+        let shakeIntensity = 0;
+        let worldScroll = 0;
+        let trainSpeed = 4.2;
+        let autoChaos = false;
+        let autoChaosTimer = 0;
+        let selectedTargetIndex = null;
+        let tiktokSocket = null;
+        let tiktokStreamActive = false;
+        let tiktokUsername = '';
+        let walletBannerTimer = 0;
+        let trainRunStarsSpent = 0;
+        let trainContributors = new Map();
+        let lastTrainAttackerKey = '';
+        const pendingRunAttacks = [];
+
+        let mountains = [];
+        let trees = [];
+        let clouds = [];
+        let birds = [];
+        let foregroundFoliage = [];
+        let ballastStones = [];
+        let trainCars = [];
+        let projectiles = [];
+        let laserBeams = [];
+        let particles = [];
+        let sparks = [];
+        let shockwaves = [];
+        let floatingTexts = [];
+
+        const LEVEL_THEMES = [
+            {
+                name: 'Crépuscule Alpin',
+                sky: ['#070b14', '#172554', '#3b2f63', '#9a3412', '#f59e0b'],
+                sunColor: '#fef9c3',
+                sunGlow: 'rgba(251, 191, 36, 0.45)',
+                mountainDark: '#1e293b',
+                mountainLight: '#334155',
+                snow: true,
+                aurora: false,
+                stars: false,
+                hillColor: '#064e3b',
+                treeMain: '#064e3b',
+                treeAlt: '#065f46',
+                lakeTop: '#1e3a8a',
+                locoColor: '#1d4ed8',
+                locoAccent: '#38bdf8'
+            },
+            {
+                name: 'Nuit Polaire & Aurores',
+                sky: ['#020617', '#06152d', '#0f2942', '#134e4a', '#065f46'],
+                sunColor: '#e0f2fe',
+                sunGlow: 'rgba(56, 189, 248, 0.35)',
+                mountainDark: '#0f172a',
+                mountainLight: '#1e293b',
+                snow: true,
+                aurora: true,
+                stars: true,
+                hillColor: '#022c22',
+                treeMain: '#042f2e',
+                treeAlt: '#115e59',
+                lakeTop: '#0c4a6e',
+                locoColor: '#0f766e',
+                locoAccent: '#2dd4bf'
+            },
+            {
+                name: 'Canyon Désertique Doré',
+                sky: ['#1c0a00', '#451a03', '#7c2d12', '#c2410c', '#fbbf24'],
+                sunColor: '#fffbeb',
+                sunGlow: 'rgba(245, 158, 11, 0.55)',
+                mountainDark: '#78350f',
+                mountainLight: '#b45309',
+                snow: false,
+                aurora: false,
+                stars: false,
+                hillColor: '#92400e',
+                treeMain: '#713f12',
+                treeAlt: '#854d0e',
+                lakeTop: '#9a3412',
+                locoColor: '#b91c1c',
+                locoAccent: '#fde047'
+            },
+            {
+                name: 'Métropole Cyberpunk Néon',
+                sky: ['#090114', '#1e0b36', '#3b0764', '#581c87', '#be185d'],
+                sunColor: '#f472b6',
+                sunGlow: 'rgba(232, 121, 249, 0.5)',
+                mountainDark: '#1e1b4b',
+                mountainLight: '#312e81',
+                snow: false,
+                aurora: true,
+                stars: true,
+                hillColor: '#1e1b4b',
+                treeMain: '#311042',
+                treeAlt: '#4c1d95',
+                lakeTop: '#4c1d95',
+                locoColor: '#6d28d9',
+                locoAccent: '#f472b6'
+            }
+        ];
+
+        function getCurrentTheme() {
+            return LEVEL_THEMES[(currentLevel - 1) % LEVEL_THEMES.length];
+        }
+
+        const walletBanner = document.getElementById('walletBanner');
+        const walletBannerAvatar = document.getElementById('walletBannerAvatar');
+        const walletBannerFallback = document.getElementById('walletBannerFallback');
+        const walletBannerTitle = document.getElementById('walletBannerTitle');
+        const walletBannerUsername = document.getElementById('walletBannerUsername');
+        const walletBannerAmount = document.getElementById('walletBannerAmount');
+
+        function showWalletBanner(player, title, amountText) {
+            if (!player) return;
+            const username = String(player.username || player.uniqueId || player.nickname || 'Spectateur').trim().replace(/^@+/, '');
+            const avatarUrl = String(player.avatarUrl || '').trim();
+            walletBannerTitle.textContent = title;
+            walletBannerUsername.textContent = `@${username}`;
+            walletBannerAmount.textContent = amountText;
+            walletBannerFallback.textContent = username.charAt(0).toUpperCase() || '⭐';
+            if (avatarUrl) {
+                walletBannerAvatar.src = avatarUrl;
+                walletBannerAvatar.classList.remove('hidden');
+                walletBannerFallback.classList.add('hidden');
+            } else {
+                walletBannerAvatar.removeAttribute('src');
+                walletBannerAvatar.classList.add('hidden');
+                walletBannerFallback.classList.remove('hidden');
+            }
+            walletBanner.classList.remove('hidden');
+            window.clearTimeout(walletBannerTimer);
+            walletBannerTimer = window.setTimeout(() => walletBanner.classList.add('hidden'), 8000);
+        }
+
+        walletBannerAvatar.addEventListener('error', () => {
+            walletBannerAvatar.classList.add('hidden');
+            walletBannerFallback.classList.remove('hidden');
+        });
+
+        window.addEventListener('arcade:wallet', event => {
+            const detail = event.detail || {};
+            if (!detail.player || !/^Solde global/.test(String(detail.message || ''))) return;
+            const stars = Math.max(0, Math.floor(Number(detail.player.stars) || 0));
+            showWalletBanner(detail.player, 'Portefeuille d’étoiles', `${stars.toLocaleString('fr-FR')} étoiles`);
+        });
+
+        window.addEventListener('arcade:wallet-run', event => {
+            const detail = event.detail || {};
+            const spent = Number(detail.spent);
+            if (!detail.player || !Number.isSafeInteger(spent) || spent < 1) {
+                console.error('Commande RUN ignorée : joueur ou montant invalide.', detail);
+                return;
+            }
+            launchRunAttack(detail.player, spent);
+        });
+
+        window.addEventListener('arcade:wallet-run-rejected', event => {
+            const detail = event.detail || {};
+            if (detail.player) {
+                showWalletBanner(detail.player, 'RUN refusé', String(detail.message || 'Solde insuffisant'));
+            } else {
+                console.warn('Commande RUN refusée :', detail.message || 'Solde insuffisant.');
+            }
+        });
+
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const previousWidth = width;
+            width = Math.max(300, Math.floor(rect.width));
+            height = Math.max(240, Math.floor(rect.height));
+            canvas.width = Math.floor(width * dpr);
+            canvas.height = Math.floor(height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (mountains.length === 0) {
+                initScenery();
+            } else {
+                extendScenery(previousWidth);
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function initScenery() {
+            mountains = [];
+            for (let i = 0; i < Math.max(10, Math.ceil(width / 260) + 2); i++) {
+                mountains.push({
+                    x: i * 260,
+                    w: 320 + Math.random() * 180,
+                    h: 130 + Math.random() * 110,
+                    ridgeOffset: (Math.random() - 0.5) * 50,
+                    color: i % 2 === 0 ? '#1e293b' : '#243249'
+                });
+            }
+
+            trees = [];
+            for (let i = 0; i < Math.max(28, Math.ceil(width / 85) + 2); i++) {
+                trees.push({
+                    x: i * 85 + Math.random() * 45,
+                    scale: 0.65 + Math.random() * 0.75,
+                    type: Math.random() > 0.35 ? 'pine' : 'oak',
+                    hueShift: Math.random() * 18 - 9
+                });
+            }
+
+            clouds = [];
+            const cloudCount = Math.max(9, Math.ceil(width / 180));
+            for (let i = 0; i < cloudCount; i++) {
+                clouds.push({
+                    x: (i + Math.random()) * width / cloudCount,
+                    y: 28 + Math.random() * 105,
+                    w: 90 + Math.random() * 95,
+                    h: 26 + Math.random() * 18,
+                    speed: 0.15 + Math.random() * 0.35,
+                    layer: i % 2
+                });
+            }
+
+            birds = [];
+            const birdCount = Math.max(7, Math.ceil(width / 220));
+            for (let i = 0; i < birdCount; i++) {
+                birds.push({
+                    x: (i + 0.5) * width / birdCount,
+                    y: 65 + Math.abs(3 - i) * 11,
+                    wingPhase: i * 0.7,
+                    speed: 0.85
+                });
+            }
+
+            foregroundFoliage = [];
+            for (let i = 0; i < Math.max(45, Math.ceil(width / 48) + 2); i++) {
+                foregroundFoliage.push({
+                    x: i * 48 + Math.random() * 30,
+                    h: 8 + Math.random() * 14,
+                    hasFlower: Math.random() > 0.72,
+                    flowerColor: Math.random() > 0.5 ? '#fbbf24' : '#f472b6'
+                });
+            }
+
+            ballastStones = [];
+            for (let i = 0; i < Math.max(140, Math.ceil(width / 14)); i++) {
+                ballastStones.push({
+                    x: Math.random() * Math.max(2000, width + 200),
+                    y: 4 + Math.random() * 52,
+                    r: 1.5 + Math.random() * 2.5,
+                    shade: Math.random() > 0.5 ? '#334155' : '#0f172a'
+                });
+            }
+        }
+
+        function extendScenery(previousWidth) {
+            const mountainCount = Math.max(10, Math.ceil(width / 260) + 2);
+            for (let i = mountains.length; i < mountainCount; i++) {
+                mountains.push({
+                    x: i * 260,
+                    w: 320 + Math.random() * 180,
+                    h: 130 + Math.random() * 110,
+                    ridgeOffset: (Math.random() - 0.5) * 50,
+                    color: i % 2 === 0 ? '#1e293b' : '#243249'
+                });
+            }
+
+            const treeCount = Math.max(28, Math.ceil(width / 85) + 2);
+            for (let i = trees.length; i < treeCount; i++) {
+                trees.push({
+                    x: i * 85 + Math.random() * 45,
+                    scale: 0.65 + Math.random() * 0.75,
+                    type: Math.random() > 0.35 ? 'pine' : 'oak',
+                    hueShift: Math.random() * 18 - 9
+                });
+            }
+
+            const cloudScale = previousWidth > 0 ? width / previousWidth : 1;
+            clouds.forEach(cloud => {
+                cloud.x *= cloudScale;
+            });
+            const cloudCount = Math.max(9, Math.ceil(width / 180));
+            for (let i = clouds.length; i < cloudCount; i++) {
+                clouds.push({
+                    x: (i + Math.random()) * width / cloudCount,
+                    y: 28 + Math.random() * 105,
+                    w: 90 + Math.random() * 95,
+                    h: 26 + Math.random() * 18,
+                    speed: 0.15 + Math.random() * 0.35,
+                    layer: i % 2
+                });
+            }
+
+            birds.forEach(bird => {
+                bird.x *= cloudScale;
+            });
+            const birdCount = Math.max(7, Math.ceil(width / 220));
+            for (let i = birds.length; i < birdCount; i++) {
+                birds.push({
+                    x: (i + 0.5) * width / birdCount,
+                    y: 65 + Math.abs(birdCount / 2 - i) * 11,
+                    wingPhase: i * 0.7,
+                    speed: 0.85
+                });
+            }
+
+            const foliageCount = Math.max(45, Math.ceil(width / 48) + 2);
+            for (let i = foregroundFoliage.length; i < foliageCount; i++) {
+                foregroundFoliage.push({
+                    x: i * 48 + Math.random() * 30,
+                    h: 8 + Math.random() * 14,
+                    hasFlower: Math.random() > 0.72,
+                    flowerColor: Math.random() > 0.5 ? '#fbbf24' : '#f472b6'
+                });
+            }
+
+            const ballastCount = Math.max(140, Math.ceil(width / 14));
+            for (let i = ballastStones.length; i < ballastCount; i++) {
+                ballastStones.push({
+                    x: Math.random() * Math.max(2000, width + 200),
+                    y: 4 + Math.random() * 52,
+                    r: 1.5 + Math.random() * 2.5,
+                    shade: Math.random() > 0.5 ? '#334155' : '#0f172a'
+                });
+            }
+        }
+
+        function createTrain() {
+            trainRunStarsSpent = 0;
+            trainContributors.clear();
+            lastTrainAttackerKey = '';
+            const theme = getCurrentTheme();
+            const hpScale = 1 + (currentLevel - 1) * 0.22;
+            const extraCars = Math.min(4, currentLevel - 1);
+
+            trainCars = [
+                {
+                    id: 0,
+                    name: `Locomotive Gemini Mk.${currentLevel}`,
+                    type: 'loco',
+                    hp: Math.round(170 * hpScale),
+                    maxHp: Math.round(170 * hpScale),
+                    w: 168,
+                    h: 74,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    smokeTimer: 0,
+                    color: theme.locoColor,
+                    accent: theme.locoAccent,
+                    passengers: []
+                },
+                {
+                    id: 1,
+                    name: 'Voiture 1ère Classe',
+                    type: 'passenger',
+                    hp: Math.round(105 * hpScale),
+                    maxHp: Math.round(105 * hpScale),
+                    w: 132,
+                    h: 62,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    color: '#2563eb',
+                    accent: '#7dd3fc',
+                    passengers: [
+                        { win: 0, offset: 4, hasLaptop: true },
+                        { win: 1, offset: -3, hasLaptop: false },
+                        { win: 3, offset: 2, hasLaptop: true }
+                    ]
+                },
+                {
+                    id: 2,
+                    name: 'Wagon-Restaurant Gemini',
+                    type: 'restaurant',
+                    hp: Math.round(105 * hpScale),
+                    maxHp: Math.round(105 * hpScale),
+                    w: 132,
+                    h: 62,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    color: '#4f46e5',
+                    accent: '#c4b5fd',
+                    passengers: [
+                        { win: 0, offset: 0, hasLamp: true },
+                        { win: 1, offset: 3, hasLamp: true },
+                        { win: 2, offset: -2, hasLamp: true }
+                    ]
+                },
+                {
+                    id: 3,
+                    name: 'Wagon Fret Blindé',
+                    type: 'cargo',
+                    hp: Math.round(125 * hpScale),
+                    maxHp: Math.round(125 * hpScale),
+                    w: 126,
+                    h: 60,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    color: '#b45309',
+                    accent: '#fbbf24',
+                    passengers: []
+                },
+                {
+                    id: 4,
+                    name: 'Voiture Panoramique',
+                    type: 'passenger',
+                    hp: Math.round(100 * hpScale),
+                    maxHp: Math.round(100 * hpScale),
+                    w: 128,
+                    h: 60,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    color: '#0f766e',
+                    accent: '#5eead4',
+                    passengers: [
+                        { win: 1, offset: 2, hasLaptop: false },
+                        { win: 2, offset: -4, hasLaptop: true }
+                    ]
+                }
+            ];
+
+            // Ajout automatique de voitures supplémentaires selon le niveau
+            const bonusTemplates = [
+                { name: 'Voiture-Bar Lounge', type: 'restaurant', color: '#7c3aed', accent: '#ddd6fe', w: 130, h: 62, hp: 115 },
+                { name: 'Wagon Citerne Haute-Pression', type: 'cargo', color: '#be123c', accent: '#fda4af', w: 126, h: 60, hp: 135 },
+                { name: 'Voiture Suite Royale', type: 'passenger', color: '#0369a1', accent: '#bae6fd', w: 134, h: 62, hp: 120 },
+                { name: 'Fourgon Blindé Gemini', type: 'cargo', color: '#374151', accent: '#facc15', w: 128, h: 61, hp: 150 }
+            ];
+
+            for (let e = 0; e < extraCars; e++) {
+                const tpl = bonusTemplates[e % bonusTemplates.length];
+                trainCars.push({
+                    id: trainCars.length,
+                    name: tpl.name,
+                    type: tpl.type,
+                    hp: Math.round(tpl.hp * hpScale),
+                    maxHp: Math.round(tpl.hp * hpScale),
+                    w: tpl.w,
+                    h: tpl.h,
+                    offsetX: 0,
+                    offsetY: 0,
+                    angle: 0,
+                    vy: 0,
+                    vAngle: 0,
+                    destroyed: false,
+                    color: tpl.color,
+                    accent: tpl.accent,
+                    passengers: tpl.type !== 'cargo' ? [{ win: 0, offset: 1, hasLamp: true }, { win: 2, offset: -2, hasLaptop: true }] : []
+                });
+            }
+
+            projectiles = [];
+            laserBeams = [];
+            sparks = [];
+            shockwaves = [];
+            levelTransitionTimer = 0;
+            trainEntryOffset = -width * 0.85;
+            trainSpeed = 5.4 + currentLevel * 0.25;
+            document.getElementById('levelDisplay').textContent = `NIV. ${currentLevel}`;
+            updateTrainStatusUI();
+            sound.playWhistle();
+        }
+
+        function triggerNextLevel() {
+            settleTrainPrize();
+            currentLevel++;
+            selectedTargetIndex = null;
+            createTrain();
+            drainPendingRunAttacks();
+
+            const theme = getCurrentTheme();
+            const banner = document.getElementById('levelUpBanner');
+            document.getElementById('levelBannerTitle').textContent = `Niveau ${currentLevel} • ${theme.name}`;
+            document.getElementById('levelBannerDesc').textContent = `Convoi renforcé de ${trainCars.length} voitures en approche !`;
+            banner.classList.remove('opacity-0');
+            setTimeout(() => {
+                banner.classList.add('opacity-0');
+            }, 2600);
+        }
+
+        function getCarScreenPositions() {
+            const trackY = height - 68;
+            const totalTrainWidth = trainCars.reduce((acc, c) => acc + c.w + 10, -10);
+            const baseRightX = Math.min(width - 28, Math.max(totalTrainWidth + 16, width * 0.5 + totalTrainWidth * 0.48));
+            let currentX = baseRightX + trainEntryOffset;
+
+            return trainCars.map(car => {
+                const x = currentX - car.w + car.offsetX;
+                const y = trackY - car.h - 12 + car.offsetY;
+                currentX -= (car.w + 10);
+                return { car, x, y, cx: x + car.w / 2, cy: y + car.h / 2 };
+            });
+        }
+
+        /**
+         * ==========================================
+         * ENVOI DES CADEAUX & EFFETS DE DESTRUCTION
+         * ==========================================
+         */
+        function sendGift(giftId, customFriend = null, forcedCarIndex = null, options = {}) {
+            const baseGift = GIFTS.find(g => g.id === giftId);
+            if (!baseGift) return;
+            const gift = options.gift ? { ...baseGift, ...options.gift } : baseGift;
+            const walletPlayer = options.walletPlayer || null;
+
+            const sender = customFriend || 'Un Ami';
+
+            const positions = getCarScreenPositions();
+            // Choisir un wagon cible (priorité aux wagons non détruits)
+            let targetPos = null;
+            if (forcedCarIndex !== null && positions[forcedCarIndex]) {
+                targetPos = positions[forcedCarIndex];
+            } else if (selectedTargetIndex !== null && positions[selectedTargetIndex] && !positions[selectedTargetIndex].car.destroyed) {
+                targetPos = positions[selectedTargetIndex];
+            } else {
+                const alive = positions.filter(p => !p.car.destroyed);
+                if (alive.length > 0) {
+                    targetPos = alive[Math.floor(Math.random() * alive.length)];
+                } else {
+                    targetPos = positions[Math.floor(Math.random() * positions.length)];
+                }
+            }
+            if (!targetPos) return;
+
+            if (gift.type === 'laser') {
+                sound.playLaser();
+                laserBeams.push({
+                    x: targetPos.cx,
+                    targetY: targetPos.cy,
+                    carIndex: targetPos.car.id,
+                    life: 1.0,
+                    color: gift.color
+                });
+                applyDamageToCar(targetPos.car.id, gift, sender, walletPlayer);
+            } else {
+                sound.playWhoosh();
+                const startX = gift.type === 'meteor' ? targetPos.cx + 220 : targetPos.cx + (Math.random() * 60 - 30);
+                projectiles.push({
+                    gift,
+                    sender,
+                    walletPlayer,
+                    carIndex: targetPos.car.id,
+                    x: startX,
+                    y: -60,
+                    targetX: targetPos.cx,
+                    targetY: targetPos.cy,
+                    vx: gift.type === 'meteor' ? -7.5 : (targetPos.cx - startX) * 0.04,
+                    vy: gift.type === 'meteor' ? 11 : 6.5,
+                    gravity: gift.type === 'meteor' ? 0.35 : 0.45,
+                    rotation: 0,
+                    vRot: (Math.random() - 0.5) * 0.25
+                });
+            }
+        }
+
+        function recordTrainDamage(player, amount) {
+            if (!player || !Number.isSafeInteger(amount) || amount < 1) return;
+            const username = String(player.uniqueId || player.username || player.nickname || '')
+                .trim()
+                .replace(/^@+/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) return;
+
+            const key = username.toLocaleLowerCase();
+            const contribution = trainContributors.get(key) || { username, damage: 0, player };
+            contribution.damage += amount;
+            contribution.player = player;
+            trainContributors.set(key, contribution);
+            lastTrainAttackerKey = key;
+        }
+
+        function settleTrainPrize() {
+            const prize = Math.floor(trainRunStarsSpent * 0.4);
+            if (prize < 1 || trainContributors.size === 0) return;
+
+            const contributors = Array.from(trainContributors.entries());
+            const highestDamage = Math.max(...contributors.map(([, contribution]) => contribution.damage));
+            const leaders = contributors.filter(([, contribution]) => contribution.damage === highestDamage);
+            const [winnerKey, winner] = leaders.find(([key]) => key === lastTrainAttackerKey) || leaders[0];
+            if (!winnerKey || !winner) return;
+
+            if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+                console.error('Portefeuille indisponible : récompense du train non créditée.');
+                showWalletBanner(winner.player, 'Crédit non disponible', 'Récompense non confirmée');
+                return;
+            }
+
+            let credited = 0;
+            async function creditPrize() {
+                let player = winner.player;
+                let remaining = prize;
+                while (remaining > 0) {
+                    const amount = Math.min(remaining, 250000);
+                    player = await window.ArcadeStars.award({ username: winner.username, amount });
+                    credited += amount;
+                    remaining -= amount;
+                }
+                return player;
+            }
+
+            creditPrize()
+                .then(player => {
+                    showWalletBanner(
+                        { ...winner.player, ...player, username: winner.username },
+                        'Gagnant du train',
+                        `+${prize.toLocaleString('fr-FR')} étoiles gagnées`
+                    );
+                })
+                .catch(error => {
+                    console.error(`Impossible de créditer ${prize} étoiles à @${winner.username} :`, error);
+                    const message = credited
+                        ? `Crédit partiel : ${credited.toLocaleString('fr-FR')} / ${prize.toLocaleString('fr-FR')} étoiles`
+                        : 'La récompense n’a pas été enregistrée';
+                    showWalletBanner(winner.player, 'Crédit non confirmé', message);
+                });
+        }
+
+        function launchRunAttack(player, spent) {
+            if (!trainCars.some(car => !car.destroyed)) {
+                pendingRunAttacks.push({ player, spent });
+                return;
+            }
+
+            trainRunStarsSpent += spent;
+            const username = String(player.uniqueId || player.username || player.nickname || 'Spectateur')
+                .trim()
+                .replace(/^@+/, '');
+            sendGift('anvil', `@${username}`, null, {
+                walletPlayer: player,
+                gift: {
+                    id: 'run',
+                    name: 'Attaque RUN',
+                    emoji: '⭐',
+                    damage: spent,
+                    points: 0,
+                    color: '#facc15',
+                    type: 'drop'
+                }
+            });
+        }
+
+        function drainPendingRunAttacks() {
+            pendingRunAttacks.splice(0).forEach(({ player, spent }) => launchRunAttack(player, spent));
+        }
+
+        function applyDamageToCar(carIndex, gift, sender, walletPlayer = null) {
+            const positions = getCarScreenPositions();
+            const target = positions[carIndex];
+            if (!target) return;
+
+            const car = target.car;
+            const wasDestroyed = car.destroyed;
+            const damage = Math.min(car.hp, Math.max(0, gift.damage));
+            car.hp = Math.max(0, car.hp - gift.damage);
+            recordTrainDamage(walletPlayer, damage);
+
+            // Rebond physique du wagon touché
+            car.vy = -5.5 - Math.random() * 3;
+            car.vAngle = (Math.random() - 0.5) * 0.14;
+
+            // Tremblement d'écran
+            shakeTime = 16;
+            shakeIntensity = gift.damage > 70 ? 11 : 6;
+
+            // Sons d'impact
+            if (gift.id === 'anvil' || gift.id === 'piano') {
+                sound.playMetalClang();
+            }
+            sound.playExplosion(Math.min(gift.damage, 180) / 60);
+
+            // Gestion du combo & score
+            comboTimer = 180; // 3 secondes à 60fps
+            const earned = Math.round(gift.points * combo);
+            score += earned;
+            combo = Math.min(10, +(combo + 0.5).toFixed(1));
+            updateScoreUI();
+
+            // Texte flottant
+            floatingTexts.push({
+                x: target.cx,
+                y: target.y - 15,
+                text: gift.id === 'run' ? `-${damage} PV` : `-${damage} PV (+${earned})`,
+                subtext: gift.id === 'run' ? `Attaque RUN de ${sender}` : `Cadeau de ${sender}`,
+                color: '#fbbf24',
+                life: 1.0
+            });
+
+            // Particules d'explosion et débris
+            spawnExplosion(target.cx, target.cy, gift.color, gift.damage > 60 ? 38 : 24);
+
+            // Onde de choc thermique
+            shockwaves.push({
+                x: target.cx,
+                y: target.cy,
+                radius: 8,
+                maxRadius: gift.damage > 65 ? 115 : 75,
+                alpha: 0.85,
+                color: gift.color
+            });
+
+            // Dégâts collatéraux légers sur les wagons adjacents si TNT ou Météorite
+            if (gift.id === 'dynamite' || gift.id === 'meteor') {
+                [carIndex - 1, carIndex + 1].forEach(adjIdx => {
+                    if (trainCars[adjIdx] && !trainCars[adjIdx].destroyed) {
+                        const adjacentCar = trainCars[adjIdx];
+                        const adjacentDamage = Math.min(adjacentCar.hp, Math.round(gift.damage * 0.3));
+                        adjacentCar.hp = Math.max(0, adjacentCar.hp - Math.round(gift.damage * 0.3));
+                        recordTrainDamage(walletPlayer, adjacentDamage);
+                        trainCars[adjIdx].vy = -3;
+                        if (trainCars[adjIdx].hp === 0) {
+                            destroyCar(trainCars[adjIdx], positions[adjIdx]);
+                        }
+                    }
+                });
+            }
+
+            if (car.hp === 0 && !wasDestroyed) {
+                destroyCar(car, target);
+            }
+
+            updateTrainStatusUI();
+        }
+
+        function destroyCar(car, pos) {
+            car.destroyed = true;
+            car.vAngle = (Math.random() > 0.5 ? 1 : -1) * (0.08 + Math.random() * 0.08);
+            car.vy = -8;
+            spawnExplosion(pos.cx, pos.cy, '#f97316', 45);
+            floatingTexts.push({
+                x: pos.cx,
+                y: pos.y - 35,
+                text: `💥 ${car.name.toUpperCase()} DÉTRUIT !`,
+                subtext: '+500 BONUS',
+                color: '#f43f5e',
+                life: 1.3
+            });
+            score += 500;
+            updateScoreUI();
+        }
+
+        function spawnExplosion(x, y, mainColor, count) {
+            const colors = [mainColor, '#ef4444', '#f59e0b', '#fef08a', '#475569'];
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.5 + Math.random() * 7.5;
+                particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2.5,
+                    size: 3 + Math.random() * 6,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    alpha: 1,
+                    decay: 0.018 + Math.random() * 0.02,
+                    gravity: 0.18,
+                    isSmoke: i % 4 === 0
+                });
+            }
+        }
+
+        /**
+         * ==========================================
+         * BOUCLE DE RENDU ET D'ANIMATION
+         * ==========================================
+         */
+        function update() {
+            // Entrée fluide du nouveau train sur la voie
+            if (trainEntryOffset < 0) {
+                trainEntryOffset = Math.min(0, trainEntryOffset + Math.max(14, -trainEntryOffset * 0.08));
+            }
+
+            // Vitesse du train et transition instantanée vers le niveau suivant une fois le train anéanti et évacué
+            const aliveCount = trainCars.filter(c => !c.destroyed).length;
+            if (aliveCount === 0) {
+                levelTransitionTimer++;
+                // L'épave accélère hors de l'écran puis le nouveau niveau démarre instantanément
+                trainEntryOffset += 16 + levelTransitionTimer * 0.9;
+                const positions = getCarScreenPositions();
+                const leftmostX = positions.length > 0 ? positions[positions.length - 1].x : width + 100;
+                if (leftmostX > width + 60 || levelTransitionTimer > 42) {
+                    triggerNextLevel();
+                    return;
+                }
+            }
+
+            const targetSpeed = aliveCount === 0 ? 12 : (trainCars[0].destroyed ? 2.2 : 4.4 + (aliveCount * 0.15) + currentLevel * 0.2);
+            trainSpeed += (targetSpeed - trainSpeed) * 0.04;
+            worldScroll += trainSpeed;
+
+            // Combo timer
+            if (comboTimer > 0) {
+                comboTimer--;
+                if (comboTimer === 0) {
+                    combo = 1;
+                    updateScoreUI();
+                }
+            }
+
+            // Tremblement caméra
+            if (shakeTime > 0) shakeTime--;
+
+            // Mode Chaos Automatique des amis
+            if (autoChaos) {
+                autoChaosTimer++;
+                if (autoChaosTimer > 55) {
+                    autoChaosTimer = 0;
+                    const randomFriend = FRIEND_NAMES[Math.floor(Math.random() * FRIEND_NAMES.length)];
+                    const randomGift = GIFTS[Math.floor(Math.random() * GIFTS.length)];
+                    sendGift(randomGift.id, randomFriend);
+                }
+            }
+
+            // Nuages
+            clouds.forEach(c => {
+                c.x -= c.speed + trainSpeed * (c.layer === 0 ? 0.03 : 0.07);
+                if (c.x + c.w < -80) c.x = width + 80;
+            });
+
+            // Oiseaux en vol
+            birds.forEach(b => {
+                b.x += b.speed - trainSpeed * 0.08;
+                b.wingPhase += 0.16;
+                if (b.x > width + 120) b.x = -120;
+                if (b.x < -140) b.x = width + 100;
+            });
+
+            // Ondes de choc
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += 4.5;
+                sw.alpha -= 0.045;
+                if (sw.alpha <= 0 || sw.radius >= sw.maxRadius) {
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            // Étincelles électriques (caténaire & roues)
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                const sp = sparks[i];
+                sp.x += sp.vx;
+                sp.y += sp.vy;
+                sp.vy += 0.15;
+                sp.life -= 0.06;
+                if (sp.life <= 0) sparks.splice(i, 1);
+            }
+
+            // Physique des wagons
+            trainCars.forEach((car, idx) => {
+                // Micro-vibrations réalistes dues aux rails
+                const railVib = !car.destroyed && trainSpeed > 0.5 ? Math.sin(worldScroll * 0.35 + idx) * 0.6 : 0;
+                if (car.offsetY === 0 && car.vy === 0 && !car.destroyed) {
+                    car.railBounce = railVib;
+                } else {
+                    car.railBounce = 0;
+                }
+
+                // Étincelles occasionnelles du pantographe sur le fil caténaire
+                if (car.type === 'loco' && !car.destroyed && trainSpeed > 1.5 && Math.random() < 0.045) {
+                    const pos = getCarScreenPositions()[0];
+                    if (pos) {
+                        const pantoX = pos.x + 36;
+                        const pantoY = pos.y - 22;
+                        for (let s = 0; s < 5; s++) {
+                            sparks.push({
+                                x: pantoX,
+                                y: pantoY,
+                                vx: -trainSpeed * 0.7 + (Math.random() - 0.5) * 4,
+                                vy: (Math.random() - 0.3) * 4,
+                                life: 1,
+                                color: '#7dd3fc'
+                            });
+                        }
+                    }
+                }
+
+                // Poussière et étincelles sous les roues à grande vitesse
+                if (trainSpeed > 2.2 && Math.random() < 0.25) {
+                    const pos = getCarScreenPositions()[idx];
+                    if (pos) {
+                        particles.push({
+                            x: pos.x + 25 + Math.random() * (car.w - 50),
+                            y: height - 70,
+                            vx: -trainSpeed * 0.9 - Math.random() * 1.5,
+                            vy: -0.4 - Math.random() * 0.8,
+                            size: 3 + Math.random() * 4,
+                            color: 'rgba(148, 163, 184, 0.35)',
+                            alpha: 0.45,
+                            decay: 0.025,
+                            gravity: -0.01,
+                            isSmoke: true
+                        });
+                    }
+                }
+
+                // Ressort vertical vers les rails
+                if (car.offsetY < 0 || car.vy !== 0) {
+                    car.vy += 0.55;
+                    car.offsetY += car.vy;
+                    if (car.offsetY >= 0) {
+                        car.offsetY = 0;
+                        car.vy = 0;
+                    }
+                }
+
+                // Inclinaison et récupération
+                if (!car.destroyed) {
+                    car.angle += car.vAngle;
+                    car.vAngle *= 0.85;
+                    car.angle *= 0.88;
+                } else {
+                    // Wagon détruit : reste légèrement de travers et fume
+                    car.angle += car.vAngle;
+                    car.vAngle *= 0.9;
+                    if (Math.abs(car.angle) > 0.18) {
+                        car.angle = Math.sign(car.angle) * 0.18;
+                        car.vAngle = 0;
+                    }
+                    if (Math.random() < 0.25) {
+                        const pos = getCarScreenPositions()[idx];
+                        if (pos) {
+                            particles.push({
+                                x: pos.cx + (Math.random() * 40 - 20),
+                                y: pos.y + 10,
+                                vx: -trainSpeed * 0.6 + (Math.random() - 0.5),
+                                vy: -1.5 - Math.random() * 1.5,
+                                size: 5 + Math.random() * 6,
+                                color: '#334155',
+                                alpha: 0.65,
+                                decay: 0.015,
+                                gravity: -0.02,
+                                isSmoke: true
+                            });
+                        }
+                    }
+                }
+
+                // Fumée blanche de la locomotive si intacte
+                if (car.type === 'loco' && !car.destroyed) {
+                    car.smokeTimer++;
+                    if (car.smokeTimer % 7 === 0) {
+                        const pos = getCarScreenPositions()[0];
+                        if (pos) {
+                            particles.push({
+                                x: pos.x + pos.car.w - 32,
+                                y: pos.y - 6,
+                                vx: -trainSpeed * 0.8 - Math.random(),
+                                vy: -1.8 - Math.random() * 1.2,
+                                size: 4 + Math.random() * 5,
+                                color: 'rgba(226, 232, 240, 0.55)',
+                                alpha: 0.7,
+                                decay: 0.014,
+                                gravity: -0.02,
+                                isSmoke: true
+                            });
+                        }
+                    }
+                }
+            });
+
+            // Mise à jour des projectiles (cadeaux qui tombent)
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.x += p.vx;
+                p.vy += p.gravity;
+                p.y += p.vy;
+                p.rotation += p.vRot;
+
+                const positions = getCarScreenPositions();
+                const target = positions[p.carIndex];
+                const hitY = target ? target.cy : height - 90;
+
+                if (p.y >= hitY) {
+                    applyDamageToCar(p.carIndex, p.gift, p.sender, p.walletPlayer);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Mise à jour des rayons laser
+            for (let i = laserBeams.length - 1; i >= 0; i--) {
+                laserBeams[i].life -= 0.06;
+                if (laserBeams[i].life <= 0) {
+                    laserBeams.splice(i, 1);
+                }
+            }
+
+            // Mise à jour des particules
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.vy += pt.gravity || 0;
+                pt.alpha -= pt.decay;
+                if (pt.alpha <= 0 || pt.size <= 0.2) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // Mise à jour des textes flottants
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 0.9;
+                ft.life -= 0.018;
+                if (ft.life <= 0) {
+                    floatingTexts.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.save();
+            if (shakeTime > 0) {
+                const dx = (Math.random() - 0.5) * shakeIntensity * 2;
+                const dy = (Math.random() - 0.5) * shakeIntensity * 2;
+                ctx.translate(dx, dy);
+            }
+
+            // 1. Ciel atmosphérique dynamique selon le niveau actuel
+            const theme = getCurrentTheme();
+            const trackY = height - 68;
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, trackY);
+            skyGrad.addColorStop(0, theme.sky[0]);
+            skyGrad.addColorStop(0.38, theme.sky[1]);
+            skyGrad.addColorStop(0.74, theme.sky[2]);
+            skyGrad.addColorStop(0.92, theme.sky[3]);
+            skyGrad.addColorStop(1, theme.sky[4]);
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Étoiles scintillantes pour les niveaux nocturnes / futuristes
+            if (theme.stars) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+                for (let s = 0; s < 45; s++) {
+                    const sx = (s * 173 + currentLevel * 53) % width;
+                    const sy = (s * 67) % (trackY * 0.55);
+                    const r = (s % 3 === 0) ? 1.6 : 1;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Aurores boréales / Lumières atmosphériques ondulantes
+            if (theme.aurora) {
+                ctx.save();
+                const aurGrad = ctx.createLinearGradient(0, 20, width, 130);
+                aurGrad.addColorStop(0, 'rgba(45, 212, 191, 0.18)');
+                aurGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.22)');
+                aurGrad.addColorStop(1, 'rgba(56, 189, 248, 0.15)');
+                ctx.fillStyle = aurGrad;
+                ctx.beginPath();
+                ctx.moveTo(0, 80);
+                for (let ax = 0; ax <= width; ax += 40) {
+                    const ay = 55 + Math.sin(ax * 0.012 + worldScroll * 0.015) * 24;
+                    ctx.lineTo(ax, ay);
+                }
+                ctx.lineTo(width, 130);
+                ctx.lineTo(0, 130);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Soleil / Lune éclatante + Rayons (God rays) + Lens flare
+            const sunX = width * 0.78;
+            const sunY = trackY - 125;
+
+            ctx.save();
+            const raysGrad = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 260);
+            raysGrad.addColorStop(0, theme.sunColor);
+            raysGrad.addColorStop(0.18, theme.sunGlow);
+            raysGrad.addColorStop(0.55, 'rgba(249, 115, 22, 0.12)');
+            raysGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+            ctx.fillStyle = raysGrad;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 260, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Disque solaire / lunaire
+            ctx.fillStyle = theme.sunColor;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 24, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Reflets optiques subtils (Lens flare)
+            ctx.fillStyle = 'rgba(253, 224, 71, 0.12)';
+            ctx.beginPath();
+            ctx.arc(sunX - 110, sunY + 35, 14, 0, Math.PI * 2);
+            ctx.arc(sunX - 185, sunY + 60, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Nuages volumétriques éclairés par le bas
+            clouds.forEach(c => {
+                const cloudGrad = ctx.createLinearGradient(c.x, c.y, c.x, c.y + c.h);
+                cloudGrad.addColorStop(0, 'rgba(203, 213, 225, 0.22)');
+                cloudGrad.addColorStop(1, 'rgba(251, 146, 60, 0.18)');
+                ctx.fillStyle = cloudGrad;
+                ctx.beginPath();
+                ctx.roundRect(c.x, c.y, c.w, c.h, c.h / 2);
+                ctx.arc(c.x + c.w * 0.3, c.y + 4, c.h * 0.65, 0, Math.PI * 2);
+                ctx.arc(c.x + c.w * 0.62, c.y + 2, c.h * 0.75, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Oiseaux en vol
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)';
+            ctx.lineWidth = 1.6;
+            birds.forEach(b => {
+                const flap = Math.sin(b.wingPhase) * 4;
+                ctx.beginPath();
+                ctx.moveTo(b.x - 6, b.y - flap);
+                ctx.quadraticCurveTo(b.x - 3, b.y - 3, b.x, b.y);
+                ctx.quadraticCurveTo(b.x + 3, b.y - 3, b.x + 6, b.y - flap);
+                ctx.stroke();
+            });
+            // 2. Montagnes lointaines avec faces éclairées et ombragées
+            mountains.forEach(m => {
+                const span = mountains.length * 260;
+                const parallaxX = ((m.x - worldScroll * 0.12) % span);
+                const drawX = parallaxX < -350 ? parallaxX + span : parallaxX;
+                const peakX = drawX + m.w * 0.5 + m.ridgeOffset;
+                const peakY = trackY - m.h;
+
+                // Versant ombragé (gauche)
+                ctx.fillStyle = theme.mountainDark;
+                ctx.beginPath();
+                ctx.moveTo(drawX, trackY);
+                ctx.lineTo(peakX, peakY);
+                ctx.lineTo(peakX + 18, trackY);
+                ctx.closePath();
+                ctx.fill();
+
+                // Versant éclairé (droite)
+                ctx.fillStyle = theme.mountainLight;
+                ctx.beginPath();
+                ctx.moveTo(peakX, peakY);
+                ctx.lineTo(drawX + m.w, trackY);
+                ctx.lineTo(peakX + 18, trackY);
+                ctx.closePath();
+                ctx.fill();
+
+                // Calotte enneigée réaliste selon le biome
+                if (theme.snow) {
+                    ctx.fillStyle = 'rgba(241, 245, 249, 0.78)';
+                    ctx.beginPath();
+                    ctx.moveTo(peakX, peakY);
+                    ctx.lineTo(peakX - m.w * 0.12, peakY + m.h * 0.28);
+                    ctx.lineTo(peakX - m.w * 0.04, peakY + m.h * 0.22);
+                    ctx.lineTo(peakX + m.w * 0.03, peakY + m.h * 0.30);
+                    ctx.lineTo(peakX + m.w * 0.13, peakY + m.h * 0.25);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+
+            // Brume atmosphérique douce au pied des montagnes
+            const mistGrad = ctx.createLinearGradient(0, trackY - 65, 0, trackY - 12);
+            mistGrad.addColorStop(0, 'rgba(148, 163, 184, 0)');
+            mistGrad.addColorStop(1, 'rgba(186, 230, 253, 0.22)');
+            ctx.fillStyle = mistGrad;
+            ctx.fillRect(0, trackY - 65, width, 53);
+
+            // 2b. Lac scintillant au loin & Viaduc ferroviaire en arrière-plan
+            const lakeY = trackY - 26;
+            const lakeGrad = ctx.createLinearGradient(0, lakeY, 0, trackY - 10);
+            lakeGrad.addColorStop(0, theme.lakeTop);
+            lakeGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = lakeGrad;
+            ctx.fillRect(0, lakeY, width, 16);
+
+            // Reflet du soleil sur l'eau
+            ctx.fillStyle = 'rgba(251, 191, 36, 0.35)';
+            for (let r = 0; r < 6; r++) {
+                const rw = 26 - r * 3;
+                const rx = sunX - rw / 2 + Math.sin(worldScroll * 0.03 + r) * 6;
+                ctx.fillRect(rx, lakeY + 2 + r * 2.3, rw, 1.5);
+            }
+
+            // Viaduc en pierre défilant lentement au loin
+            const viaductSpan = 900;
+            const vx = ((420 - worldScroll * 0.26) % viaductSpan + viaductSpan) % viaductSpan - 120;
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(vx, trackY - 46, 170, 8);
+            for (let arch = 0; arch < 4; arch++) {
+                const ax = vx + 10 + arch * 40;
+                ctx.fillRect(ax, trackY - 38, 10, 24);
+                ctx.beginPath();
+                ctx.arc(ax + 20, trackY - 38, 12, Math.PI, 0);
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+
+            // 3. Collines verdoyantes et forêt détaillée en parallaxe moyenne
+            ctx.fillStyle = theme.hillColor;
+            ctx.beginPath();
+            ctx.moveTo(0, trackY);
+            for (let hx = 0; hx <= width + 60; hx += 60) {
+                const hy = trackY - 18 - Math.sin((hx + worldScroll * 0.35) * 0.008) * 10;
+                ctx.lineTo(hx, hy);
+            }
+            ctx.lineTo(width, trackY);
+            ctx.closePath();
+            ctx.fill();
+
+            trees.forEach(t => {
+                const totalSpan = trees.length * 85;
+                let tx = (t.x - worldScroll * 0.58) % totalSpan;
+                if (tx < -50) tx += totalSpan;
+
+                const th = 42 * t.scale;
+                ctx.fillStyle = '#291509';
+                ctx.fillRect(tx - 2.5, trackY - 14, 5, 14);
+
+                if (t.type === 'pine') {
+                    // Sapin à plusieurs étages
+                    ctx.fillStyle = theme.treeMain;
+                    for (let tier = 0; tier < 3; tier++) {
+                        const tierY = trackY - 12 - tier * (th * 0.26);
+                        const tierW = (16 - tier * 3.5) * t.scale;
+                        ctx.beginPath();
+                        ctx.moveTo(tx, tierY - th * 0.45);
+                        ctx.lineTo(tx - tierW, tierY);
+                        ctx.lineTo(tx + tierW, tierY);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                } else {
+                    // Feuillu touffu
+                    ctx.fillStyle = theme.treeAlt;
+                    ctx.beginPath();
+                    ctx.arc(tx, trackY - 14 - th * 0.45, 13 * t.scale, 0, Math.PI * 2);
+                    ctx.arc(tx - 8 * t.scale, trackY - 12 - th * 0.3, 10 * t.scale, 0, Math.PI * 2);
+                    ctx.arc(tx + 8 * t.scale, trackY - 12 - th * 0.3, 10 * t.scale, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // 3b. Poteaux caténaires et fil électrique aérien
+            const catenaryY = trackY - 98;
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(0, catenaryY);
+            ctx.lineTo(width, catenaryY);
+            ctx.stroke();
+
+            const poleSpacing = 220;
+            const poleOffset = (worldScroll * 0.92) % poleSpacing;
+            for (let px = -poleOffset; px < width + 50; px += poleSpacing) {
+                // Mât métallique
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(px - 2, catenaryY - 10, 4, trackY - catenaryY + 10);
+                // Potence horizontale
+                ctx.fillRect(px - 2, catenaryY - 4, 24, 3);
+                // Isolateur
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(px + 18, catenaryY - 4, 4, 5);
+            }
+
+            // 4. Voie ferrée réaliste (Ballast gravier, traverses vieillies, attaches et rail acier)
+            const ballastGrad = ctx.createLinearGradient(0, trackY, 0, height);
+            ballastGrad.addColorStop(0, '#334155');
+            ballastGrad.addColorStop(0.3, '#1e293b');
+            ballastGrad.addColorStop(1, '#090d16');
+            ctx.fillStyle = ballastGrad;
+            ctx.fillRect(0, trackY, width, height - trackY);
+
+            // Graviers du ballast qui défilent
+            const ballastSpan = Math.max(2000, width + 200);
+            ballastStones.forEach(st => {
+                const sx = ((st.x - worldScroll) % ballastSpan + ballastSpan) % ballastSpan;
+                if (sx < width) {
+                    ctx.fillStyle = st.shade;
+                    ctx.fillRect(sx, trackY + st.y, st.r * 1.4, st.r);
+                }
+            });
+
+            // Traverses en bois + selles métalliques
+            const tieSpacing = 24;
+            const tieOffset = worldScroll % tieSpacing;
+            for (let x = -tieOffset; x < width; x += tieSpacing) {
+                ctx.fillStyle = '#3f2e21';
+                ctx.fillRect(x, trackY + 1, 13, 7);
+                // Fixation métallique
+                ctx.fillStyle = '#64748b';
+                ctx.fillRect(x + 3, trackY, 7, 2);
+            }
+
+            // Rail en acier profilé avec reflet spéculaire
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(0, trackY - 2, width, 4);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, trackY - 3, width, 1.5);
+
+            // 5. Dessin du Train (Soufflets d'intercirculation + Wagons ultra-détaillés)
+            const positions = getCarScreenPositions();
+
+            // Soufflets d'intercirculation réalistes entre wagons
+            for (let i = 0; i < positions.length - 1; i++) {
+                const curr = positions[i];
+                const next = positions[i + 1];
+                const gapX = next.x + next.car.w;
+                const gapW = curr.x - gapX;
+                if (gapW > 0 && gapW < 35) {
+                    const topY = Math.max(curr.y, next.y) + 10;
+                    const botY = Math.min(curr.y + curr.car.h, next.y + next.car.h) - 10;
+                    ctx.fillStyle = '#1e293b';
+                    ctx.fillRect(gapX - 1, topY, gapW + 2, botY - topY);
+                    // Plis du soufflet
+                    ctx.strokeStyle = '#475569';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(gapX + gapW * 0.33, topY);
+                    ctx.lineTo(gapX + gapW * 0.33, botY);
+                    ctx.moveTo(gapX + gapW * 0.66, topY);
+                    ctx.lineTo(gapX + gapW * 0.66, botY);
+                    ctx.stroke();
+                }
+            }
+
+            positions.forEach((pos, idx) => {
+                drawTrainCar(pos.car, pos.x, pos.y + (pos.car.railBounce || 0), idx === selectedTargetIndex);
+            });
+
+            // 5b. Végétation et herbes hautes au tout premier plan (effet de vitesse intense)
+            const grassSpan = foregroundFoliage.length * 48;
+            foregroundFoliage.forEach(g => {
+                const gx = ((g.x - worldScroll * 1.35) % grassSpan + grassSpan) % grassSpan;
+                if (gx < width + 20) {
+                    ctx.strokeStyle = '#065f46';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(gx, height);
+                    ctx.lineTo(gx - 5, height - g.h);
+                    ctx.moveTo(gx + 3, height);
+                    ctx.lineTo(gx + 7, height - g.h * 0.8);
+                    ctx.stroke();
+
+                    if (g.hasFlower) {
+                        ctx.fillStyle = g.flowerColor;
+                        ctx.beginPath();
+                        ctx.arc(gx - 5, height - g.h, 2.2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            });
+
+            // Ondes de choc thermiques
+            shockwaves.forEach(sw => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, sw.alpha);
+                ctx.strokeStyle = sw.color;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Étincelles électriques
+            sparks.forEach(sp => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, sp.life);
+                ctx.fillStyle = sp.color;
+                ctx.beginPath();
+                ctx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 6. Rayons laser orbitaux
+            laserBeams.forEach(beam => {
+                ctx.save();
+                ctx.globalAlpha = beam.life;
+                ctx.strokeStyle = '#c084fc';
+                ctx.lineWidth = 24 * beam.life;
+                ctx.beginPath();
+                ctx.moveTo(beam.x, 0);
+                ctx.lineTo(beam.x, beam.targetY);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 8 * beam.life;
+                ctx.beginPath();
+                ctx.moveTo(beam.x, 0);
+                ctx.lineTo(beam.x, beam.targetY);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // 7. Projectiles (Cadeaux en train de tomber)
+            projectiles.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+
+                // Halo lumineux autour du cadeau
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 22, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.font = '32px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(p.gift.emoji, 0, 0);
+                ctx.restore();
+
+                // Étiquette du nom de l'ami au-dessus du cadeau
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                ctx.beginPath();
+                ctx.roundRect(p.x - 42, p.y - 42, 84, 18, 6);
+                ctx.fill();
+                ctx.fillStyle = '#f8fafc';
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`🎁 ${p.sender}`, p.x, p.y - 30);
+            });
+
+            // 8. Particules (Fumée, étincelles, débris)
+            particles.forEach(pt => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, pt.alpha);
+                ctx.fillStyle = pt.color;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 9. Textes flottants de dégâts
+            floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = Math.min(1, ft.life);
+                ctx.font = '900 14px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#0f172a';
+                ctx.fillText(ft.text, ft.x + 1, ft.y + 1);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+
+                ctx.font = '600 11px Inter, sans-serif';
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillText(ft.subtext, ft.x, ft.y - 16);
+                ctx.restore();
+            });
+
+            ctx.restore();
+        }
+
+        function drawTrainCar(car, x, y, isSelected) {
+            ctx.save();
+            const cx = x + car.w / 2;
+            const cy = y + car.h / 2;
+            ctx.translate(cx, cy);
+            ctx.rotate(car.angle);
+            ctx.translate(-cx, -cy);
+
+            const hpRatio = car.hp / car.maxHp;
+
+            // Ombre portée réaliste du wagon sur le ballast
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
+            ctx.beginPath();
+            ctx.ellipse(cx, y + car.h + 11, car.w * 0.48, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Indicateur de cible sélectionnée au clic
+            if (isSelected && !car.destroyed) {
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 4]);
+                ctx.strokeRect(x - 5, y - 8, car.w + 10, car.h + 22);
+                ctx.setLineDash([]);
+            }
+
+            // Équipements sur le toit (Climatiseurs / Pantographe)
+            if (car.type === 'loco') {
+                // Pantographe articulé relié à la caténaire
+                const pantoBaseX = x + 32;
+                const pantoTopY = y - 24;
+                ctx.strokeStyle = car.destroyed ? '#475569' : '#cbd5e1';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.moveTo(pantoBaseX - 8, y + 4);
+                ctx.lineTo(pantoBaseX + 8, y - 10);
+                ctx.lineTo(pantoBaseX - 4, pantoTopY);
+                ctx.stroke();
+
+                // Archet supérieur du pantographe
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(pantoBaseX - 14, pantoTopY);
+                ctx.lineTo(pantoBaseX + 6, pantoTopY);
+                ctx.stroke();
+            } else if (!car.destroyed) {
+                // Blocs de climatisation métalliques sur le toit
+                ctx.fillStyle = '#64748b';
+                ctx.beginPath();
+                ctx.roundRect(x + 22, y - 1, 26, 5, 2);
+                ctx.roundRect(x + car.w - 48, y - 1, 26, 5, 2);
+                ctx.fill();
+            }
+
+            // Châssis inférieur & coffres techniques sous caisse
+            ctx.fillStyle = '#090d16';
+            ctx.beginPath();
+            ctx.roundRect(x + 4, y + car.h - 11, car.w - 8, 12, 3);
+            ctx.fill();
+
+            // Corps principal du wagon avec dégradé métallique spéculaire
+            const bodyColor = car.destroyed ? '#334155' : car.color;
+            const bodyGrad = ctx.createLinearGradient(x, y, x, y + car.h);
+            bodyGrad.addColorStop(0, car.destroyed ? '#475569' : '#f8fafc');
+            bodyGrad.addColorStop(0.14, bodyColor);
+            bodyGrad.addColorStop(0.75, bodyColor);
+            bodyGrad.addColorStop(1, '#0f172a');
+
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            if (car.type === 'loco') {
+                // Nez aérodynamique profilé type TGV / Locomotive moderne
+                ctx.moveTo(x, y + 5);
+                ctx.lineTo(x + car.w - 46, y + 5);
+                ctx.bezierCurveTo(x + car.w - 16, y + 5, x + car.w - 4, y + 26, x + car.w, y + car.h - 10);
+                ctx.lineTo(x, y + car.h - 10);
+                ctx.closePath();
+            } else {
+                ctx.roundRect(x, y + 4, car.w, car.h - 13, [7, 7, 2, 2]);
+            }
+            ctx.fill();
+
+            // Reflet spéculaire horizontal sur la carrosserie
+            if (!car.destroyed) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+                ctx.fillRect(x + 3, y + 8, car.w - (car.type === 'loco' ? 45 : 6), 3);
+            }
+
+            // Livrée Gemini Express (bande latérale)
+            if (!car.destroyed) {
+                ctx.fillStyle = car.accent;
+                ctx.fillRect(x + 1, y + car.h - 21, car.w - (car.type === 'loco' ? 8 : 2), 4.5);
+            }
+
+            // Détails spécifiques selon le type de voiture
+            if (car.type === 'loco') {
+                // Grilles d'aération latérales de la locomotive
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+                for (let g = 0; g < 3; g++) {
+                    ctx.fillRect(x + 14 + g * 24, y + 16, 18, 22);
+                    ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+                    ctx.lineWidth = 1;
+                    for (let l = 19; l < 36; l += 4) {
+                        ctx.beginPath();
+                        ctx.moveTo(x + 15 + g * 24, y + l);
+                        ctx.lineTo(x + 31 + g * 24, y + l);
+                        ctx.stroke();
+                    }
+                }
+
+                // Inscription "GEMINI" sur le flanc
+                if (!car.destroyed) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font = '900 8px Inter, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('GEMINI', x + 15, y + 47);
+                }
+
+                // Pare-brise panoramique incliné de la cabine
+                ctx.fillStyle = car.destroyed ? '#0f172a' : '#38bdf8';
+                ctx.beginPath();
+                ctx.moveTo(x + car.w - 50, y + 11);
+                ctx.lineTo(x + car.w - 30, y + 11);
+                ctx.lineTo(x + car.w - 13, y + 32);
+                ctx.lineTo(x + car.w - 50, y + 32);
+                ctx.closePath();
+                ctx.fill();
+
+                // Reflet sur le pare-brise
+                if (!car.destroyed) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+                    ctx.beginPath();
+                    ctx.moveTo(x + car.w - 45, y + 13);
+                    ctx.lineTo(x + car.w - 38, y + 13);
+                    ctx.lineTo(x + car.w - 28, y + 30);
+                    ctx.lineTo(x + car.w - 35, y + 30);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Phare LED haute puissance + faisceau volumétrique
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(x + car.w - 8, y + car.h - 22, 4.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const beamGrad = ctx.createLinearGradient(x + car.w - 4, y + car.h - 22, x + car.w + 135, y + car.h - 5);
+                    beamGrad.addColorStop(0, 'rgba(254, 249, 195, 0.45)');
+                    beamGrad.addColorStop(1, 'rgba(254, 249, 195, 0)');
+                    ctx.fillStyle = beamGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(x + car.w - 4, y + car.h - 25);
+                    ctx.lineTo(x + car.w + 135, y + car.h - 42);
+                    ctx.lineTo(x + car.w + 135, y + car.h + 18);
+                    ctx.lineTo(x + car.w - 4, y + car.h - 18);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                // Inscription "GEMINI" + numéro de série sur le flanc
+                if (!car.destroyed) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font = '900 8px Inter, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`GEMINI MK.${currentLevel}`, x + 15, y + 47);
+                }
+
+                // Feux de gabarit LED sur le toit de la locomotive
+                if (!car.destroyed) {
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.beginPath();
+                    ctx.arc(x + car.w - 44, y + 6, 2, 0, Math.PI * 2);
+                    ctx.arc(x + car.w - 37, y + 6, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else if (car.type === 'passenger' || car.type === 'restaurant') {
+                // Portes d'accès aux extrémités du wagon
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(x + 5, y + 11, 11, car.h - 26);
+                ctx.strokeRect(x + car.w - 16, y + 11, 11, car.h - 26);
+
+                // Fenêtres éclairées avec silhouettes de passagers et reflets
+                const winCount = 4;
+                const winW = 19;
+                const innerStart = x + 20;
+                const innerW = car.w - 40;
+                const gap = (innerW - winCount * winW) / (winCount + 1);
+
+                for (let w = 0; w < winCount; w++) {
+                    const wx = innerStart + gap + w * (winW + gap);
+                    const wy = y + 13;
+                    const wh = 18;
+
+                    // Cadre de fenêtre
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.roundRect(wx - 1, wy - 1, winW + 2, wh + 2, 4);
+                    ctx.fill();
+
+                    // Intérieur chaleureux
+                    ctx.fillStyle = car.destroyed ? '#1e293b' : (car.type === 'restaurant' ? '#fde68a' : '#fef08a');
+                    ctx.beginPath();
+                    ctx.roundRect(wx, wy, winW, wh, 3);
+                    ctx.fill();
+
+                    // Silhouettes de passagers / lampes de table
+                    if (!car.destroyed && car.passengers) {
+                        const p = car.passengers.find(item => item.win === w);
+                        if (p) {
+                            ctx.fillStyle = 'rgba(30, 41, 59, 0.78)';
+                            // Tête & épaules
+                            ctx.beginPath();
+                            ctx.arc(wx + winW * 0.5 + p.offset, wy + 8, 3.2, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.beginPath();
+                            ctx.arc(wx + winW * 0.5 + p.offset, wy + 17, 5.5, Math.PI, 0);
+                            ctx.fill();
+
+                            if (p.hasLamp) {
+                                ctx.fillStyle = '#f97316';
+                                ctx.beginPath();
+                                ctx.arc(wx + 4, wy + 13, 2, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                        }
+                    }
+
+                    // Reflet oblique du paysage sur la vitre
+                    if (!car.destroyed) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+                        ctx.beginPath();
+                        ctx.moveTo(wx + 2, wy);
+                        ctx.lineTo(wx + 7, wy);
+                        ctx.lineTo(wx + 3, wy + wh);
+                        ctx.lineTo(wx, wy + wh);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            } else if (car.type === 'cargo') {
+                // Portes coulissantes renforcées et nervures industrielles
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
+                ctx.fillRect(x + car.w * 0.32, y + 9, car.w * 0.36, car.h - 32);
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.6)';
+                ctx.lineWidth = 2;
+                for (let rx = x + 12; rx < x + car.w - 8; rx += 14) {
+                    ctx.beginPath();
+                    ctx.moveTo(rx, y + 8);
+                    ctx.lineTo(rx, y + car.h - 23);
+                    ctx.stroke();
+                }
+            }
+
+            // Dégâts progressifs réalistes (fissures, impacts noircis, tôle tordue)
+            if (hpRatio < 0.8) {
+                ctx.strokeStyle = '#090d16';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x + 28, y + 7);
+                ctx.lineTo(x + 38, y + 22);
+                ctx.lineTo(x + 31, y + 36);
+                ctx.stroke();
+            }
+            if (hpRatio < 0.45) {
+                // Trou d'impact avec auréole de suie
+                const holeX = x + car.w * 0.62;
+                const holeY = y + 25;
+                const sootGrad = ctx.createRadialGradient(holeX, holeY, 4, holeX, holeY, 22);
+                sootGrad.addColorStop(0, '#020617');
+                sootGrad.addColorStop(0.5, 'rgba(15, 23, 42, 0.75)');
+                sootGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+                ctx.fillStyle = sootGrad;
+                ctx.beginPath();
+                ctx.arc(holeX, holeY, 22, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Bogies articulés avec longerons, suspensions et roues en acier usiné
+            const bogieCenters = [x + 32, x + car.w - 32];
+            const wheelRot = worldScroll * 0.16;
+
+            bogieCenters.forEach((bx, bIdx) => {
+                // Châssis du bogie
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.roundRect(bx - 20, y + car.h - 4, 40, 7, 3);
+                ctx.fill();
+
+                // Ressorts de suspension
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(bx - 5, y + car.h - 6);
+                ctx.lineTo(bx + 5, y + car.h - 6);
+                ctx.stroke();
+
+                // Deux essieux par bogie
+                [-12, 12].forEach((dx, wIdx) => {
+                    if (car.destroyed && bIdx === 1 && wIdx === 1) return;
+                    const wx = bx + dx;
+                    const wy = y + car.h + 3;
+
+                    // Disque de roue sombre
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.arc(wx, wy, 8.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Bande de roulement en acier poli
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Moyeu central et rayons en rotation
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.beginPath();
+                    ctx.arc(wx, wy, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#64748b';
+                    ctx.lineWidth = 1.4;
+                    ctx.beginPath();
+                    ctx.moveTo(wx - Math.cos(wheelRot) * 6.5, wy - Math.sin(wheelRot) * 6.5);
+                    ctx.lineTo(wx + Math.cos(wheelRot) * 6.5, wy + Math.sin(wheelRot) * 6.5);
+                    ctx.stroke();
+                });
+            });
+
+            // Barre de vie flottante au-dessus de chaque wagon
+            if (!car.destroyed) {
+                const barW = car.w - 24;
+                const barX = x + 12;
+                const barY = y - 12;
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+                ctx.beginPath();
+                ctx.roundRect(barX, barY, barW, 6, 3);
+                ctx.fill();
+
+                ctx.fillStyle = hpRatio > 0.5 ? '#10b981' : (hpRatio > 0.25 ? '#f59e0b' : '#ef4444');
+                ctx.beginPath();
+                ctx.roundRect(barX, barY, barW * hpRatio, 6, 3);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#f43f5e';
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('HORS SERVICE', x + car.w / 2, y - 8);
+            }
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * ==========================================
+         * INTERACTIONS UI & ÉVÉNEMENTS
+         * ==========================================
+         */
+        function updateScoreUI() {
+            document.getElementById('scoreDisplay').textContent = `${score.toLocaleString('fr-FR')} PTS`;
+            document.getElementById('comboDisplay').textContent = `x${combo}`;
+        }
+
+        function updateTrainStatusUI() {
+            const alive = trainCars.filter(c => !c.destroyed).length;
+            const total = trainCars.length;
+
+            const statusDot = document.getElementById('trainStatusDot');
+            const statusText = document.getElementById('trainStatusText');
+
+            if (alive === total) {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse';
+                statusText.textContent = `Niv.${currentLevel} (${getCurrentTheme().name}) — ${Math.round(140 + currentLevel * 12)} km/h`;
+            } else if (alive > 0) {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping';
+                statusText.textContent = `Niv.${currentLevel} — ${total - alive} wagon(s) hors service !`;
+            } else {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping';
+                statusText.textContent = `Convoi anéanti ! Arrivée du Niveau ${currentLevel + 1}...`;
+            }
+        }
+
+        // Clic directement sur le canvas pour cibler un wagon et envoyer un cadeau
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const positions = getCarScreenPositions();
+            let clickedCarIdx = null;
+            positions.forEach((pos, idx) => {
+                if (clickX >= pos.x - 10 && clickX <= pos.x + pos.car.w + 10 &&
+                    clickY >= pos.y - 25 && clickY <= pos.y + pos.car.h + 20) {
+                    clickedCarIdx = idx;
+                }
+            });
+
+            if (clickedCarIdx !== null) {
+                selectedTargetIndex = clickedCarIdx;
+                const randomGift = GIFTS[Math.floor(Math.random() * GIFTS.length)];
+                sendGift(randomGift.id, null, clickedCarIdx);
+            }
+        });
+
+        // Mode Chaos Automatique
+        const autoChaosBtn = document.getElementById('autoChaosBtn');
+        autoChaosBtn.addEventListener('click', () => {
+            autoChaos = !autoChaos;
+            if (autoChaos) {
+                autoChaosBtn.textContent = 'ON 🔥';
+                autoChaosBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-600 text-white shadow-lg shadow-rose-950/60 transition';
+            } else {
+                autoChaosBtn.textContent = 'OFF';
+                autoChaosBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 hover:bg-indigo-600 hover:text-white transition';
+            }
+        });
+
+        // Bouton Nouveau Train
+        document.getElementById('resetTrainBtn').addEventListener('click', () => {
+            selectedTargetIndex = null;
+            currentLevel = 1;
+            createTrain();
+            drainPendingRunAttacks();
+        });
+
+        // Toggle Son
+        function syncSoundUI() {
+            const isMuted = !sound.enabled || sound.volume === 0;
+            document.getElementById('soundOnIcon').classList.toggle('hidden', isMuted);
+            document.getElementById('soundOffIcon').classList.toggle('hidden', !isMuted);
+            const pct = sound.enabled ? Math.round(sound.volume * 100) : 0;
+            document.getElementById('volumeSlider').value = pct;
+            document.getElementById('volumeValueLabel').textContent = `${pct}%`;
+        }
+
+        document.getElementById('soundToggleBtn').addEventListener('click', () => {
+            if (sound.enabled && sound.volume > 0) {
+                sound.enabled = false;
+            } else {
+                sound.enabled = true;
+                if (sound.volume === 0) sound.volume = 0.5;
+            }
+            syncSoundUI();
+        });
+
+        // Contrôles du volume dans le panneau de configuration
+        const volumeSlider = document.getElementById('volumeSlider');
+        volumeSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value, 10);
+            sound.setVolume(val / 100);
+            syncSoundUI();
+        });
+
+        document.getElementById('volDownBtn').addEventListener('click', () => {
+            const current = sound.enabled ? Math.round(sound.volume * 100) : 0;
+            const next = Math.max(0, current - 10);
+            sound.setVolume(next / 100);
+            syncSoundUI();
+            if (next > 0) sound.playWhoosh();
+        });
+
+        document.getElementById('volUpBtn').addEventListener('click', () => {
+            const current = sound.enabled ? Math.round(sound.volume * 100) : 0;
+            const next = Math.min(100, current + 10);
+            sound.setVolume(next / 100);
+            syncSoundUI();
+            sound.playWhoosh();
+        });
+
+        document.getElementById('testSoundBtn').addEventListener('click', () => {
+            if (!sound.enabled || sound.volume === 0) {
+                sound.setVolume(0.6);
+                syncSoundUI();
+            }
+            sound.playWhistle();
+        });
+
+        // Modale de configuration & Connexion TikTok
+        const settingsModal = document.getElementById('settingsModal');
+        document.getElementById('openSettingsBtn').addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+            settingsModal.classList.add('flex');
+        });
+
+        function closeSettingsModal() {
+            settingsModal.classList.add('hidden');
+            settingsModal.classList.remove('flex');
+        }
+
+        document.getElementById('closeSettingsBtn').addEventListener('click', closeSettingsModal);
+        document.getElementById('saveSettingsBtn').addEventListener('click', closeSettingsModal);
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) closeSettingsModal();
+        });
+
+        const connectTiktokBtn = document.getElementById('connectTiktokBtn');
+        const tiktokUsernameInput = document.getElementById('tiktokUsernameInput');
+        const tiktokStatusBadge = document.getElementById('tiktokStatusBadge');
+        const tiktokLiveControls = document.getElementById('tiktokLiveControls');
+        const tiktokHeaderDot = document.getElementById('tiktokHeaderDot');
+        const tiktokHeaderLabel = document.getElementById('tiktokHeaderLabel');
+        const toggleTiktokStreamBtn = document.getElementById('toggleTiktokStreamBtn');
+
+        function setTiktokConnectionUI(message, { connecting = false, connected = false, live = false, error = false } = {}) {
+            tiktokStatusBadge.textContent = message.length > 30 ? `${message.slice(0, 27)}…` : message;
+            tiktokStatusBadge.title = message;
+            tiktokStatusBadge.className = `text-[10px] font-bold px-2 py-0.5 rounded-full max-w-[190px] truncate ${
+                error
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : live
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : connecting || connected
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-slate-700 text-slate-300'
+            }`;
+            tiktokLiveControls.classList.toggle('hidden', !connected);
+            tiktokUsernameInput.disabled = connecting || connected;
+            connectTiktokBtn.textContent = connecting || connected ? 'Déconnecter' : 'Connecter';
+            connectTiktokBtn.className = connecting || connected
+                ? 'px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs transition active:scale-95'
+                : 'px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg transition active:scale-95';
+            tiktokHeaderDot.className = live
+                ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse'
+                : connecting || connected
+                    ? 'w-2 h-2 rounded-full bg-amber-400 animate-pulse'
+                    : 'w-2 h-2 rounded-full bg-slate-500';
+            tiktokHeaderLabel.textContent = connecting || connected ? `@${tiktokUsername}` : 'Configurer';
+        }
+
+        function handleTiktokMessage(message) {
+            if (message.type === 'STATUS') {
+                const status = String(message.message || 'Statut TikTok indisponible.');
+                const live = /^Direct TikTok connecté\b/i.test(status);
+                const error = /erreur|interrompue|indisponible|invalide|atteint/i.test(status);
+                setTiktokConnectionUI(status, {
+                    connected: tiktokSocket?.readyState === WebSocket.OPEN,
+                    live,
+                    error
+                });
+                return;
+            }
+
+            if (message.type !== 'gift' || !tiktokStreamActive) return;
+            const gift = message.gift && typeof message.gift === 'object' ? message.gift : message;
+            const coinCount = Number(gift.coinCount);
+            if (!Number.isSafeInteger(coinCount) || coinCount < 1) {
+                console.error('Cadeau TikTok ignoré : nombre de pièces invalide.', gift);
+                return;
+            }
+
+            const attack = GIFTS.find(item => item.coinCost === coinCount);
+            if (!attack) return;
+
+            const rawUsername = String(gift.uniqueId || gift.username || gift.nickname || '').trim().replace(/^@+/, '');
+            const username = rawUsername || 'Spectateur';
+            const sender = String(gift.nickname || username).replace(/^@+/, '');
+            const walletPlayer = /^[a-zA-Z0-9._]{1,32}$/.test(rawUsername) ? { ...gift, username: rawUsername } : null;
+            sendGift(attack.id, `@${sender}`, null, { walletPlayer });
+        }
+
+        connectTiktokBtn.addEventListener('click', () => {
+            if (tiktokSocket) {
+                const socket = tiktokSocket;
+                tiktokSocket = null;
+                tiktokStreamActive = false;
+                setTiktokConnectionUI('Déconnecté');
+                if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+                    socket.close();
+                }
+                return;
+            }
+
+            const username = tiktokUsernameInput.value.trim().replace(/^@+/, '');
+            if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+                setTiktokConnectionUI('Saisis un pseudo TikTok valide.', { error: true });
+                tiktokUsernameInput.focus();
+                return;
+            }
+
+            tiktokUsername = username;
+            tiktokUsernameInput.value = username;
+            setTiktokConnectionUI(`Connexion à @${username}…`, { connecting: true });
+            let socket;
+            try {
+                socket = new WebSocket('wss://jeu6boite.onrender.com');
+            } catch (error) {
+                console.error('Impossible de créer la connexion TikTok :', error);
+                setTiktokConnectionUI('Connexion au relais impossible.', { error: true });
+                return;
+            }
+
+            tiktokSocket = socket;
+            socket.addEventListener('open', () => {
+                if (tiktokSocket !== socket) return;
+                tiktokStreamActive = true;
+                setTiktokConnectionUI('Relais connecté · attente du live', { connected: true });
+                toggleTiktokStreamBtn.textContent = 'Actif 🟢';
+                toggleTiktokStreamBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white transition';
+                try {
+                    socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+                } catch (error) {
+                    console.error('Impossible d’envoyer la demande de connexion TikTok :', error);
+                    setTiktokConnectionUI('Demande de connexion impossible.', { connected: true, error: true });
+                }
+            });
+            socket.addEventListener('message', event => {
+                if (tiktokSocket !== socket) return;
+                try {
+                    handleTiktokMessage(JSON.parse(event.data));
+                } catch (error) {
+                    console.error('Message TikTok illisible :', error);
+                    setTiktokConnectionUI('Message du relais illisible.', {
+                        connected: socket.readyState === WebSocket.OPEN,
+                        error: true
+                    });
+                }
+            });
+            socket.addEventListener('error', () => {
+                if (tiktokSocket === socket) {
+                    setTiktokConnectionUI('Connexion au relais TikTok impossible.', {
+                        connected: socket.readyState === WebSocket.OPEN,
+                        connecting: socket.readyState === WebSocket.CONNECTING,
+                        error: true
+                    });
+                }
+            });
+            socket.addEventListener('close', () => {
+                if (tiktokSocket !== socket) return;
+                tiktokSocket = null;
+                tiktokStreamActive = false;
+                setTiktokConnectionUI('Relais déconnecté. Réessaie.', { error: true });
+            });
+        });
+
+        toggleTiktokStreamBtn.addEventListener('click', () => {
+            tiktokStreamActive = !tiktokStreamActive;
+            if (tiktokStreamActive) {
+                toggleTiktokStreamBtn.textContent = 'Actif 🟢';
+                toggleTiktokStreamBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white transition';
+            } else {
+                toggleTiktokStreamBtn.textContent = 'En pause ⏸️';
+                toggleTiktokStreamBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 transition';
+            }
+        });
+
+        // Lancement au chargement de la fenêtre
+        window.onload = function () {
+            resizeCanvas();
+            syncSoundUI();
+            createTrain();
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

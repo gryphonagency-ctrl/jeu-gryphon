@@ -189,6 +189,7 @@ const protectedRoutes = new Set([
     '/coffres',
     '/coffres.html',
     '/coffre-incandescent.html',
+    '/train-gemini.html',
     '/jeu-foot-tiktok.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/escape-bunker.html',
@@ -276,6 +277,7 @@ const freeTrialRoutes = new Set([
     '/gryphon-blackjack.html',
     '/telepusher.html',
     '/grand-prix-pokemon.html',
+    '/train-gemini.html',
     '/bouteilles-colorees.html',
     '/machine-a-pinces.html',
     '/griffon-gauche.jpg'
@@ -346,6 +348,7 @@ store.grantGameAccessToExistingCreators('/city-hunter-tiktok.html');
 store.grantGameAccessToExistingCreators('/pokefight-live.html');
 store.grantGameAccessToExistingCreators('/grand-prix-pokemon.html');
 store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
+store.grantGameAccessToExistingCreators('/train-gemini.html');
 store.grantGameAccessToExistingCreators('/bataille-des-planetes.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
@@ -412,6 +415,7 @@ const staticGameTitles = {
     '/pokefight-live.html': 'PokéFight x TikTok Live',
     '/grand-prix-pokemon.html': 'Grand Prix Poké',
     '/coffre-incandescent.html': 'Le Coffre Incandescent',
+    '/train-gemini.html': 'Train Gemini',
     '/squid-storm.html': 'SQUID STORM',
     '/tower-up.html': 'Tower Up — La tour du LIVE',
     '/tir-a-la-corde.html': 'Tir à la corde — Griffon Arcade',
@@ -488,6 +492,7 @@ const gameRouteIds = new Map([
     ['/pokefight-live.html', '/pokefight-live.html'],
     ['/grand-prix-pokemon.html', '/grand-prix-pokemon.html'],
     ['/coffre-incandescent.html', '/coffre-incandescent.html'],
+    ['/train-gemini.html', '/train-gemini.html'],
     ['/wish-lab.html', '/wish-lab.html'],
     ['/coffres', '/coffres'],
     ['/coffres.html', '/coffres'],
@@ -3332,7 +3337,9 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/pokefight-space-loop.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-space-loop.mp4'), 'video/mp4']],
         ['/images-vitrine/pokefight-live-arena.mp4', [path.join(__dirname, 'images-vitrine', 'pokefight-live-arena.mp4'), 'video/mp4']],
         ['/coffre-incandescent.html', [path.join(__dirname, 'coffre-incandescent.html'), 'text/html; charset=utf-8']],
+        ['/train-gemini.html', [path.join(__dirname, 'train-gemini.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/coffre-incandescent.png', [path.join(__dirname, 'images-vitrine', 'coffre-incandescent.png'), 'image/png']],
+        ['/images-vitrine/train-gemini.png', [path.join(__dirname, 'images-vitrine', 'train-gemini.png'), 'image/png']],
         ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
