@@ -236,6 +236,7 @@ const protectedRoutes = new Set([
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
     '/billes-tour.html',
+    '/montgolfieres-tour.html',
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
     '/multirou.html',
@@ -320,6 +321,7 @@ store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/billes-tour.html');
+store.grantGameAccessToExistingCreators('/montgolfieres-tour.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/multirou.html');
@@ -399,6 +401,7 @@ const staticGameTitles = {
     '/vrai-ou-faux.html': 'Vrai ou Faux',
     '/course-de-billes.html': 'Course de Billes',
     '/billes-tour.html': 'Billes Tour',
+    '/montgolfieres-tour.html': 'Montgolfières Tour',
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/multirou.html': 'Le Multirou',
@@ -470,6 +473,7 @@ const gameRouteIds = new Map([
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/billes-tour.html', '/billes-tour.html'],
+    ['/montgolfieres-tour.html', '/montgolfieres-tour.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
     ['/squid-storm.html', '/squid-storm.html'],
     ['/tower-up.html', '/tower-up.html'],
@@ -3311,6 +3315,7 @@ const server = http.createServer((req, res) => {
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
         ['/course-de-billes.html', [marbleRaceGameFile, 'text/html; charset=utf-8']],
         ['/billes-tour.html', [path.join(__dirname, 'billes-tour.html'), 'text/html; charset=utf-8']],
+        ['/montgolfieres-tour.html', [path.join(__dirname, 'montgolfieres-tour.html'), 'text/html; charset=utf-8']],
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
@@ -3386,6 +3391,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/course-de-billes-apercu.png', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.png'), 'image/png']],
         ['/images-vitrine/billes-tour.png', [path.join(__dirname, 'images-vitrine', 'billes-tour.png'), 'image/png']],
         ['/images-vitrine/billes-tour-final.svg', [path.join(__dirname, 'images-vitrine', 'billes-tour-final.svg'), 'image/svg+xml; charset=utf-8']],
+        ['/images-vitrine/montgolfieres-tour.svg', [path.join(__dirname, 'images-vitrine', 'montgolfieres-tour.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
