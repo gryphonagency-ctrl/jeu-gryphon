@@ -456,23 +456,6 @@
         osc.stop(now + 0.095);
       }
 
-      function playTurretFire() {
-        const ac = ensureContext();
-        if (!ac) return;
-        const now = ac.currentTime;
-        const osc = ac.createOscillator();
-        const gain = ac.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(320, now);
-        osc.frequency.exponentialRampToValueAtTime(85, now + 0.11);
-        gain.gain.setValueAtTime(0.07, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
-        osc.connect(gain);
-        gain.connect(ac.destination);
-        osc.start(now);
-        osc.stop(now + 0.12);
-      }
-
       return {
         isEnabled: () => enabled,
         toggle: () => {
@@ -481,8 +464,7 @@
           return enabled;
         },
         playBalloonPop,
-        playShotLaunch,
-        playTurretFire
+        playShotLaunch
       };
     })();
 
@@ -883,16 +865,6 @@
       { x: 0.31, y: 0.28, scale: 0.58, speed: 0.0021, puffs: [[-24, 3, 16], [0, -4, 21], [22, 3, 16]] }
     ];
 
-    // Tourelles de défense avec recul mécanique
-    const TURRET_RANGE_PX = 78;
-    const TURRET_COOLDOWN_MS = 1100;
-    const TURRET_BEAM_MS = 220;
-    const turrets = [
-      { baseX: 0.13, phase: 0.0, speedX: 0.00045, speedY: 0.00070, lastShot: -9999, beamUntil: 0, target: null, recoil: 0 },
-      { baseX: 0.50, phase: 2.1, speedX: 0.00055, speedY: 0.00080, lastShot: -9999, beamUntil: 0, target: null, recoil: 0 },
-      { baseX: 0.87, phase: 4.2, speedX: 0.00050, speedY: 0.00075, lastShot: -9999, beamUntil: 0, target: null, recoil: 0 }
-    ];
-
     function emojiFor(id) {
       return BALLOON_EMOJIS[(Math.imul(id | 0, 2654435761) >>> 0) % BALLOON_EMOJIS.length];
     }
@@ -1040,18 +1012,8 @@
       scene.append(label);
     }
 
-    function turretDestroy(balloon) {
-      const pt = balloonPixels(balloon);
-      spawnBalloonDestruction(pt.x, pt.y, balloon.palette, 0);
-      SoundEngine.playBalloonPop(0);
-      balloon.y = -8 - Math.random() * 18;
-      balloon.x = 4 + Math.random() * 92;
-      balloon.vx = 0;
-      balloon.vy = 0;
-    }
-
     /* ============================================================================
-       6. DESSIN DU DÉCOR FÊTE FORAINE, BALLONS LATEX ET TOURELLES
+       6. DESSIN DU DÉCOR FÊTE FORAINE ET BALLONS LATEX
        ============================================================================ */
     function drawFairgroundEnvironment(width, height, timestamp) {
       const groundY = height * 0.88;
@@ -1213,17 +1175,6 @@
       ctx.fillStyle = '#7fa65d';
       ctx.fillRect(0, groundY, width, 4);
 
-      // Ombres portées des tourelles sur le sol
-      turrets.forEach(turret => {
-        const bx = width * turret.baseX;
-        const shadowGrad = ctx.createRadialGradient(bx - 12, groundY + 6, 4, bx - 12, groundY + 6, 46);
-        shadowGrad.addColorStop(0, 'rgba(20, 32, 18, 0.5)');
-        shadowGrad.addColorStop(1, 'rgba(20, 32, 18, 0)');
-        ctx.fillStyle = shadowGrad;
-        ctx.beginPath();
-        ctx.ellipse(bx - 10, groundY + 6, 46, 9, 0, 0, Math.PI * 2);
-        ctx.fill();
-      });
     }
 
     function drawRealisticBalloon(balloon, px, py, radiusX, radiusY, timestamp) {
@@ -1336,154 +1287,6 @@
       ctx.restore();
 
       ctx.restore();
-    }
-
-    function drawTurretsAndLasers(width, height, timestamp, elapsed) {
-      const groundY = height * 0.88;
-      const visibleCount = Math.min(balloons.length, MAX_VISIBLE_BALLOONS);
-
-      turrets.forEach(turret => {
-        const baseX = width * turret.baseX;
-        const baseY = groundY;
-
-        // Récupération du recul mécanique
-        if (turret.recoil > 0) {
-          turret.recoil = Math.max(0, turret.recoil - elapsed * 28);
-        }
-
-        const sweepX = (Math.sin(timestamp * turret.speedX + turret.phase) + 1) / 2;
-        const sweepY = (Math.sin(timestamp * turret.speedY + turret.phase * 1.7) + 1) / 2;
-        let aimX = width * 0.05 + sweepX * width * 0.90;
-        let aimY = groundY - sweepY * groundY * 0.88;
-        let locked = false;
-
-        if (isRoomOwner && timestamp - turret.lastShot > TURRET_COOLDOWN_MS) {
-          let best = null;
-          let bestDistance = TURRET_RANGE_PX;
-          for (let index = 0; index < visibleCount; index++) {
-            const balloon = balloons[index];
-            if (balloon.y < 2 || balloon.y > 96) continue;
-            const point = balloonPixels(balloon, width, height);
-            const distance = Math.hypot(point.x - aimX, point.y - aimY);
-            if (distance < bestDistance) {
-              best = { balloon, point };
-              bestDistance = distance;
-            }
-          }
-          if (best) {
-            turret.lastShot = timestamp;
-            turret.beamUntil = timestamp + TURRET_BEAM_MS;
-            turret.target = best.point;
-            turret.recoil = 7;
-            SoundEngine.playTurretFire();
-            turretDestroy(best.balloon);
-          }
-        }
-
-        const firing = timestamp < turret.beamUntil && turret.target;
-        if (firing) {
-          aimX = turret.target.x;
-          aimY = turret.target.y;
-          locked = true;
-        }
-
-        const angle = Math.atan2(aimY - (baseY - 14), aimX - baseX);
-        const beamLength = Math.hypot(width, height);
-        const barrelLength = Math.max(30, width * 0.036) - turret.recoil;
-        const pivotY = baseY - 14;
-        const tipX = baseX + Math.cos(angle) * barrelLength;
-        const tipY = pivotY + Math.sin(angle) * barrelLength;
-
-        ctx.save();
-        ctx.lineCap = 'round';
-
-        // Faisceau laser de visée / tir
-        const endX = locked ? aimX : baseX + Math.cos(angle) * beamLength;
-        const endY = locked ? aimY : pivotY + Math.sin(angle) * beamLength;
-
-        ctx.strokeStyle = locked ? 'rgba(255, 55, 45, 0.92)' : 'rgba(255, 90, 90, 0.25)';
-        ctx.lineWidth = locked ? 5.5 : 1.3;
-        ctx.shadowColor = '#ff2222';
-        ctx.shadowBlur = locked ? 20 : 5;
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-
-        if (locked) {
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(tipX, tipY);
-          ctx.lineTo(endX, endY);
-          ctx.stroke();
-
-          // Flash de bouche (muzzle flash) à la sortie du canon
-          const flashGrad = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, 18);
-          flashGrad.addColorStop(0, '#ffffff');
-          flashGrad.addColorStop(0.4, '#ffdf73');
-          flashGrad.addColorStop(1, 'rgba(255, 90, 30, 0)');
-          ctx.fillStyle = flashGrad;
-          ctx.beginPath();
-          ctx.arc(tipX, tipY, 18, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        ctx.shadowBlur = 0;
-
-        // Canon métallique avec reflet cylindrique
-        ctx.save();
-        ctx.translate(baseX, pivotY);
-        ctx.rotate(angle);
-        const barrelH = Math.max(9, width * 0.011);
-        const barrelGrad = ctx.createLinearGradient(0, -barrelH / 2, 0, barrelH / 2);
-        barrelGrad.addColorStop(0, '#6c7c92');
-        barrelGrad.addColorStop(0.35, '#9eb0c7');
-        barrelGrad.addColorStop(1, '#26303d');
-        ctx.fillStyle = barrelGrad;
-        ctx.beginPath();
-        ctx.roundRect(0, -barrelH / 2, barrelLength, barrelH, 3);
-        ctx.fill();
-
-        // Frein de bouche au bout du canon
-        ctx.fillStyle = '#1e2630';
-        ctx.fillRect(barrelLength - 5, -barrelH * 0.62, 6, barrelH * 1.24);
-        ctx.restore();
-
-        // Tourelle blindée (dôme et socle)
-        const baseWidth = Math.max(46, width * 0.056);
-        const domeGrad = ctx.createRadialGradient(baseX - 4, pivotY - 5, 2, baseX, pivotY, baseWidth * 0.34);
-        domeGrad.addColorStop(0, '#8ea1b8');
-        domeGrad.addColorStop(0.6, '#485669');
-        domeGrad.addColorStop(1, '#252e3a');
-        ctx.fillStyle = domeGrad;
-        ctx.beginPath();
-        ctx.arc(baseX, pivotY, baseWidth * 0.28, Math.PI, 0);
-        ctx.fill();
-
-        const baseGrad = ctx.createLinearGradient(baseX - baseWidth / 2, baseY - 14, baseX + baseWidth / 2, baseY);
-        baseGrad.addColorStop(0, '#54647a');
-        baseGrad.addColorStop(0.5, '#374352');
-        baseGrad.addColorStop(1, '#202833');
-        ctx.fillStyle = baseGrad;
-        ctx.beginPath();
-        ctx.moveTo(baseX - baseWidth / 2, baseY + 2);
-        ctx.lineTo(baseX - baseWidth * 0.32, baseY - 14);
-        ctx.lineTo(baseX + baseWidth * 0.32, baseY - 14);
-        ctx.lineTo(baseX + baseWidth / 2, baseY + 2);
-        ctx.closePath();
-        ctx.fill();
-
-        // Voyant optique actif
-        ctx.fillStyle = locked ? '#ff2a2a' : '#ffca57';
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.arc(baseX, pivotY - 3, 3.8, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-      });
     }
 
     function drawProjectilesAndParticles(width, height, timestamp, elapsed) {
@@ -1726,10 +1529,7 @@
         drawRealisticBalloon(b, pt.x, pt.y, radiusX * b.scalePulse * pulse, radiusY * b.scalePulse / pulse, timestamp);
       }
 
-      // Couche 3 : Tourelles mécaniques et faisceaux
-      drawTurretsAndLasers(width, height, timestamp, elapsed);
-
-      // Couche 4 : Projectiles, ondes de choc et particules physiques
+      // Couche 3 : Projectiles, ondes de choc et particules physiques
       drawProjectilesAndParticles(width, height, timestamp, elapsed);
 
       ctx.restore();
