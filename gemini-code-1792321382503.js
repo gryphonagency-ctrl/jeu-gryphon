@@ -20,6 +20,8 @@ function normalizeGameState(value) {
   const defaults = createDefaultGameState();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaults;
 
+  const stateData = { ...value };
+  delete stateData.backgroundImage;
   const liveStats = value.liveStats && typeof value.liveStats === 'object'
     ? value.liveStats
     : {};
@@ -29,7 +31,7 @@ function normalizeGameState(value) {
 
   return {
     ...defaults,
-    ...value,
+    ...stateData,
     rtpRate: Number.isFinite(Number(value.rtpRate))
       ? Math.min(100, Math.max(0, Number(value.rtpRate)))
       : defaults.rtpRate,
@@ -517,10 +519,11 @@ function triggerSimulatedChat() {
 // 8. IMPORT / EXPORT DE DONNÉES (JSON)
 // ==========================================
 function exportData() {
-  const exportState = {
-    ...gameState,
-    backgroundImage: localStorage.getItem(BACKGROUND_STORAGE_KEY)
-  };
+  const exportState = { ...gameState };
+  const backgroundUpload = document.getElementById('backgroundUpload');
+  if (backgroundUpload) {
+    exportState.backgroundImage = localStorage.getItem(BACKGROUND_STORAGE_KEY);
+  }
   const saveFile = new Blob([JSON.stringify(exportState, null, 2)], { type: 'application/json' });
   const downloadUrl = URL.createObjectURL(saveFile);
   const downloadAnchor = document.createElement('a');
@@ -530,7 +533,9 @@ function exportData() {
   downloadAnchor.click();
   downloadAnchor.remove();
   setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-  document.getElementById('dataStatus').textContent = 'Données, statistiques et image exportées.';
+  document.getElementById('dataStatus').textContent = backgroundUpload
+    ? 'Données, statistiques et image exportées.'
+    : 'Données et statistiques exportées.';
 }
 
 function importData(event) {
@@ -543,6 +548,7 @@ function importData(event) {
   }
 
   const reader = new FileReader();
+  const backgroundUpload = document.getElementById('backgroundUpload');
   reader.onload = function(e) {
     try {
       const importedState = JSON.parse(e.target.result);
@@ -550,13 +556,13 @@ function importData(event) {
         throw new Error('Format de sauvegarde invalide.');
       }
 
-        if (importedState.backgroundImage &&
+        if (backgroundUpload && importedState.backgroundImage &&
           !/^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/]+=*$/i.test(importedState.backgroundImage)) {
         throw new Error('Image de fond invalide dans la sauvegarde.');
       }
 
       gameState = normalizeGameState(importedState);
-      if (Object.hasOwn(importedState, 'backgroundImage')) {
+      if (backgroundUpload && Object.hasOwn(importedState, 'backgroundImage')) {
         if (importedState.backgroundImage) {
           localStorage.setItem(BACKGROUND_STORAGE_KEY, importedState.backgroundImage);
           setBackground('restore');
@@ -569,7 +575,9 @@ function importData(event) {
       saveGameState();
       updateLeaderboard();
       updateLiveStats();
-      document.getElementById('dataStatus').textContent = 'Sauvegarde importée : classement, statistiques et arrière-plan restaurés.';
+      document.getElementById('dataStatus').textContent = backgroundUpload
+        ? 'Sauvegarde importée : classement, statistiques et arrière-plan restaurés.'
+        : 'Sauvegarde importée : classement et statistiques restaurés.';
       event.target.value = '';
     } catch (err) {
       document.getElementById('dataStatus').textContent = `Import impossible : ${err.message}`;
@@ -583,6 +591,7 @@ function importData(event) {
 // ==========================================
 function setBackground(type, event) {
   const upload = document.getElementById('backgroundUpload');
+  if (!upload) return;
   const applyImage = imageData => {
     document.body.style.backgroundImage =
       `linear-gradient(rgba(8, 13, 25, .58), rgba(8, 13, 25, .72)), url("${imageData}")`;
