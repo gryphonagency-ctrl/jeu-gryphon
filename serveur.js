@@ -3365,6 +3365,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/bobo-pusher.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
+        ['/images-vitrine/bobo-pusher-v2.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher-v2.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-2000.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-2000.png'), 'image/png']],
         ['/images-vitrine/pousse-pieces-arcade-nouveau.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
