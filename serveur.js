@@ -231,6 +231,7 @@ const protectedRoutes = new Set([
     '/flipper-neon.html',
     '/gryphon-blackjack.html',
     '/telepusher.html',
+    '/machine-pusher.html',
     '/clowns-tomates.html',
     '/bouteilles-colorees.html',
     '/a-prendre-ou-a-laisser.html',
@@ -314,6 +315,7 @@ store.grantGameAccessToExistingCreators('/mot-du-live.html');
 store.grantGameAccessToExistingCreators('/flipper-neon.html');
 store.grantGameAccessToExistingCreators('/gryphon-blackjack.html');
 store.grantGameAccessToExistingCreators('/telepusher.html');
+store.grantGameAccessToExistingCreators('/machine-pusher.html');
 store.grantGameAccessToExistingCreators('/peche-en-mer.html');
 store.grantGameAccessToExistingCreators('/ile-au-tresor.html');
 store.grantGameAccessToExistingCreators('/course-karts.html');
@@ -395,6 +397,7 @@ const staticGameTitles = {
     '/flipper-neon.html': 'Flipper Néon',
     '/gryphon-blackjack.html': 'Gryphon Blackjack',
     '/telepusher.html': 'A, ma télépusher',
+    '/machine-pusher.html': 'Machine Pusher',
     '/clowns-tomates.html': 'Les Clowns et les Tomates',
     '/peche-en-mer.html': 'Pêche en mer',
     '/ile-au-tresor.html': 'L\'Île au Trésor',
@@ -468,6 +471,7 @@ const gameRouteIds = new Map([
     ['/flipper-neon.html', '/flipper-neon.html'],
     ['/gryphon-blackjack.html', '/gryphon-blackjack.html'],
     ['/telepusher.html', '/telepusher.html'],
+    ['/machine-pusher.html', '/machine-pusher.html'],
     ['/clowns-tomates.html', '/clowns-tomates.html'],
     ['/peche-en-mer.html', '/peche-en-mer.html'],
     ['/ile-au-tresor.html', '/ile-au-tresor.html'],
@@ -3306,6 +3310,8 @@ const server = http.createServer((req, res) => {
         ['/flipper-neon.html', [path.join(__dirname, 'flipper-neon.html'), 'text/html; charset=utf-8']],
         ['/gryphon-blackjack.html', [path.join(__dirname, 'gryphon-blackjack.html'), 'text/html; charset=utf-8']],
         ['/telepusher.html', [path.join(__dirname, 'telepusher.html'), 'text/html; charset=utf-8']],
+        ['/machine-pusher.html', [path.join(__dirname, 'machine-pusher.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/machine-pusher.png', [path.join(__dirname, 'images-vitrine', 'machine-pusher.png'), 'image/png']],
         ['/images-vitrine/clown-gauche-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-cut.png'), 'image/png']],
         ['/images-vitrine/clown-gauche-basecut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-basecut.png'), 'image/png']],
         ['/images-vitrine/clown-droite-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-droite-cut.png'), 'image/png']],
