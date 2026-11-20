@@ -62,7 +62,7 @@ body.is-fullscreen .bar{position:fixed;bottom:10px;left:50%;transform:translateX
   <input id="tiktok-username" type="text" maxlength="24" autocomplete="off" placeholder="Pseudo TikTok (sans @)" aria-label="Pseudo TikTok">
   <button id="connect-live" type="button">CONNECTER LIVE</button>
   <span id="live-status" role="status">Hors ligne</span>
-  <p id="live-help">Pour jouer en direct, commente le numéro à trois chiffres du personnage, puis « gauche » ou « droite ».</p>
+  <p id="live-help">Commente le numéro à trois chiffres du joueur, puis « gauche » ou « droite ». Le personnage avance automatiquement, sans cadeau.</p>
   <button id="toggle-roster" type="button">FILE JOUEURS</button>
   <button id="toggle-ranking" type="button">CLASSEMENT</button>
   <label for="gift-speed">Vitesse <input id="gift-speed" type="range" min="0.5" max="3" step="0.5" value="1"><span id="gift-speed-value">1×</span></label>
@@ -378,10 +378,9 @@ const $ = id => document.getElementById(id);
 let animationSpeed = 1;
 const livePlayerChoices = new Map();
 const livePlayerNames = new Map();
-const liveSideChoices = new Map();
 const liveSteps = new Map();
 const liveControllerByPlayer = new Map();
-const liveGiftMoves = [];
+const liveMoves = [];
 const seenLiveGiftIds = new Set();
 let liveMoveTimer = null;
 let liveSocket = null;
@@ -600,7 +599,7 @@ function banner(t, color){
 }
 function say(t){ $("status").textContent = t; }
 /* ===== Voix d'IA (synthèse vocale du navigateur) : explique au joueur quoi faire ===== */
-let voiceOn = false, frVoice = null, lastSpoken = 0;
+let voiceOn = false, frVoice = null, lastSpoken = 0, voiceTargetPlayer = null;
 function pickVoice(){
   if (!("speechSynthesis" in window)) return;
   const voices = speechSynthesis.getVoices().filter(v => /^fr/i.test(v.lang));
@@ -622,23 +621,36 @@ function announce(t){
   if (/se fissure/.test(t)) speak(`Crac ! La vitre cède sous les pieds du joueur ${n}.`);
   else if (/déjà brisée/.test(t)) speak("Cette vitre est déjà brisée. Choisis l'autre.");
   else if (/a traversé/.test(t)) speak(`Bravo ! Le joueur ${n} a traversé le pont.`);
-  else if (/Bon choix/.test(t)) speak("Bon choix ! Pour l'étape suivante, commente gauche ou droite.");
-  else if (/éliminé/.test(t)) speak(`Le personnage ${n} est éliminé. Joueur ${next}, à toi : commente gauche ou droite.`);
-  else if (/Tour du Joueur/.test(t)) speak(`Joueur ${n}, à toi de jouer. Commente gauche ou droite pour choisir la prochaine vitre.`);
-  else if (/nouvelle manche/.test(t)) speak("Tous sont passés. Nouvelle manche, nouvelles vitres !");
+  else if (/Bon choix/.test(t)) speak("Bon choix ! Pour l'étape suivante, écris gauche ou droite dans le chat.");
+  else if (/éliminé/.test(t)){
+    voiceTargetPlayer = null;
+    speak(`Le joueur ${n} est éliminé. Joueur ${next}, choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.`);
+  }
+  else if (/Tour du Joueur/.test(t)){
+    voiceTargetPlayer = null;
+    speak(`Joueur ${next || n}, choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.`);
+  }
+  else if (/nouvelle manche/.test(t)){
+    voiceTargetPlayer = null;
+    speak("Tous sont passés. Nouvelle manche, nouvelles vitres ! Choisis un numéro de joueur et écris-le dans le chat.");
+  }
 }
 function toggleVoice(){
   voiceOn = !voiceOn;
   const b = $("voice-toggle"); b.textContent = voiceOn ? "🔊 VOIX : OUI" : "🔊 VOIX : NON"; b.setAttribute("aria-pressed", String(voiceOn));
-  if (voiceOn){ pickVoice(); speak(`Pour jouer avec les personnages, commente le numéro à trois chiffres affiché sur celui que tu choisis, puis gauche ou droite pour choisir une vitre. Confirme ton choix dans le LIVE pour faire avancer le personnage. Joueur ${alive[idx]}, à toi de choisir.`);
+  if (voiceOn){ pickVoice(); voiceTargetPlayer = null; speak("Choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.");
   }
   else if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
 $("voice-toggle").onclick = toggleVoice;
 // Rappel si le joueur ne bouge pas pendant 12 secondes
 setInterval(() => {
-  if (voiceOn && active && alive.length && Date.now() - lastSpoken > 12000 && !speechSynthesis.speaking)
-    speak(`Joueur ${alive[idx]}, choisis la prochaine vitre en commentant gauche ou droite.`);
+  if (voiceOn && "speechSynthesis" in window && active && alive.length && Date.now() - lastSpoken > 12000 && !speechSynthesis.speaking){
+    if (voiceTargetPlayer && alive.includes(voiceTargetPlayer))
+      speak(`Joueur ${voiceTargetPlayer}, écris gauche ou droite dans le chat pour choisir la prochaine vitre.`);
+    else
+      speak("Choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.");
+  }
 }, 3000);
 
 
@@ -728,7 +740,7 @@ function nextTurn(){
 }
 
 let chosen = null;
-function pickPlayer(p){ chosen = p; say(`Joueur ${p} choisi. Choisis une vitre à gauche ou à droite.`); if (active) switchTo(p); }
+function pickPlayer(p){ chosen = p; say(`Joueur ${p} choisi. Écris gauche ou droite dans le chat pour choisir une vitre.`); if (active) switchTo(p); }
 function gift(side, player = chosen || alive[idx]){
   const p = player;
   if (!alive.includes(p)){ say(`Le joueur ${p} est éliminé. Choisis un autre numéro.`); return; }
@@ -791,19 +803,24 @@ function handleLiveComment(commentData){
     .trim().toLocaleLowerCase("fr-FR").replace(/^!\s*/, "").replace(/\s+/g, " ");
   const playerMatch = text.match(/^(?:joueur|personnage)?\s*(\d{3})$/);
   if (playerMatch && all.includes(playerMatch[1])){
+    if (!alive.includes(playerMatch[1])){
+      setLiveStatus(`@${username}, le personnage ${playerMatch[1]} est éliminé. Choisis un autre numéro.`);
+      if (voiceOn) { voiceTargetPlayer = null; speak(`Le joueur ${playerMatch[1]} est éliminé. Choisis un autre numéro à trois chiffres dans le chat.`); }
+      return;
+    }
     if (!livePlayerChoices.has(key) && livePlayerChoices.size >= 100){
       const oldest = livePlayerChoices.keys().next().value;
       livePlayerChoices.delete(oldest);
       livePlayerNames.delete(oldest);
-      liveSideChoices.delete(oldest);
       liveSteps.delete(oldest);
     }
     livePlayerChoices.set(key, playerMatch[1]);
     livePlayerNames.set(key, username);
     setLiveStatus(`@${username} a choisi le personnage ${playerMatch[1]}.`);
     renderLivePanels();
-    if (voiceOn && Date.now() - lastSpoken > 2500){
-      speak(`Personnage ${playerMatch[1]} sélectionné. Commente maintenant gauche ou droite pour choisir une vitre.`);
+    if (voiceOn){
+      voiceTargetPlayer = playerMatch[1];
+      speak(`Joueur ${playerMatch[1]} choisi. Choisis maintenant la vitre de gauche ou de droite et écris gauche ou droite dans le chat.`);
     }
     return;
   }
@@ -818,31 +835,47 @@ function handleLiveComment(commentData){
   const player = livePlayerChoices.get(key);
   if (!player){
     setLiveStatus(`@${username}, commente d'abord le numéro du personnage.`);
+    if (voiceOn) { voiceTargetPlayer = null; speak("Choisis d'abord le numéro à trois chiffres du joueur et écris-le dans le chat."); }
     return;
   }
-  liveSideChoices.set(key, side);
-  setLiveStatus(`@${username} a choisi ${side === "left" ? "gauche" : "droite"} pour le personnage ${player}.`);
-  if (voiceOn && Date.now() - lastSpoken > 2500){
-    speak(`Choix enregistré pour le personnage ${player}. Confirme ton choix dans le LIVE pour le faire avancer.`);
+  if (!alive.includes(player)){
+    setLiveStatus(`Le personnage ${player} est éliminé. @${username}, choisis un autre numéro.`);
+    livePlayerChoices.delete(key);
+    livePlayerNames.delete(key);
+    renderLivePanels();
+    if (voiceOn) { voiceTargetPlayer = null; speak(`Le joueur ${player} est éliminé. Choisis un autre numéro à trois chiffres dans le chat.`); }
+    return;
   }
+  if (liveMoves.length >= 100){
+    setLiveStatus("La file d'actions est pleine. Attends un instant avant de réessayer.");
+    return;
+  }
+  liveMoves.push({ username, key, player, side });
+  setLiveStatus(`@${username} a choisi la vitre ${side === "left" ? "de gauche" : "de droite"} pour le joueur ${player}.`);
+  if (voiceOn){
+    voiceTargetPlayer = player;
+    speak(`Le joueur ${player} avance vers la vitre ${side === "left" ? "de gauche" : "de droite"}.`);
+  }
+  processLiveMoves();
 }
-function processLiveGiftMoves(){
-  if (liveMoveTimer || !liveGiftMoves.length) return;
+function processLiveMoves(){
+  if (liveMoveTimer || !liveMoves.length) return;
   liveMoveTimer = setTimeout(() => {
     liveMoveTimer = null;
-    if (!liveGiftMoves.length) return;
-    if (!active){ processLiveGiftMoves(); return; }
-    const move = liveGiftMoves.shift();
+    if (!liveMoves.length) return;
+    if (!active){ processLiveMoves(); return; }
+    const move = liveMoves.shift();
     if (!alive.includes(move.player)){
       setLiveStatus(`Le personnage ${move.player} est éliminé. @${move.username}, choisis un autre numéro.`);
-      processLiveGiftMoves();
+      processLiveMoves();
       return;
     }
     if (switchTo(move.player)){
       liveControllerByPlayer.set(move.player, move.key);
-      gift(move.side, move.player);
+      chosen = move.player;
+      choose(move.side);
     }
-    processLiveGiftMoves();
+    processLiveMoves();
   }, 350 / animationSpeed);
 }
 function handleLiveGift(giftData){
@@ -850,7 +883,7 @@ function handleLiveGift(giftData){
   const key = username.toLocaleLowerCase("fr-FR");
   const player = livePlayerChoices.get(key);
   if (!player){
-    setLiveStatus(`@${username}, commente le numéro d'un personnage avant de jouer.`);
+    setLiveStatus(`@${username}, commente le numéro d'un joueur puis gauche ou droite pour le faire avancer. Aucun cadeau n'est nécessaire.`);
     return;
   }
   if (!alive.includes(player)){
@@ -864,19 +897,7 @@ function handleLiveGift(giftData){
     seenLiveGiftIds.add(messageId);
     if (seenLiveGiftIds.size > 1200) seenLiveGiftIds.delete(seenLiveGiftIds.values().next().value);
   }
-  const side = liveSideChoices.get(key);
-  if (!side){
-    setLiveStatus(`@${username}, commente gauche ou droite avant de jouer.`);
-    return;
-  }
-  liveSideChoices.delete(key);
-  if (liveGiftMoves.length >= 100){
-    setLiveStatus("La file d'actions est pleine. Attends un instant avant de réessayer.");
-    return;
-  }
-  liveGiftMoves.push({ username, key, player, side });
-  setLiveStatus(`@${username} joue le personnage ${player} côté ${side === "left" ? "gauche" : "droit"}.`);
-  processLiveGiftMoves();
+  setLiveStatus(`@${username}, écris gauche ou droite dans le chat pour faire avancer le joueur ${player}. Aucun cadeau n'est nécessaire.`);
 }
 function handleLiveMessage(message){
   if (!message || typeof message !== "object") return;
@@ -980,7 +1001,6 @@ function simulateBigGift(){
   handleLiveComment({ uniqueId: username, comment: player });
   handleLiveComment({ uniqueId: username, comment: side });
   effects.simulateBigGift(username, 100);
-  handleLiveGift({ uniqueId: username, coinCount: 100, messageId: `simulation:${Date.now()}`, repeatEnd: true });
 }
 
 $("connect-live").addEventListener("click", connectLive);
