@@ -29,6 +29,10 @@ export default class {
     static #scene;
     static #pointer;
     static #camera;
+    static #loopId = 0;
+    static #lastFrameAt = 0;
+    static #frameErrors = 0;
+    static #watchdog = null;
 
     static pixelRatio = 1;
 
@@ -82,10 +86,25 @@ export default class {
     }
 
     static run() {
-        this.#update();
+        this.#startLoop();
+        clearInterval(this.#watchdog);
+        this.#watchdog = setInterval(() => {
+            if (document.visibilityState !== "visible") return;
+            if (performance.now() - this.#lastFrameAt > 3000) {
+                console.warn("Boucle du jeu arrêtée : redémarrage automatique.");
+                this.#startLoop();
+            }
+        }, 1000);
     }
 
-    static #update() {
+    static #startLoop() {
+        this.#loopId += 1;
+        this.#lastFrameAt = performance.now();
+        this.#update(this.#loopId);
+    }
+
+    static #update(loopId) {
+        if (loopId !== this.#loopId) return;
         runFrame(() => {
             if (this.#restart) {
                 this.#restart = false;
@@ -100,13 +119,21 @@ export default class {
                 this.#scene.step();
                 this.#time += STEP_DELAY;
             }
+            this.#frameErrors = 0;
         }, () => {
+            if (loopId !== this.#loopId) return;
             if (this.DEBUG_MAX_SPEED) {
-                setTimeout(() => this.#update(), 0);
+                setTimeout(() => this.#update(loopId), 0);
             } else {
-                requestAnimationFrame(() => this.#update());
+                requestAnimationFrame(() => this.#update(loopId));
+            }
+        }, error => {
+            this.#frameErrors += 1;
+            if (this.#frameErrors === 1 || this.#frameErrors % 300 === 0) {
+                console.error(`Erreur dans la boucle du jeu (${this.#frameErrors} image(s) de suite) :`, error);
             }
         });
+        this.#lastFrameAt = performance.now();
     }
 
     static async save() {
