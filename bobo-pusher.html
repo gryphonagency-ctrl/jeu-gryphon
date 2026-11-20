@@ -1243,7 +1243,7 @@
     const MAX_PENDING_GIFT_DROPS = 100000;
     const MAX_ACTIVE_BOARD_COINS = Infinity; // plus de pause : la file tombe sans s'arrêter
     const RESUME_ACTIVE_BOARD_COINS = 178;
-    const GIFT_DROP_INTERVAL_MS = 38;
+    const GIFT_DROP_INTERVAL_MS = 80;
     const CARD_REWARD_TYPES = [
       { id: 'star-1', stars: 1, initial: 100 },
       { id: 'star-2', stars: 2, initial: 100 },
@@ -1276,34 +1276,121 @@
         });
       });
     }
-    const cardGeometry = new THREE.BoxGeometry(0.65, COIN_HEIGHT, 0.95);
-    const cardMatsByStars = new Map();
-    function getCardMaterials(stars) {
-      if (cardMatsByStars.has(stars)) return cardMatsByStars.get(stars);
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+    const CARD_THICKNESS = COIN_HEIGHT * 2;
+    const cardGeometry = new THREE.BoxGeometry(1.3, CARD_THICKNESS, 1.9);
+    const cardMaterialCache = new Map();
+    function drawCardFace(context, owner, stars, avatarImage = null) {
+      const width = context.canvas.width;
+      const height = context.canvas.height;
+      const gradient = context.createLinearGradient(0, 0, width, height);
       gradient.addColorStop(0, '#312e81');
       gradient.addColorStop(1, '#1e1b4b');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 256, 256);
-      ctx.strokeStyle = '#93c5fd';
-      ctx.lineWidth = 12;
-      ctx.strokeRect(7, 7, 242, 242);
-      ctx.fillStyle = '#bfdbfe';
-      ctx.font = '900 42px Orbitron, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${stars} ⭐`, 128, 128, 225);
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, width, height);
+      context.strokeStyle = '#93c5fd';
+      context.lineWidth = 12;
+      context.strokeRect(7, 7, width - 14, height - 14);
+      context.fillStyle = '#bfdbfe';
+      context.font = '900 28px Orbitron, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('RÉCOMPENSE', width / 2, 48, width - 32);
+
+      const avatarRadius = 104;
+      const avatarX = width / 2;
+      const avatarY = 218;
+      context.fillStyle = '#4338ca';
+      context.beginPath();
+      context.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+      context.fill();
+      if (avatarImage && avatarImage.naturalWidth) {
+        const size = Math.min(avatarImage.naturalWidth, avatarImage.naturalHeight);
+        context.save();
+        context.beginPath();
+        context.arc(avatarX, avatarY, avatarRadius - 5, 0, Math.PI * 2);
+        context.clip();
+        context.drawImage(
+          avatarImage,
+          (avatarImage.naturalWidth - size) / 2,
+          (avatarImage.naturalHeight - size) / 2,
+          size,
+          size,
+          avatarX - avatarRadius + 5,
+          avatarY - avatarRadius + 5,
+          (avatarRadius - 5) * 2,
+          (avatarRadius - 5) * 2
+        );
+        context.restore();
+      } else {
+        context.fillStyle = '#f5d0fe';
+        context.font = '900 100px Inter, sans-serif';
+        context.fillText(String(owner && owner.username || '?').charAt(0).toUpperCase(), avatarX, avatarY, avatarRadius * 1.6);
+      }
+      context.strokeStyle = '#facc15';
+      context.lineWidth = 10;
+      context.beginPath();
+      context.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+      context.stroke();
+
+      context.fillStyle = '#ffffff';
+      context.font = '900 30px Inter, sans-serif';
+      context.fillText(`@${owner && owner.username || 'Spectateur'}`, width / 2, 376, width - 28);
+      context.fillStyle = '#fde047';
+      context.font = '900 36px Orbitron, sans-serif';
+      context.fillText(`${stars} ⭐`, width / 2, 474, width - 28);
+    }
+    function getCardMaterials(owner, stars) {
+      const ownerKey = owner && owner.key || 'anonymous';
+      const key = `${ownerKey}:${stars}`;
+      const cached = cardMaterialCache.get(key);
+      if (cached) return cached;
+      const canvas = document.createElement('canvas');
+      canvas.width = 384;
+      canvas.height = 576;
+      const ctx = canvas.getContext('2d');
+      drawCardFace(ctx, owner, stars);
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = 4;
       const side = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.3 });
       const face = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2 });
       const materials = [side, face, face, side, side, side];
-      cardMatsByStars.set(stars, materials);
-      return materials;
+      const record = { key, owner, stars, avatarUrl: owner && owner.avatarUrl || '', canvas, context: ctx, texture, materials, users: 0 };
+      cardMaterialCache.set(key, record);
+      if (record.avatarUrl) loadCardAvatar(record);
+      return record;
+    }
+    function loadCardAvatar(record) {
+      if (!record.avatarUrl) return;
+      const avatarUrl = record.avatarUrl;
+      const image = new Image();
+      if (!avatarUrl.startsWith('data:')) image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        if (cardMaterialCache.get(record.key) !== record || record.avatarUrl !== avatarUrl) return;
+        drawCardFace(record.context, record.owner, record.stars, image);
+        record.texture.needsUpdate = true;
+      };
+      image.onerror = () => console.warn('Impossible de charger la photo pour la carte de', record.owner && record.owner.username);
+      image.src = avatarUrl;
+    }
+    function refreshCardAvatars(owner) {
+      for (const record of cardMaterialCache.values()) {
+        if (record.owner !== owner || record.avatarUrl === owner.avatarUrl) continue;
+        record.avatarUrl = owner.avatarUrl || '';
+        drawCardFace(record.context, owner, record.stars);
+        record.texture.needsUpdate = true;
+        loadCardAvatar(record);
+      }
+    }
+    function pruneCardMaterialCache() {
+      if (cardMaterialCache.size <= 128) return;
+      for (const [key, record] of cardMaterialCache) {
+        if (record.users > 0) continue;
+        cardMaterialCache.delete(key);
+        record.texture.dispose();
+        record.materials[0].dispose();
+        record.materials[1].dispose();
+        break;
+      }
     }
     function normalizeCardInventory(saved) {
       let remainingCapacity = MAX_CARD_INVENTORY;
@@ -1428,7 +1515,8 @@
     function createCoin(x, y, z, vx = 0, vy = 0, vz = 0, isFreshDrop = false, isCard = false, owner = null, rewardStars = 0, isSimulation = false, cardType = null, isIngot = false) {
       const geometry = isCard ? cardGeometry : isIngot ? ingotGeometry : coinGeometry;
       const avatarMaterialRecord = !isCard && !isIngot ? getPlayerCoinMaterials(owner) : null;
-      const materials = isCard ? getCardMaterials(rewardStars) : isIngot ? ingotMaterials : avatarMaterialRecord ? avatarMaterialRecord.materials : coinMaterials;
+      const cardMaterialRecord = isCard ? getCardMaterials(owner, rewardStars) : null;
+      const materials = isCard ? cardMaterialRecord.materials : isIngot ? ingotMaterials : avatarMaterialRecord ? avatarMaterialRecord.materials : coinMaterials;
       const mesh = new THREE.Mesh(geometry, materials);
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
@@ -1466,10 +1554,13 @@
         rewardStars,
         cardType,
         isSimulation,
-        avatarMaterialRecord
+        avatarMaterialRecord,
+        cardMaterialRecord
       };
       if (avatarMaterialRecord) avatarMaterialRecord.users++;
+      if (cardMaterialRecord) cardMaterialRecord.users++;
       prunePlayerCoinMaterialCache();
+      pruneCardMaterialCache();
       if (isCard) {
         if (cardType) cardType.inPlay++;
       }
@@ -1478,7 +1569,8 @@
     }
 
     function coinHalfHeight(coin) {
-      if (coin.isCard || coin.isIngot || coin.edgeTipping) return COIN_HEIGHT * 0.5;
+      if (coin.isCard) return CARD_THICKNESS * 0.5;
+      if (coin.isIngot || coin.edgeTipping) return COIN_HEIGHT * 0.5;
       return Math.abs(Math.sin(coin.rotX)) * COIN_RADIUS +
         Math.abs(Math.cos(coin.rotX)) * COIN_HEIGHT * 0.5;
     }
@@ -1828,6 +1920,7 @@
       }
       if (avatarUrl && player.avatarUrl !== avatarUrl) {
         player.avatarUrl = avatarUrl;
+        refreshCardAvatars(player);
         const winner = starWinners.get(key);
         if (winner) {
           winner.avatarUrl = avatarUrl;
@@ -3020,6 +3113,10 @@
           if (c.avatarMaterialRecord) {
             c.avatarMaterialRecord.users = Math.max(0, c.avatarMaterialRecord.users - 1);
             prunePlayerCoinMaterialCache();
+          }
+          if (c.cardMaterialRecord) {
+            c.cardMaterialRecord.users = Math.max(0, c.cardMaterialRecord.users - 1);
+            pruneCardMaterialCache();
           }
           coins.splice(i, 1);
         }
