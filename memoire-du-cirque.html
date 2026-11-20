@@ -245,7 +245,9 @@
         const settings = { timeout: 60, pairStars: 1, bonus: 5, bigGift: 100, speed: 1, hideBoard: false };
         const viewers = new Map();
         const queue = [];
+        const LAYOUT_INTERVAL_MS = 90_000;
         let run = null, cards = [], rewards = [], jackpotPair = 0, matched = 0;
+        let layoutChangeTimer = null, layoutChangePending = false, nextLayoutChangeAt = 0;
 
         const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
         const shuffle = list => { for (let i = list.length - 1; i > 0; i--) { const j = rand(0, i); [list[i], list[j]] = [list[j], list[i]]; } return list; };
@@ -262,12 +264,16 @@
 
         function assignRewards() { jackpotPair = -1; rewards = []; }
 
-        function deal() {
+        function deal(shuffleLayout = cards.length === 0) {
             const grid = $('grid');
             grid.textContent = '';
             matched = 0;
             assignRewards();
-            const deck = shuffle(ICONS.flatMap((icon, pair) => [{ icon, pair }, { icon, pair }]));
+            const changeLayout = shuffleLayout || cards.length === 0;
+            const deck = changeLayout
+                ? shuffle(ICONS.flatMap((icon, pair) => [{ icon, pair }, { icon, pair }]))
+                : cards.map(({ icon, pair }) => ({ icon, pair }));
+            if (changeLayout) nextLayoutChangeAt = Date.now() + LAYOUT_INTERVAL_MS;
             cards = deck.map((d, i) => {
                 const el = document.createElement('div');
                 el.className = 'card m' + d.pair;
@@ -311,6 +317,7 @@
             const r = run;
             run = null;
             if (r && r.entry.credits > 0) queue.push(r.entry);
+            applyPendingLayoutChange();
             updateScoreboard();
             nextRun();
         }
@@ -320,7 +327,30 @@
         async function resetGrid() {
             cards.forEach(c => flip(c, false));
             await sleep(700);
-            deal();
+            deal(false);
+        }
+
+        function scheduleLayoutChange() {
+            clearTimeout(layoutChangeTimer);
+            layoutChangeTimer = setTimeout(() => {
+                layoutChangeTimer = null;
+                if (run) {
+                    layoutChangePending = true;
+                    say('🎪 Les cartes gardent leur place jusqu’à la fin de la manche.');
+                    return;
+                }
+                deal(true);
+                say('🎪 Les cartes ont changé de place.');
+                scheduleLayoutChange();
+            }, LAYOUT_INTERVAL_MS);
+        }
+
+        function applyPendingLayoutChange(atGridEnd = false) {
+            if (!layoutChangePending || (run && !atGridEnd)) return;
+            layoutChangePending = false;
+            deal(true);
+            say('🎪 Nouvelle disposition : les cartes ont changé de place.');
+            scheduleLayoutChange();
         }
 
         function findViewer(raw) {
@@ -371,6 +401,7 @@
                     say('🎪 Grille complète ! Nouvelle grille, le joueur continue.');
                     await sleep(1800);
                     await resetGrid();
+                    applyPendingLayoutChange(true);
                 }
                 r.deadline = Date.now() + settings.timeout * 1000;
                 r.busy = false;
@@ -504,7 +535,16 @@
             };
             $('star-min').addEventListener('input', stars); $('star-max').addEventListener('input', stars);
             $('big-gift').addEventListener('input', e => { settings.bigGift = Math.max(2, Math.floor(Number(e.target.value) || 100)); saveGame(); });
-            $('reshuffle').addEventListener('click', () => { if (!run) deal(); else say('Une partie est en cours.'); });
+            $('reshuffle').addEventListener('click', () => {
+                if (run) { say('Une partie est en cours.'); return; }
+                const remaining = Math.max(0, nextLayoutChangeAt - Date.now());
+                if (remaining > 0) {
+                    say(`Les cartes gardent leur place encore ${Math.ceil(remaining / 1000)} s.`);
+                    return;
+                }
+                deal(true);
+                scheduleLayoutChange();
+            });
             $('sim-say').addEventListener('click', () => { onChat($('sim-name').value, $('sim-num').value); $('sim-num').select(); });
             $('sim-num').addEventListener('keydown', e => { if (e.key === 'Enter') $('sim-say').click(); });
             $('hide-board').addEventListener('change', e => { settings.hideBoard = e.target.checked; refreshBoards(); saveGame(); });
@@ -580,6 +620,7 @@
         loadGame();
         syncControls();
         deal();
+        scheduleLayoutChange();
         bindUi();
         bindQueueWindow();
         refreshBoards();
