@@ -316,18 +316,19 @@ canvas { display: block; width: 100vw; height: 100vh; }
     const rvx = b.vx - svx, rvy = b.vy - svy;
     const vn = rvx * nx + rvy * ny;
     if (vn < 0) {
-      const e = Math.min(1, (flipper ? 0.25 : s.e)) * (flipper ? 1 : state.bounce);
+      const e = Math.min(1, (flipper ? 0.25 : s.e)) * (flipper ? 1 : state.bounce) * (-vn < 140 ? 0.4 : 1);
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
       // frottement tangentiel léger
       const tx = -ny, ty = nx;
       const vt = (b.vx - svx) * tx + (b.vy - svy) * ty;
       b.vx -= vt * 0.015 * tx; b.vy -= vt * 0.015 * ty;
+      if (-vn > 90) sfx(flipper ? 'flipper' : 'wall', Math.min(1, -vn / 900));
       if (s.kick && -vn > 60) {
         b.vx += nx * s.kick; b.vy += ny * s.kick; s.flash = 1;
-        addScore(50); fx(b.x, b.y, colors.pink, 50, 6);
+        addScore(50); fx(b.x, b.y, colors.pink, 50, 6); sfx('bumper');
       }
-      if (flipper && (flipper.pressed || flipper.autoPress)) { b.vx += nx * 40; b.vy += ny * 40; }
+      if (flipper && (flipper.pressed || flipper.autoPress)) { b.vx += nx * 40; b.vy += ny * 40; if (-vn > 200) fx(b.x, b.y, colors.cyan, 0, 0); }
     }
     return true;
   }
@@ -345,8 +346,9 @@ canvas { display: block; width: 100vw; height: 100vh; }
       const kick = c.kind === 'bumper' ? 1.15 : 0.6;
       b.vx -= (1 + kick) * vn * nx;
       b.vy -= (1 + kick) * vn * ny;
-      if (c.kind === 'bumper') { b.vx += nx * 280; b.vy += ny * 280; }
+      if (c.kind === 'bumper') { const jk = 280 * (0.92 + Math.random() * 0.16); b.vx += nx * jk; b.vy += ny * jk; }
       c.flash = 1;
+      sfx(c.kind === 'target' ? 'target' : 'bumper', Math.min(1, -vn / 600 + .3));
       state.combo++;
       if (c.kind === 'penalty') {
         state.combo = 0; addScore(c.points); fx(c.x, c.y, c.color, c.points, c.r);
@@ -507,6 +509,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
           }
         }
         b.vy += state.gravity * h;
+        const dr = 1 - 0.08 * h; b.vx *= dr; b.vy *= dr; // résistance de l'air et du roulement
         const sp = Math.hypot(b.vx, b.vy);
         if (sp > MAX_SPEED) { b.vx *= MAX_SPEED / sp; b.vy *= MAX_SPEED / sp; }
         b.x += b.vx * h; b.y += b.vy * h;
@@ -548,7 +551,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     for (let i = balls.length - 1; i >= 0; i--) {
       const b = balls[i];
       if (!b.gone && b.y <= H + 40) continue;
-      balls.splice(i, 1);
+      balls.splice(i, 1); sfx('lost');
       state.combo = 0;
       if (b.gone) {
         b.gone.flash = 1; fx(b.gone.x, b.gone.y, '#b36bff', 0, 0);
@@ -785,6 +788,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     for (const b of balls) {
       if (b.x > LANE_X && b.y > 900 && Math.abs(b.vy) < 80) { b.vy = -power; b.vx = 0; }
     }
+    if (balls.some(b => b.x > LANE_X && b.y > 900 && Math.abs(b.vy) < 80)) sfx('launch');
     state.charge = 0; state.charging = false;
   }
   const keyMap = { ArrowLeft: 0, KeyZ: 0, KeyQ: 0, ArrowRight: 1, KeyM: 1, KeyP: 1 };
@@ -828,6 +832,23 @@ canvas { display: block; width: 100vw; height: 100vh; }
   // Étincelles, scores flottants et lampes du plateau (effets "vivants")
   const particles = [], popups = [];
   const lamps = [];
+  let shakeT = 0; const chase = { t: 0, i: 0 };
+  let AC = null; const sfxT = {};
+  function sfx(kind, vol = 1) {
+    const tn = performance.now(); if (tn - (sfxT[kind] || 0) < 45) return; sfxT[kind] = tn;
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === 'suspended') AC.resume();
+      const t0 = AC.currentTime;
+      const tone = (f0, f1, dur, type, gain) => { const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t0 + dur); g.gain.setValueAtTime(gain * vol * .5, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + dur); o.connect(g); g.connect(AC.destination); o.start(t0); o.stop(t0 + dur); };
+      if (kind === 'bumper') { tone(900, 380, .16, 'square', .35); tone(1800, 760, .1, 'triangle', .25); shakeT = Math.max(shakeT, .45); }
+      else if (kind === 'target') { tone(1320, 1760, .28, 'sine', .45); tone(1980, 2640, .2, 'sine', .2); }
+      else if (kind === 'flipper') { tone(170, 55, .09, 'square', .5); tone(90, 40, .12, 'sine', .5); }
+      else if (kind === 'wall') tone(1400, 700, .04, 'triangle', .22);
+      else if (kind === 'launch') { tone(110, 520, .35, 'sawtooth', .35); shakeT = Math.max(shakeT, .35); }
+      else if (kind === 'lost') tone(420, 70, .7, 'sawtooth', .4);
+    } catch (e) { }
+  }
   function fx(x, y, color, pts, r) {
     for (let i = 0; i < 10; i++) {
       const a = Math.random() * Math.PI * 2, v = 90 + Math.random() * 260;
@@ -930,6 +951,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
     }
     c.globalAlpha = 1;
 
+    if (now - chase.t > 350 && lamps.length) { chase.t = now; const lm = lamps[chase.i++ % lamps.length]; lm.b = Math.max(lm.b || 0, .8); }
     // lampes
     for (const l of lamps) {
       const idle = 0.18 + 0.22 * Math.max(0, Math.sin(t * 3 + l.ph * 1.3));
@@ -1110,18 +1132,26 @@ canvas { display: block; width: 100vw; height: 100vh; }
     const rad = BALL_R * state.ballScale;
     for (const b of balls) {
       b.trail.forEach((p, i) => {
-        c.globalAlpha = (i / b.trail.length) * 0.28; c.fillStyle = colors.cyan;
+        c.globalAlpha = (i / b.trail.length) * 0.1; c.fillStyle = colors.cyan;
         c.beginPath(); c.arc(p.x, p.y, rad * (i / b.trail.length), 0, Math.PI * 2); c.fill();
       });
       c.globalAlpha = 1;
       c.fillStyle = 'rgba(0,0,0,0.5)'; c.beginPath(); c.ellipse(b.x + rad * 0.5, b.y + rad * 0.85, rad * 0.95, rad * 0.65, 0, 0, Math.PI * 2); c.fill();
-      glow(colors.cyan, b.x, b.y, rad * 3, 0.35);
+      glow(colors.cyan, b.x, b.y, rad * 3, 0.12);
       if (b.who) { drawAvatarBall(c, b, rad); continue; }
-      const g = c.createRadialGradient(b.x - rad * 0.35, b.y - rad * 0.4, rad * 0.1, b.x, b.y, rad);
-      g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, '#dbe3f5'); g.addColorStop(0.6, '#7a86a3'); g.addColorStop(1, '#1d2338');
-      c.fillStyle = g; c.beginPath(); c.arc(b.x, b.y, rad, 0, Math.PI * 2); c.fill();
-      c.fillStyle = 'rgba(0,240,255,0.35)'; c.beginPath(); c.ellipse(b.x + rad * 0.2, b.y + rad * 0.55, rad * 0.55, rad * 0.22, 0, 0, Math.PI * 2); c.fill();
-      c.fillStyle = 'rgba(255,255,255,0.9)'; c.beginPath(); c.arc(b.x - rad * 0.38, b.y - rad * 0.42, rad * 0.2, 0, Math.PI * 2); c.fill();
+      const ddx = b.x - (b.lx ?? b.x), ddy = b.y - (b.ly ?? b.y); b.lx = b.x; b.ly = b.y;
+      b.rx = ((b.rx || 0) + ddx / rad) % 6.2832; b.ry = ((b.ry || 0) + ddy / rad) % 6.2832;
+      c.save(); c.beginPath(); c.arc(b.x, b.y, rad, 0, 7); c.clip();
+      const g = c.createLinearGradient(0, b.y - rad, 0, b.y + rad);
+      g.addColorStop(0, '#f4f8ff'); g.addColorStop(.45, '#9aa6c2'); g.addColorStop(.5, '#2b3350'); g.addColorStop(.62, '#4a5578'); g.addColorStop(1, '#c9b79a');
+      c.fillStyle = g; c.fillRect(b.x - rad, b.y - rad, rad * 2, rad * 2);
+      c.fillStyle = 'rgba(20,28,60,.55)'; c.fillRect(b.x - rad, b.y + Math.sin(b.ry) * rad * .9 - rad * .12, rad * 2, rad * .24);
+      c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(b.x + Math.sin(b.rx) * rad * .9 - rad * .1, b.y - rad, rad * .2, rad * 2);
+      const sg = c.createRadialGradient(b.x, b.y, rad * .55, b.x, b.y, rad); sg.addColorStop(0, 'rgba(0,0,0,0)'); sg.addColorStop(1, 'rgba(0,0,10,.55)');
+      c.fillStyle = sg; c.fillRect(b.x - rad, b.y - rad, rad * 2, rad * 2);
+      c.restore();
+      c.fillStyle = 'rgba(255,255,255,.95)'; c.beginPath(); c.ellipse(b.x - rad * .36, b.y - rad * .42, rad * .2, rad * .13, -.6, 0, 7); c.fill();
+      c.strokeStyle = 'rgba(255,255,255,.25)'; c.lineWidth = .8; c.beginPath(); c.arc(b.x, b.y, rad - .4, 0, 7); c.stroke();
     }
     // billes congelées : bloc de glace autour de la bille
     for (const b of balls) {
@@ -1207,8 +1237,10 @@ canvas { display: block; width: 100vw; height: 100vh; }
   }
 
   function drawCabinet() {
-    const { CW, CH, glassH, tableH, wb, cx, topW } = geo;
+    const { CW, CH, glassH, tableH, wb, cx, topW, apronH } = geo;
     const yTop = glassH, yBot = glassH + tableH, pad = wb * 0.045;
+    const fs = ctx.createRadialGradient(cx, CH, 10, cx, CH, wb * .75); fs.addColorStop(0, 'rgba(0,0,0,.7)'); fs.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save(); ctx.translate(0, CH); ctx.scale(1, .12); ctx.translate(0, -CH); ctx.fillStyle = fs; ctx.fillRect(cx - wb, CH - wb, wb * 2, wb * 2); ctx.restore();
     // flancs du meuble en métal sombre
     const side = ctx.createLinearGradient(cx - wb / 2 - pad, 0, cx + wb / 2 + pad, 0);
     side.addColorStop(0, '#2a2f55'); side.addColorStop(0.08, '#0b0d22'); side.addColorStop(0.92, '#0b0d22'); side.addColorStop(1, '#2a2f55');
@@ -1216,6 +1248,13 @@ canvas { display: block; width: 100vw; height: 100vh; }
     ctx.beginPath();
     ctx.moveTo(cx - topW / 2 - pad * 0.6, yTop - 6); ctx.lineTo(cx + topW / 2 + pad * 0.6, yTop - 6);
     ctx.lineTo(cx + wb / 2 + pad, yBot + 4); ctx.lineTo(cx - wb / 2 - pad, yBot + 4); ctx.closePath(); ctx.fill();
+    for (const sd of [-1, 1]) {
+      const x0 = cx + sd * topW / 2, x1 = cx + sd * wb / 2, o = 9 * dpr * sd;
+      const wg = ctx.createLinearGradient(0, yTop, 0, yBot); wg.addColorStop(0, '#4a2c16'); wg.addColorStop(.5, '#7a4a26'); wg.addColorStop(1, '#2a160a');
+      ctx.lineCap = 'butt'; ctx.strokeStyle = wg; ctx.lineWidth = 16 * dpr; ctx.beginPath(); ctx.moveTo(x0 + o, yTop - 4); ctx.lineTo(x1 + o * 1.6, yBot + 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(x0 + o * 1.5, yTop); ctx.lineTo(x1 + o * 2.5, yBot); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,200,140,.25)'; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); ctx.moveTo(x0 + o * .35, yTop); ctx.lineTo(x1 + o * .6, yBot); ctx.stroke();
+    }
   }
 
   function drawFront(now) {
@@ -1229,6 +1268,9 @@ canvas { display: block; width: 100vw; height: 100vh; }
     gl.addColorStop(0, 'rgba(255,255,255,0)'); gl.addColorStop(0.28, 'rgba(255,255,255,0.10)'); gl.addColorStop(0.4, 'rgba(255,255,255,0.02)');
     gl.addColorStop(0.62, 'rgba(255,255,255,0.07)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = gl; ctx.fillRect(0, yTop, CW, tableH);
+    const gs = Math.sin(now / 4000) * wb * .05;
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(cx - wb * .45 + gs, yTop); ctx.lineTo(cx - wb * .12 + gs, yTop); ctx.lineTo(cx - wb * .55 + gs, yBot); ctx.lineTo(cx - wb * .75 + gs, yBot); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.beginPath(); ctx.moveTo(cx - wb * .05 + gs, yTop); ctx.lineTo(cx + wb * .02 + gs, yTop); ctx.lineTo(cx - wb * .3 + gs, yBot); ctx.lineTo(cx - wb * .38 + gs, yBot); ctx.closePath(); ctx.fill();
     const vg = ctx.createLinearGradient(0, yTop, 0, yTop + tableH * 0.12);
     vg.addColorStop(0, 'rgba(0,0,0,0.55)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = vg; ctx.fillRect(0, yTop, CW, tableH * 0.12);
@@ -1246,6 +1288,19 @@ canvas { display: block; width: 100vw; height: 100vh; }
     ag.addColorStop(0, '#303660'); ag.addColorStop(0.15, '#12152e'); ag.addColorStop(1, '#05060f');
     ctx.fillStyle = ag; ctx.fillRect(cx - wb / 2 - wb * 0.05, yBot, wb * 1.1, apronH + 2);
     ctx.fillStyle = '#e8ecff'; ctx.fillRect(cx - wb / 2 - wb * 0.05, yBot, wb * 1.1, 3 * dpr);
+    const bw = wb * 1.1, bx0 = cx - bw / 2, bh = (apronH - 3 * dpr) / 24;
+    for (let i = 0; i < 24; i++) { ctx.fillStyle = i % 2 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.12)'; ctx.fillRect(bx0, yBot + 3 * dpr + i * bh, bw, bh); }
+    for (const sx of [-1, 1]) for (const sy of [.22, .78]) {
+      const px = cx + sx * bw * .47, py = yBot + apronH * sy;
+      ctx.fillStyle = '#05060f'; ctx.beginPath(); ctx.arc(px, py + dpr, 4 * dpr, 0, 7); ctx.fill();
+      const sg = ctx.createRadialGradient(px - dpr, py - dpr, .5, px, py, 4 * dpr); sg.addColorStop(0, '#fff'); sg.addColorStop(1, '#6b7592'); ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(px, py, 3.6 * dpr, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#2a3050'; ctx.lineWidth = dpr; ctx.beginPath(); ctx.moveTo(px - 2.4 * dpr, py - dpr); ctx.lineTo(px + 2.4 * dpr, py + dpr); ctx.stroke();
+    }
+    const cdw = wb * .13, cdh = apronH * .62, cdx = cx - cdw / 2, cdy = yBot + apronH * .22;
+    const cdg = ctx.createLinearGradient(0, cdy, 0, cdy + cdh); cdg.addColorStop(0, '#9aa3c0'); cdg.addColorStop(1, '#3a4262');
+    ctx.fillStyle = cdg; ctx.beginPath(); ctx.roundRect(cdx, cdy, cdw, cdh, 4 * dpr); ctx.fill();
+    ctx.fillStyle = '#05060f'; ctx.fillRect(cx - cdw * .22, cdy + cdh * .3, cdw * .44, 3 * dpr);
+    ctx.fillStyle = '#ff2a2a'; ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 6 * dpr; ctx.beginPath(); ctx.arc(cx, cdy + cdh * .72, 3 * dpr, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
     const by = yBot + apronH * 0.55, br = apronH * 0.3;
     [[-1, flippers[0]], [1, flippers[1]]].forEach(([s, f]) => {
       const bx = cx + s * wb * 0.36, lit = f.pressed || f.autoPress;
@@ -1265,6 +1320,11 @@ canvas { display: block; width: 100vw; height: 100vh; }
     bg.addColorStop(0, '#2b0a5c'); bg.addColorStop(1, '#0a0720');
     ctx.fillStyle = bg; ctx.strokeStyle = colors.cyan; ctx.lineWidth = 3 * dpr; ctx.shadowColor = colors.cyan; ctx.shadowBlur = 14 * dpr;
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 16 * dpr); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+    const chg = ctx.createLinearGradient(0, gy, 0, gy + gh); chg.addColorStop(0, '#f4f6ff'); chg.addColorStop(.35, '#7d86a8'); chg.addColorStop(.7, '#d8dcf0'); chg.addColorStop(1, '#4a5070');
+    ctx.strokeStyle = chg; ctx.lineWidth = 5 * dpr; ctx.beginPath(); ctx.roundRect(gx - 3 * dpr, gy - 3 * dpr, gw + 6 * dpr, gh + 6 * dpr, 19 * dpr); ctx.stroke();
+    for (const [rx, ry] of [[gx + 9 * dpr, gy + 9 * dpr], [gx + gw - 9 * dpr, gy + 9 * dpr], [gx + 9 * dpr, gy + gh - 9 * dpr], [gx + gw - 9 * dpr, gy + gh - 9 * dpr]]) {
+      const rg = ctx.createRadialGradient(rx - dpr, ry - dpr, .5, rx, ry, 4 * dpr); rg.addColorStop(0, '#fff'); rg.addColorStop(1, '#5a6384'); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(rx, ry, 3.6 * dpr, 0, 7); ctx.fill();
+    }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `900 ${gh * 0.3}px "Segoe UI", sans-serif`;
     ctx.fillStyle = colors.pink; ctx.shadowColor = colors.pink; ctx.shadowBlur = 16 * dpr;
@@ -1296,6 +1356,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
   function render(now) {
     const dt = Math.min(0.05, (now - lastRender) / 1000); lastRender = now;
     drawBackground();
+    shakeT = Math.max(0, shakeT - dt * 4); ctx.save(); ctx.translate((Math.random() - .5) * shakeT * 8 * dpr, (Math.random() - .5) * shakeT * 8 * dpr);
     drawCabinet();
     drawWorld(now, dt);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
@@ -1305,6 +1366,7 @@ canvas { display: block; width: 100vw; height: 100vh; }
       ctx.drawImage(view, 0, sy, view.width, sh, geo.cx - s.w / 2, s.y, s.w, s.h + 1);
     }
     drawFront(now);
+    ctx.restore();
   }
 
   // ---------- Automatisme : les deux flippers jouent seuls ----------
