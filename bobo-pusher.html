@@ -189,7 +189,19 @@
     .card-stock-table th, .card-stock-table td { padding: 4px; border-bottom: 1px solid #ffffff22; text-align: left; }
     .wheel-overlay { left: 50%; top: 50%; width: min(250px, calc(100vw - 30px)); padding: 12px; transform: translate(-50%, -50%); text-align: center; }
     .wheel-overlay h2 { margin: 0 0 8px; color: #fde68a; font-size: 13px; }
-    #prize-wheel { width: 100%; aspect-ratio: 1; border-radius: 50%; }
+    .wheel-stage { position: relative; width: 100%; aspect-ratio: 1; }
+    #prize-wheel { display: block; width: 100%; height: 100%; border-radius: 50%; }
+    .wheel-pointer {
+      position: absolute;
+      z-index: 2;
+      top: -13px;
+      left: 50%;
+      width: 34px;
+      height: 40px;
+      transform: translateX(-50%);
+      filter: drop-shadow(0 2px 4px #000b);
+      pointer-events: none;
+    }
     #wheel-status { min-height: 2em; margin: 8px 0 0; color: #fef3c7; font-size: 11px; }
     @media (max-width: 600px) {
       .config-panel { right: 8px; top: 58px; max-height: calc(100vh - 66px); }
@@ -257,11 +269,6 @@
       <label for="pusher-speed">Vitesse <output id="pusher-speed-value">100 %</output><input id="pusher-speed" type="range" min="20" max="300" step="5" value="100"></label>
     </section>
     <section class="panel-section">
-      <h3>Gorille animé</h3>
-      <label for="gorilla-scale">Taille <output id="gorilla-scale-value">125 %</output><input id="gorilla-scale" type="range" min="50" max="150" step="5" value="125"></label>
-      <p id="gorilla-status" class="panel-status" role="status" aria-live="polite">Chargement du personnage animé…</p>
-    </section>
-    <section class="panel-section">
       <h3>Tests de lâcher</h3>
       <label for="drop-test-count">Quantité de pièces de test (1–100 000)<input id="drop-test-count" type="number" min="1" max="100000" step="1" value="1"></label>
       <p>Le débit ralentit et se met en pause si le plateau est trop chargé. Aucun gain d’étoiles n’est attribué.</p>
@@ -303,7 +310,13 @@
 
   <section id="wheel-overlay" class="wheel-overlay" aria-live="polite" hidden>
     <h2 id="wheel-player-name">Roue des cadeaux</h2>
-    <canvas id="prize-wheel" width="600" height="600" aria-hidden="true"></canvas>
+    <div class="wheel-stage">
+      <canvas id="prize-wheel" width="600" height="600" aria-hidden="true"></canvas>
+      <svg class="wheel-pointer" viewBox="0 0 42 46" aria-hidden="true">
+        <path d="M3 3h36L21 42z" fill="#facc15" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="21" cy="10" r="4" fill="#be123c"/>
+      </svg>
+    </div>
     <p id="wheel-status" role="status">La roue tourne…</p>
   </section>
 
@@ -1604,87 +1617,10 @@
     let setupPersistTimer = 0;
     const pusherSpeedInput = document.getElementById('pusher-speed');
     const pusherDistanceInput = document.getElementById('pusher-distance');
-    const gorillaScaleInput = document.getElementById('gorilla-scale');
-    const gorillaScaleValue = document.getElementById('gorilla-scale-value');
-    const gorillaStatus = document.getElementById('gorilla-status');
     const savedSpeed = Number(setupRecord.pusherSpeed);
     const savedDistance = Number(setupRecord.pusherDistance);
     let pusherSpeedFactor = Number.isFinite(savedSpeed) ? Math.min(3, Math.max(0.2, savedSpeed / 100)) : 1;
     let pusherTravelFactor = Number.isFinite(savedDistance) ? Math.min(2, Math.max(0.2, savedDistance / 100)) : 1;
-    const savedGorillaScale = Number(setupRecord.gorillaScale);
-    let gorillaScaleFactor = Number.isFinite(savedGorillaScale) ? Math.min(1.5, Math.max(0.5, savedGorillaScale / 100)) : 1.25;
-    const gorillaCanvas = document.createElement('canvas');
-    gorillaCanvas.width = 512;
-    gorillaCanvas.height = 512;
-    const gorillaContext = gorillaCanvas.getContext('2d');
-    const gorillaTexture = new THREE.CanvasTexture(gorillaCanvas);
-    const gorillaMaterial = new THREE.MeshBasicMaterial({
-      map: gorillaTexture,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-    const gorillaMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), gorillaMaterial);
-    gorillaMesh.position.set(0, 1.35, 2.7);
-    gorillaMesh.renderOrder = 2;
-    scene.add(gorillaMesh);
-    let gorillaImageLoaded = false;
-    let lastGorillaTextureFrame = 0;
-    const gorillaCrop = { x: 0, y: 0, width: 0, height: 0 };
-    const gorillaImage = new Image();
-    gorillaImage.crossOrigin = 'anonymous';
-    gorillaImage.onload = () => {
-      gorillaImageLoaded = true;
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = gorillaImage.naturalWidth;
-      sourceCanvas.height = gorillaImage.naturalHeight;
-      const sourceContext = sourceCanvas.getContext('2d');
-      sourceContext.drawImage(gorillaImage, 0, 0);
-      const pixels = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data;
-      let minX = sourceCanvas.width;
-      let minY = sourceCanvas.height;
-      let maxX = -1;
-      let maxY = -1;
-      for (let y = 0; y < sourceCanvas.height; y++) {
-        for (let x = 0; x < sourceCanvas.width; x++) {
-          if (pixels[(y * sourceCanvas.width + x) * 4 + 3] <= 16) continue;
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-      if (maxX < minX || maxY < minY) {
-        minX = 0;
-        minY = 0;
-        maxX = sourceCanvas.width - 1;
-        maxY = sourceCanvas.height - 1;
-      }
-      const padding = Math.ceil(Math.max(maxX - minX + 1, maxY - minY + 1) * 0.04);
-      gorillaCrop.x = Math.max(0, minX - padding);
-      gorillaCrop.y = Math.max(0, minY - padding);
-      gorillaCrop.width = Math.min(sourceCanvas.width - gorillaCrop.x, maxX - minX + 1 + padding * 2);
-      gorillaCrop.height = Math.min(sourceCanvas.height - gorillaCrop.y, maxY - minY + 1 + padding * 2);
-      gorillaCanvas.height = Math.max(1, Math.round(gorillaCanvas.width * gorillaCrop.height / gorillaCrop.width));
-      updateGorillaScale();
-      gorillaContext.clearRect(0, 0, gorillaCanvas.width, gorillaCanvas.height);
-      gorillaContext.drawImage(gorillaImage, gorillaCrop.x, gorillaCrop.y, gorillaCrop.width, gorillaCrop.height, 0, 0, gorillaCanvas.width, gorillaCanvas.height);
-      gorillaTexture.needsUpdate = true;
-      gorillaStatus.textContent = 'Personnage animé chargé dans le bac.';
-      gorillaStatus.className = 'panel-status online';
-    };
-    gorillaImage.onerror = () => {
-      console.error('Impossible de charger le personnage animé Giphy.');
-      gorillaStatus.textContent = 'Impossible de charger le personnage animé.';
-      gorillaStatus.className = 'panel-status error';
-    };
-    function updateGorillaScale() {
-      const aspect = gorillaCrop.width / gorillaCrop.height || 1;
-      const height = Math.min(2.6, 4 / aspect) * gorillaScaleFactor;
-      gorillaMesh.scale.set(height * aspect, height, 1);
-      gorillaMesh.position.y = height * 0.5 + 0.05;
-    }
-    gorillaImage.src = 'https://i.giphy.com/cCbM9ESE21PRbngTFj.webp';
 
     if (typeof setupRecord.tiktokUsername === 'string') liveUsernameInput.value = setupRecord.tiktokUsername.slice(0, 32);
     if (Number.isSafeInteger(setupRecord.dropTestCount) && setupRecord.dropTestCount >= 1 && setupRecord.dropTestCount <= MAX_PENDING_GIFT_DROPS) {
@@ -1692,8 +1628,6 @@
     }
     pusherSpeedInput.value = String(Math.round(pusherSpeedFactor * 100));
     pusherDistanceInput.value = String(Math.round(pusherTravelFactor * 100));
-    gorillaScaleInput.value = String(Math.round(gorillaScaleFactor * 100));
-    gorillaScaleValue.textContent = `${gorillaScaleInput.value} %`;
     document.getElementById('pusher-speed-value').textContent = `${pusherSpeedInput.value} %`;
     document.getElementById('pusher-distance-value').textContent = `${pusherDistanceInput.value} %`;
     const initialVolume = Number.isFinite(Number(setupRecord.soundVolume))
@@ -1726,7 +1660,6 @@
         version: 1,
         pusherDistance: Number(pusherDistanceInput.value),
         pusherSpeed: Number(pusherSpeedInput.value),
-        gorillaScale: Number(gorillaScaleInput.value),
         soundVolume: Number(soundVolumeInput.value),
         dropTestCount: dropTestCountInput.valueAsNumber,
         coinStockCycleRemaining: coinStock,
@@ -2658,12 +2591,6 @@
     }
     pusherSpeedInput.addEventListener('input', updatePusherSettings);
     pusherDistanceInput.addEventListener('input', updatePusherSettings);
-    gorillaScaleInput.addEventListener('input', () => {
-      gorillaScaleFactor = Number(gorillaScaleInput.value) / 100;
-      gorillaScaleValue.textContent = `${gorillaScaleInput.value} %`;
-      if (gorillaImageLoaded) updateGorillaScale();
-      persistSetupRecord();
-    });
     dropTestCountInput.addEventListener('change', persistSetupRecord);
     document.getElementById('prize-wheel').getContext('2d').fillStyle = '#581c87';
     updateCardInventoryTable();
@@ -3106,12 +3033,6 @@
 
       neonRailMat.emissiveIntensity = 1.9 + Math.sin(now * 0.004) * 0.35;
       updateMovingDropSlots(now);
-      if (gorillaImageLoaded && now - lastGorillaTextureFrame >= 1000 / 30) {
-        gorillaContext.clearRect(0, 0, gorillaCanvas.width, gorillaCanvas.height);
-        gorillaContext.drawImage(gorillaImage, gorillaCrop.x, gorillaCrop.y, gorillaCrop.width, gorillaCrop.height, 0, 0, gorillaCanvas.width, gorillaCanvas.height);
-        gorillaTexture.needsUpdate = true;
-        lastGorillaTextureFrame = now;
-      }
 
       const subSteps = 3;
       for (let s = 0; s < subSteps; s++) stepPhysics(dt / subSteps);
