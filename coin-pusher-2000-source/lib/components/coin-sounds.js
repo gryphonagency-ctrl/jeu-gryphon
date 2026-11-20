@@ -65,6 +65,10 @@ export default class {
         impactGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
         oscillator.connect(impactGain);
         impactGain.connect(masterGain);
+        oscillator.onended = () => {
+            oscillator.disconnect();
+            impactGain.disconnect();
+        };
         oscillator.start(now);
         oscillator.stop(now + 0.095);
         return true;
