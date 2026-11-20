@@ -394,7 +394,24 @@
     #queue-panel { top: 60px; left: 16px; width: min(270px, calc(100vw - 32px)); }
     #queue-handle { cursor: move; touch-action: none; }
     #queue-list, #leaderboard-list { margin: 10px 0 0; padding-left: 22px; line-height: 1.7; }
-    #queue-list:empty::after { content: 'Aucune montgolfière en vol.'; color: #aab8cf; }
+    #queue-list:empty::after { content: 'En attente de deux joueurs qui écrivent GO.'; color: #aab8cf; }
+    #race-notice {
+      position: fixed;
+      z-index: 12;
+      top: 58px;
+      left: 50%;
+      width: min(580px, calc(100vw - 24px));
+      padding: 9px 14px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255, 214, 0, 0.55);
+      border-radius: 999px;
+      background: rgba(15, 8, 35, 0.9);
+      color: #fff3b0;
+      font: 800 12px 'Montserrat', sans-serif;
+      line-height: 1.4;
+      text-align: center;
+      pointer-events: none;
+    }
     #leaderboard-panel { bottom: 70px; left: 16px; width: min(270px, calc(100vw - 32px)); }
     #leaderboard-panel h3 { color: #ffd600; font-size: 13px; }
   </style>
@@ -418,6 +435,7 @@
     </details>
   </div>
 
+  <div id="race-notice" role="status" aria-live="polite">Écris « GO » dans le chat · la course démarre dès que 2 joueurs distincts sont inscrits.</div>
   <button id="control-toggle" type="button" aria-expanded="false" aria-controls="control-panel" title="Panneau de contrôle">⚙</button>
   <aside id="control-panel" hidden aria-label="Panneau de contrôle Montgolfières Tour">
     <div class="control-panel-heading">
@@ -451,9 +469,9 @@
     <p id="control-feedback" role="status" aria-live="polite"></p>
   </aside>
 
-  <aside id="queue-panel" hidden aria-label="File des montgolfières en vol">
+  <aside id="queue-panel" hidden aria-label="Participants et file de la prochaine course">
     <div class="queue-heading" id="queue-handle">
-      <strong>Montgolfières en vol</strong>
+      <strong>Course et prochaine course</strong>
       <button id="close-queue" type="button" aria-label="Fermer la file">×</button>
     </div>
     <ol id="queue-list"></ol>
@@ -492,6 +510,7 @@
   const liveDot = document.getElementById('live-dot');
   const liveDetail = document.getElementById('live-detail');
   const roundPot = document.getElementById('round-pot');
+  const raceNotice = document.getElementById('race-notice');
   const LIVE_WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 
   // Monde virtuel écran large, très haut et étendu
@@ -511,6 +530,12 @@
   let roundClosed = false;
   const seenLiveEventIds = new Set();
   const winnerCounts = new Map();
+  const MIN_RACE_PLAYERS = 2;
+  const waitingPlayers = new Map();
+  let raceInProgress = false;
+  let activeRaceId = 0;
+  let activeRacePlayers = new Set();
+  let raceCleanupTimer = 0;
 
   try {
     liveUsername.value = localStorage.getItem('montgolfieres-tour-wide-username') || '';
@@ -526,12 +551,6 @@
     { name: 'Or Éblouissant', colorA: '#e6b800', colorB: '#e67e00', band: '#ffca28', basket: '#6d4c41' }
   ];
 
-  const LIVE_PLAYERS = [
-    'Aéronaute', 'Céleste_92', 'SkyPilot', 'LunaStar', 'Zephyr_Off',
-    'NimbusPro', 'Stellar_Ch', 'CloudRider', 'AeroBzh', 'Aviator_X',
-    'Orion_K', 'Skye_69', 'Nova_Fly', 'Breeze_Fr', 'Sol_213'
-  ];
-
   let stars = [];
   let clouds = [];
   let thermalCurrents = [];
@@ -540,7 +559,6 @@
   let particles = [];
   let popBadges = [];
   let globalTick = 0;
-  let autoRespawnTimer = 0;
 
   // ===== Générateurs procéduraux (bruit, nuages, Voie lactée) =====
   const bgRand = (() => { let s = 20240611; return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296; })();
@@ -801,9 +819,10 @@
   const SHIRT_COLORS = ['#1565c0', '#c62828', '#2e7d32', '#f9a825', '#6a1b9a', '#ef6c00'];
 
   class Balloon {
-    constructor(username, styleIndex, simulated = true) {
+    constructor(username, styleIndex, simulated = true, raceId = 0) {
       this.username = username || 'Aéronaute';
       this.simulated = simulated;
+      this.raceId = raceId;
       const idx = styleIndex !== undefined ? styleIndex : Math.floor(Math.random() * BALLOON_PALETTES.length);
       this.palette = BALLOON_PALETTES[idx % BALLOON_PALETTES.length];
 
@@ -1295,6 +1314,71 @@
     if (roundClosed) roundClosed = false;
   }
 
+  function startNextRace() {
+    if (raceInProgress || waitingPlayers.size < MIN_RACE_PLAYERS) return;
+
+    const players = [...waitingPlayers.values()];
+    waitingPlayers.clear();
+    raceInProgress = true;
+    activeRaceId++;
+    activeRacePlayers = new Set(players.map(normalizePlayerName));
+    beginLiveRound();
+    players.forEach(username => launchBalloon(username, true, false, activeRaceId));
+    raceNotice.textContent = `Course lancée avec ${players.length} joueurs. Les nouveaux inscrits attendront la prochaine course.`;
+    controlFeedback.textContent = `Course lancée : ${players.join(', ')}.`;
+    renderQueue();
+  }
+
+  function queueRacePlayer(pseudo) {
+    const username = String(pseudo || '').trim().slice(0, 32);
+    const playerKey = normalizePlayerName(username);
+    if (!playerKey) return;
+
+    if (activeRacePlayers.has(playerKey)) {
+      controlFeedback.textContent = `@${username} participe déjà à la course en cours.`;
+      return;
+    }
+    if (waitingPlayers.has(playerKey)) {
+      controlFeedback.textContent = `@${username} est déjà inscrit à la prochaine course.`;
+      return;
+    }
+
+    waitingPlayers.set(playerKey, username);
+    renderQueue();
+    if (raceInProgress) {
+      raceNotice.textContent = `@${username} est inscrit pour la prochaine course.`;
+      controlFeedback.textContent = `@${username} attend la fin de la course en cours.`;
+      return;
+    }
+
+    if (waitingPlayers.size >= MIN_RACE_PLAYERS) {
+      startNextRace();
+      return;
+    }
+
+    raceNotice.textContent = `@${username} est inscrit · encore 1 joueur distinct doit écrire GO.`;
+    controlFeedback.textContent = `En attente d'un deuxième joueur pour démarrer la course.`;
+  }
+
+  function finishLiveRace(balloon) {
+    if (!raceInProgress || balloon.raceId !== activeRaceId || raceCleanupTimer) return;
+    raceNotice.textContent = `Course terminée : @${balloon.username} a atteint l'arrivée. Préparation de la prochaine course…`;
+    raceCleanupTimer = window.setTimeout(() => {
+      raceCleanupTimer = 0;
+      raceInProgress = false;
+      activeRacePlayers.clear();
+      if (waitingPlayers.size >= MIN_RACE_PLAYERS) {
+        startNextRace();
+      } else {
+        const waitingCount = waitingPlayers.size;
+        raceNotice.textContent = waitingCount
+          ? `${waitingCount} joueur en attente · encore 1 joueur distinct doit écrire GO.`
+          : 'Écris « GO » dans le chat · la course démarre dès que 2 joueurs distincts sont inscrits.';
+        renderQueue();
+      }
+    }, 800);
+  }
+
   async function awardRoundWinner(balloon, prize, payoutRoundId) {
     if (typeof window.ArcadeStars?.award !== 'function') {
       controlFeedback.textContent = 'Erreur : portefeuille indisponible, récompense non enregistrée.';
@@ -1376,15 +1460,16 @@
     }
     renderLeaderboard();
     renderQueue();
+    finishLiveRace(balloon);
   }
 
-  function launchBalloon(playerName, showGoBurst = true, simulated = true) {
-    const requestedName = String(playerName || '').trim();
-    const name = requestedName
-      ? requestedName.slice(0, 32)
-      : LIVE_PLAYERS[Math.floor(Math.random() * LIVE_PLAYERS.length)];
+  function launchBalloon(playerName, showGoBurst = true, simulated = true, raceId = 0) {
+    if (!simulated && (!raceInProgress || raceId !== activeRaceId)) return null;
 
-    const balloon = new Balloon(name, undefined, simulated);
+    const requestedName = String(playerName || '').trim();
+    const name = requestedName ? requestedName.slice(0, 32) : 'Aéronaute test';
+
+    const balloon = new Balloon(name, undefined, simulated, raceId);
     balloons.push(balloon);
     renderQueue();
     spawnSparkles(balloon.x, balloon.y, balloon.palette.band, 16);
@@ -1404,20 +1489,14 @@
         scale: 1.3
       });
     }
-  }
-
-  function launchDemoWave() {
-    launchBalloon('Céleste_92', false);
-    setTimeout(() => launchBalloon('SkyPilot', false), 500);
-    setTimeout(() => launchBalloon('LunaStar', false), 1050);
-    setTimeout(() => launchBalloon('Zephyr_Off', false), 1600);
+    return balloon;
   }
 
   window.addEventListener('keydown', (e) => {
     if (document.activeElement === liveUsername) return;
     if (e.code === 'Space') {
       e.preventDefault();
-      launchBalloon();
+      raceNotice.textContent = 'Pour participer, écris « GO » dans le chat TikTok.';
     }
   });
 
@@ -1483,17 +1562,10 @@
     let targetedBalloons = [];
     if (normalizedSender) {
       targetedBalloons = activeBalloons.filter(b => normalizePlayerName(b.username) === normalizedSender);
-      if (!targetedBalloons.length) {
-        launchBalloon(sender, true, simulated);
-        const newlyLaunched = balloons.filter(
-          b => !b.finished && (simulated || !b.simulated) &&
-            normalizePlayerName(b.username) === normalizedSender
-        );
-        targetedBalloons = newlyLaunched;
-      }
+      if (!targetedBalloons.length) return;
     }
 
-    const targets = targetedBalloons.length ? targetedBalloons : activeBalloons;
+    const targets = normalizedSender ? targetedBalloons : activeBalloons;
     targets.forEach(b => {
       b.boost = Math.min(11, b.boost + impulseGain);
       spawnSparkles(b.x, b.y, '#ffd600', 22);
@@ -1518,8 +1590,7 @@
   }
 
   window.ajouterBille = pseudo => {
-    beginLiveRound();
-    launchBalloon(pseudo, true, false);
+    queueRacePlayer(pseudo);
   };
   window.declencherEvenement = (nomDuCadeau, senderName = '', giftCount = 1) =>
     applyGiftBoost(nomDuCadeau, senderName, giftCount, true);
@@ -1547,16 +1618,13 @@
     const spent = Number(data.spent);
     if (!username || !Number.isSafeInteger(spent) || spent < 1) return;
 
-    beginLiveRound();
     const normalizedUsername = normalizePlayerName(username);
-    let targets = balloons.filter(b =>
+    const targets = balloons.filter(b =>
       !b.finished && !b.simulated && normalizePlayerName(b.username) === normalizedUsername
     );
     if (!targets.length) {
-      launchBalloon(username, true, false);
-      targets = balloons.filter(b =>
-        !b.finished && !b.simulated && normalizePlayerName(b.username) === normalizedUsername
-      );
+      controlFeedback.textContent = `RUN de @${username} : écris GO pour participer à une course.`;
+      return;
     }
 
     const boost = Math.min(5, spent * 0.2); // Un RUN reste moins fort qu'un cadeau LIVE, qui donne au moins 5,4.
@@ -1588,12 +1656,21 @@
 
   function renderQueue() {
     const activeBalloons = balloons.filter(b => !b.finished);
-    queueList.replaceChildren(...activeBalloons.map(b => {
+    const entries = activeBalloons.map(b => {
       const progress = Math.round(((WORLD_H - 120 - b.y) / (WORLD_H - 250)) * 100);
       const item = document.createElement('li');
-      item.textContent = `${b.username} (${Math.max(0, Math.min(100, progress))}%)`;
+      const progressLabel = `${Math.max(0, Math.min(100, progress))}%`;
+      item.textContent = b.simulated
+        ? `${b.username} — test (${progressLabel})`
+        : `${b.username} (${progressLabel})`;
       return item;
-    }));
+    });
+    waitingPlayers.forEach(username => {
+      const item = document.createElement('li');
+      item.textContent = `${username} — prochaine course`;
+      entries.push(item);
+    });
+    queueList.replaceChildren(...entries);
   }
 
   function renderLeaderboard() {
@@ -1644,7 +1721,7 @@
   });
   document.getElementById('simulate-balloon').addEventListener('click', () => {
     const name = simulationName.value.trim() || 'Aéronaute test';
-    launchBalloon(name);
+    launchBalloon(name, true, true);
     controlFeedback.textContent = `Montgolfière de test lancée pour ${name}.`;
   });
   document.getElementById('simulate-big-gift').addEventListener('click', () => {
@@ -1658,8 +1735,7 @@
     if (typeof window.ArcadeEffects?.simulateShare === 'function') {
       window.ArcadeEffects.simulateShare();
     }
-    launchBalloon(simulationName.value.trim() || 'Partage Live');
-    controlFeedback.textContent = 'Partage simulé : montgolfière lancée.';
+    controlFeedback.textContent = 'Partage simulé.';
   });
 
   let queueDrag = null;
@@ -2158,16 +2234,6 @@
 
     globalTick++;
 
-    if (balloons.length === 0) {
-      autoRespawnTimer++;
-      if (autoRespawnTimer > 90) {
-        autoRespawnTimer = 0;
-        launchDemoWave();
-      }
-    } else {
-      autoRespawnTimer = 0;
-    }
-
     updateCamera();
 
     ctx.save();
@@ -2257,7 +2323,6 @@
 
   window.onload = function () {
     resize();
-    launchDemoWave();
     animate();
   };
 </script>
