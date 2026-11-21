@@ -10,10 +10,6 @@ const paypal = require('./paypal');
 const store = require('./account-store');
 const dbSync = require('./db-sync');
 const { createMediaAdmin } = require('./media-admin');
-const {
-    normalizeShootingRangeShot,
-    normalizeShootingRangeState
-} = require('./shooting-range-protocol');
 
 // Filet de sécurité : evite le plantage au demarrage si account-store.js / db-sync.js sont en retard sur ce fichier.
 // Ces valeurs ne servent que lorsque la vraie fonction est absente.
@@ -78,12 +74,6 @@ const liveAlertTikTokUsername = resolveCreatorTikTokUsername(
     process.env.LIVE_ALERT_TIKTOK_USERNAME || process.env.TIKTOK_USERNAME || 'cityhunter698'
 );
 const liveTikTokDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS === 'true';
-const liveTikTokMonitorUsername = String(
-    process.env.LIVE_TIKTOK_MONITOR_USERNAME || 'cityhunter698'
-).trim().replace(/^@/, '').toLocaleLowerCase();
-const shouldLogTikTokDiagnostics = username =>
-    liveTikTokDiagnostics ||
-    String(username || '').trim().replace(/^@/, '').toLocaleLowerCase() === liveTikTokMonitorUsername;
 const liveAlertVapidKeys = loadLiveAlertVapidKeys();
 webPush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'https://jeu6boite.onrender.com',
@@ -125,11 +115,12 @@ const astraPush3dFile = path.join(__dirname, 'coin-pusher-3d-preview.html');
 const boboPusherFile = path.join(__dirname, 'bobo-pusher.html');
 const coinPusherDuckFile = path.join(__dirname, 'coin-pusher-canard.html');
 const coinPusher2dOldFile = path.join(__dirname, 'coin-pusher-tiktok-2d-ancien.html');
+const footballV2File = path.join(__dirname, 'jeu-foot-tiktok (1).html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
 const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
-const shootingRangeFile = path.join(__dirname, 'stand-de-tir-neon.html');
+const montgolfieresTourFile = path.join(__dirname, 'montgolfieres-tour.html');
 const plushGameFile = path.join(__dirname, 'peluches-mutantes.html');
 const bottleGameFile = path.join(__dirname, 'bouteilles-colorees.html');
 const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
@@ -203,6 +194,7 @@ const protectedRoutes = new Set([
     '/bobo-pusher.html',
     '/coin-pusher-canard.html',
     '/coin-pusher-tiktok-2d-ancien.html',
+    '/jeu-foot-tiktok-v2.html',
     '/aquarium-tiktok-live.html',
     '/quartier-des-veilleurs.html',
     '/peche-en-mer.html',
@@ -213,7 +205,7 @@ const protectedRoutes = new Set([
     '/bataille-des-planetes.html',
     '/maya-island.html',
     '/monde-du-ballon.html',
-    '/stand-de-tir-neon.html',
+    '/montgolfieres-tour.html',
     '/peluches-mutantes.html',
     '/noyau-des-abysses.html',
     '/machine-cadeaux.html',
@@ -238,7 +230,6 @@ const protectedRoutes = new Set([
     '/vrai-ou-faux.html',
     '/course-de-billes.html',
     '/billes-tour.html',
-    '/montgolfieres-tour.html',
     '/peche-aux-canards.html',
     '/roue-du-cirque.html',
     '/multirou.html',
@@ -278,9 +269,8 @@ const freeTrialRoutes = new Set([
     '/gryphon-blackjack.html',
     '/telepusher.html',
     '/grand-prix-pokemon.html',
-    '/train-gemini.html',
     '/bouteilles-colorees.html',
-    '/machine-a-pinces.html',
+    '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
 ]);
 const fixedGameImageIds = new Set([
@@ -292,7 +282,7 @@ const fixedGameImageIds = new Set([
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
-store.grantGameAccessToExistingCreators('/stand-de-tir-neon.html');
+store.grantGameAccessToExistingCreators('/montgolfieres-tour.html');
 store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/escape-bunker.html');
 store.grantGameAccessToExistingCreators('/defi-des-questions.html');
@@ -301,7 +291,7 @@ store.grantGameAccessToExistingCreators('/bobo-pusher.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-2000.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
-store.grantGameAccessToExistingCreators('/jeu-foot-tiktok.html');
+store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/noyau-des-abysses.html');
 store.grantGameAccessToExistingCreators('/machine-cadeaux.html');
@@ -325,7 +315,6 @@ store.grantGameAccessToExistingCreators('/a-prendre-ou-a-laisser.html');
 store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/billes-tour.html');
-store.grantGameAccessToExistingCreators('/montgolfieres-tour.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/multirou.html');
@@ -351,7 +340,6 @@ store.grantGameAccessToExistingCreators('/pokefight-live.html');
 store.grantGameAccessToExistingCreators('/grand-prix-pokemon.html');
 store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
 store.grantGameAccessToExistingCreators('/train-gemini.html');
-store.grantGameAccessToExistingCreators('/bataille-des-planetes.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -369,12 +357,13 @@ const staticGameTitles = {
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
     '/coin-pusher-2000.html': 'Coin Pusher 2000',
-    '/coin-pusher-3d-preview.html': 'Astra Push 3D',
+    '/coin-pusher-3d-preview.html': 'Astra-Push Réacteur',
     '/pousse-pieces-arcade-nouveau.html': 'Bobo Pusher',
     '/bobo-pusher.html': 'Bobo Pusher',
     '/coin-pusher-canard.html': 'Queen Pusher Canard',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
     '/coin-pusher-tiktok-2d-ancien.html': 'Coin Pusher 2D (ancien)',
+    '/jeu-foot-tiktok-v2.html': 'Le Coup de Pied (v2)',
     '/qui-veut-gagner-des-etoiles.html': 'Qui veut gagner des étoiles ?',
     '/escape-bunker.html': 'Escape Bunker : Protocole Oméga',
     '/defi-des-questions.html': 'Le Défi des Questions',
@@ -383,7 +372,7 @@ const staticGameTitles = {
     '/bataille-des-planetes.html': 'Bataille des planètes',
     '/maya-island.html': 'Maya Island',
     '/monde-du-ballon.html': 'Le Monde du Ballon',
-    '/stand-de-tir-neon.html': 'Stand de Tir Néon',
+    '/montgolfieres-tour.html': 'Montgolfières Tour',
     '/peluches-mutantes.html': 'Le Jeu des Peluches Mutantes',
     '/noyau-des-abysses.html': 'Le Noyau des Abysses',
     '/machine-cadeaux.html': 'Machine à Cadeaux',
@@ -407,7 +396,6 @@ const staticGameTitles = {
     '/vrai-ou-faux.html': 'Vrai ou Faux',
     '/course-de-billes.html': 'Course de Billes',
     '/billes-tour.html': 'Billes Tour',
-    '/montgolfieres-tour.html': 'Montgolfières Tour',
     '/peche-aux-canards.html': 'Pêche aux Canards',
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/multirou.html': 'Le Multirou',
@@ -450,6 +438,7 @@ const gameRouteIds = new Map([
     ['/coin-pusher-canard.html', '/coin-pusher-canard.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
     ['/coin-pusher-tiktok-2d-ancien.html', '/coin-pusher-tiktok-2d-ancien.html'],
+    ['/jeu-foot-tiktok-v2.html', '/jeu-foot-tiktok-v2.html'],
     ['/qui-veut-gagner-des-etoiles.html', '/qui-veut-gagner-des-etoiles.html'],
     ['/escape-bunker.html', '/escape-bunker.html'],
     ['/defi-des-questions.html', '/defi-des-questions.html'],
@@ -457,7 +446,7 @@ const gameRouteIds = new Map([
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
     ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
-    ['/stand-de-tir-neon.html', '/stand-de-tir-neon.html'],
+    ['/montgolfieres-tour.html', '/montgolfieres-tour.html'],
     ['/peluches-mutantes.html', '/peluches-mutantes.html'],
     ['/noyau-des-abysses.html', '/noyau-des-abysses.html'],
     ['/machine-cadeaux.html', '/machine-cadeaux.html'],
@@ -481,7 +470,6 @@ const gameRouteIds = new Map([
     ['/vrai-ou-faux.html', '/vrai-ou-faux.html'],
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/billes-tour.html', '/billes-tour.html'],
-    ['/montgolfieres-tour.html', '/montgolfieres-tour.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
     ['/squid-storm.html', '/squid-storm.html'],
     ['/tower-up.html', '/tower-up.html'],
@@ -3275,6 +3263,7 @@ const server = http.createServer((req, res) => {
         ['/pousse-pieces-arcade-nouveau.html', [boboPusherFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-canard.html', [coinPusherDuckFile, 'text/html; charset=utf-8']],
         ['/coin-pusher-tiktok-2d-ancien.html', [coinPusher2dOldFile, 'text/html; charset=utf-8']],
+        ['/jeu-foot-tiktok-v2.html', [footballV2File, 'text/html; charset=utf-8']],
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/quartier-des-veilleurs.html', [path.join(__dirname, 'quartier-des-veilleurs.html'), 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
@@ -3296,7 +3285,7 @@ const server = http.createServer((req, res) => {
         ['/maya-island/assets/maya-water-mask.png', [path.join(mayaIslandDirectory, 'assets', 'maya-water-mask.png'), 'image/png']],
         ['/maya-island/assets/horse-racer.svg', [path.join(mayaIslandDirectory, 'assets', 'horse-racer.svg'), 'image/svg+xml']],
         ['/monde-du-ballon.html', [balloonGameFile, 'text/html; charset=utf-8']],
-        ['/stand-de-tir-neon.html', [shootingRangeFile, 'text/html; charset=utf-8']],
+        ['/montgolfieres-tour.html', [montgolfieresTourFile, 'text/html; charset=utf-8']],
         ['/peluches-mutantes.html', [plushGameFile, 'text/html; charset=utf-8']],
         ['/noyau-des-abysses.html', [path.join(__dirname, 'noyau-des-abysses.html'), 'text/html; charset=utf-8']],
         ['/machine-cadeaux.html', [path.join(__dirname, 'machine-cadeaux.html'), 'text/html; charset=utf-8']],
@@ -3311,7 +3300,6 @@ const server = http.createServer((req, res) => {
         ['/gryphon-blackjack.html', [path.join(__dirname, 'gryphon-blackjack.html'), 'text/html; charset=utf-8']],
         ['/telepusher.html', [path.join(__dirname, 'telepusher.html'), 'text/html; charset=utf-8']],
         ['/machine-pusher.html', [path.join(__dirname, 'machine-pusher.html'), 'text/html; charset=utf-8']],
-        ['/images-vitrine/machine-pusher.png', [path.join(__dirname, 'images-vitrine', 'machine-pusher.png'), 'image/png']],
         ['/images-vitrine/clown-gauche-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-cut.png'), 'image/png']],
         ['/images-vitrine/clown-gauche-basecut.png', [path.join(__dirname, 'images-vitrine', 'clown-gauche-basecut.png'), 'image/png']],
         ['/images-vitrine/clown-droite-cut.png', [path.join(__dirname, 'images-vitrine', 'clown-droite-cut.png'), 'image/png']],
@@ -3326,7 +3314,6 @@ const server = http.createServer((req, res) => {
         ['/vrai-ou-faux.html', [trueFalseGameFile, 'text/html; charset=utf-8']],
         ['/course-de-billes.html', [marbleRaceGameFile, 'text/html; charset=utf-8']],
         ['/billes-tour.html', [path.join(__dirname, 'billes-tour.html'), 'text/html; charset=utf-8']],
-        ['/montgolfieres-tour.html', [path.join(__dirname, 'montgolfieres-tour.html'), 'text/html; charset=utf-8']],
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
@@ -3345,7 +3332,6 @@ const server = http.createServer((req, res) => {
         ['/coffre-incandescent.html', [path.join(__dirname, 'coffre-incandescent.html'), 'text/html; charset=utf-8']],
         ['/train-gemini.html', [path.join(__dirname, 'train-gemini.html'), 'text/html; charset=utf-8']],
         ['/images-vitrine/coffre-incandescent.png', [path.join(__dirname, 'images-vitrine', 'coffre-incandescent.png'), 'image/png']],
-        ['/images-vitrine/train-gemini.png', [path.join(__dirname, 'images-vitrine', 'train-gemini.png'), 'image/png']],
         ['/images-vitrine/apex-formula.jpg', [path.join(__dirname, 'images-vitrine', 'apex-formula.jpg'), 'image/jpeg']],
         ['/images-vitrine/city-hunter-tiktok.jpg', [path.join(__dirname, 'images-vitrine', 'city-hunter-tiktok.jpg'), 'image/jpeg']],
         ['/squid-storm.html', [path.join(squidStormDirectory, 'index.html'), 'text/html; charset=utf-8']],
@@ -3371,7 +3357,6 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/coin-pusher.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher.png'), 'image/png']],
         ['/images-vitrine/astra-push.png', [path.join(__dirname, 'images-vitrine', 'astra-push.png'), 'image/png']],
         ['/images-vitrine/bobo-pusher.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
-        ['/images-vitrine/bobo-pusher-v2.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher-v2.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-2000.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-2000.png'), 'image/png']],
         ['/images-vitrine/pousse-pieces-arcade-nouveau.png', [path.join(__dirname, 'images-vitrine', 'bobo-pusher.png'), 'image/png']],
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
@@ -3381,8 +3366,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/six-boites.png', [path.join(__dirname, 'images-vitrine', 'six-boites.png'), 'image/png']],
         ['/images-vitrine/petit-trot.png', [path.join(__dirname, 'images-vitrine', 'petit-trot.png'), 'image/png']],
         ['/images-vitrine/monde-du-ballon.png', [path.join(__dirname, 'images-vitrine', 'monde-du-ballon.png'), 'image/png']],
-        ['/images-vitrine/stand-de-tir-neon.png', [path.join(__dirname, 'images-vitrine', 'stand-de-tir-neon.png'), 'image/png']],
-        ['/images-vitrine/stand-de-tir-neon-fond.png', [path.join(__dirname, 'images-vitrine', 'stand-de-tir-neon-fond.png'), 'image/png']],
+        ['/images-vitrine/montgolfieres-tour.png', [path.join(__dirname, 'images-vitrine', 'montgolfieres-tour.png'), 'image/png']],
         ['/images-vitrine/peluches-mutantes-apercu.png', [path.join(__dirname, 'images-vitrine', 'peluches-mutantes-apercu.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux.png'), 'image/png']],
         ['/images-vitrine/machine-cadeaux-circulaire.png', [path.join(__dirname, 'images-vitrine', 'machine-cadeaux-circulaire.png'), 'image/png']],
@@ -3394,6 +3378,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/flipper-neon.png', [path.join(__dirname, 'images-vitrine', 'flipper-neon.png'), 'image/png']],
         ['/images-vitrine/gryphon-blackjack.png', [path.join(__dirname, 'images-vitrine', 'gryphon-blackjack.png'), 'image/png']],
         ['/images-vitrine/telepusher.png', [path.join(__dirname, 'images-vitrine', 'telepusher.png'), 'image/png']],
+        ['/images-vitrine/machine-pusher.png', [path.join(__dirname, 'images-vitrine', 'machine-pusher.png'), 'image/png']],
         ['/images-vitrine/clowns-tomates.png', [path.join(__dirname, 'images-vitrine', 'clowns-tomates.png'), 'image/png']],
         ['/images-vitrine/peche-en-mer.png', [path.join(__dirname, 'images-vitrine', 'peche-en-mer.png'), 'image/png']],
         ['/images-vitrine/ile-au-tresor.png', [path.join(__dirname, 'images-vitrine', 'ile-au-tresor.png'), 'image/png']],
@@ -3405,8 +3390,6 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/vrai-ou-faux-apercu.png', [path.join(__dirname, 'images-vitrine', 'vrai-ou-faux-apercu.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.png', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.png'), 'image/png']],
         ['/images-vitrine/billes-tour.png', [path.join(__dirname, 'images-vitrine', 'billes-tour.png'), 'image/png']],
-        ['/images-vitrine/billes-tour-final.svg', [path.join(__dirname, 'images-vitrine', 'billes-tour-final.svg'), 'image/svg+xml; charset=utf-8']],
-        ['/images-vitrine/montgolfieres-tour.png', [path.join(__dirname, 'images-vitrine', 'montgolfieres-tour.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
@@ -3415,10 +3398,8 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/squid-storm.png', [path.join(__dirname, 'images-vitrine', 'squid-storm.png'), 'image/png']],
         ['/images-vitrine/tower-up.png', [path.join(__dirname, 'images-vitrine', 'tower-up.png'), 'image/png']],
         ['/images-vitrine/tir-a-la-corde.svg', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.svg'), 'image/svg+xml; charset=utf-8']],
-        ['/images-vitrine/tir-a-la-corde.png', [path.join(__dirname, 'images-vitrine', 'tir-a-la-corde.png'), 'image/png']],
-        ['/images-vitrine/pont-de-verre.png', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.png'), 'image/png']],
+        ['/images-vitrine/pont-de-verre.svg', [path.join(__dirname, 'images-vitrine', 'pont-de-verre.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/noyau-des-abysses.svg', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.svg'), 'image/svg+xml; charset=utf-8']],
-        ['/images-vitrine/noyau-des-abysses.png', [path.join(__dirname, 'images-vitrine', 'noyau-des-abysses.png'), 'image/png']],
         ['/images-vitrine/mot-du-live.svg', [path.join(__dirname, 'images-vitrine', 'mot-du-live.svg'), 'image/svg+xml; charset=utf-8']],
         ['/images-vitrine/clown-cirque.png', [path.join(__dirname, 'images-vitrine', 'clown-cirque.png'), 'image/png']],
         ['/matter.min.js', [matterFile, 'text/javascript; charset=utf-8']],
@@ -3811,10 +3792,7 @@ setInterval(() => {
 const sessions = new Map();
 const clientSessions = new Map();
 const balloonShotRates = new WeakMap();
-const shootingRangeShotRates = new WeakMap();
 const MAX_BALLOON_GAME_PLAYERS = 30;
-const MAX_SHOOTING_RANGE_PLAYERS = 30;
-const MAX_SHOOTING_RANGE_SHOTS_PER_SECOND = 20;
 const centralTikTokSessionKey = /^[a-zA-Z0-9._]{1,32}$/.test(liveAlertTikTokUsername)
     ? liveAlertTikTokUsername.toLocaleLowerCase()
     : '';
@@ -4029,54 +4007,6 @@ function removeBalloonGameClient(session, socket) {
     }
 }
 
-function sendShootingRangeRole(session, socket) {
-    socket.send(JSON.stringify({
-        type: 'SHOOTING_RANGE_ROLE',
-        owner: session.shootingRangeOwner === socket,
-        players: session.shootingRangeClients.size,
-        maxPlayers: MAX_SHOOTING_RANGE_PLAYERS,
-        state: session.shootingRangeLastState
-    }));
-}
-
-function broadcastShootingRangePlayers(session) {
-    const status = JSON.stringify({
-        type: 'SHOOTING_RANGE_PLAYERS',
-        players: session.shootingRangeClients.size,
-        maxPlayers: MAX_SHOOTING_RANGE_PLAYERS
-    });
-    for (const client of session.shootingRangeClients) {
-        if (client.readyState === WebSocket.OPEN) client.send(status);
-    }
-}
-
-function addShootingRangeClient(session, socket) {
-    if (session.shootingRangeClients.has(socket)) return true;
-    if (session.shootingRangeClients.size >= MAX_SHOOTING_RANGE_PLAYERS) {
-        socket.send(JSON.stringify({
-            type: 'SHOOTING_RANGE_ERROR',
-            message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
-        }));
-        return false;
-    }
-    session.shootingRangeClients.add(socket);
-    if (!session.shootingRangeOwner) session.shootingRangeOwner = socket;
-    sendShootingRangeRole(session, socket);
-    broadcastShootingRangePlayers(session);
-    return true;
-}
-
-function removeShootingRangeClient(session, socket) {
-    if (!session.shootingRangeClients.delete(socket)) return;
-    if (session.shootingRangeOwner === socket) {
-        session.shootingRangeOwner = session.shootingRangeClients.values().next().value || null;
-        if (session.shootingRangeOwner) {
-            sendShootingRangeRole(session, session.shootingRangeOwner);
-        }
-    }
-    broadcastShootingRangePlayers(session);
-}
-
 function detachClient(socket) {
     const sessionKey = clientSessions.get(socket);
     if (!sessionKey) return;
@@ -4084,7 +4014,6 @@ function detachClient(socket) {
     const session = sessions.get(sessionKey);
     if (!session) return;
     removeBalloonGameClient(session, socket);
-    removeShootingRangeClient(session, socket);
     session.clients.delete(socket);
     session.walletCommandsEnabled = [...session.clients].some(client => !treasureOverlaySocketOwners.has(client));
     if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
@@ -4195,7 +4124,7 @@ function deliverTikTokMessage(session, messageData) {
             recipients++;
         }
     }
-    if (shouldLogTikTokDiagnostics(session.username) &&
+    if (liveTikTokDiagnostics &&
         ['gift', 'comment', 'like', 'share', 'follow', 'subscribe', 'viewerCount'].includes(messageData.type)) {
         console.info(`[TikTok diagnostic] routage ${JSON.stringify({
             account: session.username,
@@ -4247,13 +4176,13 @@ function updateCentralTikTokRoomState({ connected, roomId }) {
 }
 
 function startCentralTikTokListener() {
-    if (shouldLogTikTokDiagnostics(liveAlertTikTokUsername)) {
+    if (liveTikTokDiagnostics) {
         console.info(`[TikTok diagnostic] surveillance activée pour @${liveAlertTikTokUsername}`);
     }
     createTikTokSession(messageData => {
         if (messageData.type === 'STATUS') centralTikTokStatusMessage = messageData.message;
         const session = sessions.get(centralTikTokSessionKey);
-        if (shouldLogTikTokDiagnostics(liveAlertTikTokUsername) && messageData.type === 'gift') {
+        if (liveTikTokDiagnostics && messageData.type === 'gift') {
             console.info(`[TikTok diagnostic] routage cadeau ${JSON.stringify({
                 giftId: messageData.gift?.giftId ?? null,
                 giftName: messageData.gift?.giftName || '',
@@ -4318,67 +4247,6 @@ wss.on('connection', (socket, req) => {
             request = JSON.parse(message.toString());
         } catch (error) {
             console.warn('Message reçu du jeu invalide :', error.message);
-            return;
-        }
-        if (request.action === 'SHOOTING_RANGE_SYNC') {
-            const session = sessions.get(clientSessions.get(socket));
-            if (!session || session.shootingRangeOwner !== socket) return;
-            const state = normalizeShootingRangeState(request.state);
-            if (!state) {
-                socket.send(JSON.stringify({
-                    type: 'SHOOTING_RANGE_ERROR',
-                    message: 'État de partie invalide : la synchronisation a été refusée.'
-                }));
-                return;
-            }
-            const encoded = JSON.stringify({
-                type: 'SHOOTING_RANGE_STATE',
-                state,
-                players: session.shootingRangeClients.size,
-                maxPlayers: MAX_SHOOTING_RANGE_PLAYERS
-            });
-            if (Buffer.byteLength(encoded, 'utf8') > 64 * 1024) {
-                socket.send(JSON.stringify({
-                    type: 'SHOOTING_RANGE_ERROR',
-                    message: 'La synchronisation dépasse la taille autorisée.'
-                }));
-                return;
-            }
-            session.shootingRangeLastState = state;
-            for (const client of session.shootingRangeClients) {
-                if (client !== socket && client.readyState === WebSocket.OPEN) client.send(encoded);
-            }
-            return;
-        }
-        if (request.action === 'SHOOTING_RANGE_SHOT') {
-            const session = sessions.get(clientSessions.get(socket));
-            if (!session?.shootingRangeClients.has(socket) || !session.shootingRangeOwner ||
-                session.shootingRangeOwner === socket) return;
-            const shot = normalizeShootingRangeShot(request);
-            if (!shot) return;
-            const now = Date.now();
-            let rate = shootingRangeShotRates.get(socket);
-            if (!rate || now - rate.startedAt >= 1000) {
-                rate = { startedAt: now, count: 0, notified: false };
-                shootingRangeShotRates.set(socket, rate);
-            }
-            if (rate.count >= MAX_SHOOTING_RANGE_SHOTS_PER_SECOND) {
-                if (!rate.notified) {
-                    rate.notified = true;
-                    socket.send(JSON.stringify({
-                        type: 'SHOOTING_RANGE_ERROR',
-                        message: 'Limite de tirs atteinte : réessaie dans un instant.'
-                    }));
-                }
-                return;
-            }
-            rate.count++;
-            if (session.shootingRangeOwner.readyState === WebSocket.OPEN) {
-                session.shootingRangeOwner.send(JSON.stringify({
-                    type: 'SHOOTING_RANGE_SHOT',
-                    ...shot
-                }));
-            }
             return;
         }
         if (request.action === 'BALLOON_GAME_SYNC') {
@@ -4484,7 +4352,6 @@ wss.on('connection', (socket, req) => {
 
         const sessionKey = username.toLocaleLowerCase();
         const wantsBalloonGame = request.gameMode === 'balloon';
-        const wantsShootingRangeGame = request.gameMode === 'shooting-range';
         const currentSessionKey = clientSessions.get(socket);
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
@@ -4501,7 +4368,6 @@ wss.on('connection', (socket, req) => {
                 if (!currentSession.balloonOwner) currentSession.balloonOwner = socket;
                 sendBalloonGameRole(currentSession, socket);
             }
-            if (wantsShootingRangeGame && !addShootingRangeClient(currentSession, socket)) return;
             if (currentSession && !currentSession.isLive &&
                 /erreur de connexion tiktok|connexion tiktok interrompue/i.test(currentSession.statusMessage)) {
                 void currentSession.disconnect();
@@ -4540,9 +4406,6 @@ wss.on('connection', (socket, req) => {
                 balloonClients: new Set(),
                 balloonOwner: null,
                 balloonLastState: null,
-                shootingRangeClients: new Set(),
-                shootingRangeOwner: null,
-                shootingRangeLastState: null,
                 seenPlayerIds: new Set(),
                 walletProfiles: new Map(),
                 walletCommandsEnabled: false,
@@ -4565,14 +4428,6 @@ wss.on('connection', (socket, req) => {
             }));
             return;
         }
-        if (wantsShootingRangeGame &&
-            session.shootingRangeClients.size >= MAX_SHOOTING_RANGE_PLAYERS) {
-            socket.send(JSON.stringify({
-                type: 'SHOOTING_RANGE_ERROR',
-                message: 'La partie est complète : 30 joueurs peuvent jouer en même temps.'
-            }));
-            return;
-        }
         session.clients.add(socket);
         clientSessions.set(socket, sessionKey);
         if (wantsBalloonGame) {
@@ -4587,7 +4442,6 @@ wss.on('connection', (socket, req) => {
                 }));
             }
         }
-        if (wantsShootingRangeGame) addShootingRangeClient(session, socket);
         socket.send(JSON.stringify({
             type: 'STATUS',
             message: session.statusMessage || `Connexion TikTok en cours · @${username}`
