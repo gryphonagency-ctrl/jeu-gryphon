@@ -1051,8 +1051,12 @@ async function downloadAvatarFromCloudinary(avatarKey) {
         { signal: AbortSignal.timeout(15000) }
     );
     if (!response.ok) return null;
+    const contentType = (response.headers.get('content-type') || '').split(';', 1)[0].toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) return null;
     const content = Buffer.from(await response.arrayBuffer());
-    return content.length > 0 && content.length <= 2 * 1024 * 1024 ? content : null;
+    return content.length > 0 && content.length <= 2 * 1024 * 1024
+        ? { content, contentType }
+        : null;
 }
 
 function decodeGameImage(dataUrl) {
@@ -1442,39 +1446,42 @@ const server = http.createServer((req, res) => {
             res.end();
             return;
         }
+        const avatarKey = avatarMatch[1];
         const player = Object.values(store.listTikTokPlayers())
-            .find(item => item.avatarKey === avatarMatch[1]);
-        if (!player) {
-            res.writeHead(404, { 'Cache-Control': 'no-store' });
-            res.end();
+            .find(item => item.avatarKey === avatarKey);
+        const avatarPath = store.getTikTokAvatarPath(avatarKey);
+        const avatarTypeByExtension = {
+            '.jpg': 'image/jpeg',
+            '.png': 'image/png',
+            '.webp': 'image/webp'
+        };
+        if (avatarPath) {
+            const contentType = player?.avatarType ||
+                avatarTypeByExtension[path.extname(avatarPath).toLowerCase()];
+            res.writeHead(200, {
+                'Cache-Control': 'private, max-age=86400',
+                'Content-Type': contentType,
+                'X-Content-Type-Options': 'nosniff'
+            });
+            fs.createReadStream(avatarPath).pipe(res);
             return;
         }
-        const avatarPath = store.getTikTokAvatarPath(avatarMatch[1]);
-        if (!avatarPath) {
-            downloadAvatarFromCloudinary(avatarMatch[1]).then(content => {
-                if (!content) {
-                    res.writeHead(404, { 'Cache-Control': 'no-store' });
-                    res.end();
-                    return;
-                }
-                res.writeHead(200, {
-                    'Cache-Control': 'private, max-age=86400',
-                    'Content-Type': player.avatarType,
-                    'X-Content-Type-Options': 'nosniff'
-                });
-                res.end(content);
-            }).catch(() => {
+        downloadAvatarFromCloudinary(avatarKey).then(avatar => {
+            if (!avatar) {
                 res.writeHead(404, { 'Cache-Control': 'no-store' });
                 res.end();
+                return;
+            }
+            res.writeHead(200, {
+                'Cache-Control': 'private, max-age=86400',
+                'Content-Type': player?.avatarType || avatar.contentType,
+                'X-Content-Type-Options': 'nosniff'
             });
-            return;
-        }
-        res.writeHead(200, {
-            'Cache-Control': 'private, max-age=86400',
-            'Content-Type': player.avatarType,
-            'X-Content-Type-Options': 'nosniff'
+            res.end(avatar.content);
+        }).catch(() => {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end();
         });
-        fs.createReadStream(avatarPath).pipe(res);
         return;
     }
     if (pathname === '/api/tiktok-stars/leaderboard' && req.method === 'GET') {

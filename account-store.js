@@ -356,6 +356,10 @@ function upsertTikTokPlayer(profile) {
                 target.wallets = { ...(target.wallets || {}) };
                 target.wallets[owner] = (Number(target.wallets[owner]) || 0) + (Number(value) || 0);
             }
+            if (!target.avatarKey && legacy.avatarKey) {
+                target.avatarKey = legacy.avatarKey;
+                target.avatarType = legacy.avatarType;
+            }
             store.tiktokPlayers[playerKey] = target;
             for (const transaction of Object.values(store.tiktokStarTransactions || {})) {
                 if (transaction.playerId === handleKey) transaction.playerId = playerKey;

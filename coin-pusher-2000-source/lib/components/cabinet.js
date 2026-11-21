@@ -856,6 +856,7 @@ export default class {
         if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
             return false;
         }
+        const avatarSource = player.avatarDataUri || player.avatarUrl || "";
         const canCredit = Boolean(this.#creditQueue && !this.#unstoredPrizes.length);
         const preview = manual && IS_LOCAL_PREVIEW && !canCredit;
         if (!canCredit && !preview) {
@@ -886,18 +887,18 @@ export default class {
             prize: {
                 username,
                 amount: selected.stars,
-                avatarUrl: player.avatarUrl || player.avatarDataUri || ""
+                avatarUrl: avatarSource
             },
             onAvatarError: reportAvatarError
         });
-        if (!player.avatarUrl && !preview) {
+        if (!avatarSource && !preview) {
             void Cards.loadPrizeAvatar(cardObject, username).catch(reportAvatarError);
         }
         const usesStock = manualSelection ? manualSelection.usesStock : true;
         if (usesStock) selected.count--;
         this.#prizeAssignments.set(cardObject, {
             username,
-            avatarUrl: player.avatarUrl || player.avatarDataUri || "",
+            avatarUrl: avatarSource,
             amount: selected.stars,
             kind: "carte",
             usesStock,
