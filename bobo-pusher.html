@@ -281,12 +281,14 @@
     <section class="panel-section">
       <h3>Inventaire des cartes récompense</h3>
       <p>Cycle de 6 000 pièces, sans compter celles déjà sur le plateau. Le paquet séparé de 256 cartes est renouvelé lorsqu’il est épuisé.</p>
-      <table class="card-stock-table"><thead><tr><th>Récompense</th><th>Bénéficiaire</th><th>Dispo / jeu / sorties</th></tr></thead><tbody id="card-stock-body"></tbody></table>
+      <table class="card-stock-table"><thead><tr><th>Récompense</th><th>Bénéficiaire</th><th>Dispo / file / jeu / sorties</th></tr></thead><tbody id="card-stock-body"></tbody></table>
       <label for="card-reward-stars">Étoiles par carte<input id="card-reward-stars" type="number" min="1" max="250000" step="1" value="100"></label>
       <label for="card-add-count">Nombre de cartes<input id="card-add-count" type="number" min="1" max="100000" step="1" value="1"></label>
       <label for="card-recipient">Pseudo TikTok bénéficiaire<input id="card-recipient" type="text" maxlength="33" placeholder="@pseudo" autocomplete="off"></label>
       <p>Le pseudo doit être repéré sur le direct connecté pour recevoir les étoiles.</p>
       <button id="add-custom-cards" class="panel-button" type="button">Ajouter des cartes</button>
+      <button id="drop-custom-cards" class="panel-button secondary" type="button">Faire tomber ces cartes</button>
+      <p>Les étoiles sont créditées au portefeuille du bénéficiaire seulement quand la carte tombe du plateau.</p>
       <p id="card-inventory-status" class="panel-status" role="status" aria-live="polite"></p>
     </section>
     <section class="panel-section">
@@ -1397,12 +1399,13 @@
       const inventory = CARD_REWARD_TYPES.map(type => {
         const stored = Array.isArray(saved) ? saved.find(item => item && item.id === type.id) : null;
         const inPlay = Number.isSafeInteger(stored && stored.inPlay) && stored.inPlay >= 0 ? stored.inPlay : 0;
+        const queued = Number.isSafeInteger(stored && stored.queued) && stored.queued >= 0 ? stored.queued : 0;
         const available = Number.isSafeInteger(stored && stored.available) && stored.available >= 0
-          ? stored.available + inPlay
+          ? stored.available + inPlay + queued
           : type.initial;
         const boundedAvailable = Math.min(remainingCapacity, available);
         remainingCapacity -= boundedAvailable;
-        return { ...type, recipient: '', custom: false, available: boundedAvailable, inPlay: 0,
+        return { ...type, recipient: '', custom: false, available: boundedAvailable, queued: 0, inPlay: 0,
           disappeared: Number.isSafeInteger(stored && stored.disappeared) && stored.disappeared >= 0 ? stored.disappeared : 0 };
       });
       const seen = new Set(inventory.map(type => type.id));
@@ -1412,11 +1415,14 @@
             !Number.isSafeInteger(stored.stars) || stored.stars < 1 || stored.stars > 250000 ||
             typeof stored.recipient !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(stored.recipient)) continue;
         const inPlay = Number.isSafeInteger(stored.inPlay) && stored.inPlay > 0 ? stored.inPlay : 0;
-        const available = Number.isSafeInteger(stored.available) && stored.available > 0 ? stored.available + inPlay : inPlay;
+        const queued = Number.isSafeInteger(stored.queued) && stored.queued > 0 ? stored.queued : 0;
+        const available = Number.isSafeInteger(stored.available) && stored.available > 0
+          ? stored.available + inPlay + queued
+          : inPlay + queued;
         const boundedAvailable = Math.min(remainingCapacity, available);
         remainingCapacity -= boundedAvailable;
         inventory.push({ id: stored.id, stars: stored.stars, recipient: stored.recipient, custom: true,
-          initial: 0, available: boundedAvailable, inPlay: 0,
+          initial: 0, available: boundedAvailable, queued: 0, inPlay: 0,
           disappeared: Number.isSafeInteger(stored.disappeared) && stored.disappeared >= 0 ? stored.disappeared : 0 });
         seen.add(stored.id);
       }
@@ -1438,7 +1444,7 @@
       cardInventory.forEach(type => {
         const row = document.createElement('tr');
         const recipient = type.recipient ? `@${type.recipient}` : 'Pseudo du cadeau';
-        row.innerHTML = `<td>${type.stars} ⭐</td><td></td><td>${type.available} / ${type.inPlay} / ${type.disappeared}</td>`;
+        row.innerHTML = `<td>${type.stars} ⭐</td><td></td><td>${type.available} / ${type.queued} / ${type.inPlay} / ${type.disappeared}</td>`;
         row.children[1].textContent = recipient;
         body.append(row);
       });
@@ -1446,7 +1452,7 @@
 
     function resetBaseCardDeckIfSpent() {
       const baseCards = cardInventory.filter(type => !type.custom);
-      if (!baseCards.length || baseCards.some(type => type.available > 0 || type.inPlay > 0)) return false;
+      if (!baseCards.length || baseCards.some(type => type.available > 0 || type.queued > 0 || type.inPlay > 0)) return false;
       baseCards.forEach(type => {
         type.available = type.initial;
         type.disappeared = 0;
@@ -1577,7 +1583,7 @@
 
     let targetDropX = 0;
 
-    function dropCoinAt(xPos, forceCard = false, owner = null, isSimulation = false, forceIngot = false) {
+    function dropCoinAt(xPos, forceCard = false, owner = null, isSimulation = false, forceIngot = false, queuedCardType = null) {
       let isCard = forceCard === true;
       const isIngot = forceIngot === true;
       let cardType = null;
@@ -1591,8 +1597,13 @@
         }
       }
       if (isCard) {
-        cardType = drawCardReward();
-        if (!cardType) return false;
+        if (queuedCardType) {
+          if (queuedCardType.queued < 1) return false;
+          cardType = queuedCardType;
+        } else {
+          cardType = drawCardReward();
+          if (!cardType) return false;
+        }
         if (cardFromCycle) coinStock = nextMachineCoinStock(coinStock);
         if (cardType.recipient) {
           const known = livePlayers && livePlayers.get(cardType.recipient.toLocaleLowerCase('fr-FR'));
@@ -1757,8 +1768,8 @@
         dropTestCount: dropTestCountInput.valueAsNumber,
         coinStockCycleRemaining: coinStock,
         remainingTokenCount: coinStock,
-        cardInventory: cardInventory.map(({ id, stars, recipient, custom, available, inPlay, disappeared }) =>
-          ({ id, stars, recipient, custom, available, inPlay, disappeared })),
+        cardInventory: cardInventory.map(({ id, stars, recipient, custom, available, queued, inPlay, disappeared }) =>
+          ({ id, stars, recipient, custom, available, queued, inPlay, disappeared })),
         starWinners: Array.from(starWinners.values())
           .sort((a, b) => b.stars - a.stars || a.username.localeCompare(b.username))
           .slice(0, 100)
@@ -1961,7 +1972,7 @@
     function jobHasStock(job) {
       if (job.isSimulation) return true;
       if (job.forceIngot) return true;
-      if (job.forceCard === true) return availableCardCount() > 0;
+      if (job.forceCard === true) return job.cardType ? job.cardType.queued > 0 : availableCardCount() > 0;
       return coinStock > 0;
     }
     function nextRunnableGiftJobIndex() {
@@ -2134,10 +2145,15 @@
       const index = nextRunnableGiftJobIndex();
       if (index >= 0) {
         const job = giftDropQueue[index];
-        const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], job.forceCard, job.player, job.isSimulation, job.forceIngot);
+        const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], job.forceCard, job.player, job.isSimulation, job.forceIngot, job.cardType);
         if (dropped) {
+          if (job.cardType) job.cardType.queued = Math.max(0, job.cardType.queued - 1);
           job.remaining--;
           pendingGiftDropCount--;
+          if (job.cardType) {
+            updateCardInventoryTable();
+            scheduleSetupPersistence();
+          }
           if (job.remaining <= 0) giftDropQueue.splice(index, 1);
         }
       }
@@ -2176,7 +2192,8 @@
           remaining: accepted,
           forceCard: options.forceCard === true ? true : options.forceCard === false ? false : null,
           forceIngot: options.forceIngot === true,
-          isSimulation: options.isSimulation === true
+          isSimulation: options.isSimulation === true,
+          cardType: options.cardType || null
         });
         pendingGiftDropCount += accepted;
         resumeGiftDropQueue();
@@ -2323,38 +2340,79 @@
       const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], true, null, true);
       setDropTestStatus(dropped ? 'Carte simulée sans gain réel d’étoiles.' : 'Aucune carte disponible à simuler.', dropped ? 'online' : 'error');
     });
-    document.getElementById('add-custom-cards').addEventListener('click', () => {
+    function readCustomCardRequest() {
       const stars = document.getElementById('card-reward-stars').valueAsNumber;
       const count = document.getElementById('card-add-count').valueAsNumber;
       const recipient = document.getElementById('card-recipient').value.trim().replace(/^@/, '');
       if (!Number.isSafeInteger(stars) || stars < 1 || stars > 250000) {
         setCardInventoryStatus('La récompense doit être un entier de 1 à 250 000 étoiles.', 'error');
-        return;
+        return null;
       }
       if (!Number.isSafeInteger(count) || count < 1 || count > MAX_CARD_INVENTORY) {
         setCardInventoryStatus(`Le nombre de cartes doit être compris entre 1 et ${MAX_CARD_INVENTORY.toLocaleString('fr-FR')}.`, 'error');
-        return;
+        return null;
       }
       if (!/^[a-zA-Z0-9._]{1,32}$/.test(recipient)) {
         setCardInventoryStatus('Saisis un pseudo TikTok valide pour le bénéficiaire.', 'error');
-        return;
+        return null;
       }
-      const totalCards = cardInventory.reduce((sum, item) => sum + item.available + item.inPlay, 0);
+      return { stars, count, recipient };
+    }
+    function findOrCreateCustomCardType(stars, recipient) {
+      let type = cardInventory.find(item => item.custom && item.stars === stars && item.recipient.toLowerCase() === recipient.toLowerCase());
+      if (!type) {
+        const idSuffix = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).replace('.', '').slice(0, 10)}`;
+        type = { id: `custom-${idSuffix}`, stars, recipient, custom: true, initial: 0, available: 0, queued: 0, inPlay: 0, disappeared: 0 };
+        cardInventory.push(type);
+      }
+      return type;
+    }
+    document.getElementById('add-custom-cards').addEventListener('click', () => {
+      const request = readCustomCardRequest();
+      if (!request) return;
+      const { stars, count, recipient } = request;
+      const totalCards = cardInventory.reduce((sum, item) => sum + item.available + item.queued + item.inPlay, 0);
       if (count > MAX_CARD_INVENTORY - totalCards) {
         setCardInventoryStatus('Ajout impossible : l’inventaire de cartes est plein.', 'error');
         return;
       }
-      let type = cardInventory.find(item => item.custom && item.stars === stars && item.recipient.toLowerCase() === recipient.toLowerCase());
-      if (!type) {
-        const idSuffix = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).replace('.', '').slice(0, 10)}`;
-        type = { id: `custom-${idSuffix}`, stars, recipient, custom: true, initial: 0, available: 0, inPlay: 0, disappeared: 0 };
-        cardInventory.push(type);
-      }
+      const type = findOrCreateCustomCardType(stars, recipient);
       type.available += count;
       updateCardInventoryTable();
       persistSetupRecord();
       resumeGiftDropQueue();
       setCardInventoryStatus(`${count} carte${count === 1 ? '' : 's'} de ${stars} étoile${stars === 1 ? '' : 's'} ajoutée${count === 1 ? '' : 's'} pour @${recipient}. Le cycle des pièces ne change pas.`, 'online');
+    });
+    document.getElementById('drop-custom-cards').addEventListener('click', () => {
+      const request = readCustomCardRequest();
+      if (!request) return;
+      const { stars, count, recipient } = request;
+      const player = livePlayers.get(recipient.toLocaleLowerCase('fr-FR'));
+      if (!player) {
+        setCardInventoryStatus('Le joueur doit être détecté sur le direct connecté avant de recevoir les cartes.', 'error');
+        return;
+      }
+      const totalCards = cardInventory.reduce((sum, item) => sum + item.available + item.queued + item.inPlay, 0);
+      const queueCapacity = Math.max(0, MAX_PENDING_GIFT_DROPS - pendingGiftDropCount);
+      const inventoryCapacity = Math.max(0, MAX_CARD_INVENTORY - totalCards);
+      const accepted = Math.min(count, queueCapacity, inventoryCapacity);
+      if (accepted < 1) {
+        setCardInventoryStatus(queueCapacity < 1
+          ? 'La file de chute est pleine : aucune carte n’a été ajoutée.'
+          : 'L’inventaire de cartes est plein : aucune carte n’a été ajoutée.', 'error');
+        return;
+      }
+      const type = findOrCreateCustomCardType(stars, player.username);
+      type.queued += accepted;
+      const result = queueGiftCoins(player, accepted, { forceCard: true, cardType: type });
+      type.queued -= accepted - result.accepted;
+      updateCardInventoryTable();
+      persistSetupRecord();
+      const rejected = count - result.accepted;
+      setCardInventoryStatus(
+        `${result.accepted} carte${result.accepted === 1 ? '' : 's'} mise${result.accepted === 1 ? '' : 's'} en file pour @${player.username}. Les étoiles seront créditées quand elles tomberont du plateau${rejected ? ` · ${rejected} refusée${rejected === 1 ? '' : 's'}` : ''}.`,
+        rejected ? 'error' : 'online',
+      );
     });
     document.getElementById('simulate-big-gift').addEventListener('click', () => {
       if (!window.ArcadeEffects || typeof window.ArcadeEffects.simulateBigGift !== 'function') {
