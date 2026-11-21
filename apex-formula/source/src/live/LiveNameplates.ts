@@ -22,9 +22,9 @@ export class LiveNameplates {
   constructor(private readonly root: HTMLElement) {
     this.style = document.createElement('style');
     this.style.textContent = `
-      .apex-live-nameplate{position:fixed;z-index:15;display:flex;align-items:center;gap:8px;transform:translate(-50%,-100%);max-width:min(420px,60vw);padding:6px 11px;border-left:4px solid #e10600;border-radius:5px;background:rgba(7,11,19,.94);box-shadow:0 3px 12px #000b;color:#fff;letter-spacing:.02em;text-shadow:0 1px 2px #000;white-space:nowrap;pointer-events:none}
+      .apex-live-nameplate{position:fixed;z-index:15;display:flex;align-items:center;gap:8px;transform:translate(-50%,-100%);max-width:min(640px,80vw);padding:6px 11px;border-left:4px solid #e10600;border-radius:5px;background:rgba(7,11,19,.94);box-shadow:0 3px 12px #000b;color:#fff;letter-spacing:.02em;text-shadow:0 1px 2px #000;white-space:nowrap;pointer-events:none}
       .apex-live-position{flex:none;padding:4px 7px;border-radius:4px;background:#e10600;color:#fff;font:900 clamp(18px,2.2vw,30px)/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
-      .apex-live-username{min-width:0;overflow:hidden;text-overflow:ellipsis;font:900 clamp(18px,2vw,28px)/1.1 system-ui,sans-serif}
+      .apex-live-username{min-width:0;overflow:hidden;text-overflow:ellipsis;font:900 clamp(36px,4vw,56px)/1.1 system-ui,sans-serif}
     `;
     root.appendChild(this.style);
   }

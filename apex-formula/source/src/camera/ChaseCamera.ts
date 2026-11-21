@@ -14,6 +14,7 @@ const _aim = new THREE.Vector3();
  */
 export class ChaseCamera {
   private readonly far: boolean;
+  private liveZoom = false;
   private yaw = 0;
   private yawVel = 0;
   private readonly pivot = new THREE.Vector3();
@@ -31,6 +32,12 @@ export class ChaseCamera {
 
   snap(): void {
     this.hasState = false;
+  }
+
+  setLiveZoom(active: boolean): void {
+    if (this.liveZoom === active) return;
+    this.liveZoom = active;
+    this.snap();
   }
 
   update(car: CarState, dt: number, baseFov: number, lookBack: number, pose: CamPose): void {
@@ -83,8 +90,8 @@ export class ChaseCamera {
     this.roll = damp(this.roll, carRoll(car) * 0.2, 6, dt);
     this.rumble = damp(this.rumble, clamp(car.chassis.kerbRumble, 0, 1) * 0.025 + clamp(car.chassis.bottoming, 0, 1) * 0.05, 18, dt);
 
-    const dist = (this.far ? 13 : 7.5) + 2.0 * clamp(speedT, 0, 1) + this.lag;
-    const height = (this.far ? 4.0 : 2.4) + 0.4 * clamp(speedT, 0, 1) - this.dip;
+    const dist = ((this.far ? 13 : 7.5) + 2.0 * clamp(speedT, 0, 1) + this.lag) * (this.liveZoom ? 0.68 : 1);
+    const height = (this.far ? 4.0 : 2.4) + 0.4 * clamp(speedT, 0, 1) - this.dip + (this.liveZoom ? 0.35 : 0);
     const viewYaw = this.yaw + Math.PI * lookBack;
     dirFromYaw(viewYaw, _dir);
     leftFromYaw(viewYaw, _left);
@@ -98,10 +105,10 @@ export class ChaseCamera {
       .addScaledVector(_left, this.sway + jx);
     pose.position.y += height + jy;
 
-    _aim.copy(this.pivot).addScaledVector(_dir, this.far ? 4 : 6);
+    _aim.copy(this.pivot).addScaledVector(_dir, this.far ? 4 : this.liveZoom ? 8 : 6);
     _aim.y += (this.far ? 1.2 : 1.0) - this.dip * 0.5;
 
     pose.lookAt(_aim, -this.roll + this.rumble * 0.25 * noise1(this.t, 4.2));
-    pose.fov = baseFov + (this.far ? 6 : 0) + 8 * speedT;
+    pose.fov = baseFov + (this.far ? 6 : 0) + 8 * speedT - (this.liveZoom ? 8 : 0);
   }
 }
