@@ -4,7 +4,6 @@ import { MAX_GIFT_COIN_COUNT } from "./gift-limits.js";
 
 const RELAY_URL = "wss://jeu6boite.onrender.com";
 const RECONNECT_DELAY = 3000;
-const MAX_DEMO_COINS = MAX_GIFT_COIN_COUNT;
 const MAX_TIKTOK_GIFT_COINS = MAX_GIFT_COIN_COUNT;
 const SETUP_STORAGE_KEY = "coin-pusher-2000-live-panel-v1";
 const SETUP_FORMAT = "coin-pusher-2000-control-panel";
@@ -39,7 +38,7 @@ const STAR_WINNERS_STORAGE_KEY = "coin-pusher-2000-star-winners-v1";
 const COIN_VOLUME_STORAGE_KEY = "coin-pusher-2000-coin-volume-v1";
 const MAX_AVATAR_DATA_URI_LENGTH = 700000;
 
-export default function initializeTikTokBridge({ receiveGift, giftCatalog, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setSceneHorizontalOffset, setCharacterScale, setCharacterPosition, dropPrizeCard, dropPrizeIngot, setPrizeConfig }) {
+export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, getPendingCoins, startGame, getMachineControls, pressMachineButton, setScreenVideo, setSceneHorizontalOffset, setCharacterScale, setCharacterPosition, dropPrizeCard, dropPrizeIngot, setPrizeConfig }) {
     const usernameInput = document.getElementById("tiktok-username");
     const connectButton = document.getElementById("connect-tiktok");
     const statusElement = document.getElementById("live-status");
@@ -53,12 +52,8 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
         ["start", "hold", "center"]
             .map(name => [name, document.getElementById(`machine-${name}`)])
     );
-    const demoCountInput = document.getElementById("demo-count");
-    const testGiftButton = document.getElementById("test-gift");
-    const manualGiftUsernameInput = document.getElementById("manual-gift-username");
-    const manualGiftSelect = document.getElementById("manual-gift-select");
-    const manualGiftTriggerButton = document.getElementById("manual-gift-trigger");
-    const manualGiftStatusElement = document.getElementById("gift-manual-status");
+    const test1000CoinsButton = document.getElementById("test-1000-coins");
+    const testCoinsStatusElement = document.getElementById("test-coins-status");
     const gameBackgroundInput = document.getElementById("game-background-input");
     const gameBackgroundImage = document.getElementById("game-background-image");
     const gameBackgroundVideo = document.getElementById("game-background-video");
@@ -111,15 +106,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
     const prizeBannerAvatar = prizeBanner.querySelector("img");
     const prizeBannerName = prizeBanner.querySelector("strong");
     const prizeBannerMessage = prizeBanner.querySelector("span");
-    if (!Array.isArray(giftCatalog) || !giftCatalog.length) {
-        throw new Error("Le catalogue de cadeaux est indisponible.");
-    }
-    for (const gift of giftCatalog) {
-        const option = document.createElement("option");
-        option.value = gift.id;
-        option.textContent = `${gift.name} · ${gift.coinCount.toLocaleString("fr-FR")} pièce${gift.coinCount === 1 ? "" : "s"}`;
-        manualGiftSelect.append(option);
-    }
     let socket;
     let reconnectTimer;
     let activeGameBackgroundUrl = null;
@@ -377,7 +363,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
         const normalized = {
             version: 1,
             username: "",
-            demoCount: 10,
             characterScalePercent: 100,
             characterHorizontalPercent: DEFAULT_CHARACTER_HORIZONTAL_PERCENT,
             characterDepthPercent: DEFAULT_CHARACTER_DEPTH_PERCENT,
@@ -391,8 +376,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
             leaderboardX: 5,
             leaderboardY: 55,
             leaderboardScalePercent: 100,
-            manualGiftId: giftCatalog[0].id,
-            manualGiftUsername: "",
             manualCardUsername: "",
             manualCardStars: 300
         };
@@ -407,12 +390,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
                 throw new Error("Pseudo TikTok invalide dans le setup.");
             }
             normalized.username = record.username.trim().replace(/^@/, "");
-        }
-        if (record.demoCount !== undefined) {
-            if (!Number.isSafeInteger(record.demoCount) || record.demoCount < 1 || record.demoCount > MAX_DEMO_COINS) {
-                throw new Error("Nombre de pièces de simulation invalide dans le setup.");
-            }
-            normalized.demoCount = record.demoCount;
         }
         if (record.characterScalePercent !== undefined) {
             if (!Number.isSafeInteger(record.characterScalePercent) || record.characterScalePercent < 50 || record.characterScalePercent > 250) {
@@ -559,23 +536,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
             }
             normalized.manualCardStars = record.manualCardStars;
         }
-        if (record.manualGiftId !== undefined) {
-            if (typeof record.manualGiftId !== "string" || !giftCatalog.some(gift => gift.id === record.manualGiftId)) {
-                throw new Error("Cadeau manuel invalide dans le setup.");
-            }
-            normalized.manualGiftId = record.manualGiftId;
-        }
-        if (record.manualGiftUsername !== undefined) {
-            if (
-                typeof record.manualGiftUsername !== "string" ||
-                record.manualGiftUsername.length > 33 ||
-                (record.manualGiftUsername.trim().replace(/^@/, "") &&
-                    !/^[a-zA-Z0-9._]{1,32}$/.test(record.manualGiftUsername.trim().replace(/^@/, "")))
-            ) {
-                throw new Error("Pseudo du cadeau manuel invalide dans le setup.");
-            }
-            normalized.manualGiftUsername = record.manualGiftUsername.trim().replace(/^@/, "");
-        }
         return normalized;
     }
 
@@ -682,11 +642,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
     }
 
     function persistSetupRecord() {
-        const demoCount = Number(demoCountInput.value);
-        if (!Number.isSafeInteger(demoCount) || demoCount < 1 || demoCount > MAX_DEMO_COINS) {
-            setSetupStatus(`Le nombre de simulation doit être compris entre 1 et ${MAX_DEMO_COINS.toLocaleString("fr-FR")}.`, "error");
-            return false;
-        }
         const characterScalePercent = Number(characterScaleInput.value);
         if (!Number.isSafeInteger(characterScalePercent) || characterScalePercent < 50 || characterScalePercent > 250) {
             setSetupStatus("La taille du personnage doit être comprise entre 50 % et 250 %.", "error");
@@ -697,19 +652,9 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
             setPrizeStatus("La valeur de la carte doit être comprise entre 1 et 250 000 étoiles.", "error");
             return false;
         }
-        const manualGiftUsername = manualGiftUsernameInput.value.trim().replace(/^@/, "");
-        if (manualGiftUsername && !/^[a-zA-Z0-9._]{1,32}$/.test(manualGiftUsername)) {
-            setSetupStatus("Le pseudo du cadeau manuel doit être un pseudo TikTok valide.", "error");
-            return false;
-        }
-        if (!giftCatalog.some(gift => gift.id === manualGiftSelect.value)) {
-            setSetupStatus("Sélectionne un cadeau valide.", "error");
-            return false;
-        }
         const record = {
             version: 1,
             username: usernameInput.value.trim().replace(/^@/, "").slice(0, 32),
-            demoCount,
             characterScalePercent,
             characterHorizontalPercent: Number(characterHorizontalInput.value),
             characterDepthPercent: Number(characterDepthInput.value),
@@ -722,8 +667,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
             leaderboardX: Number(leaderboardXInput.value),
             leaderboardY: Number(leaderboardYInput.value),
             leaderboardScalePercent: Number(leaderboardScaleInput.value),
-            manualGiftId: manualGiftSelect.value,
-            manualGiftUsername,
             manualCardUsername: manualCardUsernameInput.value.trim().slice(0, 33),
             manualCardStars,
             gameBackground: activeGameBackgroundName
@@ -1037,7 +980,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
     }
     prizeStockAdditionVersion = setupRecord.prizeStockAdditionVersion;
     usernameInput.value = setupRecord.username;
-    demoCountInput.value = String(setupRecord.demoCount);
     characterScaleInput.value = String(setupRecord.characterScalePercent);
     characterScaleValue.value = `${setupRecord.characterScalePercent} %`;
     characterHorizontalInput.value = String(setupRecord.characterHorizontalPercent);
@@ -1051,8 +993,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
     leaderboardXInput.value = String(setupRecord.leaderboardX);
     leaderboardYInput.value = String(setupRecord.leaderboardY);
     leaderboardScaleInput.value = String(setupRecord.leaderboardScalePercent);
-    manualGiftUsernameInput.value = setupRecord.manualGiftUsername;
-    manualGiftSelect.value = setupRecord.manualGiftId;
     updateOverlayPositions();
     prizeCards = setupRecord.prizeCards;
     ingotFrequency = setupRecord.ingotFrequency;
@@ -1226,8 +1166,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
         starLeaderboard.hidden = !showStarLeaderboardInput.checked;
         persistSetupRecord();
     });
-    manualGiftUsernameInput.addEventListener("input", scheduleSetupPersistence);
-    manualGiftSelect.addEventListener("change", scheduleSetupPersistence);
     window.addEventListener("pointermove", event => {
         const bounds = starLeaderboard.getBoundingClientRect();
         const hovering = event.pointerType === "mouse" &&
@@ -1493,47 +1431,14 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
             connectButton.click();
         }
     });
-    testGiftButton.addEventListener("click", () => {
-        const count = Number(demoCountInput.value);
-        if (!Number.isSafeInteger(count) || count < 1 || count > MAX_DEMO_COINS) {
-            setStatus(`Simulation limitée à ${MAX_DEMO_COINS.toLocaleString("fr-FR")} pièces.`, "error");
-            return;
-        }
-        const candidate = manualGiftUsernameInput.value.trim().replace(/^@/, "");
-        if (candidate && !/^[a-zA-Z0-9._]{1,32}$/.test(candidate)) {
-            manualGiftStatusElement.textContent = "Indique un pseudo TikTok valide ou laisse le champ vide.";
-            manualGiftUsernameInput.focus();
-            return;
-        }
-        const username = candidate || "Spectateur";
-        const queued = receiveGift(count, { username, uniqueId: username }, true);
+    test1000CoinsButton.addEventListener("click", () => {
+        const username = "test";
+        const queued = receiveGift(1000, { username, uniqueId: username }, true);
         const coinLabel = `${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"}`;
-        manualGiftStatusElement.textContent = `Simulation · ${coinLabel} ajoutée${queued === 1 ? "" : "s"} à la file pour @${username} (sans étoiles).`;
-        setStatus(`Simulation · ${coinLabel} ajoutée${queued === 1 ? "" : "s"} à la file.`);
-    });
-    manualGiftTriggerButton.addEventListener("click", () => {
-        const username = manualGiftUsernameInput.value.trim().replace(/^@/, "");
-        if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
-            manualGiftStatusElement.textContent = "Indique un pseudo TikTok valide pour déclencher ce cadeau.";
-            manualGiftUsernameInput.focus();
-            return;
-        }
-        const gift = giftCatalog.find(item => item.id === manualGiftSelect.value);
-        if (!gift) {
-            manualGiftStatusElement.textContent = "Sélectionne un cadeau valide.";
-            return;
-        }
-        manualGiftUsernameInput.value = username;
-        if (!persistSetupRecord()) {
-            manualGiftStatusElement.textContent = "Impossible de sauvegarder le pseudo et le cadeau sélectionnés.";
-            return;
-        }
-        const queued = receiveGift(gift.coinCount, { username, uniqueId: username }, true);
-        const coinLabel = `${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"}`;
-        manualGiftStatusElement.textContent = queued === gift.coinCount
-            ? `Simulation · ${gift.name} pour @${username} : ${coinLabel}, sans étoiles.`
-            : `Ajout partiel à la file pour @${username} : ${coinLabel}.`;
-        setStatus(manualGiftStatusElement.textContent);
+        testCoinsStatusElement.textContent = queued === 1000
+            ? `Test lancé : ${coinLabel} ajoutées à la file (aucun cadeau TikTok envoyé).`
+            : `Test partiel : ${coinLabel} ajoutées à la file sur 1 000.`;
+        setStatus(testCoinsStatusElement.textContent, queued === 1000 ? "" : "error");
     });
     characterScaleInput.addEventListener("input", () => {
         const percent = Number(characterScaleInput.value);
@@ -1947,7 +1852,6 @@ export default function initializeTikTokBridge({ receiveGift, giftCatalog, updat
         }
     });
     usernameInput.addEventListener("input", scheduleSetupPersistence);
-    demoCountInput.addEventListener("input", scheduleSetupPersistence);
     panelHeader.addEventListener("pointerdown", event => {
         if (event.button !== 0 || event.target.closest("button")) {
             return;

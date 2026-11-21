@@ -15,6 +15,7 @@ import CoinSpawnQueue from "../../coin-spawn-queue.js";
 
 const TYPE = "coin";
 const MAX_INSTANCES = 1024;
+const RESERVED_INSTANCES = 64;
 const RADIUS = 0.03;
 const DEPTH = 0.005;
 const INITIAL_POSITION_MIN_DELTA_X = 0.015;
@@ -111,7 +112,8 @@ export default class {
             this.#frameLastSpawn++;
             if (this.#frameLastSpawn >= SPAWN_TIME_DURATION) {
                 const availableInstances = this.#instances.filter(instance => !instance.used);
-                const drops = this.#spawnQueue.takeNext(Math.min(MAX_SPAWNS_PER_INTERVAL, availableInstances.length));
+                const spawnCapacity = Math.max(0, availableInstances.length - RESERVED_INSTANCES);
+                const drops = this.#spawnQueue.takeNext(Math.min(MAX_SPAWNS_PER_INTERVAL, spawnCapacity));
                 drops.forEach(({ batch, slot }, index) => {
                     const instance = availableInstances[index];
                     instance.used = true;
@@ -169,7 +171,10 @@ export default class {
     }
 
     static deposit({ position, rotation = new Vector3(0, 0, 0), impulse }) {
-        const instance = this.#instances.find(instance => !instance.used);
+        const [instance] = getAvailableInstances(this.#instances, 1) || [];
+        if (!instance) {
+            return null;
+        }
         const previousAvatarKey = instance.avatarKey;
         instance.used = true;
         instance.username = null;
@@ -183,6 +188,10 @@ export default class {
             instance.pendingImpulse = impulse.clone();
         }
         return instance;
+    }
+
+    static hasAvailableInstances(count) {
+        return getAvailableInstances(this.#instances, count) !== null;
     }
 
     static dropCoin({ slot }) {
@@ -462,6 +471,25 @@ export default class {
             instance.body.collider(0).setDensity(value);
         });
     }
+}
+
+export function getAvailableInstances(instances, count) {
+    if (!Number.isSafeInteger(count) || count < 0) {
+        return null;
+    }
+    if (count === 0) {
+        return [];
+    }
+    const available = [];
+    for (const instance of instances) {
+        if (!instance.used) {
+            available.push(instance);
+            if (available.length === count) {
+                return available;
+            }
+        }
+    }
+    return null;
 }
 
 async function initializeModel({ scene }) {

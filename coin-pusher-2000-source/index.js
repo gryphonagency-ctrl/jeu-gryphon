@@ -1,7 +1,6 @@
 import * as rapier from "@dimforge/rapier3d-simd";
 import Game from "./lib/index.js";
 import initializeTikTokBridge from "./lib/tiktok-bridge.js";
-import { GIFT_CATALOG } from "./lib/gift-catalog.js";
 import { MAX_GIFT_COIN_COUNT } from "./lib/gift-limits.js";
 import retryLegacyRouletteCredits from "./lib/legacy-roulette-credits.js";
 
@@ -48,7 +47,6 @@ window.CoinPusher2000 = {
 };
 initializeTikTokBridge({
     receiveGift,
-    giftCatalog: GIFT_CATALOG,
     updateGiftAvatar: (avatarKey, avatarDataUri, avatarUrl) => Game.updateTikTokGiftAvatar(avatarKey, avatarDataUri, avatarUrl),
     setCoinVolume: volume => Game.setCoinVolume(volume),
     getPendingCoins: () => Game.pendingCoins,

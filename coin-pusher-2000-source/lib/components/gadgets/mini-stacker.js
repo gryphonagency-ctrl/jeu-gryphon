@@ -87,6 +87,7 @@ export default class {
     #cabinet;
     #lightBulbsMaterials;
     #onInitializeCoin;
+    #hasCoinCapacity;
     #groups;
     #dropPosition;
     #pivotPosition;
@@ -115,11 +116,12 @@ export default class {
         }
     };
 
-    constructor({ scene, cabinet, onInitializeCoin, offsetX = 0, groups }) {
+    constructor({ scene, cabinet, onInitializeCoin, hasCoinCapacity = () => true, offsetX = 0, groups }) {
         this.#scene = scene;
         this.#cabinet = cabinet;
         this.#offsetX = offsetX;
         this.#onInitializeCoin = onInitializeCoin;
+        this.#hasCoinCapacity = hasCoinCapacity;
         this.#groups = groups;
     }
 
@@ -265,19 +267,23 @@ export default class {
                 armProtectionLid.body.setNextKinematicRotation(armProtectionLidRotation);
             }
             if (state === STACKER_STATES.INITIALIZING_COIN) {
-                const position = this.#dropPosition.clone();
-                position.setZ(position.z + this.#stacker.armPosition);
-                position.setY(position.y + this.#stacker.position);
-                this.#stacker.coins.push(this.#onInitializeCoin({
-                    position: position.clone().setY(position.y - COIN_HEIGHT / 2),
-                    rotation: COIN_ROTATIONS[1]
-                }));
-                this.#stacker.coins.push(this.#onInitializeCoin({
-                    position: position.clone().setY(position.y + COIN_HEIGHT / 2),
-                    rotation: COIN_ROTATIONS[0]
-                }));
-                this.#stacker.coins[this.#stacker.coins.length - 1].body.setEnabledTranslations(false, true, true);
-                this.#stacker.coins[this.#stacker.coins.length - 2].body.setEnabledTranslations(false, true, true);
+                if (!this.#hasCoinCapacity()) {
+                    this.#stacker.nextState = STACKER_STATES.MOVING_ARM_TO_INITIAL_POSITION;
+                } else {
+                    const position = this.#dropPosition.clone();
+                    position.setZ(position.z + this.#stacker.armPosition);
+                    position.setY(position.y + this.#stacker.position);
+                    this.#stacker.coins.push(this.#onInitializeCoin({
+                        position: position.clone().setY(position.y - COIN_HEIGHT / 2),
+                        rotation: COIN_ROTATIONS[1]
+                    }));
+                    this.#stacker.coins.push(this.#onInitializeCoin({
+                        position: position.clone().setY(position.y + COIN_HEIGHT / 2),
+                        rotation: COIN_ROTATIONS[0]
+                    }));
+                    this.#stacker.coins[this.#stacker.coins.length - 1].body.setEnabledTranslations(false, true, true);
+                    this.#stacker.coins[this.#stacker.coins.length - 2].body.setEnabledTranslations(false, true, true);
+                }
             }
             if (state === STACKER_STATES.PUSHING_COIN) {
                 this.#stacker.coins[this.#stacker.coins.length - 1].body.applyImpulse(COIN_IMPULSE_FORCE, true);

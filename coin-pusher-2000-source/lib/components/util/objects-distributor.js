@@ -69,7 +69,10 @@ export default class {
                             this.#pendingPrizeObjects.push({ Type, position, type, rotation });
                         }
                     } else {
-                        objects.push(Type.deposit({ position, type, rotation }));
+                        const object = Type.deposit({ position, type, rotation });
+                        if (object) {
+                            objects.push(object);
+                        }
                     }
                     objectsInCurrentRowX++;
                     currentX += size.width;
