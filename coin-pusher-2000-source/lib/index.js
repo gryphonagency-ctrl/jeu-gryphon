@@ -5,11 +5,12 @@ import Pointer from "./util/pointer.js";
 import Camera from "./util/camera.js";
 import Runs from "./business/runs.js";
 import CoinSounds from "./components/coin-sounds.js";
-import runFrame from "./run-frame.js";
+import runFrame, { advanceFixedSteps } from "./run-frame.js";
 
 import initialState from "./data/initial-state.json" with { type: "json" };
 
 const STEP_DELAY = Scene.TIMESTEP * 1000;
+const MAX_SIMULATION_STEPS_PER_FRAME = 4;
 
 export default class {
     static DEBUG_MAX_SPEED = false;
@@ -23,16 +24,14 @@ export default class {
 
     static #cabinet;
     static #time = 0;
+    static #lastFrameTimestamp = null;
+    static #accumulatedTime = 0;
     static #containerElement;
     static #stopped = false;
     static #restart = false;
     static #scene;
     static #pointer;
     static #camera;
-    static #loopId = 0;
-    static #lastFrameAt = 0;
-    static #frameErrors = 0;
-    static #watchdog = null;
 
     static pixelRatio = 1;
 
@@ -86,54 +85,56 @@ export default class {
     }
 
     static run() {
-        this.#startLoop();
-        clearInterval(this.#watchdog);
-        this.#watchdog = setInterval(() => {
-            if (document.visibilityState !== "visible") return;
-            if (performance.now() - this.#lastFrameAt > 3000) {
-                console.warn("Boucle du jeu arrêtée : redémarrage automatique.");
-                this.#startLoop();
-            }
-        }, 1000);
+        this.#update();
     }
 
-    static #startLoop() {
-        this.#loopId += 1;
-        this.#lastFrameAt = performance.now();
-        this.#update(this.#loopId);
-    }
-
-    static #update(loopId) {
-        if (loopId !== this.#loopId) return;
+    static #update(timestamp = performance.now()) {
         runFrame(() => {
             if (this.#restart) {
                 this.#restart = false;
                 this.#stopped = false;
+                this.#lastFrameTimestamp = timestamp;
+                this.#accumulatedTime = 0;
             }
             if (!this.#stopped) {
-                this.#cabinet.update(this.#time);
+                if (this.DEBUG_MAX_SPEED) {
+                    this.#cabinet.update(this.#time);
+                    this.#time += STEP_DELAY;
+                    this.#scene.step();
+                } else {
+                    if (this.#lastFrameTimestamp === null) {
+                        this.#lastFrameTimestamp = timestamp - STEP_DELAY;
+                    }
+                    const elapsedTime = Math.max(0, timestamp - this.#lastFrameTimestamp);
+                    this.#lastFrameTimestamp = timestamp;
+                    const frame = advanceFixedSteps(
+                        this.#accumulatedTime,
+                        elapsedTime,
+                        STEP_DELAY,
+                        MAX_SIMULATION_STEPS_PER_FRAME
+                    );
+                    this.#accumulatedTime = frame.remainingTime;
+                    for (let step = 0; step < frame.steps; step++) {
+                        this.#cabinet.update(this.#time);
+                        this.#time += STEP_DELAY;
+                        this.#scene.step();
+                    }
+                }
                 this.#pointer.update();
                 Debug.update();
-                this.#cabinet.refresh();
+                this.#cabinet.refresh(timestamp);
                 this.#scene.render();
-                this.#scene.step();
-                this.#time += STEP_DELAY;
-            }
-            this.#frameErrors = 0;
-        }, () => {
-            if (loopId !== this.#loopId) return;
-            if (this.DEBUG_MAX_SPEED) {
-                setTimeout(() => this.#update(loopId), 0);
             } else {
-                requestAnimationFrame(() => this.#update(loopId));
+                this.#lastFrameTimestamp = timestamp;
+                this.#accumulatedTime = 0;
             }
-        }, error => {
-            this.#frameErrors += 1;
-            if (this.#frameErrors === 1 || this.#frameErrors % 300 === 0) {
-                console.error(`Erreur dans la boucle du jeu (${this.#frameErrors} image(s) de suite) :`, error);
+        }, () => {
+            if (this.DEBUG_MAX_SPEED) {
+                setTimeout(() => this.#update(), 0);
+            } else {
+                requestAnimationFrame(frameTimestamp => this.#update(frameTimestamp));
             }
         });
-        this.#lastFrameAt = performance.now();
     }
 
     static async save() {

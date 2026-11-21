@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { GIFT_CATALOG } from "../lib/gift-catalog.js";
 
 class Element {
     constructor(id, document) {
@@ -44,9 +43,8 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     globalThis.location = { hostname: "localhost" };
     const { default: initialize } = await import("../lib/tiktok-bridge.js");
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-    assert.doesNotMatch(html, /gift-roulette|scene-brand|symbols-controls|diamond-/);
-    assert.match(html, /id="demo-count"/);
-    assert.match(html, /id="manual-gift-select"/);
+    assert.doesNotMatch(html, /gift-roulette|scene-brand|symbols-controls|diamond-|demo-count|test-gift|manual-gift-select|manual-gift-trigger|manual-gift-username/);
+    assert.match(html, /id="test-1000-coins"/);
     assert.match(html, /id="coin-volume"/);
     assert.match(html, /id="game-background-input"/);
     assert.match(html, /id="screen-video"/);
@@ -61,7 +59,6 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     const soundVolumes = [];
     const sceneOffsets = [];
     const giftCalls = [];
-    const giftCatalog = GIFT_CATALOG;
     function start() {
         machineState = { buttons: { start: true }, coins: 0 };
         const document = { createElement: tag => new Element(tag, document) };
@@ -71,7 +68,6 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
         };
         const elements = Object.fromEntries(ids.map(id => [id, new Element(id, document)]));
         for (const [id, value] of Object.entries({
-            "demo-count": "10",
             "character-scale": "100",
             "character-horizontal": "15",
             "character-depth": "30",
@@ -99,7 +95,6 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
                 giftCalls.push({ count, profile, simulation });
                 return count;
             },
-            giftCatalog,
             updateGiftAvatar() {}, getPendingCoins() { return 0; },
             startGame() {}, getMachineControls() { return machineState; },
             pressMachineButton(name) {
@@ -144,30 +139,18 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(elements["machine-start"].disabled, true);
     assert.equal(elements["machine-center"].disabled, false);
     assert.equal(elements["machine-coins"].textContent, "100");
-    assert.equal(elements["manual-gift-select"].children.length, 31);
     elements["coin-volume"].value = "72";
     elements["coin-volume"].dispatch("input");
     assert.equal(elements["coin-volume-value"].value, "72 %");
     assert.equal(soundVolumes.at(-1), 0.72);
     assert.equal(storage.get("coin-pusher-2000-coin-volume-v1"), "72");
-    elements["manual-gift-username"].value = "@alice";
-    elements["manual-gift-select"].value = "falcon";
-    elements["manual-gift-trigger"].dispatch("click");
+    elements["test-1000-coins"].dispatch("click");
     assert.deepEqual(giftCalls.at(-1), {
-        count: 10999,
-        profile: { username: "alice", uniqueId: "alice" },
+        count: 1000,
+        profile: { username: "test", uniqueId: "test" },
         simulation: true
     });
-    const giftSetup = JSON.parse(storage.get("coin-pusher-2000-live-panel-v1"));
-    assert.equal(giftSetup.manualGiftId, "falcon");
-    assert.equal(giftSetup.manualGiftUsername, "alice");
-    elements["demo-count"].value = "3";
-    elements["test-gift"].dispatch("click");
-    assert.deepEqual(giftCalls.at(-1), {
-        count: 3,
-        profile: { username: "alice", uniqueId: "alice" },
-        simulation: true
-    });
+    assert.match(elements["test-coins-status"].textContent, /pièces ajoutées à la file/);
     elements["leaderboard-x"].value = "80";
     elements["leaderboard-x"].dispatch("input");
     assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -55%)");
@@ -227,10 +210,12 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(rows[0].children[1].children[1].src, "https://example.com/avatar.png");
     assert.equal(rows[0].children[3].textContent, "25 ⭐");
 
+    legacySetup.demoCount = 12;
+    legacySetup.manualGiftId = "falcon";
+    legacySetup.manualGiftUsername = "alice";
+    storage.set("coin-pusher-2000-live-panel-v1", JSON.stringify(legacySetup));
     elements = start();
     assert.equal(elements["manual-card-stars"].value, "300");
-    assert.equal(elements["manual-gift-select"].value, "falcon");
-    assert.equal(elements["manual-gift-username"].value, "alice");
     assert.equal(elements["star-leaderboard"].style.transform, "translate(-80%, -40%) scale(0.6)");
     assert.equal(elements["star-leaderboard-list"].children[0].children[3].textContent, "25 ⭐");
 

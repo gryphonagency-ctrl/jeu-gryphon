@@ -357,12 +357,14 @@ export default class {
             scene,
             cabinet: this,
             onInitializeCoin: ({ position, rotation, impulse }) => Coins.deposit({ position, rotation, impulse }),
+            hasCoinCapacity: () => Coins.hasAvailableInstances(2),
             groups: GROUPS
         });
         this.#leftStacker = new MiniStacker({
             scene,
             cabinet: this,
             onInitializeCoin: ({ position, rotation, impulse }) => Coins.deposit({ position, rotation, impulse }),
+            hasCoinCapacity: () => Coins.hasAvailableInstances(2),
             offsetX: -0.4,
             groups: GROUPS
         });
@@ -370,6 +372,7 @@ export default class {
             scene,
             cabinet: this,
             onInitializeCoin: ({ position, rotation, impulse }) => Coins.deposit({ position, rotation, impulse }),
+            hasCoinCapacity: () => Coins.hasAvailableInstances(2),
             offsetX: 0.4,
             groups: GROUPS
         });
@@ -480,7 +483,6 @@ export default class {
     }
 
     update(time) {
-        this.#character.update(time);
         Cards.update();
         Coins.update();
         this.#scene.checkCollisionStarts(Coins.TYPE);
@@ -504,7 +506,6 @@ export default class {
         this.#runs.update(time);
         this.dynamicBodies.forEach(({ object, objects }) => {
             if (object.position.y < MIN_POSITION_Y_OBJECTS) {
-                console.warn("object recycled", object, structuredClone(object.position), structuredClone(object.rotation));
                 this.#returnPrize(object);
                 objects.recycle(object);
                 this.#deliverPendingIngots();
@@ -516,7 +517,8 @@ export default class {
         }
     }
 
-    refresh() {
+    refresh(time) {
+        this.#character.update(time);
         this.#twinklingStars?.update(1 / 60);
         Cards.refresh();
         Coins.refresh();
