@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0d021a">
-    <title>Astra-Push | Aperçu</title>
+    <title>Astra-Push | Réacteur</title>
     <style>
         :root { color-scheme: dark; font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #0d021a; color: #fff; }
         * { box-sizing: border-box; }
@@ -15,6 +15,7 @@
         #background-video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
         #background-video[hidden] { display: none; }
         #canvas-container { position: fixed; inset: 0; }
+        #vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 52%, rgba(3,0,10,.62) 100%); }
         #canvas-container canvas { display: block; width: 100%; height: 100%; }
         .ui-overlay { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); pointer-events: none; }
         .topbar { display: flex; width: min(100%, 1050px); align-items: start; justify-content: space-between; gap: 12px; margin: 0 auto; }
@@ -149,6 +150,7 @@
     <img id="background-gif" src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExeGhhNzUyZzV6Yjd5dGd5amxmbGhqYTZhZjN6MTFmbnB5cjRyYTl1NyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xvRPIAtMwKQ2SlxKtx/giphy.gif" alt="" aria-hidden="true">
     <video id="background-video" hidden muted loop playsinline autoplay></video>
     <div id="canvas-container" aria-label="Machine Coin Pusher"></div>
+    <div id="vignette" aria-hidden="true"></div>
     <div style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:#9ff;font:700 13px Segoe UI,sans-serif;z-index:5;pointer-events:none">Maintiens ESPACE : poussoir turbo 🚀</div>
     <main class="ui-overlay">
         <header class="topbar">
@@ -185,9 +187,19 @@
                     <label for="pusher-speed" style="font-size:12px">Vitesse du poussoir <output id="pusher-speed-out">1×</output></label>
                     <input id="pusher-speed" type="range" min="0.5" max="5" step="0.25" value="1">
                     <label for="pusher-reach" style="font-size:12px">Poussée (course) <output id="pusher-reach-out">1×</output></label>
-                    <input id="pusher-reach" type="range" min="0.5" max="3" step="0.25" value="1">
+                    <input id="pusher-reach" type="range" min="0.5" max="6" step="0.25" value="1">
                     <label for="view-zoom" style="font-size:12px">Zoom sur la machine <output id="view-zoom-out">1×</output></label>
                     <input id="view-zoom" type="range" min="0.6" max="3" step="0.05" value="1">
+                </div>
+                <div class="controls" aria-label="Position des fentes de lâcher" style="flex-direction:column;align-items:stretch;gap:6px">
+                    <label for="gantry-x" style="font-size:12px">Fentes de lâcher : gauche ↔ droite <output id="gantry-x-out">0</output></label>
+                    <input id="gantry-x" type="range" min="-3.4" max="3.4" step="0.2" value="0">
+                    <label for="gantry-z" style="font-size:12px">Portique de lâcher : arrière ↔ avant <output id="gantry-z-out">0</output></label>
+                    <input id="gantry-z" type="range" min="-1.2" max="2.2" step="0.1" value="0">
+                    <button class="control secondary" id="gantry-sweep-button" type="button" aria-pressed="true">Balayage des fentes : ON</button>
+                    <label for="gantry-sweep-speed" style="font-size:12px">Vitesse du balayage <output id="gantry-sweep-speed-out">1×</output></label>
+                    <input id="gantry-sweep-speed" type="range" min="0.25" max="3" step="0.25" value="1">
+                    <button class="control tertiary" id="gantry-reset" type="button">Recentrer les fentes</button>
                 </div>
                 <div class="controls" aria-label="Vidéos">
                     <label class="control tertiary" style="display:inline-flex;align-items:center;justify-content:center">Vidéo d'arrière-plan<input type="file" accept="video/*" id="background-video-input" hidden></label>
@@ -254,15 +266,18 @@
             const dropButton = document.getElementById('drop-button');
             const autoButton = document.getElementById('auto-button');
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(49, innerWidth / innerHeight, 0.1, 100);
+            const camera = new THREE.PerspectiveCamera(49, innerWidth / innerHeight, 0.1, 250);
             let viewZoom = 1;
             try { viewZoom = Math.min(3, Math.max(0.6, Number(localStorage.getItem('astra-push-zoom')) || 1)); } catch (error) { /* stockage indisponible */ }
             function fitCamera() {
                 const wide = innerWidth >= 900;
                 camera.zoom = viewZoom;
                 camera.fov = wide ? 47 : innerWidth < 650 ? 52 : 49;
-                camera.position.set(0, wide ? 11.4 : innerWidth < 650 ? 12.2 : 11.8, wide ? 21.4 : innerWidth < 650 ? 24.5 : 21.8);
-                camera.lookAt(0, wide ? 2.9 : 3.5, 0);
+                const camTarget = new THREE.Vector3(0, wide ? 2.9 : 3.5, 0);
+                const camPos = new THREE.Vector3(0, wide ? 11.4 : innerWidth < 650 ? 12.2 : 11.8, wide ? 21.4 : innerWidth < 650 ? 24.5 : 21.8);
+                camPos.sub(camTarget).multiplyScalar(1.85).add(camTarget); // recul pour la table 2 fois plus large
+                camera.position.copy(camPos);
+                camera.lookAt(camTarget);
                 camera.aspect = innerWidth / innerHeight;
                 camera.updateProjectionMatrix();
             }
@@ -290,11 +305,12 @@
             const tableMaterial = new CANNON.Material('table');
             world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, tableMaterial, { friction: .42, restitution: 0 }));
             world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, coinMaterial, { friction: .2, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
-            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, tableMaterial, { friction: .08, restitution: 0 }));
-            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, cardMaterial, { friction: .12, restitution: 0 }));
-            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, cardMaterial, { friction: .22, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, tableMaterial, { friction: .12, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(cardMaterial, cardMaterial, { friction: .3, restitution: 0 }));
+            world.addContactMaterial(new CANNON.ContactMaterial(coinMaterial, cardMaterial, { friction: .45, restitution: 0, contactEquationStiffness: 1e8, contactEquationRelaxation: 3 }));
             // Vitesse de chute plafonnée : les pièces se posent sans rebondir sur le tas
             const maxFallSpeed = 20;
+            const coinMaxFallSpeed = 11;
             // Les pièces empilées en hauteur glissent vers l'avant et s'étalent en un tapis qui pousse les autres
             const spreadHeightY = 2.0;
             const spreadForce = 5;
@@ -304,19 +320,47 @@
                 }
                 for (const coin of coins) {
                     const body = coin.body;
-                    if (body.position.y > spreadHeightY && body.position.y < 3 && body.position.z > -3.5 && body.position.z < 4.2) {
+                    // Plafonds de vitesse : une pièce ne part jamais en vol sur les côtés ni vers le haut
+                    if (body.velocity.x > 6) body.velocity.x = 6; else if (body.velocity.x < -6) body.velocity.x = -6;
+                    if (body.velocity.y > 4) body.velocity.y = 4; // jamais d'envol : une pièce ne monte presque pas toute seule
+                    if (body.velocity.y < -coinMaxFallSpeed) body.velocity.y = -coinMaxFallSpeed; // pas de traversée du plateau
+                    if (body.velocity.z > 10) body.velocity.z = 10; else if (body.velocity.z < -10) body.velocity.z = -10;
+                    flattenCoin(coin);
+                    if (body.position.y > spreadHeightY && body.position.y < 3 && body.position.z > -3.5 && body.position.z < flatPlateEndZ - .6) {
                         body.wakeUp();
                         body.force.z += spreadForce * body.mass;
                     }
                 }
+                for (const rewardCard of fallingRewardCards) {
+                    const body = rewardCard.body;
+                    if (body.position.y > spreadHeightY && body.position.y < 4.5 && body.position.z > -3.5 && body.position.z < flatPlateEndZ - .6) {
+                        body.wakeUp();
+                        body.force.z += spreadForce * body.mass * .6;
+                    }
+                }
             });
 
+            const tableWidthScale = 4; // table 2 fois plus large qu'avant (2 -> 4)
+            const machineWidthBoost = tableWidthScale / 2;
             scene.add(new THREE.HemisphereLight('#badcff', '#160721', 1.8));
-            const keyLight = new THREE.SpotLight('#fff0d0', 2.4, 40, Math.PI / 4, .45, 1.4);
-            keyLight.position.set(-2, 15, 9);
+            const sideGlowCyan = new THREE.PointLight('#00e5ff', 2.2, 70, 1.2);
+            sideGlowCyan.position.set(-11 * (tableWidthScale / 2), 5, 4);
+            const sideGlowPink = new THREE.PointLight('#ff2fa8', 2.2, 70, 1.2);
+            sideGlowPink.position.set(11 * (tableWidthScale / 2), 5, 4);
+            scene.add(sideGlowCyan, sideGlowPink);
+            const fillLight = new THREE.DirectionalLight('#fff4d8', 1.1);
+            fillLight.position.set(0, 14, 18);
+            scene.add(fillLight);
+            const keyLight = new THREE.SpotLight('#fff0d0', 2.8, 90, Math.PI / 3, .55, 1.2);
+            keyLight.position.set(-2, 24, 14);
             keyLight.target.position.set(0, 3, 0);
             keyLight.castShadow = true;
-            keyLight.shadow.mapSize.set(1024, 1024);
+            keyLight.shadow.mapSize.set(2048, 2048);
+            keyLight.shadow.bias = -.0004;
+            keyLight.shadow.normalBias = .02;
+            const rimLight = new THREE.DirectionalLight('#7fbfff', .55); // contre-jour froid : liseré sur les arêtes
+            rimLight.position.set(0, 10, -22);
+            scene.add(rimLight);
             scene.add(keyLight, keyLight.target);
 
             const envScene = new THREE.Scene();
@@ -326,18 +370,32 @@
                 panel.position.set(ex, ey, ez);
                 envScene.add(panel);
             }
+            for (const [ex, ey, ez, sx, sy, sz, color] of [
+                [-6, 13, 8, 5, .3, 5, '#fff3dc'], [7, 13, -2, 4, .3, 4, '#ffffff'],
+                [-14, 3, 10, .4, 7, 2.5, '#ff5ec4'], [14, 3, 10, .4, 7, 2.5, '#38f2ff'],
+                [-4, 3, 16, .5, 6, .5, '#ffffff'], [5, 3, 16, .5, 6, .5, '#ffd9a0'],
+                [0, 8, 14, 10, .3, 1.2, '#ffe9bd'], [0, -6, 6, 30, .4, 30, '#2a1040']
+            ]) {
+                const softbox = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial({ color }));
+                softbox.position.set(ex, ey, ez);
+                envScene.add(softbox);
+            }
             const pmrem = new THREE.PMREMGenerator(renderer);
             scene.environment = pmrem.fromScene(envScene, .04).texture;
             pmrem.dispose();
 
             const mats = {
-                dark: new THREE.MeshStandardMaterial({ color: '#08041a', metalness: .5, roughness: .45, envMapIntensity: .35 }),
-                steel: new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 }),
-                steelDark: new THREE.MeshStandardMaterial({ color: '#160a30', metalness: .4, roughness: .45, envMapIntensity: .35 }),
+                dark: new THREE.MeshStandardMaterial({ color: '#04141a', metalness: .5, roughness: .45, envMapIntensity: .35 }),
+                steel: new THREE.MeshStandardMaterial({ color: '#ff1a1a', metalness: .12, roughness: .5, envMapIntensity: .4, emissive: '#ff0000', emissiveIntensity: 1.25 }),
+                steelDark: new THREE.MeshStandardMaterial({ color: '#e60000', metalness: .15, roughness: .5, envMapIntensity: .35, emissive: '#c80000', emissiveIntensity: 1.0 }),
+                hullGraphite: new THREE.MeshStandardMaterial({ color: '#ff0000', metalness: .12, roughness: .45, envMapIntensity: .5, emissive: '#ff0000', emissiveIntensity: 1.35 }),
+                tierMid: new THREE.MeshStandardMaterial({ color: '#ff3a3a', metalness: .12, roughness: .45, envMapIntensity: .5, emissive: '#ff1414', emissiveIntensity: 1.3 }),
+                tierLow: new THREE.MeshStandardMaterial({ color: '#f50000', metalness: .12, roughness: .45, envMapIntensity: .5, emissive: '#e00000', emissiveIntensity: 1.15 }),
+                frameSteel: new THREE.MeshStandardMaterial({ color: '#ff1212', metalness: .15, roughness: .4, envMapIntensity: .5, emissive: '#ff0000', emissiveIntensity: 1.25 }),
                 glass: new THREE.MeshPhysicalMaterial({ color: '#73ecff', metalness: .08, roughness: .12, transparent: true, opacity: .13, transmission: .32 }),
-                legBlack: new THREE.MeshStandardMaterial({ color: '#2b1259', metalness: .4, roughness: .45, envMapIntensity: .35 }),
-                neonPink: new THREE.MeshBasicMaterial({ color: '#b04dff' }),
-                neonCyan: new THREE.MeshBasicMaterial({ color: '#3d7bff' })
+                legBlack: new THREE.MeshStandardMaterial({ color: '#f00000', metalness: .15, roughness: .5, envMapIntensity: .35, emissive: '#d00000', emissiveIntensity: 1.0 }),
+                neonPink: new THREE.MeshBasicMaterial({ color: '#ffd000' }),
+                neonCyan: new THREE.MeshBasicMaterial({ color: '#00ffd5' })
             };
 
             function box(parent, size, position, material, options = {}) {
@@ -355,26 +413,47 @@
                 canvas.height = height;
                 paint(canvas.getContext('2d'), width, height);
                 const texture = new THREE.CanvasTexture(canvas);
+                texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
                 texture.colorSpace = THREE.SRGBColorSpace;
                 return texture;
             }
 
+            // Métal rouge laqué : vernis (clearcoat), grain de métal brossé et reflets de l'environnement
+            const brushedTexture = canvasTexture(256, 256, (ctx, width, height) => {
+                ctx.fillStyle = '#8c8c8c';
+                ctx.fillRect(0, 0, width, height);
+                for (let i = 0; i < 2600; i++) {
+                    const v = 90 + Math.floor(Math.random() * 140);
+                    ctx.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',.2)';
+                    ctx.fillRect(Math.random() * width, Math.random() * height, 30 + Math.random() * 190, 1);
+                }
+            });
+            brushedTexture.wrapS = brushedTexture.wrapT = THREE.RepeatWrapping;
+            for (const name of ['steel', 'steelDark', 'hullGraphite', 'tierMid', 'tierLow', 'frameSteel', 'legBlack']) {
+                const old = mats[name];
+                mats[name] = new THREE.MeshPhysicalMaterial({
+                    color: old.color.clone(), metalness: .45, roughness: .42, roughnessMap: brushedTexture,
+                    bumpMap: brushedTexture, bumpScale: .12, clearcoat: .85, clearcoatRoughness: .16, envMapIntensity: 1.35,
+                    emissive: old.emissive.clone(), emissiveIntensity: old.emissiveIntensity * .42
+                });
+                old.dispose();
+            }
+
             const machine = new THREE.Group();
             scene.add(machine);
-            const tableWidthScale = 2;
-            const tableForwardScale = 1.3;
+            // (tableWidthScale et machineWidthBoost sont déclarés plus haut, avant les lumières)
+            const tableForwardScale = 1.5; // table allongée vers l'avant (1,3 -> 1,5)
             const rearEdgeZ = -3.86;
             const flatPlateEndZ = rearEdgeZ + (4 - rearEdgeZ) * tableForwardScale;
             const supportFootZ = flatPlateEndZ + 1.4;
             const playfield = new THREE.Group();
             playfield.scale.x = tableWidthScale;
             machine.add(playfield);
-            box(playfield, [8.8, .6, 6.1], [0, .3, -.15], mats.dark);
-            box(playfield, [8.45, .3, 6.5], [0, 1.02, -.35], mats.steelDark);
             const deckBody = new CANNON.Body({ mass: 0, material: tableMaterial });
             const flatPlateLength = flatPlateEndZ - rearEdgeZ;
-            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .025, flatPlateLength / 2)));
-            deckBody.position.set(0, 1.395, (flatPlateEndZ + rearEdgeZ) / 2);
+            // Plateau de collision épais (1 unité) : les pièces rapides ou très serrées ne peuvent plus le traverser. La surface reste à y = 1,42.
+            deckBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .5, flatPlateLength / 2)));
+            deckBody.position.set(0, 1.42 - .5, (flatPlateEndZ + rearEdgeZ) / 2);
             world.addBody(deckBody);
             const rearRimBody = new CANNON.Body({ mass: 0, material: tableMaterial });
             rearRimBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .17, .09)));
@@ -382,11 +461,33 @@
             world.addBody(rearRimBody);
             box(playfield, [7.7, .34, .18], [0, 1.59, rearEdgeZ + .04], mats.steel);
 
-            for (const side of [-1, 1]) {
-                const legCurve = new THREE.CatmullRomCurve3([[7.2, 1.7, flatPlateEndZ - .65], [7.5, -1, supportFootZ - .9], [7.8, -2.83, supportFootZ]].map(([px, py, pz]) => new THREE.Vector3(side * px, py, pz)));
-                const leg = new THREE.Mesh(new THREE.TubeGeometry(legCurve, 30, .27, 12, false), mats.legBlack);
-                leg.castShadow = true;
-                machine.add(leg);
+            // ===== Structure « Réacteur » : coque hexagonale sur pied central, disque de base =====
+            const deckCenterZ = (flatPlateEndZ + rearEdgeZ) / 2;
+            const hull = new THREE.Mesh(new THREE.CylinderGeometry(1, .32, 1.15, 6), mats.hullGraphite);
+            hull.scale.set(9.2 * machineWidthBoost, 1, 5.6 * (tableForwardScale / 1.3));
+            hull.position.set(0, .56, deckCenterZ);
+            hull.castShadow = true;
+            machine.add(hull);
+            const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.5, 2.9, 8), mats.steelDark);
+            neck.scale.set(1.5 * machineWidthBoost, 1, 1);
+            neck.position.set(0, -1.4, deckCenterZ);
+            neck.castShadow = true;
+            machine.add(neck);
+            const baseDisc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .18, 48), mats.steelDark);
+            baseDisc.scale.set(9 * machineWidthBoost, 1, 5.4 * (tableForwardScale / 1.3));
+            baseDisc.position.set(0, -2.94, deckCenterZ + .15);
+            machine.add(baseDisc);
+            for (const ringY of [-.9, -2.2]) {
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, .07, 8, 48), mats.neonCyan);
+                ring.rotation.x = Math.PI / 2;
+                ring.scale.set(1.6 * machineWidthBoost, 1, 1);
+                ring.position.set(0, ringY, deckCenterZ);
+                machine.add(ring);
+            }
+            // Gradins arrière (ziggourat) derrière la butée
+            for (const [tierWidth, tierHeight, tierZ, tierMaterial] of [[17 * machineWidthBoost, 1.7, -3.55, mats.tierLow], [13.6 * machineWidthBoost, 2.9, -3.95, mats.tierMid], [10.2 * machineWidthBoost, 4.1, -4.35, mats.hullGraphite]]) {
+                box(machine, [tierWidth, tierHeight, .9], [0, 1.5 + tierHeight / 2, tierZ], tierMaterial);
+                box(machine, [tierWidth - .4, .07, .12], [0, 1.5 + tierHeight + .02, tierZ + .46], mats.neonPink, { castShadow: false });
             }
 
             const videoScreens = {};
@@ -425,6 +526,7 @@
             const pusherLipOffset = .63;
             const pusherLipHalfDepth = .06;
             const coinRadius = .44;
+            const coinSizeFactor = 1.8; // pièces deux fois plus grandes (0,9 × 2)
             const dropLanes = [-3.15, -2.25, -1.35, -.45, .45, 1.35, 2.25, 3.15];
             const dropPointZ = pusherStart + pusherTravel * 3 * 1.35 + pusherLipOffset + pusherLipHalfDepth + coinRadius - .38;
             const coinDropLanes = [-2.7, -.9, .9, 2.7];
@@ -437,8 +539,9 @@
             const plateTopY = 1.42;
             const plateStartZ = rearEdgeZ;
             const plateThickness = .28;
+            const rampCollisionThickness = 1;
             const rampScale = .1;
-            const rampHorizontalLength = (7.3 - flatPlateEndZ) * rampScale;
+            const rampHorizontalLength = (7.3 - (rearEdgeZ + (4 - rearEdgeZ) * 1.3)) * rampScale; // longueur d'origine, indépendante de l'allongement de la table
             const rampVerticalDrop = (plateTopY - -2.83) * rampScale;
             const rampStartZ = flatPlateEndZ;
             const rampEndZ = rampStartZ + rampHorizontalLength;
@@ -448,11 +551,11 @@
             const rampOrientation = new CANNON.Quaternion();
             rampOrientation.setFromEuler(rampAngle, 0, 0);
             deckBody.addShape(
-                new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, plateThickness / 2, rampLength / 2)),
+                new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, rampCollisionThickness / 2, rampLength / 2)),
                 new CANNON.Vec3(
                     0,
-                    (plateTopY + rampEndY) / 2 - Math.cos(rampAngle) * plateThickness / 2 - deckBody.position.y,
-                    (rampStartZ + rampEndZ) / 2 - Math.sin(rampAngle) * plateThickness / 2 - deckBody.position.z
+                    (plateTopY + rampEndY) / 2 - Math.cos(rampAngle) * rampCollisionThickness / 2 - deckBody.position.y,
+                    (rampStartZ + rampEndZ) / 2 - Math.sin(rampAngle) * rampCollisionThickness / 2 - deckBody.position.z
                 ),
                 rampOrientation
             );
@@ -568,20 +671,144 @@
             rug.position.set(0, -2.82, supportFootZ - .65);
             playfield.add(rug);
 
+            // ===== Lâcher : portique fixe + deux barres coulissantes (pièces / cartes) dont seules les fentes se déplacent =====
+            const dropSettings = {
+                coinLanes: [-2.7, -.9, .9, 2.7],
+                coinFallSpeed: 7.5,
+                fanSpread: .16,
+                cardChutes: [-3.6 * (tableWidthScale / 2), 0, 3.6 * (tableWidthScale / 2)],
+                cardFallSpeed: 3.6,
+                autoInterval: 820
+            };
+            let nextChute = 0;
+            const gantry = new THREE.Group();
+            machine.add(gantry);
+            // Deux barres coulissantes sous la poutre fixe : une porte les trémies à pièces, l'autre les fentes à cartes
+            const coinSlots = new THREE.Group();
+            const cardSlots = new THREE.Group();
+            gantry.add(coinSlots, cardSlots);
+            // Position réglable des fentes (décalage par rapport à leur place d'origine)
+            const gantryOffset = { x: 0, z: 0 };
+            const gantryLimits = { x: [-3.4, 3.4], z: [-1.2, 2.2] };
+            function applyGantryOffset() {
+                gantry.position.set(0, 0, gantryOffset.z); // le portique ne bouge qu'en profondeur
+                coinSlots.position.x = gantryOffset.x;     // seules les barres de fentes glissent de gauche à droite
+                cardSlots.position.x = gantryOffset.x;
+            }
+            const gantryZ = dropPointZ;
+            const beamY = 10.4;
+            function strut(from, to, radius, material) {
+                const a = new THREE.Vector3(...from);
+                const b = new THREE.Vector3(...to);
+                const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, a.distanceTo(b), 14), material);
+                mesh.position.copy(a).add(b).multiplyScalar(.5);
+                mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+                mesh.castShadow = true;
+                gantry.add(mesh);
+                return mesh;
+            }
+            for (const side of [-1, 1]) {
+                strut([side * 9.5 * machineWidthBoost, -2.8, gantryZ + .9], [side * 7.4 * machineWidthBoost, beamY, gantryZ], .28, mats.frameSteel);
+                strut([side * 9.5 * machineWidthBoost, -2.8, gantryZ - .9], [side * 7.4 * machineWidthBoost, beamY, gantryZ], .28, mats.frameSteel);
+                box(gantry, [1, .22, 2.4], [side * 9.5 * machineWidthBoost, -2.75, gantryZ], mats.steelDark);
+            }
+            box(gantry, [16.6 * machineWidthBoost, .5, .7], [0, beamY, gantryZ], mats.frameSteel);
+            box(gantry, [16.2 * machineWidthBoost, .06, .08], [0, beamY - .28, gantryZ + .37], mats.neonPink, { castShadow: false });
+            // 4 trémies à pièces
+            box(coinSlots, [2 * (Math.max(...dropSettings.coinLanes) * tableWidthScale + 1.6), .28, .45], [0, beamY - .32, gantryZ + .42], mats.steelDark);
+            for (const lane of dropSettings.coinLanes) {
+                const hopperX = lane * tableWidthScale;
+                box(coinSlots, [2.0, .7, 1.2], [hopperX, beamY - .55, gantryZ], mats.steelDark);
+                const hopperNozzle = new THREE.Mesh(new THREE.CylinderGeometry(.95, .5, 1.0, 16), mats.steel);
+                hopperNozzle.position.set(hopperX, beamY - 1.25, gantryZ);
+                hopperNozzle.castShadow = true;
+                coinSlots.add(hopperNozzle);
+                const hopperRing = new THREE.Mesh(new THREE.TorusGeometry(.95, .03, 8, 32), mats.neonPink);
+                hopperRing.rotation.x = Math.PI / 2;
+                hopperRing.position.set(hopperX, beamY - .78, gantryZ);
+                coinSlots.add(hopperRing);
+            }
+            // 3 goulottes à cartes
+            box(cardSlots, [2 * (Math.max(...dropSettings.cardChutes) + 2.2), .28, .45], [0, beamY - .32, gantryZ - .42], mats.steelDark);
+            for (const chuteX of dropSettings.cardChutes) {
+                box(cardSlots, [3.4, .9, 1.0], [chuteX, beamY - .55, gantryZ], mats.steel);
+                box(cardSlots, [2.8, .05, .08], [chuteX, beamY - 1.0, gantryZ + .5], mats.neonPink, { castShadow: false });
+            }
+
+
+            // ===== Néons multicolores animés =====
+            const neonBulbs = [];
+            const glowTexture = canvasTexture(128, 128, (ctx, width, height) => {
+                const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+                gradient.addColorStop(0, 'rgba(255,255,255,1)');
+                gradient.addColorStop(.22, 'rgba(255,255,255,.5)');
+                gradient.addColorStop(.55, 'rgba(255,255,255,.12)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+            });
+            const bulbGeometry = new THREE.SphereGeometry(.26, 16, 12); // LED deux fois plus grosses (.13 -> .26)
+            function addBulb(parent, x, y, z, index) {
+                const material = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+                const bulb = new THREE.Mesh(bulbGeometry, material);
+                bulb.position.set(x, y, z);
+                parent.add(bulb);
+                // Halo lumineux additif autour de chaque LED (effet « bloom » sans post-traitement)
+                const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture, color: '#ffffff', transparent: true, opacity: .8, blending: THREE.AdditiveBlending, depthWrite: false }));
+                glow.scale.set(1.8, 1.8, 1);
+                glow.position.copy(bulb.position);
+                parent.add(glow);
+                neonBulbs.push({ material, index, glow });
+            }
+            let bulbIndex = 0;
+            for (const side of [-1, 1]) {
+                for (let z = rearEdgeZ + .3; z <= flatPlateEndZ + .1; z += .8) addBulb(machine, side * 3.95 * tableWidthScale, 4.1, z, bulbIndex++); // sur le dessus des murs latéraux (sommet à y = 3,8)
+            }
+            for (let x = -8 * machineWidthBoost; x <= 8.01 * machineWidthBoost; x += .8) addBulb(gantry, x, beamY + .34, gantryZ, bulbIndex++);
+            for (const [tierWidth, tierTopY, tierZ] of [[17 * machineWidthBoost, 3.2, -3.05], [13.6 * machineWidthBoost, 4.4, -3.45], [10.2 * machineWidthBoost, 5.6, -3.85]]) {
+                for (let x = -tierWidth / 2 + .4; x <= tierWidth / 2 - .39; x += .9) addBulb(machine, x, tierTopY + .1, tierZ, bulbIndex++);
+            }
+            for (const side of [-1, 1]) {
+                strut([side * 9.9 * machineWidthBoost, -2.7, gantryZ + .9], [side * 7.8 * machineWidthBoost, beamY, gantryZ], .08, mats.neonPink);
+                strut([side * 9.9 * machineWidthBoost, -2.7, gantryZ - .9], [side * 7.8 * machineWidthBoost, beamY, gantryZ], .08, mats.neonCyan);
+            }
+            const signTexture = canvasTexture(1024, 160, (ctx, width, height) => {
+                ctx.clearRect(0, 0, width, height);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '900 118px "Trebuchet MS", "Segoe UI", sans-serif';
+                const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                ['#ff2fa8', '#ffe600', '#00ff9d', '#00e5ff', '#9b4dff', '#ff2fa8'].forEach((color, i, all) => gradient.addColorStop(i / (all.length - 1), color));
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 26;
+                ctx.lineWidth = 8;
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeText('ASTRA-PUSH', width / 2, height / 2);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = gradient;
+                ctx.fillText('ASTRA-PUSH', width / 2, height / 2);
+            });
+            const signPanel = new THREE.Mesh(new THREE.PlaneGeometry(9.2 * machineWidthBoost, 1.15 * machineWidthBoost), new THREE.MeshBasicMaterial({ map: signTexture, transparent: true }));
+            signPanel.position.set(0, 5.0, -3.89);
+            machine.add(signPanel);
+
+            // Les pièces sortent d'une trémie au hasard, avec une légère dispersion : elles se posent sur la table sans tomber en ligne droite
             function randomDropPoint() {
                 return coinDropPoints[Math.floor(Math.random() * coinDropPoints.length)];
             }
-
-            function randomDropLane() {
-                return dropLanes[Math.floor(Math.random() * dropLanes.length)];
+            function nextCardChute() {
+                const chuteX = dropSettings.cardChutes[nextChute % dropSettings.cardChutes.length];
+                nextChute++;
+                return chuteX + gantryOffset.x;
             }
 
             const pusherMesh = box(playfield, [7.62, .5, 1.15], [0, 1.68, pusherStart + pusherTravel], mats.steel);
             box(pusherMesh, [7.3, .12, .12], [0, .08, .57], mats.neonCyan, { castShadow: false });
-            const lipTopY = 1.66;
+            const lipTopY = 2.6; // mur du poussoir rehaussé (1,66 -> 2,6) pour que les pièces ne passent plus par-dessus
+            const lipDecorTopY = 1.66; // les décors (logo, charnières) restent à leur hauteur d'origine
             const lipHeight = lipTopY + .25;
             const lipCenterY = (lipTopY - .25) / 2;
-            box(pusherMesh, [7.5, lipHeight, pusherLipHalfDepth * 2], [0, lipCenterY, pusherLipOffset], mats.steel);
+            box(pusherMesh, [7.6, lipHeight, pusherLipHalfDepth * 2], [0, lipCenterY, pusherLipOffset], mats.steel);
             box(pusherMesh, [7.48, .06, .14], [0, lipTopY, pusherLipOffset], mats.neonCyan, { castShadow: false });
             const lipFace = new THREE.Mesh(new THREE.PlaneGeometry(6.6, .75), new THREE.MeshBasicMaterial({ map: canvasTexture(1100, 250, (ctx, width, height) => {
                 ctx.fillStyle = '#4a5560';
@@ -600,24 +827,25 @@
                 ctx.lineTo(1040, 40);
                 ctx.stroke();
             }) }));
-            lipFace.position.set(0, lipTopY - .45, pusherLipOffset + pusherLipHalfDepth + .005);
+            lipFace.position.set(0, lipDecorTopY - .45, pusherLipOffset + pusherLipHalfDepth + .005);
             pusherMesh.add(lipFace);
             for (const hingeX of [-3.62, 3.62]) {
                 const hinge = new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .3, 24), mats.steelDark);
                 hinge.rotation.z = Math.PI / 2;
-                hinge.position.set(hingeX, lipTopY - .5, pusherLipOffset + .2);
+                hinge.position.set(hingeX, lipDecorTopY - .5, pusherLipOffset + .2);
                 pusherMesh.add(hinge);
             }
             const pusherBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, material: tableMaterial });
             const pusherCenterY = 1.68;
             pusherBody.addShape(new CANNON.Box(new CANNON.Vec3(3.81 * tableWidthScale, .25, .575)));
             pusherBody.addShape(
-                new CANNON.Box(new CANNON.Vec3(3.75 * tableWidthScale, lipHeight / 2, pusherLipHalfDepth)),
-                new CANNON.Vec3(0, lipCenterY, pusherLipOffset)
+                // Mur du poussoir solide : 0,6 d'épaisseur vers l'arrière (face avant inchangée) et largeur jusqu'aux murs latéraux
+                new CANNON.Box(new CANNON.Vec3(3.8 * tableWidthScale, lipHeight / 2, .3)),
+                new CANNON.Vec3(0, lipCenterY, pusherLipOffset + pusherLipHalfDepth - .3)
             );
             pusherBody.addShape(
                 new CANNON.Box(new CANNON.Vec3(
-                    3.75 * tableWidthScale,
+                    3.8 * tableWidthScale,
                     (pusherBackstopTopY - plateTopY) / 2,
                     .08
                 )),
@@ -627,9 +855,9 @@
                     pusherLipOffset - .25
                 )
             );
-            const pushBlockSize = [7.5, .6, .6];
+            const pushBlockSize = [7.6, .6, .6];
             const pushBlockPosition = [0, -.25 + pushBlockSize[1] / 2, pusherLipOffset + pusherLipHalfDepth + pushBlockSize[2] / 2];
-            const coinPusherClearance = pushBlockPosition[2] + pushBlockSize[2] / 2 + coinRadius + .05;
+            const coinPusherClearance = pushBlockPosition[2] + pushBlockSize[2] / 2 + coinRadius * coinSizeFactor + .05;
             box(pusherMesh, pushBlockSize, pushBlockPosition, mats.steel);
             pusherBody.addShape(
                 new CANNON.Box(new CANNON.Vec3(pushBlockSize[0] / 2 * tableWidthScale - .05, pushBlockSize[1] / 2, pushBlockSize[2] / 2)),
@@ -639,13 +867,15 @@
             world.addBody(pusherBody);
 
             const rearStopBody = new CANNON.Body({ mass: 0, material: tableMaterial });
-            rearStopBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, .45, .1)));
-            rearStopBody.position.set(0, 2.83, -2.9);
+            // Mur arrière solide : épais (1,2) vers l'arrière et haut, sa face avant reste à z = -2,8 : plus aucune pièce ne peut le traverser
+            const rearWallFrontZ = -2.8;
+            rearStopBody.addShape(new CANNON.Box(new CANNON.Vec3(3.85 * tableWidthScale, (pusherBackstopTopY - plateTopY) / 2, .6)));
+            rearStopBody.position.set(0, (pusherBackstopTopY + plateTopY) / 2, rearWallFrontZ - .6);
             world.addBody(rearStopBody);
             box(playfield, [7.8, .9, .2], [0, 2.83, -2.9], mats.steelDark, { castShadow: false });
             box(playfield, [7.72, .08, .12], [0, 3.3, -2.9], mats.neonPink, { castShadow: false });
 
-            const sideWallTopY = 2.35;
+            const sideWallTopY = 3.8; // murs latéraux rehaussés (2,35 -> 3,8) : plus aucune pièce ne tombe sur les côtés
             const sideWallBottomY = plateTopY;
             const sideWallStartZ = plateStartZ;
             const sideWallEndZ = flatPlateEndZ + .1;
@@ -822,11 +1052,40 @@
                 texture.colorSpace = THREE.SRGBColorSpace;
                 return texture;
             }
-            const coinMaterialThree = new THREE.MeshStandardMaterial({ map: coinTexture, color: '#ffe78a', metalness: .52, roughness: .34, side: THREE.DoubleSide });
-            const coinScale = .9;
+            const coinEdgeTexture = canvasTexture(256, 32, (ctx, width, height) => {
+                ctx.fillStyle = '#c98c10';
+                ctx.fillRect(0, 0, width, height);
+                for (let x = 0; x < width; x += 4) {
+                    ctx.fillStyle = x % 8 ? '#8a5a06' : '#f3c443';
+                    ctx.fillRect(x, 0, 2, height);
+                }
+            });
+            coinEdgeTexture.wrapS = THREE.RepeatWrapping;
+            const coinMaterialThree = {
+                clone() {
+                    return [
+                        new THREE.MeshStandardMaterial({ map: coinEdgeTexture, bumpMap: coinEdgeTexture, bumpScale: 1.2, color: '#ffffff', metalness: .72, roughness: .3, envMapIntensity: 1.8, emissive: '#6a4600', emissiveIntensity: .24 }),
+                        ...Array.from({ length: 2 }, () => new THREE.MeshStandardMaterial({ map: coinTexture, bumpMap: coinTexture, bumpScale: 1.4, color: '#ffe78a', metalness: .72, roughness: .28, envMapIntensity: 1.8, emissive: '#ffffff', emissiveMap: coinTexture, emissiveIntensity: .15 }))
+                    ];
+                }
+            };
+            const coinScale = coinSizeFactor;
             const coinGeometry = new THREE.CylinderGeometry(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 32, 1);
             const coinShape = new CANNON.Cylinder(coinRadius * coinScale, coinRadius * coinScale, .13 * coinScale, 20);
             const coinShapeOrientation = new CANNON.Quaternion();
+            {
+                // Le disque physique doit avoir son épaisseur sur l'axe Y comme le mesh. On détecte l'axe fin du cylindre
+                // (cannon.js 0.6.2 oriente ses cylindres selon Z) et on le redresse : la pièce physique = la pièce visible.
+                const ext = [0, 1, 2].map(axis => {
+                    const values = coinShape.vertices.map(vertex => vertex[['x', 'y', 'z'][axis]]);
+                    return Math.max(...values) - Math.min(...values);
+                });
+                const thinAxis = ext.indexOf(Math.min(...ext));
+                if (thinAxis === 2) coinShapeOrientation.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+                else if (thinAxis === 0) coinShapeOrientation.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+            }
+            const coinPhysRadius = coinRadius * coinScale;
+            const coinPhysThickness = .13 * coinScale;
             const TOTAL_GAME_TOKENS = 10000;
             const TOTAL_REWARD_CARDS = 1000;
             function createRewardDeck() {
@@ -919,7 +1178,7 @@
                     const sourceBody = body.velocity.z > otherBody.velocity.z ? body : otherBody;
                     const targetBody = sourceBody === body ? otherBody : body;
                     const relativeForwardSpeed = sourceBody.velocity.z - targetBody.velocity.z;
-                    if (sourceBody.velocity.z < .1 || relativeForwardSpeed < .2) return;
+                    if (sourceBody.velocity.z < .05 || relativeForwardSpeed < .1) return;
 
                     let bodyPairs = lastPairPushAt.get(body);
                     if (!bodyPairs) {
@@ -933,11 +1192,13 @@
                     }
                     const now = performance.now();
                     const lastPushAt = Math.max(bodyPairs.get(otherBody) || 0, otherPairs.get(body) || 0);
-                    if (now - lastPushAt < 40) return;
+                    if (now - lastPushAt < 25) return;
                     bodyPairs.set(otherBody, now);
                     otherPairs.set(body, now);
 
-                    const impulseStrength = Math.min(.5, sourceBody.mass * relativeForwardSpeed * .35);
+                    // La masse de la cible compte aussi : une pièce peut faire avancer une carte plus lourde, et une carte entraîne les pièces devant elle
+                    const pushMass = Math.max(sourceBody.mass, targetBody.mass * .6);
+                    const impulseStrength = Math.min(1.8, pushMass * relativeForwardSpeed * .5);
                     targetBody.wakeUp();
                     targetBody.applyImpulse(
                         new CANNON.Vec3(0, impulseStrength * .03, impulseStrength),
@@ -956,6 +1217,7 @@
                 score += 1;
                 updateHud();
                 playTone(540, 1080, .42, 'sine', .14);
+                try { const p = coin.body.position; emitSparks(p.x, p.y + .3, p.z, '#ffd54a', 12, 3.2, 4.5); } catch (error) { /* effet optionnel */ }
             }
 
             function collectRewardCard(rewardCard) {
@@ -1066,6 +1328,7 @@
                 const texture = createCoinTextureWithAvatar(coin.owner);
                 for (const faceMaterial of coin.mesh.material.slice(1)) {
                     faceMaterial.map = texture;
+                    faceMaterial.emissiveMap = texture;
                     faceMaterial.needsUpdate = true;
                 }
             }
@@ -1100,21 +1363,37 @@
 
             function createCoin(x, y, z, velocity = null, owner = null, isBonusHammer = false) {
                 const material = isBonusHammer ? null : owner ? [
-                    new THREE.MeshStandardMaterial({ color: '#442354', metalness: .28, roughness: .46 }),
-                    ...Array.from({ length: 2 }, () => new THREE.MeshStandardMaterial({
-                        map: createCoinTextureWithAvatar(owner),
-                        color: '#ffffff',
-                        metalness: .08,
-                        roughness: .58,
-                        side: THREE.DoubleSide
-                    }))
+                    new THREE.MeshStandardMaterial({ map: coinEdgeTexture, color: '#ffffff', metalness: .6, roughness: .34, envMapIntensity: 1.4, emissive: '#7a5200', emissiveIntensity: .3 }),
+                    ...Array.from({ length: 2 }, () => {
+                        const faceTexture = createCoinTextureWithAvatar(owner);
+                        return new THREE.MeshStandardMaterial({
+                            map: faceTexture,
+                            color: '#ffffff',
+                            metalness: .12,
+                            roughness: .5,
+                            emissive: '#ffffff',
+                            emissiveMap: faceTexture,
+                            emissiveIntensity: .28
+                        });
+                    })
                 ] : coinMaterialThree.clone();
+                if (!isBonusHammer) {
+                    // Une pièce n'apparaît jamais à l'intérieur d'une autre : on la monte jusqu'à trouver une place libre
+                    for (let attempt = 0; attempt < 40; attempt++) {
+                        const blocked = coins.some(other => !other.isBonusHammer
+                            && Math.abs(other.body.position.y - y) < coinPhysThickness + .1
+                            && Math.hypot(other.body.position.x - x, other.body.position.z - z) < coinPhysRadius * 2);
+                        if (!blocked) break;
+                        y += coinPhysThickness + .12;
+                    }
+                }
                 const mesh = isBonusHammer ? createBonusHammerMesh() : new THREE.Mesh(coinGeometry, material);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 mesh.position.set(x, y, z);
                 scene.add(mesh);
-                const layFlat = isBonusHammer || totalCoinsSpawned++ % 10 !== 9;
+                totalCoinsSpawned++;
+                const layFlat = true; // plus aucune pièce ne se met debout
                 const body = new CANNON.Body({ mass: isBonusHammer ? 3.5 : .72, material: coinMaterial, linearDamping: .12, angularDamping: .85, allowSleep: true, sleepSpeedLimit: .08, sleepTimeLimit: 1.4 });
                 if (isBonusHammer) {
                     body.addShape(new CANNON.Box(new CANNON.Vec3(.64, .22, .3)), new CANNON.Vec3(0, .57, 0));
@@ -1138,6 +1417,9 @@
                     if (impact > 2.2 && now - lastCollisionSound > 85) {
                         lastCollisionSound = now;
                         playTone(1100 + Math.random() * 600, 520, .045, 'triangle', .045);
+                    }
+                    if (impact > 8 && Math.random() < .5) {
+                        try { const p = body.position; emitSparks(p.x, p.y + .1, p.z, '#ffe6a0', 3, 2, 2.4); } catch (error) { /* effet optionnel */ }
                     }
                 });
                 const coin = { mesh, body, collected: false, owner, layFlat, isBonusHammer };
@@ -1174,9 +1456,9 @@
                     for (let index = 0; index < 3; index++) {
                         const hammerPoint = coinDropPoints[(firstPointIndex + index * 2) % coinDropPoints.length];
                         createCoin(
-                            hammerPoint.lane * tableWidthScale,
+                            hammerPoint.lane * tableWidthScale + gantryOffset.x,
                             dropStartY,
-                            hammerPoint.z + index * .12,
+                            hammerPoint.z + gantryOffset.z + index * .12,
                             { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
                             null,
                             true
@@ -1184,10 +1466,15 @@
                     }
                 } else {
                     createCoin(
-                        point.lane * tableWidthScale,
+                        point.lane * tableWidthScale + gantryOffset.x,
                         dropStartY,
-                        point.z,
-                        { x: (Math.random() - .5) * .16, y: -7.5, z: .8 },
+                        point.z + gantryOffset.z,
+                        {
+                            x: (Math.random() - .5) * dropSettings.fanSpread,
+                            y: -dropSettings.coinFallSpeed,
+                            z:
+                            .8
+                        },
                         owner
                     );
                 }
@@ -1276,6 +1563,7 @@
             }
 
             function showWinnerBanner(player, card, isStarCommand = false) {
+                try { celebrate(); } catch (error) { /* effet optionnel */ }
                 const overlay = document.getElementById('winner-overlay');
                 const winnerCard = document.getElementById('winner-card');
                 const avatar = document.getElementById('winner-avatar');
@@ -1401,13 +1689,13 @@
                 if (!player || !card) return;
                 const texture = createRewardCardTexture(player, card);
                 const material = new THREE.MeshStandardMaterial({ map: texture, emissive: '#220d30', emissiveIntensity: .4, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.4, .12), material);
-                mesh.position.set(randomDropLane() * tableWidthScale, dropStartY, dropPointZ);
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.4, .24), material);
+                mesh.position.set(nextCardChute(), dropStartY, dropPointZ + gantryOffset.z);
                 scene.add(mesh);
-                const body = new CANNON.Body({ mass: .7, material: cardMaterial, linearDamping: .05, angularDamping: .16 });
-                body.addShape(new CANNON.Box(new CANNON.Vec3(1.2, 1.7, .06)));
+                const body = new CANNON.Body({ mass: 1.4, material: cardMaterial, linearDamping: .05, angularDamping: .16 });
+                body.addShape(new CANNON.Box(new CANNON.Vec3(1.2, 1.7, .12)));
                 body.position.copy(mesh.position);
-                body.velocity.set(0, -3.6, .8);
+                body.velocity.set(0, -dropSettings.cardFallSpeed, .8);
                 body.angularVelocity.set((Math.random() - .5) * 2, 0, 0);
                 body.fixedRewardX = mesh.position.x;
                 registerPushableBody(body);
@@ -1594,7 +1882,7 @@
                 autoDropActive = !autoDropActive;
                 autoButton.setAttribute('aria-pressed', String(autoDropActive));
                 autoButton.textContent = `Auto-drop : ${autoDropActive ? 'ON' : 'OFF'}`;
-                if (autoDropActive) autoDropInterval = window.setInterval(() => dropCoin(), 820);
+                if (autoDropActive) autoDropInterval = window.setInterval(() => dropCoin(), dropSettings.autoInterval);
                 else window.clearInterval(autoDropInterval);
             });
 
@@ -1691,9 +1979,12 @@
             const clock = new THREE.Clock();
             let elapsed = 0;
             let accumulator = 0;
-            const fixedStep = 1 / 60;
+            const fixedStep = 1 / 120; // pas physique réduit : les pièces rapides ne traversent plus le plateau
             let previousPusherZ = pusherStart + pusherTravel;
             let pusherAngle = 0;
+            // Butée de fin de course : l'avant du poussoir arrive exactement au bord de la table
+            const pusherEndZ = flatPlateEndZ - (pusherLipOffset + pusherLipHalfDepth + .6);
+            const pusherStroke = pusherTravel;
             let boostLevel = 0;
             let boostHeld = false;
             const pusherSettings = { speed: 1, reach: 1 };
@@ -1724,11 +2015,12 @@
                 const tints = ['#d28a5a', '#e2e6ee', '#d28a5a', '#c9ced8'];
                 let count = 0;
                 for (let row = 0; row < 3; row++) {
-                    for (let col = 0; col < 7; col++) {
-                        const x = (-3 + col + (Math.random() - .5) * .1) * tableWidthScale;
-                        const z = .75 + row * .95;
-                        createCoin(x, plateTopY + .13, z);
-                        coins[coins.length - 1].mesh.material.color.set(tints[count++ % tints.length]);
+                    for (let col = 0; col < 13; col++) {
+                        const x = (-3 + col * .5 + (Math.random() - .5) * .05) * tableWidthScale;
+                        const z = 1.6 + row * 1.75;
+                        createCoin(x, plateTopY + .25, z);
+                        const tint = tints[count++ % tints.length];
+                        coins[coins.length - 1].mesh.material.slice(1).forEach(faceMaterial => faceMaterial.color.set(tint));
                     }
                 }
             }
@@ -1762,34 +2054,407 @@
             }, { passive: false });
             setZoom(viewZoom);
 
+            // Position de la barre où tombent pièces et cartes
+            try {
+                const savedGantry = JSON.parse(localStorage.getItem('astra-push-gantry') || '{}');
+                gantryOffset.x = Math.min(gantryLimits.x[1], Math.max(gantryLimits.x[0], Number(savedGantry.x) || 0));
+                gantryOffset.z = Math.min(gantryLimits.z[1], Math.max(gantryLimits.z[0], Number(savedGantry.z) || 0));
+            } catch (error) { /* réglage illisible */ }
+            const gantryInputs = { x: document.getElementById('gantry-x'), z: document.getElementById('gantry-z') };
+            const gantryOutputs = { x: document.getElementById('gantry-x-out'), z: document.getElementById('gantry-z-out') };
+            function syncGantryControls() {
+                for (const axis of ['x', 'z']) {
+                    gantryInputs[axis].value = gantryOffset[axis];
+                    gantryOutputs[axis].textContent = Number(gantryOffset[axis]).toFixed(2).replace(/\.?0+$/, '') || '0';
+                }
+                applyGantryOffset();
+            }
+            function saveGantry() {
+                try { localStorage.setItem('astra-push-gantry', JSON.stringify(gantryOffset)); } catch (error) { /* stockage indisponible */ }
+            }
+            for (const axis of ['x', 'z']) {
+                gantryInputs[axis].addEventListener('input', () => {
+                    gantryOffset[axis] = Math.min(gantryLimits[axis][1], Math.max(gantryLimits[axis][0], Number(gantryInputs[axis].value) || 0));
+                    syncGantryControls();
+                    saveGantry();
+                });
+            }
+            document.getElementById('gantry-reset').addEventListener('click', () => {
+                gantryOffset.x = 0;
+                gantryOffset.z = 0;
+                gantrySweepPhase = 0;
+                syncGantryControls();
+                saveGantry();
+            });
+            syncGantryControls();
+
+            // Balayage continu de gauche à droite des fentes de lâcher (actif par défaut)
+            const gantrySweep = { on: true, speed: 1 };
+            try {
+                const savedSweep = JSON.parse(localStorage.getItem('astra-push-gantry-sweep') || '{}');
+                if (typeof savedSweep.on === 'boolean') gantrySweep.on = savedSweep.on;
+                const savedSpeed = Number(savedSweep.speed);
+                if (savedSpeed >= .25 && savedSpeed <= 3) gantrySweep.speed = savedSpeed;
+            } catch (error) { /* réglage illisible */ }
+            let gantrySweepPhase = 0;
+            const sweepButton = document.getElementById('gantry-sweep-button');
+            const sweepSpeedInput = document.getElementById('gantry-sweep-speed');
+            const sweepSpeedOutput = document.getElementById('gantry-sweep-speed-out');
+            function syncSweepControls() {
+                sweepButton.textContent = 'Balayage des fentes : ' + (gantrySweep.on ? 'ON' : 'OFF');
+                sweepButton.setAttribute('aria-pressed', String(gantrySweep.on));
+                sweepSpeedInput.value = gantrySweep.speed;
+                sweepSpeedOutput.textContent = gantrySweep.speed + '×';
+                gantryInputs.x.disabled = gantrySweep.on; // le curseur gauche/droite suit la barre pendant le balayage
+            }
+            function saveSweep() {
+                try { localStorage.setItem('astra-push-gantry-sweep', JSON.stringify(gantrySweep)); } catch (error) { /* stockage indisponible */ }
+            }
+            sweepButton.addEventListener('click', () => {
+                gantrySweep.on = !gantrySweep.on;
+                if (gantrySweep.on) gantrySweepPhase = Math.asin(Math.min(1, Math.max(-1, gantryOffset.x / gantryLimits.x[1]))); // reprend depuis la position actuelle
+                syncSweepControls();
+                saveSweep();
+            });
+            sweepSpeedInput.addEventListener('input', () => {
+                gantrySweep.speed = Number(sweepSpeedInput.value) || 1;
+                syncSweepControls();
+                saveSweep();
+            });
+            syncSweepControls();
+
+            // Pièce toujours à plat : seule la rotation autour de l'axe vertical est conservée
+            const flatAxisY = new CANNON.Vec3(0, 1, 0);
+            function flattenCoin(coin) {
+                if (!coin.layFlat) return;
+                const q = coin.body.quaternion;
+                const yaw = Math.atan2(2 * (q.w * q.y - q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
+                q.setFromAxisAngle(flatAxisY, yaw);
+                const w = coin.body.angularVelocity;
+                w.x = 0; w.z = 0;
+                if (w.y > 6) w.y = 6; else if (w.y < -6) w.y = -6;
+            }
+
+            // Anti-chevauchement : deux pièces ne peuvent jamais s'interpénétrer (plus de pièces « fantômes » collées l'une dans l'autre)
+            function separateOverlappingCoins() {
+                const diameter = coinPhysRadius * 2 * .985;
+                const thickness = coinPhysThickness;
+                const maxPush = .12;
+                const list = [];
+                for (const coin of coins) if (!coin.isBonusHammer && !coin.collected) list.push(coin.body);
+                for (let pass = 0; pass < 2; pass++) {
+                    for (let i = 0; i < list.length; i++) {
+                        const a = list[i], ap = a.position;
+                        for (let j = i + 1; j < list.length; j++) {
+                            const b = list[j], bp = b.position;
+                            const dy = bp.y - ap.y;
+                            const absDy = dy < 0 ? -dy : dy;
+                            if (absDy >= thickness - .02) continue;
+                            const dx = bp.x - ap.x;
+                            if (dx >= diameter || dx <= -diameter) continue;
+                            const dz = bp.z - ap.z;
+                            if (dz >= diameter || dz <= -diameter) continue;
+                            const dist2 = dx * dx + dz * dz;
+                            if (dist2 >= diameter * diameter) continue;
+                            const dist = Math.sqrt(dist2);
+                            const overlapXZ = diameter - dist;
+                            const overlapY = thickness - absDy;
+                            if (overlapY <= overlapXZ) {
+                                // Séparation verticale : on remonte seulement la pièce du dessus (jamais vers le plateau)
+                                const push = Math.min(overlapY, maxPush);
+                                const upper = dy >= 0 ? b : a;
+                                upper.position.y += push;
+                                if (upper.velocity.y < 0) upper.velocity.y = 0;
+                                a.wakeUp(); b.wakeUp();
+                            } else if (overlapXZ > .03) {
+                                const push = Math.min(overlapXZ, maxPush) / 2;
+                                const nx = dist > 1e-4 ? dx / dist : 1;
+                                const nz = dist > 1e-4 ? dz / dist : 0;
+                                ap.x -= nx * push; ap.z -= nz * push;
+                                bp.x += nx * push; bp.z += nz * push;
+                                a.wakeUp(); b.wakeUp();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Garde-fou : un corps au-dessus du plateau ne peut jamais descendre sous sa surface (pas de pièce « à moitié dans la table »)
+            function keepAboveTable(body) {
+                const p = body.position;
+                if (p.z <= rearEdgeZ || p.z >= flatPlateEndZ || Math.abs(p.x) >= 3.85 * tableWidthScale - .1) return;
+                body.computeAABB();
+                const sink = plateTopY - body.aabb.lowerBound.y;
+                if (sink > .02) {
+                    p.y += sink;
+                    if (body.velocity.y < 0) body.velocity.y = 0;
+                    body.wakeUp();
+                }
+            }
+
+            // Garde-fou : un corps qui se retrouve derrière le mur arrière est replacé devant (plus de pièces « fantômes »)
+            function keepInFrontOfRearWall(body) {
+                const p = body.position;
+                if (p.z <= rearEdgeZ - .3 || p.y > pusherBackstopTopY || Math.abs(p.x) >= 3.85 * tableWidthScale) return;
+                body.computeAABB();
+                const overlap = rearWallFrontZ - body.aabb.lowerBound.z;
+                if (overlap > 0) {
+                    p.z += overlap;
+                    if (body.velocity.z < 0) body.velocity.z = 0;
+                    body.wakeUp();
+                }
+            }
+
+            // Garde-fou latéral : une pièce reste toujours entre les deux murs latéraux
+            function keepBetweenSideWalls(body) {
+                const p = body.position;
+                if (p.z <= rearEdgeZ || p.z >= sideWallEndZ || p.y > sideWallTopY + 1) return;
+                const innerX = 3.95 * tableWidthScale - .12 * tableWidthScale;
+                body.computeAABB();
+                if (body.aabb.upperBound.x > innerX) { p.x -= body.aabb.upperBound.x - innerX; if (body.velocity.x > 0) body.velocity.x = 0; body.wakeUp(); }
+                else if (body.aabb.lowerBound.x < -innerX) { p.x += -innerX - body.aabb.lowerBound.x; if (body.velocity.x < 0) body.velocity.x = 0; body.wakeUp(); }
+            }
+
+            // ===== Embellissements : reflets, étincelles, poussière lumineuse, éclats sur les pièces, lumières dynamiques =====
+            const gloss = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({
+                map: canvasTexture(512, 512, (ctx, width, height) => {
+                    const gradient = ctx.createRadialGradient(width * .5, height * .42, 0, width * .5, height * .5, width * .62);
+                    gradient.addColorStop(0, 'rgba(255,245,225,.9)');
+                    gradient.addColorStop(.45, 'rgba(255,230,200,.25)');
+                    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, width, height);
+                }),
+                transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+            gloss.rotation.x = -Math.PI / 2;
+            gloss.position.set(0, plateTopY + .011, (plateStartZ + flatPlateEndZ) / 2);
+            playfield.add(gloss);
+
+            const sheenTexture = canvasTexture(512, 512, (ctx, width, height) => {
+                const gradient = ctx.createLinearGradient(0, 0, width, height * .35);
+                gradient.addColorStop(0, 'rgba(255,255,255,0)');
+                gradient.addColorStop(.4, 'rgba(255,255,255,0)');
+                gradient.addColorStop(.5, 'rgba(255,255,255,.9)');
+                gradient.addColorStop(.6, 'rgba(255,255,255,0)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+            });
+            sheenTexture.wrapS = sheenTexture.wrapT = THREE.RepeatWrapping;
+            sheenTexture.repeat.set(2.2, 1.3);
+            const sheen = new THREE.Mesh(new THREE.PlaneGeometry(7.7, flatPlateLength), new THREE.MeshBasicMaterial({
+                map: sheenTexture, transparent: true, opacity: .13, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+            sheen.rotation.x = -Math.PI / 2;
+            sheen.position.set(0, plateTopY + .012, (plateStartZ + flatPlateEndZ) / 2);
+            playfield.add(sheen);
+
+            const pusherLight = new THREE.PointLight('#ffb070', 1.5, 28, 1.5);
+            pusherLight.position.set(0, plateTopY + 3.2, 0);
+            scene.add(pusherLight);
+
+            const sparkTexture = canvasTexture(64, 64, (ctx, width, height) => {
+                const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+                gradient.addColorStop(0, 'rgba(255,255,255,1)');
+                gradient.addColorStop(.3, 'rgba(255,255,255,.6)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+            });
+            const starTexture = canvasTexture(128, 128, (ctx, width, height) => {
+                ctx.translate(64, 64);
+                const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, 40);
+                halo.addColorStop(0, 'rgba(255,255,255,.9)');
+                halo.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = halo;
+                ctx.fillRect(-64, -64, 128, 128);
+                ctx.fillStyle = '#ffffff';
+                for (const angle of [0, Math.PI / 2]) {
+                    ctx.save();
+                    ctx.rotate(angle);
+                    ctx.beginPath();
+                    ctx.moveTo(-62, 0);
+                    ctx.quadraticCurveTo(0, -5, 62, 0);
+                    ctx.quadraticCurveTo(0, 5, -62, 0);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            });
+
+            const SPARK_MAX = 600;
+            const sparkPositions = new Float32Array(SPARK_MAX * 3).fill(-999);
+            const sparkColors = new Float32Array(SPARK_MAX * 3);
+            const sparkBase = new Float32Array(SPARK_MAX * 3);
+            const sparkVelocity = new Float32Array(SPARK_MAX * 3);
+            const sparkLife = new Float32Array(SPARK_MAX);
+            const sparkLifeMax = new Float32Array(SPARK_MAX);
+            const sparkGeometry = new THREE.BufferGeometry();
+            sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+            sparkGeometry.setAttribute('color', new THREE.BufferAttribute(sparkColors, 3));
+            const sparkPoints = new THREE.Points(sparkGeometry, new THREE.PointsMaterial({
+                size: .5, map: sparkTexture, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+            }));
+            sparkPoints.frustumCulled = false;
+            scene.add(sparkPoints);
+            let sparkCursor = 0;
+            const sparkTint = new THREE.Color();
+            function emitSparks(x, y, z, color, count, speed = 4, up = 3) {
+                sparkTint.set(color);
+                for (let i = 0; i < count; i++) {
+                    const k = sparkCursor;
+                    sparkCursor = (sparkCursor + 1) % SPARK_MAX;
+                    const angle = Math.random() * Math.PI * 2, radius = Math.random();
+                    sparkPositions[k * 3] = x; sparkPositions[k * 3 + 1] = y; sparkPositions[k * 3 + 2] = z;
+                    sparkVelocity[k * 3] = Math.cos(angle) * speed * radius;
+                    sparkVelocity[k * 3 + 1] = up * (.4 + Math.random());
+                    sparkVelocity[k * 3 + 2] = Math.sin(angle) * speed * radius;
+                    sparkLife[k] = sparkLifeMax[k] = .5 + Math.random() * .7;
+                    sparkBase[k * 3] = sparkTint.r; sparkBase[k * 3 + 1] = sparkTint.g; sparkBase[k * 3 + 2] = sparkTint.b;
+                }
+            }
+            function updateSparks(delta) {
+                for (let k = 0; k < SPARK_MAX; k++) {
+                    if (sparkLife[k] <= 0) continue;
+                    sparkLife[k] -= delta;
+                    if (sparkLife[k] <= 0) {
+                        sparkPositions[k * 3 + 1] = -999;
+                        sparkColors[k * 3] = sparkColors[k * 3 + 1] = sparkColors[k * 3 + 2] = 0;
+                        continue;
+                    }
+                    sparkVelocity[k * 3 + 1] -= 11 * delta;
+                    sparkPositions[k * 3] += sparkVelocity[k * 3] * delta;
+                    sparkPositions[k * 3 + 1] += sparkVelocity[k * 3 + 1] * delta;
+                    sparkPositions[k * 3 + 2] += sparkVelocity[k * 3 + 2] * delta;
+                    const fade = sparkLife[k] / sparkLifeMax[k];
+                    sparkColors[k * 3] = sparkBase[k * 3] * fade;
+                    sparkColors[k * 3 + 1] = sparkBase[k * 3 + 1] * fade;
+                    sparkColors[k * 3 + 2] = sparkBase[k * 3 + 2] * fade;
+                }
+                sparkGeometry.attributes.position.needsUpdate = true;
+                sparkGeometry.attributes.color.needsUpdate = true;
+            }
+
+            const MOTE_COUNT = 160;
+            const motePositions = new Float32Array(MOTE_COUNT * 3);
+            const motePhase = new Float32Array(MOTE_COUNT);
+            for (let i = 0; i < MOTE_COUNT; i++) {
+                motePositions[i * 3] = (Math.random() - .5) * 30;
+                motePositions[i * 3 + 1] = 1.8 + Math.random() * 7.5;
+                motePositions[i * 3 + 2] = -3 + Math.random() * 15;
+                motePhase[i] = Math.random() * Math.PI * 2;
+            }
+            const moteGeometry = new THREE.BufferGeometry();
+            moteGeometry.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
+            const motes = new THREE.Points(moteGeometry, new THREE.PointsMaterial({
+                size: .2, map: sparkTexture, color: '#ffe9c4', transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+            }));
+            motes.frustumCulled = false;
+            scene.add(motes);
+
+            const glints = Array.from({ length: 7 }, () => {
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTexture, color: '#fff3c0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+                sprite.visible = false;
+                scene.add(sprite);
+                return { sprite, coin: null, t: 1, duration: .6 };
+            });
+            let glintTimer = 0;
+            let celebration = 0;
+            function celebrate() {
+                celebration = 1;
+                for (let i = 0; i < 12; i++) {
+                    emitSparks((Math.random() - .5) * 28, beamY - .5, gantryZ + gantryOffset.z, i % 2 ? '#ffd85e' : '#ff56b7', 26, 5, 4);
+                }
+            }
+            function enhanceUpdate(delta, elapsed, pusherZ) {
+                updateSparks(delta);
+                // Poussière lumineuse qui flotte doucement dans la machine
+                for (let i = 0; i < MOTE_COUNT; i++) {
+                    motePositions[i * 3] += Math.sin(elapsed * .3 + motePhase[i]) * .25 * delta;
+                    motePositions[i * 3 + 1] += (.12 + .08 * Math.sin(elapsed * .7 + motePhase[i])) * delta;
+                    if (motePositions[i * 3 + 1] > 9.3) motePositions[i * 3 + 1] = 1.8;
+                }
+                moteGeometry.attributes.position.needsUpdate = true;
+                // Éclats qui scintillent sur les pièces posées
+                glintTimer -= delta;
+                if (glintTimer <= 0 && coins.length) {
+                    glintTimer = .12 + Math.random() * .25;
+                    const free = glints.find(glint => glint.t >= glint.duration);
+                    const coin = coins[Math.floor(Math.random() * coins.length)];
+                    if (free && coin && !coin.isBonusHammer && coin.body.position.y < plateTopY + 1.6) {
+                        free.coin = coin; free.t = 0; free.duration = .5 + Math.random() * .4;
+                    }
+                }
+                for (const glint of glints) {
+                    if (glint.t >= glint.duration) { glint.sprite.visible = false; continue; }
+                    glint.t += delta;
+                    const k = glint.t / glint.duration;
+                    if (k >= 1 || !glint.coin) { glint.sprite.visible = false; continue; }
+                    const p = glint.coin.body.position;
+                    const size = Math.sin(k * Math.PI) * 1.7;
+                    glint.sprite.position.set(p.x + (k - .5) * .5, p.y + .32, p.z);
+                    glint.sprite.scale.set(size, size, 1);
+                    glint.sprite.material.rotation = k * 1.4;
+                    glint.sprite.visible = true;
+                }
+                // Reflets qui glissent sur le plateau + lumière chaude qui suit le poussoir
+                sheenTexture.offset.set((elapsed * .018) % 1, (-elapsed * .035) % 1);
+                pusherLight.position.z = pusherZ + 2.4;
+                pusherLight.intensity = 1.4 + .25 * Math.sin(elapsed * 2.3);
+                // Fête : flash des néons quand une carte récompense est gagnée
+                celebration = Math.max(0, celebration - delta * .9);
+                sideGlowCyan.intensity = 2.2 + celebration * 4;
+                sideGlowPink.intensity = 2.2 + celebration * 4;
+                renderer.toneMappingExposure = 1.12 + celebration * .3;
+            }
+
             function animate() {
                 requestAnimationFrame(animate);
                 const delta = Math.min(clock.getDelta(), .04);
                 elapsed += delta;
+                if (gantrySweep.on) {
+                    gantrySweepPhase += delta * gantrySweep.speed * (Math.PI * 2 / 10); // un aller-retour complet en 10 s à 1×
+                    gantryOffset.x = gantryLimits.x[1] * Math.sin(gantrySweepPhase);
+                    syncGantryControls();
+                }
                 boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, delta * 6);
                 pusherAngle += delta * 2.3 * pusherSettings.speed * (1 + .6 * boostLevel);
                 accumulator += delta;
                 const phase = (Math.cos(pusherAngle) + 1) * .5;
-                const pusherZ = pusherStart + phase * pusherTravel * pusherSettings.reach * (1 + .35 * boostLevel);
-                pusherBody.position.z = pusherZ;
-                pusherBody.velocity.z = (pusherZ - previousPusherZ) / Math.max(delta, .001);
-                pusherMesh.position.z = pusherZ;
-                previousPusherZ = pusherZ;
-                while (accumulator >= fixedStep) {
-                    world.step(fixedStep);
-                    accumulator -= fixedStep;
+                const pusherZ = Math.min(pusherEndZ, pusherStart + phase * pusherStroke * pusherSettings.reach * (1 + .35 * boostLevel));
+                const hue = elapsed * .18;
+                mats.neonPink.color.setHSL(hue % 1, 1, .55);
+                mats.neonCyan.color.setHSL((hue + .5) % 1, 1, .55);
+                for (const bulb of neonBulbs) {
+                    bulb.material.color.setHSL((hue * 3 + bulb.index * .137) % 1, 1, .55);
+                    bulb.glow.material.color.copy(bulb.material.color);
+                    const pulse = 1.65 + .3 * Math.sin(elapsed * 3.2 + bulb.index * .9);
+                    bulb.glow.scale.set(pulse, pulse, 1);
                 }
+                sideGlowCyan.color.setHSL((hue + .5) % 1, 1, .55);
+                sideGlowPink.color.setHSL(hue % 1, 1, .55);
+                enhanceUpdate(delta, elapsed, pusherZ);
+                pusherMesh.position.z = pusherZ;
+                const stepCount = Math.min(10, Math.floor(accumulator / fixedStep));
+                if (stepCount > 0) {
+                    // Le poussoir avance un peu à chaque sous-pas (déplacement progressif, pas de saut brutal qui écrase les pièces)
+                    const stepStartZ = previousPusherZ;
+                    const pusherVelocityZ = (pusherZ - stepStartZ) / (stepCount * fixedStep);
+                    for (let step = 0; step < stepCount; step++) {
+                        pusherBody.position.z = stepStartZ + (pusherZ - stepStartZ) * step / stepCount;
+                        pusherBody.velocity.z = pusherVelocityZ;
+                        world.step(fixedStep);
+                    }
+                    accumulator -= stepCount * fixedStep;
+                    if (accumulator > fixedStep * 10) accumulator = 0;
+                    previousPusherZ = pusherZ;
+                }
+                pusherBody.position.z = pusherZ;
+                separateOverlappingCoins();
                 for (let index = coins.length - 1; index >= 0; index--) {
                     const coin = coins[index];
-                    if (coin.layFlat) {
-                        const yaw = Math.atan2(
-                            2 * (coin.body.quaternion.w * coin.body.quaternion.y + coin.body.quaternion.x * coin.body.quaternion.z),
-                            1 - 2 * (coin.body.quaternion.y ** 2 + coin.body.quaternion.x ** 2)
-                        );
-                        coin.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw);
-                        coin.body.angularVelocity.x = 0;
-                        coin.body.angularVelocity.z = 0;
-                    }
+                    flattenCoin(coin);
+                    if (coin.body.velocity.y > 4) coin.body.velocity.y = 4;
                     if (coin.body.position.y <= plateTopY + 1) {
                         const minimumCoinZ = pusherBody.position.z + coinPusherClearance;
                         if (coin.body.position.z < minimumCoinZ) {
@@ -1798,6 +2463,9 @@
                             coin.body.wakeUp();
                         }
                     }
+                    keepAboveTable(coin.body);
+                    keepInFrontOfRearWall(coin.body);
+                    keepBetweenSideWalls(coin.body);
                     coin.mesh.position.copy(coin.body.position);
                     coin.mesh.quaternion.copy(coin.body.quaternion);
                     if (coin.collected) {
@@ -1815,6 +2483,8 @@
                     const rewardCard = fallingRewardCards[index];
                     // La carte ne peut avancer que vers le joueur : pas de dérive latérale ni de rotation en lacet/roulis.
                     rewardCard.body.position.x = rewardCard.body.fixedRewardX;
+                    keepAboveTable(rewardCard.body);
+                    keepInFrontOfRearWall(rewardCard.body);
                     rewardCard.body.velocity.x = 0;
                     rewardCard.body.angularVelocity.y = 0;
                     rewardCard.body.angularVelocity.z = 0;
