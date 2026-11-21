@@ -294,7 +294,8 @@ export default class {
                     if (random < 1 / 5 && hasPlayer) {
                         this.#pendingClawPrizePlayers.push({
                             username: player.username,
-                            avatarUrl: player.avatarUrl || ""
+                            avatarUrl: player.avatarUrl || "",
+                            avatarDataUri: player.avatarDataUri || ""
                         });
                         this.#excavator.pick();
                     } else {
@@ -756,10 +757,12 @@ export default class {
                 player &&
                 typeof player.username === "string" &&
                 /^[a-zA-Z0-9._]{1,32}$/.test(player.username) &&
-                (typeof player.avatarUrl === "string" || player.avatarUrl === undefined)
+                (typeof player.avatarUrl === "string" || player.avatarUrl === undefined) &&
+                (typeof player.avatarDataUri === "string" || player.avatarDataUri === undefined)
             ).map(player => ({
                 username: player.username,
-                avatarUrl: player.avatarUrl || ""
+                avatarUrl: player.avatarUrl || "",
+                avatarDataUri: player.avatarDataUri || ""
             }))
             : [];
         this.#sensorColliders = new Map();
@@ -880,7 +883,11 @@ export default class {
             position: getPrizeDropPosition(position || this.#pusher.deliveryPosition, Cards.getSize(), {
                 height: manual ? MANUAL_PRIZE_DROP_HEIGHT : 0
             }),
-            prize: { username, amount: selected.stars, avatarUrl: player.avatarUrl || "" },
+            prize: {
+                username,
+                amount: selected.stars,
+                avatarUrl: player.avatarUrl || player.avatarDataUri || ""
+            },
             onAvatarError: reportAvatarError
         });
         if (!player.avatarUrl && !preview) {
@@ -890,7 +897,7 @@ export default class {
         if (usesStock) selected.count--;
         this.#prizeAssignments.set(cardObject, {
             username,
-            avatarUrl: player.avatarUrl || "",
+            avatarUrl: player.avatarUrl || player.avatarDataUri || "",
             amount: selected.stars,
             kind: "carte",
             usesStock,
@@ -928,7 +935,7 @@ export default class {
             this.#pendingIngots.shift();
             this.#prizeAssignments.set(ingot, {
                 username: player.username,
-                avatarUrl: player.avatarUrl,
+                avatarUrl: player.avatarUrl || player.avatarDataUri || "",
                 amount: INGOT_STARS,
                 kind: "lingot",
                 manual: player.manual === true,

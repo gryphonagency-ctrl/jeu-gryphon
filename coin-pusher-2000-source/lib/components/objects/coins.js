@@ -119,6 +119,7 @@ export default class {
                     instance.used = true;
                     instance.username = batch.username || null;
                     instance.avatarUrl = batch.avatarUrl || "";
+                    instance.avatarDataUri = batch.avatarDataUri || "";
                     instance.avatarKey = batch.avatarKey || null;
                     instance.avatarTile = instance.avatarKey
                         ? this.#avatarTiles.get(instance.avatarKey) ?? null
@@ -179,6 +180,7 @@ export default class {
         instance.used = true;
         instance.username = null;
         instance.avatarUrl = "";
+        instance.avatarDataUri = "";
         instance.avatarKey = null;
         instance.avatarTile = null;
         this.#releaseAvatarIfUnused(previousAvatarKey);
@@ -208,7 +210,12 @@ export default class {
             slot: null,
             avatarKey: normalizedAvatarKey,
             username: String(username || "").trim().replace(/^@/, "").slice(0, 32),
-            avatarUrl: String(avatarUrl || "").slice(0, 2000)
+            avatarUrl: String(avatarUrl || "").slice(0, 2000),
+            avatarDataUri: typeof avatarDataUri === "string" &&
+                avatarDataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
+                /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(avatarDataUri)
+                ? avatarDataUri
+                : ""
         });
         if (normalizedAvatarKey && (avatarDataUri || avatarUrl)) {
             this.setAvatar({ key: normalizedAvatarKey, dataUri: avatarDataUri, avatarUrl });
@@ -295,6 +302,7 @@ export default class {
         instance.used = false;
         instance.username = null;
         instance.avatarUrl = "";
+        instance.avatarDataUri = "";
         instance.avatarKey = null;
         instance.avatarTile = null;
         instance.body.setEnabled(false);
@@ -319,6 +327,7 @@ export default class {
                 used: instance.used,
                 username: instance.username || null,
                 avatarUrl: instance.avatarUrl || "",
+                avatarDataUri: instance.avatarDataUri || "",
                 avatarKey: instance.avatarKey,
                 bodyHandle: this.#instances[instance.index].body.handle,
                 pendingImpulse: instance.pendingImpulse ? instance.pendingImpulse.toArray() : undefined
@@ -336,6 +345,7 @@ export default class {
                 used: instance.used,
                 username: typeof instance.username === "string" ? instance.username : null,
                 avatarUrl: typeof instance.avatarUrl === "string" ? instance.avatarUrl : "",
+                avatarDataUri: typeof instance.avatarDataUri === "string" ? instance.avatarDataUri : "",
                 avatarKey: typeof instance.avatarKey === "string" ? instance.avatarKey : null,
                 avatarTile: this.#avatarTiles.get(instance.avatarKey) ?? null,
                 body,

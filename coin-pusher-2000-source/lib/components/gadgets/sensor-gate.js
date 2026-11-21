@@ -220,7 +220,11 @@ function onCoinIntersect({ sensor, userData, onFallenCoin, Coins }) {
                 const letter = sensor.letters[indexLetter];
                 if (sensor.state === SENSOR_STATES.IDLE && letter.state === LETTER_STATES.OFF) {
                     letter.pendingPlayer = coin.username
-                        ? { username: coin.username, avatarUrl: coin.avatarUrl || "" }
+                        ? {
+                            username: coin.username,
+                            avatarUrl: coin.avatarUrl || "",
+                            avatarDataUri: coin.avatarDataUri || ""
+                        }
                         : null;
                     letter.state = LETTER_STATES.ACTIVATING;
                 }
