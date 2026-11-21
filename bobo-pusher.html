@@ -1369,6 +1369,7 @@
     const MAX_ACTIVE_BOARD_COINS = Infinity; // plus de pause : la file tombe sans s'arrêter
     const RESUME_ACTIVE_BOARD_COINS = 178;
     const GIFT_DROP_INTERVAL_MS = 80;
+    const MULTIPLAYER_DROP_BATCH_SIZE = 3;
     const CARD_REWARD_TYPES = [
       { id: 'star-1', stars: 1, initial: 100 },
       { id: 'star-2', stars: 2, initial: 100 },
@@ -1538,8 +1539,27 @@
       drawCardFace(ctx, owner, stars);
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = 4;
-      const side = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 });
-      const face = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2 });
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const side = new THREE.MeshStandardMaterial({
+        color: 0xeab308,
+        roughness: 0.3,
+        transparent: false,
+        opacity: 1,
+        depthWrite: true,
+        depthTest: true,
+        alphaTest: 0,
+        blending: THREE.NormalBlending
+      });
+      const face = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.2,
+        transparent: false,
+        opacity: 1,
+        depthWrite: true,
+        depthTest: true,
+        alphaTest: 0,
+        blending: THREE.NormalBlending
+      });
       const materials = [side, face, face, side, side, side];
       const record = { key, owner, stars, avatarUrl: owner && owner.avatarUrl || '', canvas, context: ctx, texture, materials, users: 0 };
       cardMaterialCache.set(key, record);
@@ -1712,6 +1732,18 @@
       const mesh = new THREE.Mesh(geometry, materials);
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
+      if (isCard) {
+        mesh.renderOrder = 20;
+        mesh.material.forEach(material => {
+          material.transparent = false;
+          material.opacity = 1;
+          material.depthWrite = true;
+          material.depthTest = true;
+          material.alphaTest = 0;
+          material.blending = THREE.NormalBlending;
+          material.needsUpdate = true;
+        });
+      }
       const uprightOnEdge = isFreshDrop && !isCard && !isIngot;
       if (uprightOnEdge) mesh.rotation.x = Math.PI / 2;
       mesh.castShadow = true;
@@ -1765,6 +1797,12 @@
       if (coin.isIngot || coin.edgeTipping) return COIN_HEIGHT * 0.5;
       return Math.abs(Math.sin(coin.rotX)) * COIN_RADIUS +
         Math.abs(Math.cos(coin.rotX)) * COIN_HEIGHT * 0.5;
+    }
+
+    function coinCollisionRadius(coin) {
+      if (coin.isCard) return 0.84;
+      if (coin.isIngot) return 0.39;
+      return COIN_RADIUS;
     }
 
     let targetDropX = 0;
@@ -1933,6 +1971,7 @@
     let pendingGiftDropCount = 0;
     let giftDropTimer = 0;
     let giftDropLane = 0;
+    let giftDropRoundIndex = 0;
     let giftQueuePausedForCrowding = false;
     let setupPersistTimer = 0;
     const pusherSpeedInput = document.getElementById('pusher-speed');
@@ -2209,6 +2248,38 @@
     function nextRunnableGiftJobIndex() {
       return giftDropQueue.findIndex(jobHasStock);
     }
+    function nextParallelGiftJobs(limit = MULTIPLAYER_DROP_BATCH_SIZE) {
+      if (!giftDropQueue.length || limit < 1) return [];
+      const selected = [];
+      const selectedIndexes = new Set();
+      const selectedPlayerKeys = new Set();
+      const runnableIndexes = [];
+      for (let offset = 0; offset < giftDropQueue.length; offset++) {
+        const index = (giftDropRoundIndex + offset) % giftDropQueue.length;
+        if (jobHasStock(giftDropQueue[index])) runnableIndexes.push(index);
+      }
+      for (const index of runnableIndexes) {
+        if (selected.length >= limit) break;
+        const playerKey = getGiftQueuePlayerKey(giftDropQueue[index].player) || '__sans-pseudo';
+        if (selectedPlayerKeys.has(playerKey)) continue;
+        selected.push(giftDropQueue[index]);
+        selectedIndexes.add(index);
+        selectedPlayerKeys.add(playerKey);
+      }
+      for (const index of runnableIndexes) {
+        if (selected.length >= limit) break;
+        if (selectedIndexes.has(index)) continue;
+        selected.push(giftDropQueue[index]);
+        selectedIndexes.add(index);
+      }
+      if (selectedIndexes.size) {
+        giftDropRoundIndex = (giftDropRoundIndex + selectedIndexes.size) % giftDropQueue.length;
+      }
+      return selected.map(job => ({
+        job,
+        index: giftDropQueue.indexOf(job)
+      })).filter(entry => entry.index >= 0);
+    }
     function activeBoardCoinCount() {
       return coins.reduce((count, coin) => count + (coin.fallingOverEdge ? 0 : 1), 0);
     }
@@ -2323,7 +2394,7 @@
         : pausedForCrowding
           ? ' · pause : plateau chargé'
           : '';
-      giftQueueStatus.textContent = `File : ${pendingGiftDropCount.toLocaleString('fr-FR')} / ${MAX_PENDING_GIFT_DROPS.toLocaleString('fr-FR')} · plateau : ${activeCount}${pauseReason}.`;
+      giftQueueStatus.textContent = `File : ${pendingGiftDropCount.toLocaleString('fr-FR')} / ${MAX_PENDING_GIFT_DROPS.toLocaleString('fr-FR')} · plateau : ${activeCount} · jusqu'à ${MULTIPLAYER_DROP_BATCH_SIZE} joueurs simultanés${pauseReason}.`;
       giftQueueCount.textContent = pendingGiftDropCount.toLocaleString('fr-FR');
       giftQueueButton.setAttribute('aria-label', `File d’attente : ${pendingGiftDropCount.toLocaleString('fr-FR')} jetons en attente`);
       updateGiftQueuePlayers();
@@ -2475,9 +2546,9 @@
         return;
       }
       giftQueuePausedForCrowding = false;
-      const index = nextRunnableGiftJobIndex();
-      if (index >= 0) {
-        const job = giftDropQueue[index];
+      const parallelJobs = nextParallelGiftJobs();
+      parallelJobs.sort((left, right) => right.index - left.index);
+      for (const { job, index } of parallelJobs) {
         const dropped = dropCoinAt(coinDropLanes[giftDropLane++ % coinDropLanes.length], job.forceCard, job.player, job.isSimulation, job.forceIngot, job.cardType);
         if (dropped) {
           if (job.cardType) job.cardType.queued = Math.max(0, job.cardType.queued - 1);
@@ -3460,7 +3531,6 @@
         cells.set(key, cell);
       }
 
-      const minDistSq = Math.pow(COIN_RADIUS * 2, 2);
       const pushed = new Set(candidates.filter(coin =>
         coin.z + COIN_RADIUS >= previousFrontZ &&
         coin.z - COIN_RADIUS <= currentFrontZ
@@ -3479,7 +3549,8 @@
                   Math.abs(other.y - coin.y) >= COIN_HEIGHT * 1.6) continue;
               const dx = other.x - coin.x;
               const dz = other.z - coin.z;
-              if (dx * dx + dz * dz >= minDistSq) continue;
+              const collisionRadius = coinCollisionRadius(coin) + coinCollisionRadius(other);
+              if (dx * dx + dz * dz >= collisionRadius * collisionRadius) continue;
               pushed.add(other);
               queue.push(other);
             }
@@ -3631,8 +3702,6 @@
         }
       }
 
-      const minDist = COIN_RADIUS * 2;
-      const minDistSq = minDist * minDist;
       const chaoticUpperStackCoins = new Set();
 
       const CELL = 0.9;
@@ -3667,8 +3736,9 @@
             const sumHalf = aHalfHeight + bHalfHeight;
             const dx = b.x - a.x;
             const dz = b.z - a.z;
+            const collisionRadius = coinCollisionRadius(a) + coinCollisionRadius(b);
             const distSq = dx * dx + dz * dz;
-            if (distSq >= minDistSq) continue;
+            if (distSq >= collisionRadius * collisionRadius) continue;
 
             // Quelle pièce est « au-dessus » ? On regarde aussi la frame précédente :
             // une pièce qui tombe vite peut traverser l'autre en un seul pas.
@@ -3753,7 +3823,7 @@
               // sinon : sur le bord → on retombe dans la séparation latérale
             }
 
-            const overlap = Math.max(0, minDist - dist - 0.004) * 0.5;
+            const overlap = Math.max(0, collisionRadius - dist - 0.004) * 0.5;
             const nx = dx / dist;
             const nz = dz / dist;
 
