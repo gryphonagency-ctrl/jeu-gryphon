@@ -667,122 +667,262 @@
         context.fillRect(x + 3, y + height + 3, width - 6, 8);
         context.fillStyle = '#383b32';
         context.fillRect(x + 4, y + height + 11, width - 8, 3);
+        drawBuildingFinish(x, y, width, height, index);
       }
 
-      function drawWalker(x, time, groundY = 584, characterScale = 1) {
-        const stride = time * .012 * speed;
-        const swing = Math.sin(stride) * 7;
-        const counterSwing = Math.sin(stride + Math.PI) * 7;
-        const bob = Math.abs(Math.sin(stride)) * 1.6;
-        const footY = groundY + bob;
+      const TROUSERS = ['#202723', '#2f3d55', '#3a2f2a', '#4a4636', '#1f2024', '#2a3338'];
+      const smoothStep = (a, b, v) => {
+        const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+      };
+
+      function drawPerson(x, gy, s, lookIndex, o = {}) {
+        const look = WALKER_LOOKS[lookIndex % WALKER_LOOKS.length];
+        const pants = TROUSERS[lookIndex % TROUSERS.length];
+        const walk = o.walk === undefined ? 1 : o.walk;
+        const sit = o.sit || 0;
+        const phone = o.phone || 0;
+        const stride = o.stride || 0;
+        const breath = o.breath || 0;
+        const L = 15, T = 24;
+        const legAngles = ph => {
+          const tw = Math.sin(ph) * .5 * walk;
+          const sw = tw - (.12 + Math.max(0, -Math.sin(ph - 1.1)) * .75) * walk;
+          const ts = o.sitThigh === undefined ? 1.15 : o.sitThigh;
+          return [tw + (ts - tw) * sit, sw + (-.05 - sw) * sit];
+        };
+        const legs = [legAngles(stride), legAngles(stride + Math.PI)];
+        const reach = a => Math.cos(a[0]) * L + Math.cos(a[1]) * L;
+        const standHip = gy - Math.max(reach(legs[0]), reach(legs[1])) - 2.5;
+        const hy = standHip + ((gy - (o.seatHip || 22)) - standHip) * sit;
+        const hx = x;
+        const lean = o.lean === undefined ? .05 : o.lean;
+        const sx = hx + Math.sin(lean) * T;
+        const sy = hy - Math.cos(lean) * T + breath * .4;
+        const hdx = sx + Math.sin(lean) * 7 + 1.5;
+        const hdy = sy - Math.cos(lean) * 7 - 4 + (o.headDip || 0);
+        const at = (px, py, ang, len) => [px + Math.sin(ang) * len, py + Math.cos(ang) * len];
+        const line = (pts, w, c) => {
+          context.strokeStyle = c;
+          context.lineWidth = w;
+          context.beginPath();
+          pts.forEach((q, i) => (i ? context.lineTo(q[0], q[1]) : context.moveTo(q[0], q[1])));
+          context.stroke();
+        };
+        const legPts = a => {
+          const knee = at(hx, hy, a[0], L);
+          const ankle = at(knee[0], knee[1], a[1], L);
+          return [[hx, hy], knee, ankle];
+        };
+        const armPts = (ph, ph2, up = 0) => {
+          const ua0 = -Math.sin(ph) * .5 * walk + .08;
+          const fa0 = ua0 + (.2 + .3 * (1 + Math.sin(ph)) / 2) * walk;
+          let u = ua0 + (.25 - ua0) * sit;
+          let f = fa0 + (1.5 - fa0) * sit;
+          u += (.45 - u) * ph2;
+          f += (2.45 - f) * ph2;
+          u += (2.85 - u) * up;
+          f += (3.05 - f) * up;
+          const elbow = at(sx, sy + 2, u, 11);
+          const hand = at(elbow[0], elbow[1], f, 10);
+          return [[sx, sy + 2], elbow, hand];
+        };
 
         context.save();
-        context.translate(x, groundY);
-        context.scale(characterScale, characterScale);
-        context.translate(-x, -groundY);
-        context.fillStyle = '#111a18';
-        context.globalAlpha = .35;
-        context.beginPath();
-        context.ellipse(x, footY + 2, 12, 3.5, 0, 0, Math.PI * 2);
-        context.fill();
-        context.globalAlpha = 1;
-
+        context.translate(x, gy);
+        context.scale(s, s);
+        context.translate(-x, -gy);
         context.lineCap = 'round';
         context.lineJoin = 'round';
-        context.strokeStyle = '#202723';
-        context.lineWidth = 5;
+        if (o.shadow !== false) {
+          context.fillStyle = '#111a18';
+          context.globalAlpha = .35;
+          context.beginPath();
+          context.ellipse(x, gy + 2, 12, 3.5, 0, 0, Math.PI * 2);
+          context.ellipse(x - 17, gy + 2, 20, 2.4, 0, 0, Math.PI * 2);
+          context.fill();
+          context.globalAlpha = 1;
+        }
+        const far = legPts(legs[1]);
+        line(far, 5.2, pants);
+        line(far, 5.2, '#0a0f0e66');
+        const farFoot = far[2];
+        context.fillStyle = '#12171a';
         context.beginPath();
-        context.moveTo(x - 2, footY - 16);
-        context.lineTo(x - 4 + swing * .52, footY - 8);
-        context.lineTo(x - 5 + swing, footY);
-        context.moveTo(x + 2, footY - 16);
-        context.lineTo(x + 4 + counterSwing * .52, footY - 8);
-        context.lineTo(x + 5 + counterSwing, footY);
-        context.stroke();
+        context.ellipse(farFoot[0] + 3, farFoot[1] + 1.5, 6, 2.5, -legs[1][1] * .4, 0, Math.PI * 2);
+        context.fill();
+        const farArm = armPts(stride + Math.PI, 0);
+        line(farArm, 4, look[0]);
+        line(farArm, 4, '#0a0f0e55');
 
+        const jacket = context.createLinearGradient(hx - 8, sy, hx + 9, hy);
+        jacket.addColorStop(0, look[1]);
+        jacket.addColorStop(1, look[0]);
+        line([[hx, hy], [sx, sy]], 11.5, look[0]);
+        line([[hx + 1, hy - 1], [sx + 1, sy + 1]], 7.5, jacket);
+        line([[hx + Math.sin(lean) * 3 + 3.5, hy - 3], [sx + 3.5, sy + 3]], 1, '#ffd89a66');
+        line([[hx - 4, hy - 1.5], [hx + 5, hy - 1.5]], 1.4, '#0a0f0e88');
+        line([[hx + 1.5, hy - 4], [sx + 1.5, sy + 5]], .8, '#c9b98a66');
+        context.fillStyle = look[4];
+        context.beginPath();
+        context.roundRect(hx - 12, hy - 14, 9, 11, 2);
+        context.fill();
+        line([[sx + 1, sy + 1], [hx - 7, hy - 9]], 1.3, '#c9b98a88');
+
+        const near = legPts(legs[0]);
+        line(near, 5.8, pants);
+        line([[near[0][0] + 1, near[0][1] - 2], [near[1][0] + 1.5, near[1][1] - 2]], 1.1, '#ffffff22');
+        const nf = near[2];
         context.fillStyle = '#171d1a';
         context.beginPath();
-        context.ellipse(x - 6 + swing, footY, 5.5, 2.5, -.12, 0, Math.PI * 2);
-        context.ellipse(x + 4 + counterSwing, footY, 5.5, 2.5, .08, 0, Math.PI * 2);
+        context.ellipse(nf[0] + 3, nf[1] + 1.5, 6.5, 2.8, -legs[0][1] * .4, 0, Math.PI * 2);
         context.fill();
-        context.fillStyle = '#9b8261';
-        context.fillRect(x - 2, footY - 9, 3, 3);
-        context.fillRect(x + 5, footY - 9, 3, 3);
+        context.fillStyle = '#8d8872';
+        context.fillRect(nf[0] - 2, nf[1] + 3.6, 10, .9);
 
-        context.fillStyle = '#182321';
+        const nearArm = armPts(stride, phone, o.armUp || 0);
+        line(nearArm, 4.4, look[1]);
+        line([[nearArm[0][0], nearArm[0][1] - 1], [nearArm[1][0], nearArm[1][1] - 1]], 1, '#ffd89a55');
+        context.fillStyle = look[2];
         context.beginPath();
-        context.moveTo(x - 8, footY - 49);
-        context.quadraticCurveTo(x - 12, footY - 39, x - 7, footY - 20);
-        context.quadraticCurveTo(x, footY - 15, x + 8, footY - 20);
-        context.lineTo(x + 10, footY - 47);
-        context.quadraticCurveTo(x + 2, footY - 55, x - 8, footY - 49);
+        context.arc(nearArm[2][0], nearArm[2][1], 2.4, 0, Math.PI * 2);
         context.fill();
-        context.fillStyle = '#34423b';
+        if (phone > 0) {
+          context.save();
+          context.translate(nearArm[2][0] + 1.5, nearArm[2][1] - 2);
+          context.rotate(-.5);
+          context.fillStyle = '#15191a';
+          context.fillRect(-1.8, -4, 3.6, 7);
+          context.fillStyle = '#a8d4ff';
+          context.globalAlpha = phone;
+          context.fillRect(-1.2, -3.4, 2.4, 5.8);
+          context.restore();
+          drawGlow(hdx + 4, hdy + 3, 15, 15, '#9fcfff', .22 * phone);
+        }
+
+        line([[sx, sy], [hdx - 1, hdy + 4]], 3.4, look[2]);
+        context.fillStyle = look[3];
         context.beginPath();
-        context.moveTo(x - 5, footY - 47);
-        context.quadraticCurveTo(x - 8, footY - 39, x - 4, footY - 25);
-        context.lineTo(x + 4, footY - 24);
-        context.lineTo(x + 6, footY - 47);
-        context.quadraticCurveTo(x, footY - 51, x - 5, footY - 47);
+        context.ellipse(hdx - .8, hdy - 1.4, 5.7, 5.6, 0, 0, Math.PI * 2);
         context.fill();
-        context.strokeStyle = '#a88d69';
-        context.lineWidth = 1.5;
+        context.fillStyle = look[2];
         context.beginPath();
-        context.moveTo(x, footY - 47);
-        context.lineTo(x + 2, footY - 26);
+        context.ellipse(hdx + 1.2, hdy + .8, 4.6, 5.6, .05, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#00000022';
+        context.beginPath();
+        context.ellipse(hdx - .5, hdy + 1.6, 1.4, 2, 0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = look[2];
+        context.beginPath();
+        context.ellipse(hdx + 5.6, hdy + 1.2, 1.3, 1.6, 0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#1b1613';
+        context.beginPath();
+        context.arc(hdx + 3.3, hdy - .2, .75, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = look[3];
+        context.lineWidth = .8;
+        context.beginPath();
+        context.moveTo(hdx + 2, hdy - 1.8);
+        context.lineTo(hdx + 4.6, hdy - 1.6);
         context.stroke();
-
-        context.strokeStyle = '#26302b';
-        context.lineWidth = 4;
+        context.strokeStyle = '#6b3f33aa';
+        context.lineWidth = .7;
         context.beginPath();
-        context.moveTo(x - 7, footY - 44);
-        context.lineTo(x - 10 + counterSwing * .48, footY - 34);
-        context.lineTo(x - 8 + counterSwing, footY - 26);
-        context.moveTo(x + 6, footY - 44);
-        context.lineTo(x + 10 + swing * .48, footY - 35);
-        context.lineTo(x + 8 + swing, footY - 27);
+        context.moveTo(hdx + 3, hdy + 3.1);
+        context.lineTo(hdx + 4.6, hdy + 3);
         context.stroke();
-        context.fillStyle = '#b99b77';
-        context.beginPath();
-        context.arc(x - 8 + counterSwing, footY - 25, 2.5, 0, Math.PI * 2);
-        context.arc(x + 8 + swing, footY - 26, 2.5, 0, Math.PI * 2);
-        context.fill();
-
-        context.fillStyle = '#b98f70';
-        context.beginPath();
-        context.ellipse(x + 1, footY - 55, 5.5, 7, .05, 0, Math.PI * 2);
-        context.fill();
-        context.fillStyle = '#35332b';
-        context.beginPath();
-        context.moveTo(x - 5, footY - 58);
-        context.quadraticCurveTo(x - 2, footY - 67, x + 7, footY - 62);
-        context.lineTo(x + 6, footY - 58);
-        context.lineTo(x - 5, footY - 58);
-        context.fill();
-        context.fillStyle = '#e3bd89';
-        context.beginPath();
-        context.arc(x + 3, footY - 55, 1, 0, Math.PI * 2);
-        context.fill();
-
-        context.fillStyle = '#594c3b';
-        context.beginPath();
-        context.moveTo(x + 5, footY - 43);
-        context.lineTo(x + 12, footY - 31);
-        context.lineTo(x + 17, footY - 28);
-        context.lineTo(x + 15, footY - 26);
-        context.lineTo(x + 8, footY - 29);
-        context.lineTo(x + 1, footY - 40);
-        context.fill();
-        context.strokeStyle = '#bfaa7f';
+        context.strokeStyle = '#ffd89a66';
         context.lineWidth = 1;
         context.beginPath();
-        context.moveTo(x + 6, footY - 41);
-        context.lineTo(x + 13, footY - 30);
+        context.arc(hdx - .8, hdy - 1.4, 5.7, Math.PI * 1.2, Math.PI * 1.7);
         context.stroke();
         context.restore();
       }
 
-      function drawCar(time, doorAmount = 0) {
+      function drawCarPassenger(time, carX, phase) {
+        let u, leaving = false;
+        if (phase >= 3200 && phase < 5200) u = (phase - 3200) / 2000;
+        else if (phase >= 5200 && phase < 15000) u = 1;
+        else if (phase >= 15000 && phase < 17000) { u = 1 - (phase - 15000) / 2000; leaving = true; }
+        else return;
+        const p = leaving ? (phase - 15000) / 2000 : u;
+        const doorX = carX + 49, seatX = carX + 8;
+        const inside = phase >= 5200 && phase < 15000;
+        const x = doorX + (seatX - doorX) * smoothStep(.35, 1, u) + (leaving ? 31 * smoothStep(.5, 1, p) : 0);
+        const sitAmount = smoothStep(0, .6, u);
+        const walkAmount = leaving ? smoothStep(.75, 1, p) : (u >= 1 ? 0 : 1 - smoothStep(0, .35, u));
+        const scale = 1 - .22 * smoothStep(.3, .9, u);
+        const gy = 584 - 4.8 * smoothStep(.3, .9, u);
+        const bend = inside ? .03 : .05 + .42 * Math.sin(Math.PI * Math.min(1, u / .8));
+        const clipBottom = 700 - (700 - 557) * smoothStep(.4, .7, u);
+        const clipTop = 500 + 31 * smoothStep(.55, .75, u);
+        context.save();
+        context.beginPath();
+        context.rect(carX - 60, clipTop, 160, clipBottom - clipTop);
+        context.clip();
+        drawPerson(x, gy, scale, 0, {
+          stride: time * .0045 * speed,
+          walk: walkAmount,
+          sit: sitAmount,
+          lean: bend,
+          breath: inside ? Math.sin(time / 700) * .6 : 0,
+          shadow: u < .3
+        });
+        context.restore();
+      }
+
+      function drawWalker(x, time, groundY = 584, characterScale = 1, lookIndex = 0) {
+        drawPerson(x, groundY, characterScale, lookIndex, { stride: time * .0045 * speed, walk: 1 });
+      }
+
+      function drawBenchResident(centerX, baseY, time) {
+        const cycle = time % 36000;
+        if (cycle > 10500) return;
+        const gy = baseY - 2;
+        const sitX = centerX - 5;
+        let x = sitX, sit = 0, walk = 0, lean = .05, phone = 0, alpha = 1;
+        if (cycle < 2600) {
+          x = sitX - 110 * (1 - cycle / 2600);
+          walk = 1;
+          alpha = Math.min(1, cycle / 500);
+        } else if (cycle < 3600) {
+          const p = (cycle - 2600) / 1000;
+          sit = smoothStep(0, 1, p);
+          lean = .05 + .35 * Math.sin(Math.PI * p);
+        } else if (cycle < 8200) {
+          sit = 1;
+          phone = smoothStep(4200, 4800, cycle) * (1 - smoothStep(6800, 7400, cycle));
+          lean = .02 + .1 * phone;
+        } else if (cycle < 9200) {
+          const p = (cycle - 8200) / 1000;
+          sit = 1 - smoothStep(0, 1, p);
+          lean = .05 + .35 * Math.sin(Math.PI * p);
+        } else {
+          const p = (cycle - 9200) / 1300;
+          x = sitX + 100 * p;
+          walk = 1;
+          alpha = 1 - smoothStep(.6, 1, p);
+        }
+        context.save();
+        context.globalAlpha = alpha;
+        drawPerson(x, gy, .85, 1, {
+          stride: time * .0045 * speed,
+          walk,
+          sit,
+          lean,
+          phone,
+          headDip: phone * 2,
+          sitThigh: .8,
+          seatHip: 27,
+          breath: sit > .9 ? Math.sin(time / 650) * .6 : 0,
+          shadow: sit < .5
+        });
+        context.restore();
+      }
+
+            function drawCar(time, doorAmount = 0) {
         const drift = Math.sin(time * .00032) * 5;
         const x = 663 + drift;
         const wheelY = 588;
@@ -1210,98 +1350,7 @@
         context.fillStyle = '#d3c5a1';
         context.fillRect(x - 7, 622, 13, 2);
 
-        const rider = context.createLinearGradient(x - 14, 577, x + 17, 600);
-        rider.addColorStop(0, '#758073');
-        rider.addColorStop(.4, '#35423a');
-        rider.addColorStop(1, '#1d2824');
-        context.fillStyle = rider;
-        context.beginPath();
-        context.moveTo(x - 21, 588 + riderBob);
-        context.quadraticCurveTo(x - 15, 578 + riderBob, x - 4, 579 + riderBob);
-        context.lineTo(x + 8, 585 + riderBob);
-        context.lineTo(x + 20, 598 + riderBob);
-        context.lineTo(x + 11, 604 + riderBob);
-        context.lineTo(x - 5, 599 + riderBob);
-        context.lineTo(x - 20, 596 + riderBob);
-        context.closePath();
-        context.fill();
-        context.strokeStyle = '#b5a982';
-        context.lineWidth = .8;
-        context.beginPath();
-        context.moveTo(x - 15, 584 + riderBob);
-        context.lineTo(x - 4, 582 + riderBob);
-        context.stroke();
-        context.fillStyle = '#272e29';
-        context.beginPath();
-        context.ellipse(x - 7, 597 + riderBob, 8, 4, .45, 0, Math.PI * 2);
-        context.fill();
-        context.strokeStyle = '#272e29';
-        context.lineWidth = 4;
-        context.beginPath();
-        context.moveTo(x - 6, 595 + riderBob);
-        context.lineTo(x + 5, 605);
-        context.lineTo(x + 18, 614);
-        context.moveTo(x + 5, 605);
-        context.lineTo(x + 26, 605);
-        context.stroke();
-        context.fillStyle = '#222823';
-        context.beginPath();
-        context.ellipse(x + 18, 614, 6, 2.5, .1, 0, Math.PI * 2);
-        context.fill();
-        context.strokeStyle = '#2c332e';
-        context.lineWidth = 4;
-        context.beginPath();
-        context.moveTo(x + 5, 585 + riderBob);
-        context.lineTo(x + 24, 598);
-        context.lineTo(x + 39, 600);
-        context.stroke();
-        context.strokeStyle = '#baaa82';
-        context.lineWidth = 1.2;
-        context.beginPath();
-        context.moveTo(x + 9, 588 + riderBob);
-        context.lineTo(x + 26, 599);
-        context.lineTo(x + 39, 600);
-        context.stroke();
-        context.fillStyle = '#252a27';
-        context.beginPath();
-        context.ellipse(x + 39, 600, 3, 2, 0, 0, Math.PI * 2);
-        context.fill();
-
-        const helmet = context.createLinearGradient(x - 5, 568 + riderBob, x + 14, 584 + riderBob);
-        helmet.addColorStop(0, '#d2c19a');
-        helmet.addColorStop(.28, '#555b50');
-        helmet.addColorStop(.72, '#313933');
-        helmet.addColorStop(1, '#171e1c');
-        context.fillStyle = helmet;
-        context.beginPath();
-        context.moveTo(x - 8, 579 + riderBob);
-        context.quadraticCurveTo(x - 11, 565 + riderBob, x + 1, 563 + riderBob);
-        context.quadraticCurveTo(x + 14, 563 + riderBob, x + 15, 574 + riderBob);
-        context.lineTo(x + 11, 580 + riderBob);
-        context.lineTo(x + 1, 582 + riderBob);
-        context.closePath();
-        context.fill();
-        context.strokeStyle = '#b5a982';
-        context.lineWidth = .8;
-        context.stroke();
-        context.fillStyle = '#9ba49a';
-        context.beginPath();
-        context.moveTo(x + 4, 572 + riderBob);
-        context.quadraticCurveTo(x + 12, 570 + riderBob, x + 14, 575 + riderBob);
-        context.lineTo(x + 8, 578 + riderBob);
-        context.lineTo(x + 3, 577 + riderBob);
-        context.closePath();
-        context.fill();
-        context.strokeStyle = '#e3d3aa';
-        context.lineWidth = .8;
-        context.beginPath();
-        context.moveTo(x - 7, 576 + riderBob);
-        context.quadraticCurveTo(x - 2, 565 + riderBob, x + 7, 566 + riderBob);
-        context.stroke();
-        context.fillStyle = '#292d28';
-        context.beginPath();
-        context.roundRect(x - 4, 581 + riderBob, 10, 2, 1);
-        context.fill();
+        drawMotoRider(x, riderBob, time);
 
         context.restore();
       }
@@ -1616,100 +1665,6 @@
         context.restore();
       }
 
-      function drawBenchResident(centerX, baseY, time) {
-        const cycle = time % 36000;
-        if (cycle > 10500) return;
-        const arrival = Math.min(1, cycle / 1000);
-        const departure = Math.min(1, (10500 - cycle) / 1200);
-        const visibility = Math.max(0, Math.min(arrival, departure));
-        if (!visibility) return;
-
-        const seatY = baseY - 29 * .8;
-        const personX = centerX - 5;
-        const settle = (1 - arrival) * 5;
-        const breath = Math.sin(time / 650) * .6;
-        context.save();
-        context.globalAlpha = visibility;
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-
-        context.fillStyle = '#202723';
-        context.lineWidth = 5;
-        context.beginPath();
-        context.moveTo(personX - 5, seatY - 2 + settle);
-        context.lineTo(personX - 9, seatY + 6 + settle);
-        context.lineTo(personX - 8, baseY - 5);
-        context.moveTo(personX + 3, seatY - 2 + settle);
-        context.lineTo(personX + 11, seatY + 6 + settle);
-        context.lineTo(personX + 14, baseY - 5);
-        context.stroke();
-
-        context.fillStyle = '#171d1a';
-        context.beginPath();
-        context.ellipse(personX - 10, baseY - 4, 5, 2, -.06, 0, Math.PI * 2);
-        context.ellipse(personX + 15, baseY - 4, 5, 2, -.04, 0, Math.PI * 2);
-        context.fill();
-        context.fillStyle = '#a18c69';
-        context.fillRect(personX - 10, seatY + 7 + settle, 4, 3);
-        context.fillRect(personX + 8, seatY + 7 + settle, 4, 3);
-
-        const jacket = context.createLinearGradient(personX - 10, seatY - 23, personX + 10, seatY);
-        jacket.addColorStop(0, '#657066');
-        jacket.addColorStop(.4, '#38443d');
-        jacket.addColorStop(1, '#222c28');
-        context.fillStyle = jacket;
-        context.beginPath();
-        context.moveTo(personX - 9, seatY - 23 + settle + breath);
-        context.quadraticCurveTo(personX, seatY - 28 + settle + breath, personX + 8, seatY - 22 + settle + breath);
-        context.lineTo(personX + 10, seatY - 2 + settle);
-        context.lineTo(personX - 8, seatY - 2 + settle);
-        context.closePath();
-        context.fill();
-        context.strokeStyle = '#a79a79';
-        context.lineWidth = 1;
-        context.beginPath();
-        context.moveTo(personX, seatY - 22 + settle + breath);
-        context.lineTo(personX + 1, seatY - 4 + settle);
-        context.stroke();
-        context.fillStyle = '#d1bc8e';
-        context.beginPath();
-        context.arc(personX + 1, seatY - 12 + settle + breath, 1, 0, Math.PI * 2);
-        context.arc(personX + 1, seatY - 7 + settle + breath, 1, 0, Math.PI * 2);
-        context.fill();
-
-        context.strokeStyle = '#303a34';
-        context.lineWidth = 3.5;
-        context.beginPath();
-        context.moveTo(personX - 7, seatY - 20 + settle + breath);
-        context.lineTo(personX - 5, seatY - 9 + settle);
-        context.lineTo(personX + 4, seatY - 5 + settle);
-        context.moveTo(personX + 7, seatY - 20 + settle + breath);
-        context.lineTo(personX + 8, seatY - 10 + settle);
-        context.lineTo(personX + 4, seatY - 5 + settle);
-        context.stroke();
-        context.fillStyle = '#bb9c78';
-        context.beginPath();
-        context.arc(personX + 4, seatY - 4 + settle, 2, 0, Math.PI * 2);
-        context.fill();
-
-        context.fillStyle = '#b98f70';
-        context.beginPath();
-        context.ellipse(personX + 1, seatY - 29 + settle + breath, 5, 6, 0, 0, Math.PI * 2);
-        context.fill();
-        context.fillStyle = '#37362e';
-        context.beginPath();
-        context.moveTo(personX - 5, seatY - 30 + settle + breath);
-        context.quadraticCurveTo(personX - 3, seatY - 38 + settle + breath, personX + 5, seatY - 35 + settle + breath);
-        context.lineTo(personX + 7, seatY - 30 + settle + breath);
-        context.closePath();
-        context.fill();
-        context.fillStyle = '#e3bd89';
-        context.beginPath();
-        context.arc(personX + 4, seatY - 29 + settle + breath, .8, 0, Math.PI * 2);
-        context.fill();
-        context.restore();
-      }
-
       function drawStreetLamp(x, baseY, height, time, index) {
         const headY = baseY - height;
         const glow = .88 + Math.sin(time / 430 + index * 2) * .06;
@@ -1922,6 +1877,109 @@
         context.fillRect(x + 154, 494, 21, 6);
       }
 
+      function drawTreeGround(index) {
+        context.save();
+        context.fillStyle = '#14191600';
+        const grate = context.createRadialGradient(2, 2, 3, 2, 2, 24);
+        grate.addColorStop(0, '#1b201d');
+        grate.addColorStop(1, '#2c312b');
+        context.fillStyle = grate;
+        context.beginPath();
+        context.ellipse(2, 2, 24, 5.5, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = '#7b806f';
+        context.lineWidth = 1.2;
+        context.beginPath();
+        context.ellipse(2, 2, 24, 5.5, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = '#4b5046';
+        context.lineWidth = .8;
+        context.beginPath();
+        for (let k = 0; k < 10; k++) {
+          const a = k * Math.PI / 5;
+          context.moveTo(2 + Math.cos(a) * 6, 2 + Math.sin(a) * 1.4);
+          context.lineTo(2 + Math.cos(a) * 23, 2 + Math.sin(a) * 5.2);
+        }
+        context.stroke();
+        const colors = ['#c9a14a', '#b56a3a', '#8c9a4a', '#9a6a3a'];
+        for (let k = 0; k < 14; k++) {
+          const a = k * 2.399 + index;
+          const r = 12 + (k * 7) % 34;
+          context.fillStyle = colors[k % 4] + 'bb';
+          context.beginPath();
+          context.ellipse(2 + Math.cos(a) * r, 4 + Math.sin(a) * r * .22, 2.6, 1.2, a, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+      }
+
+      function drawTreeFinish(foliage, time, index) {
+        context.save();
+        for (let k = 0; k < 10; k++) {
+          const y = -6 - k * 4.6;
+          const x0 = -5 + (k * 5) % 9;
+          context.strokeStyle = k % 2 ? '#1d181280' : '#a9866055';
+          context.lineWidth = 1;
+          context.beginPath();
+          context.moveTo(x0, y);
+          context.lineTo(x0 + 1.5, y - 4);
+          context.stroke();
+        }
+        context.fillStyle = '#5f7c4a77';
+        context.beginPath();
+        context.ellipse(-4, -13, 2.8, 9, .05, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#17120d99';
+        context.beginPath();
+        context.ellipse(3, -36, 2, 3.4, 0, 0, Math.PI * 2);
+        context.fill();
+
+        foliage.forEach(([lx, ly, r, color], ci) => {
+          for (let k = 0; k < 16; k++) {
+            const a = k * Math.PI * 2 / 16 + ci * .5;
+            const rr = r * (.95 + .14 * Math.sin(k * 2.3 + ci));
+            const lit = Math.sin(a) < 0;
+            context.fillStyle = lit ? '#5f7452' : '#2b4033';
+            context.beginPath();
+            context.ellipse(lx + Math.cos(a) * rr, ly + Math.sin(a) * rr * .82, r * .15, r * .09, a, 0, Math.PI * 2);
+            context.fill();
+          }
+          const shade = context.createRadialGradient(lx + r * .35, ly - r * .4, r * .1, lx, ly, r * 1.05);
+          shade.addColorStop(0, '#eee6a04a');
+          shade.addColorStop(.55, '#eee6a000');
+          shade.addColorStop(1, '#0b140f66');
+          context.fillStyle = shade;
+          context.beginPath();
+          context.ellipse(lx, ly, r, r * .82, -.12, 0, Math.PI * 2);
+          context.fill();
+          if ((ci + index) % 4 === 0) {
+            context.fillStyle = ci % 2 ? '#c8a24a50' : '#b8683a48';
+            context.beginPath();
+            context.ellipse(lx + r * .2, ly - r * .1, r * .55, r * .38, .2, 0, Math.PI * 2);
+            context.fill();
+          }
+          context.strokeStyle = '#f3d28a38';
+          context.lineWidth = 1.1;
+          context.beginPath();
+          context.ellipse(lx, ly, r, r * .82, -.12, -1.25, -.25);
+          context.stroke();
+        });
+
+        const colors = ['#c9a14a', '#b56a3a', '#8c9a4a'];
+        for (let k = 0; k < 6; k++) {
+          const ph = (time * .00011 * speed + k * .17 + index * .0007) % 1;
+          const lx = -34 + k * 13 + Math.sin(ph * 7 + k) * 13 + ph * 12;
+          const ly = -108 + ph * 106;
+          context.globalAlpha = ph > .9 ? (1 - ph) * 10 : 1;
+          context.fillStyle = colors[k % 3];
+          context.beginPath();
+          context.ellipse(lx, ly, 3.2, 1.6, ph * 9 + k, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.globalAlpha = 1;
+        context.restore();
+      }
+
       function drawTree(x, baseY, scale, time, index) {
         context.save();
         context.translate(x, baseY);
@@ -1933,6 +1991,7 @@
         context.ellipse(4, 1, 37, 7, 0, 0, Math.PI * 2);
         context.fill();
         context.globalAlpha = 1;
+        drawTreeGround(index);
 
         context.fillStyle = '#29271f';
         context.beginPath();
@@ -2060,6 +2119,7 @@
           }
         });
 
+        drawTreeFinish(foliage, time, index);
         context.strokeStyle = '#b7ad8366';
         context.lineWidth = 1.1;
         context.beginPath();
@@ -2163,6 +2223,7 @@
         context.arc(900, 118, 34, 0, Math.PI * 2);
         context.fill();
         context.globalAlpha = 1;
+        drawGlow(900, 118, 190, 190, '#f3d28a', .26);
         context.fillStyle = '#344245';
         context.beginPath();
         context.moveTo(0, 335); context.lineTo(1200, 318); context.lineTo(1200, 420); context.lineTo(0, 420); context.fill();
@@ -2172,7 +2233,13 @@
           [445, 158, 197, 320, '#7b6e58'], [650, 104, 221, 370, '#756451'],
           [880, 150, 164, 330, '#766f5c'], [1054, 192, 146, 290, '#665d50']
         ];
+        shopSpills.length = 0;
         buildings.forEach((b, i) => drawBuilding(...b, i));
+        const haze = context.createLinearGradient(0, 300, 0, 482);
+        haze.addColorStop(0, '#d8b98a00');
+        haze.addColorStop(1, '#d8b98a26');
+        context.fillStyle = haze;
+        context.fillRect(0, 300, 1200, 182);
 
         const pavement = context.createLinearGradient(0, 476, 0, 527);
         pavement.addColorStop(0, '#46534a');
@@ -2219,6 +2286,7 @@
           context.fillRect(seam * 291 + 72, 612 + (seam % 2) * 11, 42, 1);
         }
         context.globalAlpha = 1;
+        drawRoadDetails(time);
 
         context.fillStyle = '#31453a';
         context.fillRect(35, 428, 220, 68);
@@ -2243,6 +2311,10 @@
         drawStreetLamp(936, 503, 112, time, 1);
 
         drawGroceryStore(time);
+        drawGroceryExtras(time);
+        drawShopProps(time);
+        drawPasser(time, 0);
+        drawPasser(time, 1);
 
         context.fillStyle = '#d5c59b';
         context.beginPath(); context.ellipse(1050, 620, 25, 9, 0, 0, Math.PI * 2); context.fill();
@@ -2277,15 +2349,12 @@
         }
 
         drawCar(time, doorAmount);
-        if (boarding) {
-          const progress = Math.min(1, (boardingPhase - 3200) / 2000);
-          drawWalker(carX + 49 - progress * 14, time, 584 - progress * 12, 1 - progress * .84);
-        } else if (leavingCar) {
-          const progress = (boardingPhase - 15000) / 2000;
-          drawWalker(carX + 44 + progress * 26, time, 572 + progress * 12, .16 + progress * .84);
-        }
+        drawCarPassenger(time, carX, boardingPhase);
         drawMotorcycle(time);
+        drawMotoDetails(time);
         drawBus(time);
+        drawBusDetails(time);
+        drawVehicleLighting(time, carX, boarding || staysInside);
 
         for (let index = deliveries.length - 1; index >= 0; index--) {
           const delivery = deliveries[index];
@@ -2304,12 +2373,1029 @@
           if (progress >= 1) deliveries.splice(index, 1);
         }
 
+        for (const lamp of [358, 936]) drawGlow(lamp, 650, 15, 62, '#ffd89a', .2);
+        for (const spill of shopSpills) {
+          drawGlow(spill.x, 490, spill.w, 15, '#f4c46e', .34);
+          drawGlow(spill.x, 604, spill.w * .5, 46, '#f4c46e', .12);
+        }
         const vignette = context.createRadialGradient(600, 350, 130, 600, 350, 760);
         vignette.addColorStop(0, 'transparent');
         vignette.addColorStop(1, '#10181877');
         context.fillStyle = vignette;
         context.fillRect(0, 0, 1200, 700);
         context.restore();
+      }
+
+const WALKER_LOOKS = [
+        ['#182321', '#34423b', '#b98f70', '#35332b', '#594c3b'],
+        ['#2b3347', '#46557a', '#c8a47f', '#1f1a17', '#6b4a35'],
+        ['#4a2d2a', '#8a4b3f', '#8d5f43', '#14110f', '#3a3a42'],
+        ['#3a3a2a', '#7d7a52', '#e0b896', '#a2753d', '#4c3a2c'],
+        ['#2a2a30', '#c5b48a', '#6f4a35', '#0e0d0c', '#7a2f2f'],
+        ['#cfd6d0', '#eef2ee', '#c8a47f', '#3a2f27', '#59705e']
+      ];
+      const SHOPS = {
+        1: ['BOULANGERIE', '#a8483a', '#f0dcae', ['#d9a45b', '#e8c27a', '#b9772f', '#f2dfb0']],
+        3: ['PHARMACIE', '#2f7a54', '#d6efdd', ['#9fd3b4', '#e8f3ea', '#5da37e', '#f5f7ef']],
+        4: ['CAFÉ DU COIN', '#7a4a2d', '#f4d9a0', ['#e4b777', '#8b5a38', '#f1e1c0', '#c98a4e']],
+        5: ['FLEURISTE', '#6c4a7a', '#f6dfeb', ['#e78aa6', '#f2c14e', '#b76ac2', '#7fc08a']]
+      };
+      const shopSpills = [];
+
+      function drawGlow(cx, cy, rx, ry, color, alpha) {
+        context.save();
+        context.globalCompositeOperation = 'lighter';
+        context.globalAlpha = alpha;
+        context.translate(cx, cy);
+        context.scale(1, ry / rx);
+        const g = context.createRadialGradient(0, 0, 0, 0, 0, rx);
+        g.addColorStop(0, color);
+        g.addColorStop(1, color + '00');
+        context.fillStyle = g;
+        context.beginPath();
+        context.arc(0, 0, rx, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
+
+      function drawBeam(fx, fy, length, spread, alpha) {
+        context.save();
+        context.globalCompositeOperation = 'lighter';
+        context.globalAlpha = alpha;
+        const g = context.createLinearGradient(fx, 0, fx + length, 0);
+        g.addColorStop(0, '#fff0c9');
+        g.addColorStop(1, '#fff0c900');
+        context.fillStyle = g;
+        context.beginPath();
+        context.moveTo(fx, fy);
+        context.lineTo(fx + length, fy + spread * .15);
+        context.lineTo(fx + length, fy + spread);
+        context.lineTo(fx, fy + 4);
+        context.closePath();
+        context.fill();
+        context.restore();
+      }
+
+      const SHOP_STYLE = {
+        1: { wall: ['#f3d9a2', '#c99e5b'], look: 3, tag: 'Pains · Viennoiseries', ink: '#5a3d1fcc' },
+        3: { wall: ['#f1f5ef', '#b4c8ba'], look: 5, tag: 'Conseil · Santé', ink: '#1f5a3bcc' },
+        4: { wall: ['#d8aa6a', '#5e3d29'], look: 2, tag: 'Café · Bar', ink: '#fff0c8cc' },
+        5: { wall: ['#ece6cc', '#98b184'], look: 4, tag: 'Fleurs fraîches', ink: '#6c3a5acc' }
+      };
+
+      function drawNeonOpen(nx, ny, time, seed) {
+        const flick = Math.sin(time / 90 + seed) > .96 ? .35 : .85 + .1 * Math.sin(time / 400 + seed);
+        drawGlow(nx + 8, ny + 2, 12, 6, '#ff4a3a', .4 * flick);
+        context.save();
+        context.globalAlpha = flick;
+        context.fillStyle = '#ff6a5a';
+        context.font = 'bold 4.6px sans-serif';
+        context.textAlign = 'left';
+        context.fillText('OUVERT', nx, ny + 4);
+        context.restore();
+      }
+
+      function drawShopInterior(index, gx, gy, gw, gh, time) {
+        const st = SHOP_STYLE[index];
+        context.save();
+        context.beginPath();
+        context.rect(gx, gy, gw, gh);
+        context.clip();
+        const wall = context.createLinearGradient(gx, gy, gx, gy + gh);
+        wall.addColorStop(0, st.wall[0]);
+        wall.addColorStop(1, st.wall[1]);
+        context.fillStyle = wall;
+        context.fillRect(gx, gy, gw, gh);
+        for (let r = 0; r < 3; r++) {
+          const ry = gy + 8 + r * 10;
+          context.fillStyle = '#4a3828';
+          context.fillRect(gx, ry + 7, gw, 1.5);
+          for (let c = 0; c < Math.floor(gw / 6); c++) {
+            const px = gx + 2 + c * 6;
+            const k = (r * 7 + c * 3 + index) % 5;
+            if (index === 1) {
+              context.fillStyle = ['#b9772f', '#d9a45b', '#8d5a28', '#e8c27a', '#c48a45'][k];
+              context.beginPath();
+              context.ellipse(px + 2.5, ry + 4.5, 3, 2.3, 0, 0, Math.PI * 2);
+              context.fill();
+            } else if (index === 3) {
+              context.fillStyle = ['#ffffff', '#7fc79b', '#6fa8d6', '#f1f5ef', '#e2b84c'][k];
+              context.fillRect(px, ry + 1 + (k % 2), 4.5, 6 - (k % 2));
+              context.fillStyle = '#2f7a5466';
+              context.fillRect(px, ry + 4, 4.5, 1);
+            } else if (index === 4) {
+              context.fillStyle = ['#3d6b4a', '#8a4b2a', '#2f4a6b', '#b99a3c', '#5a2f3a'][k];
+              context.fillRect(px + 1, ry + 1 - (k % 2), 2.6, 7 + (k % 2));
+              context.fillRect(px + 1.6, ry - 1 - (k % 2), 1.4, 2);
+            } else {
+              context.fillStyle = ['#e78aa6', '#f2c14e', '#b76ac2', '#7fc08a', '#f0f0e0'][k];
+              context.beginPath();
+              context.arc(px + 2.5, ry + 3.5, 2.6, 0, Math.PI * 2);
+              context.fill();
+              context.fillStyle = '#4f7a3f';
+              context.fillRect(px + 2, ry + 5.5, 1, 2.5);
+            }
+          }
+        }
+        const lamp = context.createLinearGradient(0, gy, 0, gy + 16);
+        lamp.addColorStop(0, '#fff6d8cc');
+        lamp.addColorStop(1, '#fff6d800');
+        context.fillStyle = lamp;
+        context.fillRect(gx, gy, gw, 16);
+        context.fillStyle = '#fffbe8';
+        context.fillRect(gx + 2, gy, gw - 4, 2);
+        const sway = Math.sin(time / 900 + index * 2);
+        drawPerson(gx + gw * .64 + sway * 1.5, gy + gh + 2, .5, st.look, { walk: 0, lean: .03, breath: sway * .6, shadow: false });
+        const cy = gy + gh * .66;
+        const wood = context.createLinearGradient(0, cy, 0, gy + gh);
+        wood.addColorStop(0, index === 3 ? '#e4e8e2' : '#8a6340');
+        wood.addColorStop(1, index === 3 ? '#a9b7ad' : '#4a3424');
+        context.fillStyle = wood;
+        context.fillRect(gx, cy, gw, gy + gh - cy);
+        context.fillStyle = '#fff4d855';
+        context.fillRect(gx, cy, gw, 1.2);
+        for (let c = 0; c < Math.floor(gw / 9); c++) {
+          const px = gx + 3 + c * 9;
+          if (index === 1) {
+            context.fillStyle = '#c98a3e';
+            context.beginPath();
+            context.ellipse(px + 3, cy - 1.5, 3.2, 1.7, .3, 0, Math.PI * 2);
+            context.fill();
+          } else if (index === 4 && c > 0) {
+            context.fillStyle = '#f1e8d2';
+            context.fillRect(px, cy - 3, 3.4, 3);
+            context.fillStyle = '#4a2f1e';
+            context.fillRect(px + .5, cy - 2.6, 2.4, .8);
+          } else if (index === 5) {
+            context.fillStyle = ['#e78aa6', '#f2c14e', '#b76ac2'][c % 3];
+            context.beginPath();
+            context.arc(px + 3, cy - 3, 2.8, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = '#4f7a3f';
+            context.fillRect(px + 2.6, cy - 1.5, 1, 1.5);
+          } else if (index === 3) {
+            context.fillStyle = '#2f7a54';
+            context.fillRect(px, cy - 3.5, 5, 3.5);
+            context.fillStyle = '#ffffff';
+            context.fillRect(px + 1.7, cy - 3, 1.6, 2.4);
+            context.fillRect(px + 1, cy - 2.3, 3, 1);
+          }
+        }
+        if (index === 4) {
+          context.fillStyle = '#8f9488';
+          context.fillRect(gx + 3, cy - 8, 11, 8);
+          context.fillStyle = '#d6dacd';
+          context.fillRect(gx + 3, cy - 8, 11, 1.5);
+          context.fillStyle = '#2a2d28';
+          context.fillRect(gx + 6, cy - 4, 5, 2);
+          for (let k = 0; k < 3; k++) {
+            const age = (time / 1400 + k / 3) % 1;
+            context.globalAlpha = (1 - age) * .3;
+            context.fillStyle = '#ffffff';
+            context.beginPath();
+            context.arc(gx + 8.5 + Math.sin(age * 6 + k) * 2, cy - 10 - age * 12, 1.2 + age * 2, 0, Math.PI * 2);
+            context.fill();
+          }
+          context.globalAlpha = 1;
+        }
+        context.fillStyle = '#ffffff1a';
+        context.beginPath();
+        context.moveTo(gx + 2, gy);
+        context.lineTo(gx + gw * .5, gy);
+        context.lineTo(gx + gw * .18, gy + gh);
+        context.lineTo(gx, gy + gh);
+        context.fill();
+        context.fillStyle = '#9fc4d01a';
+        context.fillRect(gx, gy, gw, gh * .25);
+        context.restore();
+        context.fillStyle = st.ink;
+        context.font = '4.4px sans-serif';
+        context.textAlign = 'center';
+        context.fillText(st.tag, gx + gw / 2, gy + 6, gw - 4);
+        drawNeonOpen(gx + gw - 17, gy + gh - 9 - (index === 3 ? 0 : 0), time, index);
+      }
+
+      function drawChalkboard(cx, base, title, sub) {
+        context.save();
+        context.fillStyle = '#0d121055';
+        context.beginPath();
+        context.ellipse(cx + 2, base, 9, 2, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = '#5a4128';
+        context.lineWidth = 1.4;
+        context.beginPath();
+        context.moveTo(cx - 6, base - 20);
+        context.lineTo(cx - 8, base);
+        context.moveTo(cx + 6, base - 20);
+        context.lineTo(cx + 8, base);
+        context.stroke();
+        context.fillStyle = '#6b4a2e';
+        context.fillRect(cx - 8, base - 24, 16, 20);
+        context.fillStyle = '#1f2a25';
+        context.fillRect(cx - 7, base - 23, 14, 18);
+        context.fillStyle = '#efe9d4';
+        context.textAlign = 'center';
+        context.font = 'bold 4.5px Georgia';
+        context.fillText(title, cx, base - 17, 12);
+        context.globalAlpha = .7;
+        context.font = '3.6px sans-serif';
+        context.fillText(sub, cx, base - 11, 12);
+        context.fillRect(cx - 4, base - 8, 8, .6);
+        context.restore();
+      }
+
+      function drawShopProps(time) {
+        for (const s of shopSpills) {
+          const base = 497;
+          if (s.index === 1) drawChalkboard(s.sx + s.sw * .5, base, 'PAIN', 'du jour');
+          if (s.index === 3) drawChalkboard(s.sx + s.sw * .5, base, 'GARDE', 'ce soir');
+          if (s.index === 4) {
+            const tx = s.sx + s.sw * .5 + 6;
+            context.save();
+            context.fillStyle = '#0d121055';
+            context.beginPath();
+            context.ellipse(tx, base + 1, 14, 3, 0, 0, Math.PI * 2);
+            context.fill();
+            context.strokeStyle = '#2b2f2c';
+            context.lineWidth = 1.2;
+            for (const cx of [tx - 17, tx + 17]) {
+              const dir = cx < tx ? -1 : 1;
+              context.beginPath();
+              context.moveTo(cx - 4, base - 1);
+              context.lineTo(cx - 3, base - 11);
+              context.moveTo(cx + 4, base - 1);
+              context.lineTo(cx + 3, base - 11);
+              context.stroke();
+              context.fillStyle = '#4a3a2c';
+              context.fillRect(cx - 5, base - 13, 10, 2);
+              context.beginPath();
+              context.arc(cx + dir * 4, base - 19, 6, dir > 0 ? Math.PI * .6 : Math.PI * 1.4 - Math.PI, dir > 0 ? Math.PI * 1.4 : Math.PI * 1.4);
+              context.stroke();
+            }
+            const visit = time % 50000 < 32000;
+            if (visit) {
+              const a = Math.min(1, (time % 50000) / 800, (32000 - (time % 50000)) / 800);
+              context.globalAlpha = a;
+              drawPerson(tx - 17, base - 1, .62, 4, { walk: 0, sit: 1, sitThigh: .8, seatHip: 27, lean: .08, phone: 0, shadow: false, breath: Math.sin(time / 700) });
+              context.globalAlpha = 1;
+            }
+            context.strokeStyle = '#3a3a34';
+            context.lineWidth = 1.6;
+            context.beginPath();
+            context.moveTo(tx, base - 1);
+            context.lineTo(tx, base - 14);
+            context.stroke();
+            context.fillStyle = '#d9d2bd';
+            context.beginPath();
+            context.ellipse(tx, base - 15, 12, 3.2, 0, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = '#ffffff';
+            context.fillRect(tx - 5, base - 19, 3.4, 3.2);
+            context.fillRect(tx + 3, base - 19, 3.4, 3.2);
+            for (let k = 0; k < 2; k++) {
+              const age = (time / 1600 + k / 2) % 1;
+              context.globalAlpha = (1 - age) * .3;
+              context.beginPath();
+              context.arc(tx - 3.5 + Math.sin(age * 7) * 1.5, base - 21 - age * 9, 1 + age * 1.6, 0, Math.PI * 2);
+              context.fill();
+            }
+            context.globalAlpha = 1;
+            context.restore();
+          }
+          if (s.index === 5) {
+            context.save();
+            const colors = ['#e78aa6', '#f2c14e', '#b76ac2', '#e8e4d0', '#d9544a'];
+            for (let t = 0; t < 3; t++) {
+              const ty = base - 6 - t * 9;
+              context.fillStyle = '#6b4a2e';
+              context.fillRect(s.sx - 2, ty, s.sw + 6, 2);
+              for (let c = 0; c < 4; c++) {
+                const bx = s.sx + 1 + c * ((s.sw + 2) / 4);
+                const sw2 = Math.sin(time / 900 + c * 1.7 + t) * 1.2;
+                context.fillStyle = '#9aa39c';
+                context.fillRect(bx, ty - 6, 9, 6);
+                context.fillStyle = '#ffffff33';
+                context.fillRect(bx, ty - 6, 2, 6);
+                context.strokeStyle = '#4f7a3f';
+                context.lineWidth = .9;
+                for (let f = 0; f < 3; f++) {
+                  const fx = bx + 2 + f * 2.6;
+                  context.beginPath();
+                  context.moveTo(fx, ty - 6);
+                  context.lineTo(fx + sw2 * (.5 + f * .3), ty - 12 - f % 2 * 2);
+                  context.stroke();
+                  context.fillStyle = colors[(c * 2 + f + t) % 5];
+                  context.beginPath();
+                  context.arc(fx + sw2 * (.5 + f * .3), ty - 12.5 - f % 2 * 2, 2.1, 0, Math.PI * 2);
+                  context.fill();
+                }
+              }
+            }
+            context.strokeStyle = '#5a4128';
+            context.lineWidth = 1.2;
+            context.beginPath();
+            context.moveTo(s.sx, base - 6);
+            context.lineTo(s.sx - 1, base);
+            context.moveTo(s.sx + s.sw + 2, base - 6);
+            context.lineTo(s.sx + s.sw + 3, base);
+            context.stroke();
+            context.restore();
+          }
+        }
+      }
+
+      function drawGroceryExtras(time) {
+        const x = 450, y = 405, width = 193, windowY = 448;
+        const shade = context.createLinearGradient(0, y + 40, 0, y + 56);
+        shade.addColorStop(0, '#0a0f0d66');
+        shade.addColorStop(1, '#0a0f0d00');
+        context.fillStyle = shade;
+        context.fillRect(x, y + 40, width, 16);
+        drawGlow(x + width / 2, y + 8, 62, 12, '#ffd89a', .16);
+        context.fillStyle = '#2a2d28';
+        context.fillRect(x + width / 2 - 1, y - 8, 2, 5);
+        context.fillRect(x + width / 2 - 6, y - 8, 12, 2);
+
+        context.save();
+        context.beginPath();
+        context.rect(x + 13, windowY + 3, 104, 45);
+        context.clip();
+        const sway = Math.sin(time / 850);
+        drawPerson(x + 90 + sway * 1.5, windowY + 50, .5, 1, { walk: 0, lean: .03, breath: sway * .6, shadow: false });
+        const cy = windowY + 34;
+        const wood = context.createLinearGradient(0, cy, 0, cy + 14);
+        wood.addColorStop(0, '#8a6340');
+        wood.addColorStop(1, '#46321f');
+        context.fillStyle = wood;
+        context.fillRect(x + 13, cy, 104, 14);
+        context.fillStyle = '#fff4d855';
+        context.fillRect(x + 13, cy, 104, 1.2);
+        context.fillStyle = '#2b2f2c';
+        context.fillRect(x + 100, cy - 6, 9, 6);
+        context.fillStyle = '#7fe0a4';
+        context.fillRect(x + 101.5, cy - 5, 5, 2);
+        const produce = ['#e08a2f', '#c9382a', '#e6c84a', '#7b9a4a'];
+        for (let k = 0; k < 7; k++) {
+          context.fillStyle = produce[k % 4];
+          context.beginPath();
+          context.arc(x + 20 + k * 4.6, cy - 1.8, 2.1, 0, Math.PI * 2);
+          context.fill();
+        }
+        for (const lx of [30, 65, 100]) {
+          context.strokeStyle = '#201e19';
+          context.lineWidth = .8;
+          context.beginPath();
+          context.moveTo(x + lx, windowY + 3);
+          context.lineTo(x + lx, windowY + 9);
+          context.stroke();
+          context.fillStyle = '#3a342a';
+          context.beginPath();
+          context.moveTo(x + lx - 5, windowY + 13);
+          context.lineTo(x + lx - 2, windowY + 8);
+          context.lineTo(x + lx + 2, windowY + 8);
+          context.lineTo(x + lx + 5, windowY + 13);
+          context.fill();
+          drawGlow(x + lx, windowY + 14, 14, 9, '#ffd98a', .38);
+        }
+        context.restore();
+        drawNeonOpen(x + 100, windowY + 6, time, 7);
+        context.fillStyle = '#efe6c8';
+        context.fillRect(x + 139, windowY + 26, 26, 9);
+        context.fillStyle = '#4a3a24';
+        context.font = '3.8px sans-serif';
+        context.textAlign = 'center';
+        context.fillText('OUVERT 7h-23h', x + 152, windowY + 32, 24);
+
+        drawChalkboard(x + 105, 501, 'PROMO', 'fruits');
+        const fruit = ['#e08a2f', '#c9382a', '#e6c84a', '#8fb04a'];
+        for (let k = 0; k < 6; k++) {
+          context.fillStyle = fruit[k % 4];
+          context.beginPath();
+          context.arc(x + 25 + k * 4.4, 494 - (k % 2) * 3, 2.5, 0, Math.PI * 2);
+          context.fill();
+        }
+        for (let k = 0; k < 4; k++) {
+          context.fillStyle = fruit[(k + 2) % 4];
+          context.beginPath();
+          context.arc(x + 154 + k * 5.5, 490 + (k % 2) * 2, 2.6, 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+
+      const ROAD_SPECKS = Array.from({ length: 420 }, (_, k) => {
+        const r = n => {
+          const v = Math.sin(k * 12.9898 + n * 78.233) * 43758.5453;
+          return v - Math.floor(v);
+        };
+        return { x: r(1) * 1200, y: 606 + r(2) * 94, w: .8 + r(3) * 2.2, light: r(4) > .5 };
+      });
+
+      function drawRoadDetails(time) {
+        context.save();
+        const ao = context.createLinearGradient(0, 598, 0, 626);
+        ao.addColorStop(0, '#0a0f0d77');
+        ao.addColorStop(1, '#0a0f0d00');
+        context.fillStyle = ao;
+        context.fillRect(0, 598, 1200, 28);
+        context.fillStyle = '#a3ab9a2e';
+        for (const s of ROAD_SPECKS) if (s.light) context.fillRect(s.x, s.y, s.w, s.w * .7);
+        context.fillStyle = '#0a0f0d3c';
+        for (const s of ROAD_SPECKS) if (!s.light) context.fillRect(s.x, s.y, s.w, s.w * .7);
+        for (const [ty, th] of [[622, 9], [652, 10], [676, 9]]) {
+          const tr = context.createLinearGradient(0, ty, 0, ty + th);
+          tr.addColorStop(0, '#0a0f0d00');
+          tr.addColorStop(.5, '#0a0f0d30');
+          tr.addColorStop(1, '#0a0f0d00');
+          context.fillStyle = tr;
+          context.fillRect(0, ty, 1200, th);
+        }
+        for (const [px, py, pw, ph] of [[330, 662, 62, 22], [905, 616, 46, 15]]) {
+          context.fillStyle = '#2c3430';
+          context.fillRect(px, py, pw, ph);
+          context.strokeStyle = '#11161466';
+          context.lineWidth = 1;
+          context.strokeRect(px, py, pw, ph);
+        }
+        context.strokeStyle = '#121715b0';
+        context.lineWidth = .9;
+        for (const crack of [[[150, 640], [170, 646], [186, 642], [210, 655]], [[540, 668], [556, 664], [572, 672], [590, 670]],
+          [[1010, 622], [1030, 630], [1044, 626]], [[740, 690], [752, 682], [770, 686]]]) {
+          context.beginPath();
+          crack.forEach((q, i) => (i ? context.lineTo(q[0], q[1]) : context.moveTo(q[0], q[1])));
+          context.stroke();
+        }
+        context.fillStyle = '#080c0b55';
+        context.beginPath();
+        context.ellipse(640, 614, 20, 4, 0, 0, Math.PI * 2);
+        context.ellipse(1070, 668, 14, 3, 0, 0, Math.PI * 2);
+        context.fill();
+
+        context.fillStyle = '#d8d2bc';
+        for (let k = 0; k < 7; k++) {
+          const zx = 90 + k * 26;
+          context.globalAlpha = .5;
+          context.beginPath();
+          context.moveTo(zx + 3, 607);
+          context.lineTo(zx + 15, 607);
+          context.lineTo(zx + 12, 696);
+          context.lineTo(zx, 696);
+          context.fill();
+        }
+        context.globalAlpha = 1;
+        context.fillStyle = '#2f3733aa';
+        for (const s of ROAD_SPECKS) if (s.x > 88 && s.x < 275 && s.y > 606) context.fillRect(s.x, s.y, s.w * 2.4, s.w * 1.6);
+        for (let i = 0; i < 9; i++) {
+          context.fillStyle = '#3b443f99';
+          context.fillRect(i * 155 + 30 + (i * 13) % 40, 640, 5, 4);
+          context.fillRect(i * 155 + 44 + (i * 7) % 30, 640, 3, 4);
+        }
+
+        const curb = context.createLinearGradient(0, 598, 0, 606);
+        curb.addColorStop(0, '#a79b7a');
+        curb.addColorStop(.5, '#7b7360');
+        curb.addColorStop(1, '#4b4a3e');
+        context.fillStyle = curb;
+        context.fillRect(0, 598, 1200, 7);
+        context.fillStyle = '#2b2c26';
+        for (let j = 0; j < 16; j++) context.fillRect(j * 78 + 30, 598, 1, 7);
+        context.fillStyle = '#232a27';
+        context.fillRect(0, 605, 1200, 5);
+        context.strokeStyle = '#9fb4b845';
+        context.lineWidth = 1;
+        context.setLineDash([14, 30]);
+        context.lineDashOffset = -time * .012;
+        context.beginPath();
+        context.moveTo(0, 608);
+        context.lineTo(1200, 608);
+        context.stroke();
+        context.setLineDash([]);
+        const leaves = ['#c9a14a', '#b56a3a', '#8c9a4a', '#9a6a3a'];
+        for (let k = 0; k < 16; k++) {
+          context.fillStyle = leaves[k % 4] + 'cc';
+          context.beginPath();
+          context.ellipse((k * 83 + 47) % 1200, 607 + (k % 3), 2.6, 1.2, k, 0, Math.PI * 2);
+          context.fill();
+        }
+        for (const gx of [260, 1010]) {
+          context.fillStyle = '#10151300';
+          context.fillStyle = '#12171a';
+          context.fillRect(gx, 600, 26, 5);
+          context.fillStyle = '#6b7066';
+          for (let b = 0; b < 6; b++) context.fillRect(gx + 2 + b * 4, 600, 1.4, 5);
+        }
+
+        const mx = 800, my = 672;
+        const lid = context.createRadialGradient(mx - 5, my - 1, 2, mx, my, 24);
+        lid.addColorStop(0, '#6d7168');
+        lid.addColorStop(.6, '#33372f');
+        lid.addColorStop(1, '#1c211e');
+        context.fillStyle = lid;
+        context.beginPath();
+        context.ellipse(mx, my, 22, 5.5, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = '#8d9183';
+        context.lineWidth = .8;
+        context.beginPath();
+        context.ellipse(mx, my, 22, 5.5, 0, 0, Math.PI * 2);
+        context.ellipse(mx, my, 14, 3.4, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = '#11151355';
+        context.beginPath();
+        for (let k = -3; k <= 3; k++) {
+          context.moveTo(mx + k * 4 - 2, my - 3);
+          context.lineTo(mx + k * 4 + 2, my + 3);
+        }
+        context.stroke();
+        for (let k = 0; k < 6; k++) {
+          const age = (time / 3200 + k / 6) % 1;
+          context.globalAlpha = Math.sin(age * Math.PI) * .22;
+          context.fillStyle = '#d9dfd6';
+          context.beginPath();
+          context.arc(mx + Math.sin(age * 5 + k) * 7 + age * 10, my - age * 72, 5 + age * 15, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.globalAlpha = 1;
+
+        const puddles = [[352, 676, 50, 7, 358, 0], [940, 668, 40, 6, 936, .4], [560, 690, 38, 5, 546, .7], [1120, 682, 36, 5, 0, .2]];
+        for (const [px, py, rx, ry, lamp, seed] of puddles) {
+          const g = context.createLinearGradient(0, py - ry, 0, py + ry);
+          g.addColorStop(0, '#8d9a8a77');
+          g.addColorStop(1, '#2a3531cc');
+          context.fillStyle = g;
+          context.beginPath();
+          context.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+          context.fill();
+          context.save();
+          context.beginPath();
+          context.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+          context.clip();
+          if (lamp) drawGlow(lamp, py, 10, ry * 3, '#ffd89a', .7);
+          drawGlow(px, py - ry * .6, rx * .8, ry * .8, '#9fc4d0', .18);
+          const age = (time / 1700 + seed) % 1;
+          context.globalAlpha = (1 - age) * .5;
+          context.strokeStyle = '#dfe6dc';
+          context.lineWidth = .8;
+          context.beginPath();
+          context.ellipse(px + rx * .2, py, 3 + age * 16, (3 + age * 16) * ry / rx, 0, 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+          context.strokeStyle = '#c9c2a03a';
+          context.lineWidth = .8;
+          context.beginPath();
+          context.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+          context.stroke();
+        }
+        drawGlow(358, 636, 120, 16, '#f0c878', .13);
+        drawGlow(936, 634, 110, 16, '#f0c878', .12);
+        context.restore();
+      }
+
+      function drawBuildingFinish(x, y, width, height, index) {
+        const ao = context.createLinearGradient(x, y, x, y + height);
+        ao.addColorStop(0, '#0a100f66');
+        ao.addColorStop(.09, '#0a100f00');
+        ao.addColorStop(.78, '#0a100f00');
+        ao.addColorStop(1, '#0a100f80');
+        context.fillStyle = ao;
+        context.fillRect(x, y, width, height);
+        const side = context.createLinearGradient(x, 0, x + width, 0);
+        side.addColorStop(0, '#05080838');
+        side.addColorStop(.12, '#05080800');
+        side.addColorStop(.88, '#f3dca50c');
+        side.addColorStop(1, '#05080848');
+        context.fillStyle = side;
+        context.fillRect(x, y, width, height);
+        context.save();
+        context.beginPath();
+        context.rect(x + 12, y + 8, width - 24, height - 16);
+        context.clip();
+        context.fillStyle = '#cfe0e214';
+        context.beginPath();
+        context.moveTo(x + width * (.15 + (index % 3) * .1), y);
+        context.lineTo(x + width * (.4 + (index % 3) * .1), y);
+        context.lineTo(x + width * (.1 + (index % 3) * .1), y + height);
+        context.lineTo(x - width * .15, y + height);
+        context.fill();
+        context.restore();
+        const cx = x + width * (.18 + (index % 3) * .22);
+        context.fillStyle = '#2a2b26';
+        context.fillRect(cx, y - 36, 13, 24);
+        context.fillStyle = '#4b4a3e';
+        context.fillRect(cx - 2, y - 40, 17, 5);
+        context.strokeStyle = '#202521';
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(x + width * .72, y - 11);
+        context.lineTo(x + width * .72, y - 30 - (index % 3) * 6);
+        context.moveTo(x + width * .72 - 8, y - 24 - (index % 3) * 6);
+        context.lineTo(x + width * .72 + 8, y - 24 - (index % 3) * 6);
+        context.stroke();
+
+        const shop = SHOPS[index];
+        if (!shop) return;
+        const entranceX = x + width * (.4 + (index % 3) * .07);
+        const sx = x + 16;
+        const sw = entranceX - sx - 12;
+        const sy = y + height - 64;
+        context.fillStyle = '#171a18';
+        context.fillRect(sx - 3, sy - 2, sw + 6, 62);
+        drawShopInterior(index, sx, sy + 12, sw, 46, sceneTime);
+        context.fillStyle = '#3a2f24';
+        context.fillRect(sx - 3, sy + 10, 3, 50);
+        context.fillRect(sx + sw, sy + 10, 3, 50);
+        context.fillStyle = '#b7a37c';
+        context.fillRect(sx - 4, sy + 58, sw + 8, 3);
+        context.fillStyle = '#25231d';
+        context.fillRect(sx - 4, sy - 15, sw + 8, 14);
+        context.fillStyle = shop[1];
+        context.fillRect(sx - 3, sy - 14, sw + 6, 12);
+        context.fillStyle = shop[2];
+        context.font = `bold ${sw < 60 ? 6 : 7}px Georgia`;
+        context.textAlign = 'center';
+        context.fillText(shop[0], sx + sw / 2, sy - 5, sw);
+        const stripes = Math.max(4, Math.round(sw / 8));
+        for (let s = 0; s < stripes; s++) {
+          context.fillStyle = s % 2 ? '#e8dcc0' : shop[1];
+          context.fillRect(sx - 2 + s * (sw + 4) / stripes, sy - 1, (sw + 4) / stripes, 7);
+          context.beginPath();
+          context.arc(sx - 2 + (s + .5) * (sw + 4) / stripes, sy + 6, (sw + 4) / stripes / 2, 0, Math.PI);
+          context.fill();
+        }
+        drawGlow(sx + sw / 2, sy - 8, sw * .6, 8, shop[2], .22);
+        if (index === 3) {
+          const pulse = .7 + .3 * Math.sin(sceneTime / 500);
+          drawGlow(sx + sw + 6, sy + 18, 11, 11, '#5df0a0', .5 * pulse);
+          context.fillStyle = '#3fe08c';
+          context.globalAlpha = pulse;
+          context.fillRect(sx + sw + 4.3, sy + 10, 3.4, 16);
+          context.fillRect(sx + sw - 1.5, sy + 15.8, 15, 3.4);
+          context.globalAlpha = 1;
+        }
+        shopSpills.push({ x: sx + sw / 2, w: sw * .9, index, sx, sw });
+      }
+
+      function drawPasser(time, i) {
+        const dir = i % 2 ? -1 : 1;
+        const p = (time * (.019 + i * .004) * speed + i * 520) % 1500;
+        const x = dir > 0 ? p - 150 : 1350 - p;
+        context.save();
+        context.translate(x, 0);
+        context.scale(dir, 1);
+        context.translate(-x, 0);
+        drawWalker(x, time + i * 900, 520 + i * 10, .72 + i * .06, 2 + i * 2);
+        context.restore();
+      }
+
+      function drawMotoRider(x, b, time) {
+        const flap = Math.sin(time * .02 * speed);
+        const limb = (pts, width, color) => {
+          context.strokeStyle = color;
+          context.lineWidth = width;
+          context.lineCap = 'round';
+          context.lineJoin = 'round';
+          context.beginPath();
+          pts.forEach((pt, i) => (i ? context.lineTo(pt[0], pt[1]) : context.moveTo(pt[0], pt[1])));
+          context.stroke();
+        };
+        context.save();
+        limb([[x - 7, 598 + b * .5], [x + 12, 602], [x + 21, 613]], 5.5, '#1d2635');
+        limb([[x + 4, 582 + b], [x + 20, 592 + b * .5], [x + 40, 600]], 4.2, '#222b27');
+        context.fillStyle = '#101413';
+        context.beginPath();
+        context.ellipse(x + 24, 614, 6.5, 2.8, .1, 0, Math.PI * 2);
+        context.fill();
+
+        const jacket = context.createLinearGradient(x - 18, 577 + b, x + 10, 600 + b);
+        jacket.addColorStop(0, '#76877a');
+        jacket.addColorStop(.35, '#3f5045');
+        jacket.addColorStop(1, '#1d2823');
+        context.fillStyle = jacket;
+        context.beginPath();
+        context.moveTo(x - 17, 595 + b * .5);
+        context.quadraticCurveTo(x - 20, 583 + b, x - 8, 577 + b);
+        context.quadraticCurveTo(x + 2, 573 + b, x + 8, 578 + b);
+        context.quadraticCurveTo(x + 14, 587 + b, x + 7, 597 + b * .5);
+        context.lineTo(x - 4, 601);
+        context.lineTo(x - 15, 600);
+        context.closePath();
+        context.fill();
+        context.fillStyle = '#d9e0c880';
+        context.fillRect(x - 15, 588 + b * .7, 20, 1.6);
+        context.fillStyle = '#10151355';
+        context.fillRect(x - 15, 596 + b * .5, 21, 2);
+        context.strokeStyle = '#ffd89a77';
+        context.lineWidth = 1.1;
+        context.beginPath();
+        context.moveTo(x - 17, 584 + b);
+        context.quadraticCurveTo(x - 10, 576 + b, x + 2, 575 + b);
+        context.stroke();
+
+        limb([[x - 9, 597 + b * .5], [x + 9, 600], [x + 18, 613]], 6.5, '#2f3d55');
+        limb([[x - 8, 595.5 + b * .5], [x + 8, 598]], 1.2, '#8195b966');
+        context.fillStyle = '#1a1f1c';
+        context.beginPath();
+        context.ellipse(x + 20, 614, 7, 3.2, .12, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#8d8872';
+        context.fillRect(x + 14, 616.5, 12, 1);
+        context.fillStyle = '#ffffff22';
+        context.beginPath();
+        context.arc(x + 10, 599.5, 2.4, 0, Math.PI * 2);
+        context.fill();
+
+        limb([[x + 4, 581 + b], [x + 20, 591 + b * .5], [x + 40, 600]], 5, '#42554a');
+        limb([[x + 5, 579.5 + b], [x + 19, 589 + b * .5]], 1.1, '#ffd89a66');
+        context.fillStyle = '#1b201d';
+        context.beginPath();
+        context.arc(x + 40, 600.5, 3.3, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#ffffff30';
+        context.beginPath();
+        context.arc(x + 41, 599.5, 1.1, 0, Math.PI * 2);
+        context.fill();
+
+        context.fillStyle = '#262d29';
+        context.beginPath();
+        context.roundRect(x + 2, 573 + b, 9, 6, 2);
+        context.fill();
+        context.fillStyle = '#b5483a';
+        context.beginPath();
+        context.moveTo(x + 3, 576 + b);
+        context.lineTo(x - 7 - flap * 2, 578 + b + flap);
+        context.lineTo(x - 13 - flap * 3, 584 + b + flap * 2);
+        context.lineTo(x - 6, 583 + b);
+        context.lineTo(x + 5, 580 + b);
+        context.fill();
+
+        const hx = x + 9, hy = 566 + b;
+        const shell = context.createRadialGradient(hx - 3, hy - 4, 1, hx, hy, 10.5);
+        shell.addColorStop(0, '#7b8578');
+        shell.addColorStop(.5, '#3c463f');
+        shell.addColorStop(1, '#141a18');
+        context.fillStyle = shell;
+        context.beginPath();
+        context.ellipse(hx, hy, 8.8, 8.4, .1, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#222925';
+        context.beginPath();
+        context.moveTo(hx + 3, hy + 4);
+        context.quadraticCurveTo(hx + 11, hy + 5, hx + 9, hy + 10);
+        context.lineTo(hx + 1, hy + 9);
+        context.closePath();
+        context.fill();
+        const visor = context.createLinearGradient(hx, hy - 5, hx + 10, hy + 4);
+        visor.addColorStop(0, '#2c3d45');
+        visor.addColorStop(1, '#a3bcc0');
+        context.fillStyle = visor;
+        context.beginPath();
+        context.moveTo(hx + 1, hy - 4);
+        context.quadraticCurveTo(hx + 11, hy - 6, hx + 10, hy + 3);
+        context.lineTo(hx + 2, hy + 4);
+        context.quadraticCurveTo(hx - 1, hy, hx + 1, hy - 4);
+        context.fill();
+        context.strokeStyle = '#ffffff66';
+        context.lineWidth = .9;
+        context.beginPath();
+        context.moveTo(hx + 4, hy - 3.5);
+        context.lineTo(hx + 8, hy - 2.5);
+        context.stroke();
+        context.strokeStyle = '#d4a94a';
+        context.lineWidth = 1.3;
+        context.beginPath();
+        context.moveTo(hx - 7, hy - 2);
+        context.quadraticCurveTo(hx - 2, hy - 9.5, hx + 6, hy - 7);
+        context.stroke();
+        context.strokeStyle = '#ffd89a77';
+        context.lineWidth = 1;
+        context.beginPath();
+        context.arc(hx, hy, 8.4, Math.PI * 1.05, Math.PI * 1.55);
+        context.stroke();
+        context.restore();
+      }
+
+      function drawMotoDetails(time) {
+        const x = ((time * .085 * speed) % 1610) - 190;
+        const bob = Math.sin(time * .012 * speed) * .8;
+        const flap = Math.sin(time * .02 * speed);
+        context.save();
+        for (let puff = 0; puff < 5; puff++) {
+          const age = ((time * .0011 * speed + puff / 5) % 1);
+          context.globalAlpha = (1 - age) * .22;
+          context.fillStyle = '#b8bcb0';
+          context.beginPath();
+          context.arc(x - 58 - age * 46, 624 - age * 9 + Math.sin(puff * 3 + time * .004) * 2, 2 + age * 6, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.globalAlpha = 1;
+        context.fillStyle = '#34423a';
+        context.beginPath();
+        context.moveTo(x - 16, 592 + bob);
+        context.quadraticCurveTo(x - 27, 594 + bob + flap * 2, x - 35 - flap * 2, 600 + bob + flap * 3);
+        context.quadraticCurveTo(x - 25, 603 + bob, x - 14, 599 + bob);
+        context.fill();
+        context.fillStyle = '#fff6dc88';
+        context.beginPath();
+        context.ellipse(x + 3, 600, 7, 1.4, -.3, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#ffffff30';
+        context.beginPath();
+        context.ellipse(x + 6, 563 + bob, 3, 1.6, -.6, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = '#8f9488';
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(x + 40, 598);
+        context.lineTo(x + 38, 587);
+        context.stroke();
+        context.fillStyle = '#2b312c';
+        context.beginPath();
+        context.ellipse(x + 38, 585, 3.2, 2.2, -.4, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#9fb3ae';
+        context.beginPath();
+        context.ellipse(x + 38, 585, 1.9, 1.2, -.4, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#e4dcc2';
+        context.fillRect(x - 60, 616, 11, 5);
+        context.fillStyle = '#3a3a34';
+        context.fillRect(x - 58, 618, 7, 1);
+        context.strokeStyle = '#11151344';
+        context.lineWidth = 3;
+        for (const wx of [x - 38, x + 39]) {
+          context.beginPath();
+          context.arc(wx, 631, 14, time * .004 * speed, time * .004 * speed + 1.4);
+          context.stroke();
+        }
+        context.restore();
+      }
+
+      const BUS_PAX = [
+        { k: 'sit', look: 1, phone: .9 }, { k: 'stand', look: 0 }, { k: 'seat' }, { k: 'sit', look: 3 },
+        { k: 'stand', look: 4 }, { k: 'sit', look: 2, phone: .8 }, { k: 'stand', look: 5 }, { k: 'driver', look: 0 }
+      ];
+
+      function drawBusInterior(x, top, time) {
+        for (let i = 0; i < 8; i++) {
+          const wx = x + 15 + i * 27;
+          const pax = BUS_PAX[i];
+          const sway = Math.sin(time / 650 + i * 1.3) * .9;
+          const breath = sway * .6;
+          context.save();
+          context.beginPath();
+          context.rect(wx, top + 24, 20, 48);
+          context.clip();
+          const wall = context.createLinearGradient(0, top + 24, 0, top + 72);
+          wall.addColorStop(0, '#f4e0b0cc');
+          wall.addColorStop(.5, '#b9a477aa');
+          wall.addColorStop(1, '#4a5a4dcc');
+          context.fillStyle = wall;
+          context.fillRect(wx, top + 24, 20, 48);
+          context.fillStyle = '#1b2a2d55';
+          context.fillRect(wx + 3, top + 40, 14, 14);
+          context.fillStyle = '#ffd89a88';
+          context.fillRect(wx + 6 + (i % 3) * 3, top + 46, 2, 2);
+          context.fillStyle = '#fffbe8';
+          context.fillRect(wx, top + 24, 20, 2.5);
+          if (pax.k !== 'stand') {
+            context.fillStyle = '#34456b';
+            context.beginPath();
+            context.roundRect(wx + 2, top + 52, 15, 24, 3);
+            context.fill();
+            context.fillStyle = '#4a5f8f';
+            context.fillRect(wx + 3, top + 53, 3, 22);
+          } else {
+            context.fillStyle = '#c9ccc0';
+            context.fillRect(wx + 16, top + 36, 1.6, 40);
+            context.fillStyle = '#ffffff66';
+            context.fillRect(wx + 16, top + 36, .7, 40);
+          }
+          if (pax.k === 'stand') {
+            drawPerson(wx + 9 + sway, top + 88, .66, pax.look, { walk: 0, lean: .03 + sway * .02, armUp: 1, breath, shadow: false });
+          } else if (pax.k === 'sit') {
+            const ph = pax.phone || 0;
+            drawPerson(wx + 9 + sway * .5, top + 86, .64, pax.look, { walk: 0, sit: 1, sitThigh: 1.3, seatHip: 20, lean: .03, phone: ph, headDip: ph * 2, breath, shadow: false });
+          } else if (pax.k === 'driver') {
+            drawPerson(wx + 7, top + 87, .68, pax.look, { walk: 0, sit: 1, sitThigh: 1.3, seatHip: 20, lean: .07, breath, shadow: false });
+            context.save();
+            context.translate(wx + 17, top + 62);
+            context.rotate(.9);
+            context.strokeStyle = '#15191a';
+            context.lineWidth = 1.6;
+            context.beginPath();
+            context.ellipse(0, 0, 1.8, 7, 0, 0, Math.PI * 2);
+            context.stroke();
+            context.restore();
+          }
+          context.fillStyle = '#ffffff1c';
+          context.beginPath();
+          context.moveTo(wx + 2, top + 24);
+          context.lineTo(wx + 10, top + 24);
+          context.lineTo(wx + 4, top + 72);
+          context.lineTo(wx, top + 72);
+          context.fill();
+          context.restore();
+        }
+        context.strokeStyle = '#b9bcb0';
+        context.lineWidth = 1.3;
+        context.beginPath();
+        context.moveTo(x + 14, top + 38);
+        context.lineTo(x + 205, top + 38);
+        context.stroke();
+        context.strokeStyle = '#ffffff55';
+        context.lineWidth = .5;
+        context.beginPath();
+        context.moveTo(x + 14, top + 37.4);
+        context.lineTo(x + 205, top + 37.4);
+        context.stroke();
+        for (let i = 0; i < 7; i++) {
+          if (BUS_PAX[i].k === 'stand') continue;
+          const sx = x + 15 + i * 27 + 5 + Math.sin(time / 650 + i) * .8;
+          context.strokeStyle = '#d9d0a8';
+          context.lineWidth = .8;
+          context.beginPath();
+          context.moveTo(sx, top + 38);
+          context.lineTo(sx, top + 44);
+          context.stroke();
+          context.beginPath();
+          context.arc(sx, top + 46, 2, 0, Math.PI * 2);
+          context.stroke();
+        }
+      }
+
+      function drawBusDetails(time) {
+        const phase = time % 26000;
+        if (phase > 11000) return;
+        const x = -320 + (phase / 11000) * 1820;
+        const top = 548, bottom = 674, bw = 270;
+        context.save();
+        drawBusInterior(x, top, time);
+        const sheen = context.createLinearGradient(0, top + 8, 0, top + 20);
+        sheen.addColorStop(0, '#ffffff00');
+        sheen.addColorStop(.5, '#ffffff1c');
+        sheen.addColorStop(1, '#ffffff00');
+        context.fillStyle = sheen;
+        context.fillRect(x + 6, top + 8, bw - 12, 12);
+        const dirt = context.createLinearGradient(0, bottom - 34, 0, bottom);
+        dirt.addColorStop(0, '#1a161000');
+        dirt.addColorStop(1, '#1a161066');
+        context.fillStyle = dirt;
+        context.fillRect(x + 4, bottom - 34, bw - 8, 34);
+        context.fillStyle = '#0c1110';
+        context.fillRect(x + bw - 92, top + 7, 66, 11);
+        context.fillStyle = '#ffb347';
+        context.font = 'bold 8px monospace';
+        context.textAlign = 'left';
+        context.fillText('47 CENTRE', x + bw - 88, top + 16);
+        context.fillStyle = '#ffb34733';
+        context.fillRect(x + bw - 92, top + 7, 66, 11);
+        const ac = context.createLinearGradient(0, top - 7, 0, top);
+        ac.addColorStop(0, '#9a9a8c');
+        ac.addColorStop(1, '#55584f');
+        context.fillStyle = ac;
+        context.fillRect(x + 80, top - 7, 62, 7);
+        context.fillStyle = '#2a2d28';
+        context.fillRect(x + 84, top - 4, 54, 1);
+        context.strokeStyle = '#1e231f';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.moveTo(x + bw - 3, top + 36);
+        context.lineTo(x + bw + 6, top + 32);
+        context.stroke();
+        context.fillStyle = '#2b312c';
+        context.fillRect(x + bw + 4, top + 26, 4, 14);
+        context.fillStyle = '#e6e0c8';
+        context.fillRect(x + 6, bottom - 22, 24, 9);
+        context.fillStyle = '#34342e';
+        context.font = '5px monospace';
+        context.fillText('BX-472-LM', x + 8, bottom - 15);
+        for (let wheelX of [x + 62, x + 214]) {
+          context.fillStyle = '#0b0f0e55';
+          context.beginPath();
+          context.arc(wheelX, 677, 19, Math.PI, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+      }
+
+      function drawVehicleLighting(time, carX, occupied) {
+        if (occupied) drawGlow(carX, 556, 58, 24, '#ffd89a', .2);
+        drawGlow(carX + 71, 564, 12, 8, '#fff4d0', .8);
+        drawBeam(carX + 76, 568, 90, 30, .12);
+        drawGlow(carX - 75, 566, 9, 6, '#ff3d2e', .55);
+        drawGlow(carX, 606, 92, 10, '#d8c79a', .13);
+        const mx = ((time * .085 * speed) % 1610) - 190;
+        drawGlow(mx + 46, 614, 13, 9, '#fff4d0', .9);
+        drawBeam(mx + 48, 619, 150, 30, .2);
+        drawGlow(mx - 44, 613, 9, 6, '#ff3d2e', .6);
+        drawGlow(mx, 646, 62, 8, '#d8c79a', .12);
+        const bp = time % 26000;
+        if (bp <= 11000) {
+          const bx = -320 + (bp / 11000) * 1820;
+          drawGlow(bx + 266, 652, 15, 10, '#fff4d0', .9);
+          drawBeam(bx + 270, 656, 190, 34, .22);
+          drawGlow(bx + 5, 648, 10, 7, '#ff3d2e', .6);
+          drawGlow(bx + 135, 690, 150, 8, '#d8c79a', .1);
+        }
       }
 
       function animate(now) {
