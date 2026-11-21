@@ -479,6 +479,8 @@
       const ctx = canvas.getContext('2d');
       const cx = size / 2;
       const cy = size / 2;
+      ctx.fillStyle = '#6b21a8';
+      ctx.fillRect(0, 0, size, size);
 
       const grad = ctx.createRadialGradient(cx - 28, cy - 28, 12, cx, cy, 124);
       grad.addColorStop(0, '#ffffff');
@@ -522,6 +524,7 @@
 
       const faceTex = new THREE.CanvasTexture(canvas);
       faceTex.anisotropy = 4;
+      faceTex.format = THREE.RGBFormat;
 
       const edgeCanvas = document.createElement('canvas');
       edgeCanvas.width = 256;
@@ -536,6 +539,7 @@
       const edgeTex = new THREE.CanvasTexture(edgeCanvas);
       edgeTex.wrapS = THREE.RepeatWrapping;
       edgeTex.repeat.set(3, 1);
+      edgeTex.format = THREE.RGBFormat;
 
       return { faceTex, edgeTex };
     }
@@ -1252,9 +1256,9 @@
     const { faceTex, edgeTex } = createCoinTextures();
     const coinGeometry = new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, COIN_HEIGHT, 28);
     const coinMaterials = [
-      new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.3, metalness: 0.4 }),
-      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25 }),
-      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25 })
+      new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.3, metalness: 0.4, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending }),
+      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending }),
+      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.22, metalness: 0.25, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending })
     ];
     const ingotCanvas = document.createElement('canvas');
     ingotCanvas.width = 256;
@@ -1275,9 +1279,10 @@
     ingotContext.textBaseline = 'middle';
     ingotContext.fillText('50 ⭐', 128, 128);
     const ingotTexture = new THREE.CanvasTexture(ingotCanvas);
+    ingotTexture.format = THREE.RGBFormat;
     const ingotGeometry = new THREE.BoxGeometry(0.78, COIN_HEIGHT, 0.52);
-    const ingotSideMaterial = new THREE.MeshStandardMaterial({ color: 0xb7790c, roughness: 0.24, metalness: 0.88 });
-    const ingotFaceMaterial = new THREE.MeshStandardMaterial({ map: ingotTexture, roughness: 0.22, metalness: 0.72 });
+    const ingotSideMaterial = new THREE.MeshStandardMaterial({ color: 0xb7790c, roughness: 0.24, metalness: 0.88, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending });
+    const ingotFaceMaterial = new THREE.MeshStandardMaterial({ map: ingotTexture, roughness: 0.22, metalness: 0.72, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending });
     const ingotMaterials = [ingotSideMaterial, ingotSideMaterial, ingotFaceMaterial, ingotFaceMaterial, ingotSideMaterial, ingotSideMaterial];
     const playerCoinMaterialCache = new Map();
     function getPlayerCoinMaterials(owner) {
@@ -1303,7 +1308,8 @@
       context.arc(128, 128, 120, 0, Math.PI * 2);
       context.stroke();
       const texture = new THREE.CanvasTexture(canvas);
-      const faceMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.26, metalness: 0.18 });
+      texture.format = THREE.RGBFormat;
+      const faceMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.26, metalness: 0.18, transparent: false, opacity: 1, depthWrite: true, depthTest: true, blending: THREE.NormalBlending });
       const record = {
         url,
         texture,
@@ -1316,7 +1322,8 @@
       image.onload = () => {
         if (playerCoinMaterialCache.get(url) !== record) return;
         const size = Math.min(image.naturalWidth, image.naturalHeight);
-        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = '#312e81';
+        context.fillRect(0, 0, canvas.width, canvas.height);
         context.save();
         context.beginPath();
         context.arc(128, 128, 120, 0, Math.PI * 2);
@@ -1539,6 +1546,7 @@
       drawCardFace(ctx, owner, stars);
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = 4;
+      texture.format = THREE.RGBFormat;
       texture.colorSpace = THREE.SRGBColorSpace;
       const side = new THREE.MeshStandardMaterial({
         color: 0xeab308,
@@ -1733,7 +1741,6 @@
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
       if (isCard) {
-        mesh.renderOrder = 20;
         mesh.material.forEach(material => {
           material.transparent = false;
           material.opacity = 1;
@@ -1799,9 +1806,12 @@
         Math.abs(Math.cos(coin.rotX)) * COIN_HEIGHT * 0.5;
     }
 
+    const CARD_COLLISION_RADIUS = Math.hypot(1.3 * 0.5, 1.9 * 0.5);
+    const INGOT_COLLISION_RADIUS = Math.hypot(0.78 * 0.5, 0.52 * 0.5);
+    const MAX_COIN_COLLISION_RADIUS = CARD_COLLISION_RADIUS;
     function coinCollisionRadius(coin) {
-      if (coin.isCard) return 0.84;
-      if (coin.isIngot) return 0.39;
+      if (coin.isCard) return CARD_COLLISION_RADIUS;
+      if (coin.isIngot) return INGOT_COLLISION_RADIUS;
       return COIN_RADIUS;
     }
 
@@ -3532,20 +3542,21 @@
       }
 
       const pushed = new Set(candidates.filter(coin =>
-        coin.z + COIN_RADIUS >= previousFrontZ &&
-        coin.z - COIN_RADIUS <= currentFrontZ
+        coin.z + coinCollisionRadius(coin) >= previousFrontZ &&
+        coin.z - coinCollisionRadius(coin) <= currentFrontZ
       ));
       const queue = Array.from(pushed);
       for (let cursor = 0; cursor < queue.length; cursor++) {
         const coin = queue[cursor];
         const cellX = Math.floor(coin.x / cellSize);
         const cellZ = Math.floor(coin.z / cellSize);
-        for (let dxCell = -1; dxCell <= 1; dxCell++) {
-          for (let dzCell = -1; dzCell <= 1; dzCell++) {
+        const cellReach = Math.ceil((coinCollisionRadius(coin) + MAX_COIN_COLLISION_RADIUS) / cellSize);
+        for (let dxCell = -cellReach; dxCell <= cellReach; dxCell++) {
+          for (let dzCell = -cellReach; dzCell <= cellReach; dzCell++) {
             const nearby = cells.get(`${cellX + dxCell}:${cellZ + dzCell}`) || [];
             for (const other of nearby) {
               if (pushed.has(other) ||
-                  other.z < coin.z - COIN_RADIUS * 0.2 ||
+                  other.z < coin.z - (coinCollisionRadius(coin) + coinCollisionRadius(other)) * 0.2 ||
                   Math.abs(other.y - coin.y) >= COIN_HEIGHT * 1.6) continue;
               const dx = other.x - coin.x;
               const dz = other.z - coin.z;
@@ -3566,11 +3577,12 @@
     // Garde les pièces à l'intérieur des murs. À rappeler après toute correction de
     // collision entre pièces, sinon la pression d'une pile peut les pousser à travers.
     function clampCoinsToWalls() {
-      const maxSideX = BOARD_HALF_W - COIN_RADIUS - 0.04;
-      const minZ = MAIN_DECK_Z_MIN + COIN_RADIUS;
       for (let i = 0; i < coins.length; i++) {
         const c = coins[i];
         if (c.fallingOverEdge) continue;
+        const collisionRadius = coinCollisionRadius(c);
+        const maxSideX = BOARD_HALF_W - collisionRadius - 0.04;
+        const minZ = MAIN_DECK_Z_MIN + collisionRadius;
         if (c.x < -maxSideX) {
           c.x = -maxSideX;
           if (c.vx < 0) c.vx = 0;
@@ -3661,7 +3673,7 @@
         }
 
         if (!c.fallingOverEdge && c.y - halfH < PUSHER_Y - 0.04) {
-          const minAllowedZ = pusherFrontZ + COIN_RADIUS;
+          const minAllowedZ = pusherFrontZ + coinCollisionRadius(c);
           if (c.z < minAllowedZ) {
             c.z = minAllowedZ;
             if (pusherDeltaZ > 0) {
@@ -3670,7 +3682,8 @@
           }
         }
 
-        const maxSideX = BOARD_HALF_W - COIN_RADIUS - 0.04;
+        const collisionRadius = coinCollisionRadius(c);
+        const maxSideX = BOARD_HALF_W - collisionRadius - 0.04;
         if (c.x < -maxSideX) {
           c.x = -maxSideX;
           c.vx = Math.abs(c.vx) * 0.45;
@@ -3679,15 +3692,15 @@
           c.vx = -Math.abs(c.vx) * 0.45;
         }
 
-        if (c.z < MAIN_DECK_Z_MIN + COIN_RADIUS) {
-          c.z = MAIN_DECK_Z_MIN + COIN_RADIUS;
+        if (c.z < MAIN_DECK_Z_MIN + collisionRadius) {
+          c.z = MAIN_DECK_Z_MIN + collisionRadius;
           c.vz = Math.abs(c.vz) * 0.3;
         }
 
-        if (!c.tippingFlat && c.z > MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25 && c.y <= MAIN_DECK_Y + COIN_HEIGHT * 1.2) {
+        if (!c.tippingFlat && c.z > MAIN_DECK_Z_MAX - collisionRadius * 0.25 && c.y <= MAIN_DECK_Y + COIN_HEIGHT * 1.2) {
           // Bascule progressive au bord : l'inclinaison est lissée (plus de saut d'une frame
           // à l'autre) et la hauteur reste celle d'une pièce à plat, donc plus de tremblement.
-          const overhang = (c.z - (MAIN_DECK_Z_MAX - COIN_RADIUS * 0.25)) / (COIN_RADIUS * 0.6);
+          const overhang = (c.z - (MAIN_DECK_Z_MAX - collisionRadius * 0.25)) / (collisionRadius * 0.6);
           const tipTarget = Math.min(Math.PI * 0.48, overhang * 0.85);
           c.edgeTipping = true;
           c.rotX += (tipTarget - c.rotX) * Math.min(1, 10 * dt);
@@ -3722,8 +3735,9 @@
           if (a.fallingOverEdge) continue;
           const gx = Math.floor(a.x / CELL) + 64;
           const gz = Math.floor(a.z / CELL) + 64;
+          const cellReach = Math.ceil((coinCollisionRadius(a) + MAX_COIN_COLLISION_RADIUS) / CELL);
 
-          for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) {
+          for (let ox = -cellReach; ox <= cellReach; ox++) for (let oz = -cellReach; oz <= cellReach; oz++) {
             const cell = grid.get((gx + ox) * 1024 + (gz + oz));
             if (!cell) continue;
             for (const j of cell) {
