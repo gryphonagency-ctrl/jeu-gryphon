@@ -23,23 +23,23 @@ export class TitleScreen implements Screen {
     e.appendChild(streaks);
 
     const centre = div('af-title-centre');
-    const kicker = div('af-title-kicker', 'FORMULA RACING · SEASON ONE');
+    const kicker = div('af-title-kicker', 'GRIFFON AGENCY · SEASON ONE');
     const word = div('af-wordmark');
     const w1 = div('af-word');
     const w2 = div('af-word af-word2');
-    'APEX'.split('').forEach((ch, i) => {
+    'GRIFFON'.split('').forEach((ch, i) => {
       const s = span('af-letter', ch);
       s.style.setProperty('--d', `${i * 70}ms`);
       w1.appendChild(s);
     });
-    'FORMULA'.split('').forEach((ch, i) => {
+    'AGENCY'.split('').forEach((ch, i) => {
       const s = span('af-letter', ch);
       s.style.setProperty('--d', `${320 + i * 60}ms`);
       w2.appendChild(s);
     });
     word.append(w1, w2);
     const rule = div('af-title-rule');
-    const tag = div('af-tagline', 'TWENTY CARS. ONE APEX. NO MERCY.');
+    const tag = div('af-tagline', 'TWENTY CARS. ONE RACE. NO MERCY.');
     const press = div('af-press');
     press.appendChild(span('af-press-key', 'PRESS'));
     press.appendChild(span('af-press-glyph', ctx.gamepad ? 'A' : 'ENTER'));
@@ -48,7 +48,7 @@ export class TitleScreen implements Screen {
     e.appendChild(centre);
 
     const foot = div('af-title-foot');
-    foot.appendChild(span('', `APEX FORMULA ${VERSION}`));
+    foot.appendChild(span('', `GRIFFON AGENCY ${VERSION}`));
     foot.appendChild(span('af-dim', 'FULLY PROCEDURAL · THREE.JS · NO EXTERNAL ASSETS'));
     foot.appendChild(span('af-dim', 'KEYBOARD · GAMEPAD'));
     e.appendChild(foot);

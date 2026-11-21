@@ -84,6 +84,13 @@ export class CameraSystem implements ICameraSystem {
     return this.mode;
   }
 
+  setLiveChaseZoom(active: boolean): void {
+    this.chase.setLiveZoom(active);
+    this.chaseFar.setLiveZoom(active);
+    this.snapMode(this.mode);
+    this.requestBlend();
+  }
+
   cycle(): CameraMode {
     const i = CYCLE.indexOf(this.mode);
     this.setMode(CYCLE[(i + 1) % CYCLE.length]);

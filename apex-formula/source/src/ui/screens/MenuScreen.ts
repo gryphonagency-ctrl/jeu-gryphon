@@ -59,7 +59,7 @@ export class MenuScreen implements Screen {
 
     const head = div('af-menu-head');
     const brand = div('af-brand');
-    brand.append(span('af-brand-a', 'APEX'), span('af-brand-b', 'FORMULA'));
+    brand.append(span('af-brand-a', 'GRIFFON'), span('af-brand-b', 'AGENCY'));
     this.crumbs = div('af-crumbs');
     head.append(brand, this.crumbs);
     this.panel.appendChild(head);

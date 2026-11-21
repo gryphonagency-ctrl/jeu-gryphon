@@ -1,5 +1,5 @@
 /**
- * APEX FORMULA — entry point & game loop. Owned by Lead.
+ * GRIFFON AGENCY — entry point & game loop. Owned by Lead.
  *
  * This file wires every module together. Module agents: READ THIS to see exactly how and when you are called.
  * Data flow per frame (live session):
@@ -61,6 +61,9 @@ import { LivePlayerHUD } from './live/LivePlayerHUD';
 import { getSplitViewports } from './render/splitScreen';
 
 const CIRCUITS: TrackDefinition[] = [...CORE_CIRCUITS, ...TRACK_CIRCUITS.filter((c) => !CORE_CIRCUITS.some((k) => k.id === c.id))];
+const LIVE_BASE_SPEED_KMH = 50;
+const LIVE_LIKE_BONUS_KMH = 50;
+const LIVE_MAX_SPEED_KMH = 300;
 
 class Game {
   // Long-lived systems
@@ -101,6 +104,7 @@ class Game {
   private readonly playerInput: DriverInput = createDefaultInput();
   private readonly liveCarByUser = new Map<string, number>();
   private readonly liveNameByCar = new Map<number, string>();
+  private readonly liveLikeBoosts = new Map<number, number>();
   private readonly liveSpeedLimits = new Map<number, number>();
   private readonly liveCameraSystems: CameraSystem[] = [];
   private livePreviousCameraMode: CameraMode | null = null;
@@ -123,12 +127,15 @@ class Game {
     this.livePlayerHUD = new LivePlayerHUD(uiRoot);
     this.liveControl = new TikTokLiveControl(
       uiRoot,
-      (participants) => this.startLiveRace(participants),
+      (participants, laps, circuitId) => this.startLiveRace(participants, laps, circuitId),
       (userId, username, coinCount) => this.applyLiveGift(userId, username, coinCount),
+      (userId, username, likeCount) => this.applyLiveLike(userId, username, likeCount),
       (screenIndex) => this.unstickLivePlayer(screenIndex),
       settings.masterVolume,
-      (delta) => {
-        settings.masterVolume = clamp(settings.masterVolume + delta, 0, 1);
+      3,
+      CIRCUITS,
+      (volume) => {
+        settings.masterVolume = clamp(volume, 0, 1);
         this.audio.setMasterVolume(settings.masterVolume);
         saveSettings(settings);
         return settings.masterVolume;
@@ -204,6 +211,7 @@ class Game {
     this.teardownSession();
     this.liveCarByUser.clear();
     this.liveNameByCar.clear();
+    this.liveLikeBoosts.clear();
     this.liveSpeedLimits.clear();
     this.liveNameplates.setNames(this.liveNameByCar);
     this.liveSession = liveParticipants.length > 0;
@@ -236,7 +244,15 @@ class Game {
     const aiCount = isTimeTrial ? 0 : this.liveSession
       ? GRID_SIZE - safeLiveParticipants.length
       : Math.max(0, Math.min(GRID_SIZE - 1, config.aiCount));
-    const participantDrivers = DRIVERS.slice(0, safeLiveParticipants.length);
+    const rng = new Rng(hashString(config.circuitId + config.playerDriverId) ^ Date.now());
+    const driverPool = [...DRIVERS];
+    if (this.liveSession) {
+      for (let i = driverPool.length - 1; i > 0; i--) {
+        const j = rng.int(0, i);
+        [driverPool[i], driverPool[j]] = [driverPool[j], driverPool[i]];
+      }
+    }
+    const participantDrivers = driverPool.slice(0, safeLiveParticipants.length);
     const participantDriverIds = new Set(participantDrivers.map((d) => d.id));
     const others = this.liveSession
       ? DRIVERS.filter((d) => !participantDriverIds.has(d.id)).slice(0, aiCount)
@@ -244,7 +260,6 @@ class Game {
     const lineup = this.liveSession ? [...participantDrivers, ...others] : [player, ...others];
 
     // Grid order.
-    const rng = new Rng(hashString(config.circuitId + config.playerDriverId) ^ Date.now());
     const perf = (d: (typeof DRIVERS)[number]) => {
       const t = TEAM_BY_ID[d.teamId];
       return (t.performance.power + t.performance.aero) * 0.5 * 0.7 + d.skill.pace * 0.3 + rng.range(-0.015, 0.015);
@@ -278,7 +293,11 @@ class Game {
     safeLiveParticipants.forEach((participant, index) => {
       this.liveCarByUser.set(participant.id, index);
       this.liveNameByCar.set(index, participant.username);
-      this.liveSpeedLimits.set(index, Math.min(300, 50 + (participant.giftCoins ?? 0)));
+      this.liveLikeBoosts.set(index, participant.likeCount ?? 0);
+      this.liveSpeedLimits.set(index, Math.min(
+        LIVE_MAX_SPEED_KMH,
+        LIVE_BASE_SPEED_KMH + (participant.likeCount ?? 0) + (participant.giftCoins ?? 0),
+      ));
     });
     this.aiCarIds = entries.filter((e) => !e.isPlayer).map((e) => e.carId);
 
@@ -421,6 +440,7 @@ class Game {
       this.clearLiveCameras();
       this.liveCarByUser.clear();
       this.liveNameByCar.clear();
+      this.liveLikeBoosts.clear();
       this.liveSpeedLimits.clear();
       this.liveNameplates.setNames(this.liveNameByCar);
       this.liveControl.resetForNextRace();
@@ -578,18 +598,18 @@ class Game {
     }
   }
 
-  private startLiveRace(participants: LiveParticipant[]): void {
+  private startLiveRace(participants: LiveParticipant[], laps: 3 | 5, circuitId: string): void {
     if (this.phase === 'loading' || this.phase === 'pre-session' || this.phase === 'session' || this.phase === 'paused') {
       this.liveControl.setRaceStatus('Une autre course est déjà en cours.');
       this.liveControl.resetForNextRace();
       return;
     }
-    const trackDef = CIRCUITS[0];
+    const trackDef = CIRCUITS.find((circuit) => circuit.id === circuitId) ?? CIRCUITS[0];
     const config: SessionConfig = {
       mode: 'quick-race',
       sessionType: 'race',
       circuitId: trackDef.id,
-      laps: trackDef.defaultLaps,
+      laps,
       playerDriverId: DRIVERS[0].id,
       aiDifficulty: 0.6,
       aiCount: GRID_SIZE - participants.length,
@@ -608,10 +628,34 @@ class Game {
     if (carId === undefined || !this.liveSession) {
       return `@${username} : écris « go » pour inscrire ta voiture avant la course.`;
     }
-    const previousLimit = this.liveSpeedLimits.get(carId) ?? 50;
-    const nextLimit = Math.min(300, previousLimit + coinCount);
+    const previousLimit = this.liveSpeedLimits.get(carId) ?? LIVE_BASE_SPEED_KMH;
+    const nextLimit = Math.min(LIVE_MAX_SPEED_KMH, previousLimit + coinCount);
     this.liveSpeedLimits.set(carId, nextLimit);
-    return `Merci @${username} · vitesse maximale ${nextLimit} km/h${nextLimit === 300 ? ' (plafond atteint)' : ''}.`;
+    return `Merci @${username} · vitesse maximale ${nextLimit} km/h${nextLimit === LIVE_MAX_SPEED_KMH ? ' (plafond atteint)' : ''}.`;
+  }
+
+  private applyLiveLike(userId: string, username: string, likeCount: number): string {
+    const carId = this.liveCarByUser.get(userId);
+    if (carId === undefined || !this.liveSession) {
+      return `@${username} : écris « go » pour inscrire ta voiture avant de liker.`;
+    }
+    const previousBonus = this.liveLikeBoosts.get(carId) ?? 0;
+    const previousLimit = this.liveSpeedLimits.get(carId) ?? LIVE_BASE_SPEED_KMH;
+    const applied = Math.min(
+      likeCount,
+      Math.max(0, LIVE_LIKE_BONUS_KMH - previousBonus),
+      Math.max(0, LIVE_MAX_SPEED_KMH - previousLimit),
+    );
+    const nextLimit = previousLimit + applied;
+    if (applied > 0) {
+      this.liveLikeBoosts.set(carId, previousBonus + applied);
+      this.liveSpeedLimits.set(carId, nextLimit);
+    }
+    return applied > 0
+      ? `Merci @${username} · +${applied} km/h grâce aux likes · bonus likes ${previousBonus + applied}/${LIVE_LIKE_BONUS_KMH} km/h.`
+      : previousLimit >= LIVE_MAX_SPEED_KMH
+        ? `@${username} a atteint la vitesse maximale de ${LIVE_MAX_SPEED_KMH} km/h.`
+        : `@${username} a atteint le bonus maximal des likes · les cadeaux peuvent encore augmenter sa vitesse jusqu'à ${LIVE_MAX_SPEED_KMH} km/h.`;
   }
 
   private unstickLivePlayer(screenIndex: number): string {
@@ -787,10 +831,12 @@ class Game {
     this.cameraSys.setMode('chase');
     this.cameraSys.setTarget(0);
     this.cameraSys.setCinematic(null);
+    this.cameraSys.setLiveChaseZoom(true);
     this.cameraSys.snap();
 
     for (let carId = 1; carId < playerCount; carId++) {
       const cameraSystem = new CameraSystem(window.innerWidth / window.innerHeight);
+      cameraSystem.setLiveChaseZoom(true);
       cameraSystem.setTarget(carId);
       cameraSystem.snap();
       this.liveCameraSystems.push(cameraSystem);
@@ -803,6 +849,7 @@ class Game {
     this.render.setSplitCameras(null);
     for (const cameraSystem of this.liveCameraSystems) cameraSystem.dispose();
     this.liveCameraSystems.length = 0;
+    this.cameraSys.setLiveChaseZoom(false);
     if (this.livePreviousCameraMode !== null) {
       this.cameraSys.setMode(this.livePreviousCameraMode);
       this.cameraSys.setTarget(0);

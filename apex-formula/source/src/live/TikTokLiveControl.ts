@@ -2,6 +2,7 @@ export interface LiveParticipant {
   id: string;
   username: string;
   giftCoins?: number;
+  likeCount?: number;
 }
 
 declare global {
@@ -18,7 +19,13 @@ interface LiveMessage {
   commentData?: Record<string, unknown>;
   gift?: Record<string, unknown>;
   giftData?: Record<string, unknown>;
+  likeData?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+interface CircuitOption {
+  id: string;
+  name: string;
 }
 
 const JOIN_WINDOW_MS = 10_000;
@@ -32,6 +39,9 @@ export class TikTokLiveControl {
   private readonly playersLabel: HTMLElement;
   private readonly connectButton: HTMLButtonElement;
   private readonly disconnectButton: HTMLButtonElement;
+  private readonly lapCountInput: HTMLSelectElement;
+  private readonly circuitInput: HTMLSelectElement;
+  private readonly volumeInput: HTMLInputElement;
   private readonly volumeLabel: HTMLElement;
   private readonly recoveryButtons: HTMLButtonElement[] = [];
   private readonly participants = new Map<string, LiveParticipant>();
@@ -48,11 +58,14 @@ export class TikTokLiveControl {
 
   constructor(
     root: HTMLElement,
-    private readonly onRaceStart: (participants: LiveParticipant[]) => void,
+    private readonly onRaceStart: (participants: LiveParticipant[], laps: 3 | 5, circuitId: string) => void,
     private readonly onGift: (userId: string, username: string, coinCount: number) => string,
+    private readonly onLike: (userId: string, username: string, likeCount: number) => string,
     private readonly onUnstickPlayer: (screenIndex: number) => string,
     initialVolume: number,
-    private readonly onVolumeChange: (delta: number) => number,
+    initialLaps: 3 | 5,
+    circuits: readonly CircuitOption[],
+    private readonly onVolumeChange: (volume: number) => number,
   ) {
     const panel = document.createElement('details');
     panel.className = 'apex-live-panel';
@@ -75,12 +88,21 @@ export class TikTokLiveControl {
         </div>
         <div class="apex-live-volume">
           <span>Volume du jeu</span>
-          <button type="button" class="apex-live-volume-down" aria-label="Diminuer le volume">−</button>
+          <input class="apex-live-volume-input" type="range" min="0" max="1" step="0.05" value="${initialVolume}" aria-label="Volume du jeu">
           <output class="apex-live-volume-value">${Math.round(initialVolume * 100)} %</output>
-          <button type="button" class="apex-live-volume-up" aria-label="Augmenter le volume">+</button>
         </div>
+        <label class="apex-live-laps">Tours de la course
+          <select class="apex-live-laps-input" aria-label="Nombre de tours">
+            <option value="3"${initialLaps === 3 ? ' selected' : ''}>3 tours</option>
+            <option value="5"${initialLaps === 5 ? ' selected' : ''}>5 tours</option>
+          </select>
+        </label>
+        <label class="apex-live-circuit">Circuit de la course
+          <select class="apex-live-circuit-input" aria-label="Circuit de la course"></select>
+        </label>
         <div class="apex-live-row apex-live-simulators">
           <button type="button" class="apex-live-sim-go">Tester « go »</button>
+          <button type="button" class="apex-live-sim-like">Tester like</button>
           <button type="button" class="apex-live-sim-gift">Tester cadeau · 10 pièces</button>
           <button type="button" class="apex-live-sim-share">Tester partage</button>
         </div>
@@ -100,8 +122,8 @@ export class TikTokLiveControl {
       .apex-live-content{padding:0 12px 12px}
       .apex-live-content label{display:block;margin:4px 0}
       .apex-live-row{display:flex;gap:6px;flex-wrap:wrap}
-      .apex-live-panel input,.apex-live-panel button{box-sizing:border-box;min-height:32px;border:1px solid #65738a;border-radius:5px;color:inherit;background:#182234;padding:5px 8px;font:inherit}
-      .apex-live-panel input{min-width:120px;flex:1}
+      .apex-live-panel input,.apex-live-panel select,.apex-live-panel button{box-sizing:border-box;min-height:32px;border:1px solid #65738a;border-radius:5px;color:inherit;background:#182234;padding:5px 8px;font:inherit}
+      .apex-live-panel input[type="text"]{min-width:120px;flex:1}
       .apex-live-panel button{cursor:pointer}
       .apex-live-panel button:disabled{opacity:.55;cursor:default}
       .apex-live-status,.apex-live-race{margin-top:7px;color:#c5d1e4}
@@ -112,7 +134,9 @@ export class TikTokLiveControl {
       .apex-live-recovery-grid button{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .apex-live-volume{display:flex;align-items:center;gap:8px;margin-top:8px}
       .apex-live-volume span{margin-right:auto}
+      .apex-live-volume-input{min-width:80px;max-width:180px;flex:1;accent-color:#e10600}
       .apex-live-volume-value{min-width:42px;text-align:center;font-variant-numeric:tabular-nums}
+      .apex-live-laps,.apex-live-circuit{display:flex!important;align-items:center;justify-content:space-between;gap:10px;margin-top:8px!important}
       .apex-live-toggle{position:fixed;z-index:21;top:12px;right:12px;width:38px;height:38px;display:grid;place-items:center;border:1px solid #65738a;border-radius:7px;background:rgba(9,14,24,.94);color:#fff;cursor:pointer}
       .apex-live-toggle svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
       .apex-live-simulators{margin-top:8px}
@@ -126,6 +150,15 @@ export class TikTokLiveControl {
     this.playersLabel = panel.querySelector('.apex-live-players') as HTMLElement;
     this.connectButton = panel.querySelector('.apex-live-connect') as HTMLButtonElement;
     this.disconnectButton = panel.querySelector('.apex-live-disconnect') as HTMLButtonElement;
+    this.lapCountInput = panel.querySelector('.apex-live-laps-input') as HTMLSelectElement;
+    this.circuitInput = panel.querySelector('.apex-live-circuit-input') as HTMLSelectElement;
+    for (const circuit of circuits) {
+      const option = document.createElement('option');
+      option.value = circuit.id;
+      option.textContent = circuit.name;
+      this.circuitInput.appendChild(option);
+    }
+    this.volumeInput = panel.querySelector('.apex-live-volume-input') as HTMLInputElement;
     this.volumeLabel = panel.querySelector('.apex-live-volume-value') as HTMLElement;
     const recoveryGrid = panel.querySelector('.apex-live-recovery-grid') as HTMLElement;
     for (let screenIndex = 0; screenIndex < MAX_LIVE_PLAYERS; screenIndex++) {
@@ -146,12 +179,15 @@ export class TikTokLiveControl {
     });
     this.connectButton.addEventListener('click', () => this.connect());
     this.disconnectButton.addEventListener('click', () => this.disconnect());
-    panel.querySelector('.apex-live-volume-down')?.addEventListener('click', () => this.changeVolume(-0.1));
-    panel.querySelector('.apex-live-volume-up')?.addEventListener('click', () => this.changeVolume(0.1));
+    this.volumeInput.addEventListener('input', () => this.changeVolume(Number(this.volumeInput.value)));
     panel.querySelector('.apex-live-sim-go')?.addEventListener('click', () => {
       this.simulatedPlayerCount++;
       this.lastSimulatedUser = `spectateur_test_${this.simulatedPlayerCount}`;
       this.handleComment({ type: 'comment', commentData: { uniqueId: this.lastSimulatedUser, username: this.lastSimulatedUser, comment: 'go' } });
+    });
+    panel.querySelector('.apex-live-sim-like')?.addEventListener('click', () => {
+      const username = this.lastSimulatedUser || 'spectateur_test';
+      this.handleLike({ type: 'like', likeData: { uniqueId: username, username, likeCount: 1, messageId: `sim-like-${Date.now()}` } });
     });
     panel.querySelector('.apex-live-sim-gift')?.addEventListener('click', () => {
       const username = this.lastSimulatedUser || 'spectateur_test';
@@ -259,6 +295,8 @@ export class TikTokLiveControl {
       this.handleComment(message);
     } else if (type === 'gift' || type === 'tiktok-gift') {
       this.handleGift(message);
+    } else if (type === 'like' || type === 'tiktok-like') {
+      this.handleLike(message);
     }
   }
 
@@ -295,6 +333,32 @@ export class TikTokLiveControl {
     this.updateCountdown();
   }
 
+  private handleLike(message: LiveMessage): void {
+    const like = message.likeData ?? message;
+    const username = this.usernameFrom(like);
+    const likeCount = this.likeCountFrom(like);
+    if (!username || likeCount < 1) return;
+    const id = String(like.messageId ?? like.msgId ?? '');
+    if (id && !this.rememberMessage(id)) return;
+    const userId = username.toLowerCase();
+    const participant = this.participants.get(userId);
+    if (!participant) {
+      this.raceLabel.textContent = `@${username} : écris « go » pour inscrire ta voiture avant de liker.`;
+      return;
+    }
+    if (!this.raceLocked) {
+      const previousLikes = participant.likeCount ?? 0;
+      const nextLikes = Math.min(50, previousLikes + likeCount);
+      this.participants.set(userId, { ...participant, likeCount: nextLikes });
+      const applied = nextLikes - previousLikes;
+      this.raceLabel.textContent = applied > 0
+        ? `Likes de @${username} · +${applied} km/h au départ (bonus maximal : +50 km/h).`
+        : `@${username} a atteint son bonus maximal de +50 km/h avec les likes. Les cadeaux peuvent encore augmenter sa vitesse.`;
+      return;
+    }
+    this.raceLabel.textContent = this.onLike(userId, username, likeCount);
+  }
+
   private handleGift(message: LiveMessage): void {
     const gift = message.gift ?? message.giftData ?? message;
     const username = this.usernameFrom(gift);
@@ -322,8 +386,10 @@ export class TikTokLiveControl {
     this.raceLocked = true;
     this.updateRecoveryButtons();
     const participants = [...this.participants.values()];
-    this.setRaceStatus(`Départ automatique · ${participants.length} joueur${participants.length > 1 ? 's' : ''}.`);
-    this.onRaceStart(participants);
+    const laps: 3 | 5 = Number(this.lapCountInput.value) === 5 ? 5 : 3;
+    const circuitId = this.circuitInput.value;
+    this.setRaceStatus(`Départ automatique · ${participants.length} joueur${participants.length > 1 ? 's' : ''} · ${laps} tours.`);
+    this.onRaceStart(participants, laps, circuitId);
   }
 
   private updateCountdown(): void {
@@ -352,8 +418,10 @@ export class TikTokLiveControl {
     });
   }
 
-  private changeVolume(delta: number): void {
-    this.volumeLabel.textContent = `${Math.round(this.onVolumeChange(delta) * 100)} %`;
+  private changeVolume(volume: number): void {
+    const nextVolume = this.onVolumeChange(volume);
+    this.volumeInput.value = String(nextVolume);
+    this.volumeLabel.textContent = `${Math.round(nextVolume * 100)} %`;
   }
 
   private clearJoinTimers(): void {
@@ -385,5 +453,10 @@ export class TikTokLiveControl {
     const repeatCount = Number(gift.repeatCount ?? 1);
     const total = coinValue * repeatCount;
     return Number.isSafeInteger(total) && total > 0 ? total : 0;
+  }
+
+  private likeCountFrom(like: Record<string, unknown>): number {
+    const count = Math.floor(Number(like.likeCount ?? like.count ?? 1));
+    return Number.isSafeInteger(count) && count > 0 ? Math.min(50, count) : 0;
   }
 }

@@ -56,7 +56,7 @@ export class LoadingScreen implements Screen {
     this.mapWrap = div('af-loading-map');
     inner.append(left, this.mapWrap);
     this.el.appendChild(inner);
-    this.el.appendChild(div('af-loading-foot', 'APEX FORMULA · EVERYTHING YOU SEE IS GENERATED IN REAL TIME'));
+    this.el.appendChild(div('af-loading-foot', 'GRIFFON AGENCY · EVERYTHING YOU SEE IS GENERATED IN REAL TIME'));
   }
 
   setCircuit(def: TrackDefinition | null): void {

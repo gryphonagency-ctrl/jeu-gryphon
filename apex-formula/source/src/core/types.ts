@@ -671,6 +671,7 @@ export interface ICameraSystem {
   readonly camera: THREE.PerspectiveCamera;
   setMode(mode: CameraMode): void;
   getMode(): CameraMode;
+  setLiveChaseZoom(active: boolean): void;
   cycle(): CameraMode;
   setTarget(carId: number): void;
   getTarget(): number;

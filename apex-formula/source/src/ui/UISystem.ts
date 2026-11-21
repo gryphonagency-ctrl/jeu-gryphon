@@ -1,5 +1,5 @@
 /**
- * APEX FORMULA — UI system (Agent 7). Menus + F1-broadcast HUD built from plain DOM/SVG.
+ * GRIFFON AGENCY — UI system (Agent 7). Menus + F1-broadcast HUD built from plain DOM/SVG.
  * Everything the UI asks main to do goes through the `onCommand` callback; sounds go through the event bus.
  */
 import { events } from '../core/events';

@@ -677,7 +677,7 @@ export const createTextures = async (d: Disposer, pal: ThemePalette, size: numbe
     ctx.fillRect(0, 0, 2048, 256);
     ctx.fillStyle = '#e10600';
     ctx.fillRect(0, 232, 2048, 24);
-    fitText(ctx, 'APEX FORMULA', 80, 30, 900, 170, { color: '#ffffff', weight: '900', italic: true });
+    fitText(ctx, 'GRIFFON AGENCY', 80, 30, 900, 170, { color: '#ffffff', weight: '900', italic: true });
     fitText(ctx, 'ZENITH WATCHES GRAND PRIX', 1060, 60, 900, 110, { color: '#ffd200', weight: '800' });
     return finish(d, c, { repeat: false });
   })();

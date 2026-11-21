@@ -340,7 +340,7 @@ const buildCircuit = async (i: number): Promise<void> => {
 
 const updateHud = (): void => {
   hud.innerHTML = [
-    `<b>APEX FORMULA — track dev</b>`,
+    `<b>GRIFFON AGENCY — track dev</b>`,
     `[1-${ALL.length}] circuit: ${ALL.map((c, i) => (i === state.index ? `<b>${c.id}</b>` : c.id)).join(' · ')}`,
     `[T] top-down ${state.topDown ? 'ON' : 'off'}   [O] overlay ${state.overlay ? 'ON' : 'off'}   [Q] quality ${QUALITIES[state.quality]}`,
     `[N] time ${state.timeOfDay.toFixed(1)}h (night ${nightFactor(state.timeOfDay).toFixed(2)})   [W] wet ${state.wet.toFixed(1)}`,

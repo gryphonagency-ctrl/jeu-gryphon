@@ -1,5 +1,5 @@
 /**
- * APEX FORMULA audio — fully procedural Web Audio soundscape. Owned by Agent 8.
+ * GRIFFON AGENCY audio — fully procedural Web Audio soundscape. Owned by Agent 8.
  * Safe to call before resume(): nothing touches an AudioContext until the first user gesture.
  */
 import * as THREE from 'three';
