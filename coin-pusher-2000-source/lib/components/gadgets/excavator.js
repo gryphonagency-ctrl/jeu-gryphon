@@ -153,7 +153,7 @@ export default class {
         });
         const { state } = this.#excavator;
         if (state !== EXCAVATOR_STATES.IDLE) {
-            if (state === EXCAVATOR_STATES.PICKING) {
+            if (state === EXCAVATOR_STATES.INITIALIZING_DROPPING) {
                 this.#onPick(this.#dropPosition);
             }
         }

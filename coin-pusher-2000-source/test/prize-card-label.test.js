@@ -114,8 +114,13 @@ test("la recherche du profil remonte les réponses du portefeuille", async () =>
         assert.equal(await lookupPrizeAvatar("@alice"), "/api/tiktok-avatars/key");
         assert.equal(request.url, "/api/tiktok-stars?player=alice");
         assert.equal(request.options.credentials, "same-origin");
-        globalThis.fetch = async () => ({ ok: false, status: 404 });
+        let unknownAttempts = 0;
+        globalThis.fetch = async () => {
+            unknownAttempts++;
+            return { ok: false, status: 404 };
+        };
         await assert.rejects(lookupPrizeAvatar("unknown"), /HTTP 404/);
+        assert.equal(unknownAttempts, 5);
     } finally {
         globalThis.fetch = previousFetch;
     }

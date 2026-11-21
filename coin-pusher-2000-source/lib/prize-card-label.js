@@ -97,12 +97,19 @@ export async function lookupPrizeAvatar(username) {
     if (!/^[a-zA-Z0-9._]{1,32}$/.test(handle)) {
         throw new RangeError("Pseudo TikTok invalide pour la photo de profil.");
     }
-    const response = await fetch(`/api/tiktok-stars?player=${encodeURIComponent(handle)}`, {
-        credentials: "same-origin",
-        cache: "no-store"
-    });
-    if (!response.ok) throw new Error(`Profil TikTok indisponible (HTTP ${response.status}).`);
-    const data = await response.json();
+    let lastStatus = 0;
+    let data = null;
+    for (let attempt = 0; attempt < 5 && !data; attempt++) {
+        if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        const response = await fetch(`/api/tiktok-stars?player=${encodeURIComponent(handle)}`, {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+        lastStatus = response.status;
+        if (!response.ok) continue;
+        data = await response.json();
+    }
+    if (!data) throw new Error(`Profil TikTok indisponible (HTTP ${lastStatus}).`);
     if (!data.player?.avatarUrl) throw new Error("Aucune photo de profil disponible pour ce pseudo.");
     return data.player.avatarUrl;
 }

@@ -330,7 +330,7 @@ export default class {
                         tokens.push({ type: Math.floor(Math.random() * (Tokens.TYPES - 1)) });
                     }
                 }
-                return this.#objectsDistributor.deposit(dropPosition, [0, 0], new Map([
+                return this.#objectsDistributor.deposit(dropPosition, [.12, .12], new Map([
                     [Coins, { length: 30 + Math.floor(Math.random() * 10) }],
                     [Tokens, tokens]
                 ]), { compacted: true, randomRotation: true, randomPosition: true });

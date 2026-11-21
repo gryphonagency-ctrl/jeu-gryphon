@@ -116,7 +116,7 @@ async function getAvatarData(user, cache) {
                 const image = Buffer.from(await response.arrayBuffer());
                 if (!image.length || image.length > MAX_AVATAR_BYTES) return null;
                 return `data:${contentType.split(';', 1)[0]};base64,${image.toString('base64')}`;
-            }, 1);
+            }, 2);
             if (cache.size > 32) cache.delete(cache.keys().next().value);
             return imageRequest;
         }));
@@ -363,8 +363,12 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             }
         }
 
-        logDiagnostic('cadeau', { ...diagnosticDetails, result: 'transmis' });
         const identity = getTikTokIdentity(gift.user);
+        const { avatarDataUri } = await getAvatarData(gift.user, avatarCache);
+        logDiagnostic('cadeau', {
+            ...diagnosticDetails,
+            result: avatarDataUri ? 'transmis-avec-avatar' : 'transmis-sans-avatar'
+        });
         send({
             type: 'gift',
             gift: {
@@ -372,7 +376,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
                 sentAt,
                 giftId: Number.isSafeInteger(giftId) ? giftId : null,
                 ...identity,
-                avatarDataUri: null,
+                avatarDataUri,
                 coinValue,
                 giftType,
                 repeatCount: appliedRepeatCount,
@@ -383,19 +387,6 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             }
         });
         trackTeamMemberLevel(gift.user, messageId, sentAt);
-        getAvatarData(gift.user, avatarCache).then(({ avatarDataUri }) => {
-            if (avatarDataUri) {
-                send({
-                    type: 'viewer',
-                    viewer: {
-                        ...identity,
-                        avatarDataUri
-                    }
-                });
-            }
-        }).catch(error => {
-            console.warn(`Impossible de charger l’avatar du cadeau de ${gift.user?.nickname || 'un spectateur'} :`, error);
-        });
     });
 
     connection.on('member', message => {

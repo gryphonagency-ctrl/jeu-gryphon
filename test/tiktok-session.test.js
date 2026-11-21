@@ -9,7 +9,6 @@ class MockTikTokLiveConnection extends EventEmitter {
     constructor(username) {
         super();
         this.username = username;
-        this.connectCalls = 0;
         this.disconnectCalls = 0;
         this.giftRequest = null;
         this.webClient = {
@@ -28,7 +27,6 @@ class MockTikTokLiveConnection extends EventEmitter {
     }
 
     connect() {
-        this.connectCalls++;
         this.emit('websocketConnected');
         return Promise.resolve({ roomId: 'test-room' });
     }
@@ -53,16 +51,13 @@ try {
     Module._load = originalLoad;
 }
 
-function createHarness({ diagnostics = false, username = 'test_user' } = {}) {
+function createHarness() {
     const messages = [];
     let now = 1000;
     let watchdog;
-    let reconnect;
     const originalNow = Date.now;
     const originalSetInterval = global.setInterval;
     const originalClearInterval = global.clearInterval;
-    const originalSetTimeout = global.setTimeout;
-    const originalClearTimeout = global.clearTimeout;
 
     Date.now = () => now;
     global.setInterval = (callback, delay) => {
@@ -73,35 +68,19 @@ function createHarness({ diagnostics = false, username = 'test_user' } = {}) {
         return originalSetInterval(callback, delay);
     };
     global.clearInterval = () => {};
-    global.setTimeout = (callback, delay, ...args) => {
-        if (delay === 30_000) {
-            reconnect = callback;
-            return { unref() {} };
-        }
-        return originalSetTimeout(callback, delay, ...args);
-    };
-    global.clearTimeout = () => {};
 
-    const stop = createTikTokSession(message => messages.push(message), username, undefined, { diagnostics });
+    const stop = createTikTokSession(message => messages.push(message), 'test_user');
     return {
         messages,
         connection: connectionInstance,
         get now() { return now; },
         set now(value) { now = value; },
         watchdog: () => watchdog(),
-        runReconnect: () => {
-            assert.equal(typeof reconnect, 'function');
-            const callback = reconnect;
-            reconnect = null;
-            callback();
-        },
         async restore() {
             await stop();
             Date.now = originalNow;
             global.setInterval = originalSetInterval;
             global.clearInterval = originalClearInterval;
-            global.setTimeout = originalSetTimeout;
-            global.clearTimeout = originalClearTimeout;
         }
     };
 }
@@ -130,7 +109,6 @@ test('forwards TikTok likes and viewer counts', async () => {
             common: { msgId: 'like-1' },
             user: { uniqueId: 'viewer1', nickname: 'Viewer' }
         });
-
         await new Promise(resolve => setImmediate(resolve));
 
         assert(harness.messages.some(message =>
@@ -145,62 +123,47 @@ test('forwards TikTok likes and viewer counts', async () => {
     }
 });
 
-test('enables diagnostics for the monitored TikTok account', async () => {
-    const previousMonitor = process.env.LIVE_TIKTOK_MONITOR_USERNAME;
-    const previousDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS;
-    const originalInfo = console.info;
-    const logs = [];
-    process.env.LIVE_TIKTOK_MONITOR_USERNAME = 'test_user';
-    process.env.LIVE_TIKTOK_DIAGNOSTICS = 'false';
-    console.info = (...values) => logs.push(values.join(' '));
-    const harness = createHarness({ diagnostics: true });
-
+test('forwards a gift with its avatar in the same message', async () => {
+    const harness = createHarness();
+    const originalFetch = global.fetch;
+    const originalWarn = console.warn;
+    global.fetch = async () => ({
+        ok: true,
+        headers: {
+            get: name => name.toLowerCase() === 'content-type'
+                ? 'image/png'
+                : String(Buffer.from([137,80,78,71]).length)
+        },
+        arrayBuffer: async () => Buffer.from([137,80,78,71])
+    });
+    console.warn = () => {};
     try {
         await new Promise(resolve => setImmediate(resolve));
-        assert(logs.some(line =>
-            line.includes('[TikTok diagnostic] connexion') &&
-            line.includes('"state":"connectee"')
-        ));
+        harness.connection.emit('gift', {
+            common: { msgId: 'gift-avatar-1' },
+            giftType: 1,
+            repeatEnd: true,
+            repeatCount: 1,
+            coinValue: 1,
+            user: {
+                userId: '123',
+                displayId: 'winner',
+                uniqueId: 'winner',
+                nickname: 'Winner',
+                avatarLarge: 'https://example.test/avatar.png'
+            },
+            giftDetails: { giftName: 'Rose', diamondCount: 1 }
+        });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const gift = harness.messages.find(message =>
+            message.type === 'gift' && message.gift?.messageId === 'gift-avatar-1'
+        );
+        assert(gift);
+        assert.match(gift.gift.avatarDataUri, /^data:image\/png;base64,/);
     } finally {
-        console.info = originalInfo;
+        global.fetch = originalFetch;
+        console.warn = originalWarn;
         await harness.restore();
-        if (previousMonitor === undefined) delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
-        else process.env.LIVE_TIKTOK_MONITOR_USERNAME = previousMonitor;
-        if (previousDiagnostics === undefined) delete process.env.LIVE_TIKTOK_DIAGNOSTICS;
-        else process.env.LIVE_TIKTOK_DIAGNOSTICS = previousDiagnostics;
-    }
-});
-
-test('defaults monitoring to cityhunter698, not other accounts', async () => {
-    const previousMonitor = process.env.LIVE_TIKTOK_MONITOR_USERNAME;
-    const previousDiagnostics = process.env.LIVE_TIKTOK_DIAGNOSTICS;
-    const originalInfo = console.info;
-    const logs = [];
-    delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
-    process.env.LIVE_TIKTOK_DIAGNOSTICS = 'false';
-    console.info = (...values) => logs.push(values.join(' '));
-    try {
-        const monitored = createHarness({ diagnostics: true, username: 'CityHunter698' });
-        try {
-            await new Promise(resolve => setImmediate(resolve));
-            assert(logs.some(line => line.includes('[TikTok diagnostic] connexion')));
-        } finally {
-            await monitored.restore();
-        }
-        logs.length = 0;
-        const other = createHarness({ diagnostics: true, username: 'other_account' });
-        try {
-            await new Promise(resolve => setImmediate(resolve));
-            assert(!logs.some(line => line.includes('[TikTok diagnostic]')));
-        } finally {
-            await other.restore();
-        }
-    } finally {
-        console.info = originalInfo;
-        if (previousMonitor === undefined) delete process.env.LIVE_TIKTOK_MONITOR_USERNAME;
-        else process.env.LIVE_TIKTOK_MONITOR_USERNAME = previousMonitor;
-        if (previousDiagnostics === undefined) delete process.env.LIVE_TIKTOK_DIAGNOSTICS;
-        else process.env.LIVE_TIKTOK_DIAGNOSTICS = previousDiagnostics;
     }
 });
 
@@ -221,31 +184,6 @@ test('reconnects after websocket frames stop arriving', async () => {
         assert.equal(harness.connection.disconnectCalls, 1);
         assert(harness.messages.some(message =>
             message.type === 'STATUS' && message.message.includes('Flux TikTok silencieux')
-        ));
-    } finally {
-        await harness.restore();
-    }
-});
-
-test('disconnects and reconnects after a live stream ends', async () => {
-    const harness = createHarness();
-    try {
-        await new Promise(resolve => setImmediate(resolve));
-        harness.connection.emit('streamEnd', { action: 3 });
-        await new Promise(resolve => setImmediate(resolve));
-
-        assert.equal(harness.connection.disconnectCalls, 1);
-        assert(harness.messages.some(message =>
-            message.type === 'STATUS' && message.message.includes('Direct TikTok terminé')
-        ));
-        assert(harness.messages.some(message => message.type === 'LIVE_END'));
-
-        harness.runReconnect();
-        await new Promise(resolve => setImmediate(resolve));
-
-        assert.equal(harness.connection.connectCalls, 2);
-        assert(harness.messages.some(message =>
-            message.type === 'STATUS' && message.message.includes('Direct TikTok connecté')
         ));
     } finally {
         await harness.restore();

@@ -684,6 +684,10 @@ function injectArcadeScripts(html, pathname) {
         return `${content}\n${script}`;
     };
     let content = html;
+    if (!/<link\b[^>]*rel=["'][^"']*\bicon\b[^"']*["']/i.test(content) && /<head\b[^>]*>/i.test(content)) {
+        content = content.replace(/<head\b[^>]*>/i,
+            match => `${match}<link rel="icon" href="data:,">`);
+    }
     if (!/<meta\b[^>]*name=["']viewport["']/i.test(content) && /<head\b[^>]*>/i.test(content)) {
         content = content.replace(/<head\b[^>]*>/i,
             match => `${match}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`);
@@ -3539,6 +3543,14 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (pathname === '/favicon.ico') {
+        res.writeHead(204, {
+            'Cache-Control': 'public, max-age=86400',
+            'Content-Type': 'image/x-icon'
+        });
+        res.end();
+        return;
+    }
     if (pathname.startsWith('/game-assets/')) {
         const filename = pathname.slice('/game-assets/'.length);
         if (!/^[a-f0-9-]{36}\.(?:png|jpe?g|webp)$/.test(filename)) {
