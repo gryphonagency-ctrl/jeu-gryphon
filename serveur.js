@@ -6,6 +6,11 @@ const WebSocket = require('ws');
 const webPush = require('web-push');
 const { createTikTokSession } = require('./tiktok-session');
 const access = require('./access-control');
+const {
+    PUBLIC_PACHINKO_GAME_ID,
+    PUBLIC_PACHINKO_RELAY_PATH,
+    PublicPachinkoRelayGate
+} = require('./public-pachinko-relay');
 const paypal = require('./paypal');
 const store = require('./account-store');
 const dbSync = require('./db-sync');
@@ -243,6 +248,7 @@ const protectedRoutes = new Set([
     '/gryphon-plinko',
     '/index.html',
     '/plinko.html',
+    '/pachinko-live.html',
     '/griffon-gauche.jpg',
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
@@ -269,6 +275,7 @@ const freeTrialRoutes = new Set([
     '/gryphon-blackjack.html',
     '/telepusher.html',
     '/grand-prix-pokemon.html',
+    '/pachinko-live.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -340,6 +347,7 @@ store.grantGameAccessToExistingCreators('/pokefight-live.html');
 store.grantGameAccessToExistingCreators('/grand-prix-pokemon.html');
 store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
 store.grantGameAccessToExistingCreators('/train-gemini.html');
+store.grantGameAccessToExistingCreators('/pachinko-live.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -353,6 +361,7 @@ const staticGameTitles = {
     '/pousoire.html': 'Table à pièces',
     '/pendu.html': 'Le Pendu',
     '/plinko.html': 'Gryphon Plinko',
+    '/pachinko-live.html': 'Pachinko Live',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Coin Pusher',
@@ -428,6 +437,7 @@ const gameRouteIds = new Map([
     ['/pendu', '/pendu.html'],
     ['/pendu.html', '/pendu.html'],
     ['/plinko.html', '/plinko.html'],
+    ['/pachinko-live.html', '/pachinko-live.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
@@ -3352,6 +3362,7 @@ const server = http.createServer((req, res) => {
         ['/gryphon-plinko', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/index.html', [gryphonPlinkoFile, 'text/html; charset=utf-8']],
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
+        ['/pachinko-live.html', [path.join(__dirname, 'pachinko-live.html'), 'text/html; charset=utf-8']],
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/donut.jpg', [path.join(__dirname, 'donut.jpg'), 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
@@ -3361,6 +3372,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/defi-des-questions.png', [path.join(__dirname, 'images-vitrine', 'defi-des-questions.png'), 'image/png']],
         ['/images-vitrine/pendu.png', [path.join(__dirname, 'images-vitrine', 'pendu.png'), 'image/png']],
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
+        ['/images-vitrine/pachinko-live.png', [path.join(__dirname, 'images-vitrine', 'pachinko-live.png'), 'image/png']],
         ['/images-vitrine/gryphon-tiktok-profile.png', [path.join(__dirname, 'images-vitrine', 'gryphon-tiktok-profile.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],
@@ -3669,7 +3681,13 @@ function readJsonBody(req, res, callback, maxBytes = 8192) {
     });
 }
 
-const wss = new WebSocket.Server({ noServer: true });
+const wss = new WebSocket.Server({ noServer: true, maxPayload: 512 * 1024 });
+const publicPachinkoRelayGate = new PublicPachinkoRelayGate();
+const publicPachinkoSockets = new WeakSet();
+const publicPachinkoConnectedSockets = new WeakSet();
+const publicPachinkoAdmissions = new WeakMap();
+const publicPachinkoConnectTimeouts = new WeakMap();
+const MAX_PUBLIC_PACHINKO_SESSIONS = 3;
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsClientOwners = new WeakMap();
 const liveTtsSockets = new Set();
@@ -3730,6 +3748,18 @@ function sendTreasureLiveState(session, socket) {
 
 server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
+    const publicPachinkoAdmission = requestUrl.pathname === PUBLIC_PACHINKO_RELAY_PATH
+        ? publicPachinkoRelayGate.acquire(req, requestUrl)
+        : null;
+    if (publicPachinkoAdmission && !publicPachinkoAdmission.allowed) {
+        const statusText = publicPachinkoAdmission.status === 429
+            ? 'Too Many Requests'
+            : 'Forbidden';
+        socket.write(`HTTP/1.1 ${publicPachinkoAdmission.status} ${statusText}\r\nConnection: close\r\n\r\n`);
+        socket.destroy();
+        return;
+    }
+    if (publicPachinkoAdmission) socket.once('close', publicPachinkoAdmission.release);
     const isLiveTtsRequest = requestUrl.pathname === '/live-tts-relay';
     const ttsSource = isLiveTtsRequest ? getLiveTtsSource(requestUrl.searchParams.get('token')) : null;
     const isTreasureOverlayRequest = requestUrl.pathname === '/arcade-treasure-overlay-relay';
@@ -3759,12 +3789,18 @@ server.on('upgrade', (req, socket, head) => {
     if ((isTtsControlRequest && !canControlTts) ||
         (isTreasureOverlayRequest && !canUseTreasureOverlay) ||
         ((!authenticated || !access.canAccessGames(req)) &&
-            !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay)) {
+            !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay &&
+            !publicPachinkoAdmission)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
     }
     wss.handleUpgrade(req, socket, head, webSocket => {
+        if (publicPachinkoAdmission) {
+            publicPachinkoSockets.add(webSocket);
+            publicPachinkoAdmissions.set(webSocket, publicPachinkoAdmission);
+            webSocket.once('close', publicPachinkoAdmission.release);
+        }
         if (ttsSource) {
             liveTtsClientUsernames.set(webSocket, ttsSource.username);
             if (ttsSource.accountUsername) liveTtsClientOwners.set(webSocket, ttsSource.accountUsername);
@@ -3813,6 +3849,13 @@ const sessions = new Map();
 const clientSessions = new Map();
 const balloonShotRates = new WeakMap();
 const MAX_BALLOON_GAME_PLAYERS = 30;
+function getPublicPachinkoSessionCount() {
+    let count = 0;
+    for (const session of sessions.values()) {
+        if ([...session.clients].some(client => publicPachinkoSockets.has(client))) count++;
+    }
+    return count;
+}
 const centralTikTokSessionKey = /^[a-zA-Z0-9._]{1,32}$/.test(liveAlertTikTokUsername)
     ? liveAlertTikTokUsername.toLocaleLowerCase()
     : '';
@@ -3907,7 +3950,9 @@ function updateSessionWalletProfile(session, messageData) {
 function broadcastSessionMessage(session, messageData) {
     const encoded = JSON.stringify(messageData);
     for (const client of session.clients) {
-        if (client.readyState === WebSocket.OPEN) client.send(encoded);
+        if (client.readyState === WebSocket.OPEN && !publicPachinkoSockets.has(client)) {
+            client.send(encoded);
+        }
     }
 }
 
@@ -4035,7 +4080,8 @@ function detachClient(socket) {
     if (!session) return;
     removeBalloonGameClient(session, socket);
     session.clients.delete(socket);
-    session.walletCommandsEnabled = [...session.clients].some(client => !treasureOverlaySocketOwners.has(client));
+    session.walletCommandsEnabled = [...session.clients].some(client =>
+        !treasureOverlaySocketOwners.has(client) && !publicPachinkoSockets.has(client));
     if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
         sessions.delete(sessionKey);
         void session.disconnect();
@@ -4222,6 +4268,14 @@ function startCentralTikTokListener() {
 }
 
 wss.on('connection', (socket, req) => {
+    const isPublicPachinkoSocket = publicPachinkoSockets.has(socket);
+    if (isPublicPachinkoSocket) {
+        const connectTimeout = setTimeout(() => {
+            if (!publicPachinkoConnectedSockets.has(socket)) socket.terminate();
+        }, 15_000);
+        connectTimeout.unref();
+        publicPachinkoConnectTimeouts.set(socket, connectTimeout);
+    }
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
     const treasureOverlayOwner = treasureOverlaySocketOwners.get(socket) || '';
     const ttsControlAccount = new URL(req.url, 'http://localhost').pathname === '/live-tts-control'
@@ -4267,6 +4321,19 @@ wss.on('connection', (socket, req) => {
             request = JSON.parse(message.toString());
         } catch (error) {
             console.warn('Message reçu du jeu invalide :', error.message);
+            if (isPublicPachinkoSocket) socket.close(1008, 'Message invalide');
+            return;
+        }
+        if (!request || typeof request !== 'object' || Array.isArray(request)) {
+            console.warn('Message reçu du jeu invalide : un objet JSON est requis.');
+            if (isPublicPachinkoSocket) socket.close(1008, 'Message invalide');
+            return;
+        }
+        if (isPublicPachinkoSocket &&
+            (request.action !== 'CONNECT_TIKTOK' ||
+                request.gameId !== PUBLIC_PACHINKO_GAME_ID ||
+                publicPachinkoConnectedSockets.has(socket))) {
+            socket.close(1008, 'Action non autorisée');
             return;
         }
         if (request.action === 'BALLOON_GAME_SYNC') {
@@ -4367,15 +4434,32 @@ wss.on('connection', (socket, req) => {
                 type: 'STATUS',
                 message: 'Pseudo TikTok invalide : saisis un pseudo de 1 à 32 caractères.'
             }));
+            if (isPublicPachinkoSocket) socket.close(1008, 'Pseudo invalide');
             return;
+        }
+        if (isPublicPachinkoSocket) {
+            publicPachinkoConnectedSockets.add(socket);
+            clearTimeout(publicPachinkoConnectTimeouts.get(socket));
         }
 
         const sessionKey = username.toLocaleLowerCase();
-        const wantsBalloonGame = request.gameMode === 'balloon';
+        const wantsBalloonGame = !isPublicPachinkoSocket && request.gameMode === 'balloon';
         const currentSessionKey = clientSessions.get(socket);
+        if (isPublicPachinkoSocket &&
+            !sessions.has(sessionKey) &&
+            getPublicPachinkoSessionCount() >= MAX_PUBLIC_PACHINKO_SESSIONS) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Le nombre de lives publics Pachinko est momentanément atteint.'
+            }));
+            socket.close(1013, 'Lives publics complets');
+            return;
+        }
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
-            if (!treasureOverlayOwner) currentSession.walletCommandsEnabled = true;
+            if (!treasureOverlayOwner && !isPublicPachinkoSocket) {
+                currentSession.walletCommandsEnabled = true;
+            }
             if (wantsBalloonGame && !currentSession.balloonClients.has(socket)) {
                 if (currentSession.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
                     socket.send(JSON.stringify({
@@ -4414,6 +4498,7 @@ wss.on('connection', (socket, req) => {
                 type: 'STATUS',
                 message: 'Le nombre de lives simultanés est momentanément atteint.'
             }));
+            if (isPublicPachinkoSocket) socket.close(1013, 'Lives complets');
             return;
         }
 
@@ -4439,7 +4524,9 @@ wss.on('connection', (socket, req) => {
             sessions.set(sessionKey, session);
             startTikTokSession(session);
         }
-        if (!treasureOverlayOwner) session.walletCommandsEnabled = true;
+        if (!treasureOverlayOwner && !isPublicPachinkoSocket) {
+            session.walletCommandsEnabled = true;
+        }
         if (wantsBalloonGame && !session.balloonClients.has(socket) &&
             session.balloonClients.size >= MAX_BALLOON_GAME_PLAYERS) {
             socket.send(JSON.stringify({
@@ -4469,6 +4556,8 @@ wss.on('connection', (socket, req) => {
         sendTreasureLiveState(session, socket);
     });
     socket.on('close', () => {
+        clearTimeout(publicPachinkoConnectTimeouts.get(socket));
+        publicPachinkoAdmissions.get(socket)?.release();
         liveTtsSockets.delete(socket);
         overlaySockets.delete(socket);
         treasureOverlaySocketOwners.delete(socket);
