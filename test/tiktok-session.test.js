@@ -10,6 +10,7 @@ class MockTikTokLiveConnection extends EventEmitter {
         super();
         this.username = username;
         this.disconnectCalls = 0;
+        this.connectCalls = 0;
         this.giftRequest = null;
         this.webClient = {
             clientParams: { aid: '1988' },
@@ -27,6 +28,7 @@ class MockTikTokLiveConnection extends EventEmitter {
     }
 
     connect() {
+        this.connectCalls++;
         this.emit('websocketConnected');
         return Promise.resolve({ roomId: 'test-room' });
     }
@@ -55,9 +57,13 @@ function createHarness() {
     const messages = [];
     let now = 1000;
     let watchdog;
+    let reconnectCallback = null;
+    let reconnectTimer = null;
     const originalNow = Date.now;
     const originalSetInterval = global.setInterval;
     const originalClearInterval = global.clearInterval;
+    const originalSetTimeout = global.setTimeout;
+    const originalClearTimeout = global.clearTimeout;
 
     Date.now = () => now;
     global.setInterval = (callback, delay) => {
@@ -68,6 +74,22 @@ function createHarness() {
         return originalSetInterval(callback, delay);
     };
     global.clearInterval = () => {};
+    global.setTimeout = (callback, delay, ...args) => {
+        if (delay === 30_000) {
+            reconnectCallback = () => callback(...args);
+            reconnectTimer = { unref() {} };
+            return reconnectTimer;
+        }
+        return originalSetTimeout(callback, delay, ...args);
+    };
+    global.clearTimeout = timer => {
+        if (timer === reconnectTimer) {
+            reconnectCallback = null;
+            reconnectTimer = null;
+            return;
+        }
+        return originalClearTimeout(timer);
+    };
 
     const stop = createTikTokSession(message => messages.push(message), 'test_user');
     return {
@@ -76,11 +98,18 @@ function createHarness() {
         get now() { return now; },
         set now(value) { now = value; },
         watchdog: () => watchdog(),
+        reconnect() {
+            const callback = reconnectCallback;
+            reconnectCallback = null;
+            callback?.();
+        },
         async restore() {
             await stop();
             Date.now = originalNow;
             global.setInterval = originalSetInterval;
             global.clearInterval = originalClearInterval;
+            global.setTimeout = originalSetTimeout;
+            global.clearTimeout = originalClearTimeout;
         }
     };
 }
@@ -185,6 +214,47 @@ test('reconnects after websocket frames stop arriving', async () => {
         assert(harness.messages.some(message =>
             message.type === 'STATUS' && message.message.includes('Flux TikTok silencieux')
         ));
+    } finally {
+        await harness.restore();
+    }
+});
+
+test('disconnects and reconnects after a websocket transport error', async () => {
+    const harness = createHarness();
+    try {
+        await new Promise(resolve => setImmediate(resolve));
+        harness.connection.emit('error', {
+            info: 'WebSocket Error after connecting',
+            exception: new Error('socket closed')
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(harness.connection.disconnectCalls, 1);
+        assert(harness.messages.some(message =>
+            message.type === 'STATUS' && message.message.includes('reconnexion automatique')
+        ));
+
+        harness.reconnect();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(harness.connection.connectCalls, 2);
+    } finally {
+        await harness.restore();
+    }
+});
+
+test('does not reconnect for a non-transport websocket error', async () => {
+    const harness = createHarness();
+    try {
+        await new Promise(resolve => setImmediate(resolve));
+        harness.connection.emit('error', {
+            info: 'Websocket message decoding failed',
+            exception: new Error('invalid message')
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(harness.connection.disconnectCalls, 0);
+        harness.reconnect();
+        assert.equal(harness.connection.connectCalls, 1);
     } finally {
         await harness.restore();
     }

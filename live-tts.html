@@ -75,9 +75,13 @@
             const token = window.location.pathname.split('/').pop();
             const queue = [];
             const MAX_QUEUE_LENGTH = 12;
+            const HEARTBEAT_INTERVAL_MS = 20000;
+            const HEARTBEAT_TIMEOUT_MS = 60000;
             const EMOJI_PATTERN = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\uFE0E\uFE0F\u200D\u20E3]/gu;
             let socket;
             let reconnectTimer;
+            let heartbeatTimer;
+            let lastPongAt = 0;
             let reconnectDelay = 3000;
             let username = '';
             let voiceEnabled = false;
@@ -155,7 +159,18 @@
                 socket = new WebSocket(`${protocol}//${window.location.host}/live-tts-relay?token=${encodeURIComponent(token)}`);
                 socket.addEventListener('open', () => {
                     reconnectDelay = 3000;
+                    lastPongAt = Date.now();
                     setStatus('Source audio connectée. En attente du live TikTok…', 'connected');
+                    clearInterval(heartbeatTimer);
+                    heartbeatTimer = setInterval(() => {
+                        if (socket.readyState !== WebSocket.OPEN) return;
+                        if (Date.now() - lastPongAt >= HEARTBEAT_TIMEOUT_MS) {
+                            setStatus('Relais sans réponse. Nouvelle connexion automatique…', 'error');
+                            socket.close();
+                            return;
+                        }
+                        socket.send(JSON.stringify({ action: 'PING' }));
+                    }, HEARTBEAT_INTERVAL_MS);
                 });
                 socket.addEventListener('message', event => {
                     let data;
@@ -166,7 +181,9 @@
                         setStatus('Message reçu du relais illisible.', 'error');
                         return;
                     }
-                    if (data.type === 'TTS_CONFIG') {
+                    if (data.type === 'PONG') {
+                        lastPongAt = Date.now();
+                    } else if (data.type === 'TTS_CONFIG') {
                         username = String(data.username || '');
                         liveUsername.textContent = username ? `@${username}` : 'En attente';
                         socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
@@ -179,8 +196,13 @@
                         thankFollower(data.followData || data.eventData || {});
                     }
                 });
-                socket.addEventListener('error', () => setStatus('Relais inaccessible. Vérifie le lien source.', 'error'));
+                socket.addEventListener('error', () => {
+                    setStatus('Relais inaccessible. Nouvelle tentative…', 'error');
+                    socket.close();
+                });
                 socket.addEventListener('close', () => {
+                    clearInterval(heartbeatTimer);
+                    heartbeatTimer = null;
                     setStatus('Relais déconnecté. Nouvelle tentative…');
                     clearTimeout(reconnectTimer);
                     reconnectTimer = setTimeout(connect, reconnectDelay);
@@ -215,6 +237,7 @@
 
             window.addEventListener('beforeunload', () => {
                 clearTimeout(reconnectTimer);
+                clearInterval(heartbeatTimer);
                 window.speechSynthesis?.cancel();
                 socket?.close();
             });
