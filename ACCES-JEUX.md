@@ -20,6 +20,20 @@ Les comptes administrateurs sont `gryphon.agency` (principal) et `mrbobo`. Chacu
 
 Utilise un mot de passe d'au moins 12 caractères et garde cette variable secrète. Les autres comptes configurés ou abonnés n'ont aucun droit d'administration. `GAME_ADMIN_USERS` ne permet pas d'ajouter d'autres administrateurs.
 
+## Jeux gratuits : connexion TikTok et limite quotidienne
+
+Les 19 jeux actuellement marqués gratuits dans la vitrine demandent une connexion TikTok Login Kit. La limite par défaut est de 60 minutes cumulées sur l'ensemble de ces jeux, remise à zéro à minuit (heure de Paris). Les pages des jeux gratuits renvoient une réponse HTTP 403 une fois la limite atteinte ou si le pseudo est banni. Les autres jeux, notamment les jeux réservés aux membres, ne passent pas par ce contrôle.
+
+Pour activer Login Kit, crée ou configure une application sur [TikTok for Developers](https://developers.tiktok.com/), active **Login Kit** et autorise les scopes `user.info.basic` et `user.info.profile`. Le scope `user.info.profile` est requis pour recevoir le pseudo `username` vérifié. Dans la configuration de l'application, enregistre exactement cette redirect URI :
+
+```text
+https://jeu6boite.onrender.com/auth/tiktok/callback
+```
+
+Dans **Render > ton service > Environment**, définis `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` et `TIKTOK_REDIRECT_URI` avec les valeurs de l'application et l'URL ci-dessus. Ne saisis jamais le secret dans le dépôt, le navigateur ou une conversation. Redéploie ensuite le service. Si le scope du pseudo n'a pas été approuvé, la connexion échoue sans créer de session de jeu.
+
+L'administration distincte **Membres et jeux gratuits** permet de régler la limite par défaut et d'inspecter les jeux gratuits. La section **Pseudos TikTok** permet de bannir chaque compte ou de lui attribuer une limite quotidienne différente; laisser sa limite vide fait hériter la valeur par défaut. Les comptes des joueurs sont identifiés côté serveur par l'empreinte de leur identifiant TikTok immuable (`open_id`); le jeton OAuth n'est pas conservé. Le suivi du temps se fait par signaux réguliers pendant qu'un jeu gratuit est ouvert. Les sessions TikTok de jeu expirent au redémarrage du serveur; les réglages et temps quotidiens sont conservés dans le fichier de comptes, donc un Persistent Disk Render sur `/var/data` est requis pour une persistance fiable.
+
 ## Comptes administrateurs et gestion des jeux
 
 Les comptes `gryphon.agency` et `mrbobo` voient le tableau de bord et peuvent appeler les API d'administration; les autres comptes restent sur les pages publiques et leur espace membre autorisé. Cette restriction est vérifiée côté serveur, pas seulement par masquage de l'interface. Les deux administrateurs peuvent remplacer l'image d'un jeu, modifier son titre et sa description, masquer/restaurer un jeu intégré, ou importer et supprimer un jeu. Ils peuvent également ajouter ou retirer un lien PayPal HTTPS (`paypal.com` ou `paypal.me`) depuis le panneau. Le bouton correspondant n'apparaît sur la page publique que lorsqu'un lien est enregistré; le champ vide le retire. Les vignettes par défaut sont fournies dans `images-vitrine/` et livrées avec le site. Les images personnalisées de la vitrine sont envoyées sur Cloudinary. Le disque persistant Render reste nécessaire pour la base des comptes et les fichiers des jeux importés. Chaque jeu importé doit être un fichier HTML autonome de 2 Mo maximum et avoir une image PNG, JPG ou WebP de 2 Mo maximum.

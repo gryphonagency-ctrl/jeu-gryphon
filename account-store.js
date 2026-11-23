@@ -67,6 +67,9 @@ function readStore() {
         parsed.tiktokPlayers ||= {};
         parsed.tiktokPlayerAliases ||= {};
         parsed.tiktokStarTransactions ||= {};
+        parsed.tiktokFreeGamePlayers ||= {};
+        parsed.tiktokFreeGameUsage ||= {};
+        parsed.freeGameDefaultLimitMinutes ??= 60;
         parsed.liveAlertPushSubscriptions ||= {};
         parsed.liveAlertRooms ||= {};
         if (typeof parsed.users !== 'object' || Array.isArray(parsed.users) ||
@@ -95,6 +98,30 @@ function readStore() {
             typeof parsed.tiktokPlayers !== 'object' || Array.isArray(parsed.tiktokPlayers) ||
             typeof parsed.tiktokPlayerAliases !== 'object' || Array.isArray(parsed.tiktokPlayerAliases) ||
             typeof parsed.tiktokStarTransactions !== 'object' || Array.isArray(parsed.tiktokStarTransactions) ||
+            typeof parsed.tiktokFreeGamePlayers !== 'object' || Array.isArray(parsed.tiktokFreeGamePlayers) ||
+            Object.entries(parsed.tiktokFreeGamePlayers).some(([playerId, player]) =>
+                !/^[a-f0-9]{64}$/.test(playerId) ||
+                !player || typeof player !== 'object' || Array.isArray(player) ||
+                player.id !== playerId ||
+                typeof player.username !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(player.username) ||
+                typeof player.displayName !== 'string' || !player.displayName.trim() || player.displayName.length > 80 ||
+                typeof player.banned !== 'boolean' ||
+                (player.limitMinutes !== null &&
+                    (!Number.isSafeInteger(player.limitMinutes) || player.limitMinutes < 1 || player.limitMinutes > 1440)) ||
+                typeof player.updatedAt !== 'string') ||
+            typeof parsed.tiktokFreeGameUsage !== 'object' || Array.isArray(parsed.tiktokFreeGameUsage) ||
+            Object.entries(parsed.tiktokFreeGameUsage).some(([date, players]) =>
+                !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+                !players || typeof players !== 'object' || Array.isArray(players) ||
+                Object.entries(players).some(([playerId, usage]) =>
+                    !/^[a-f0-9]{64}$/.test(playerId) ||
+                    !usage || typeof usage !== 'object' || Array.isArray(usage) ||
+                    !Number.isSafeInteger(usage.milliseconds) ||
+                    usage.milliseconds < 0 || usage.milliseconds > 86400000 ||
+                    (usage.lastHeartbeatAt !== null &&
+                        (!Number.isSafeInteger(usage.lastHeartbeatAt) || usage.lastHeartbeatAt < 0)))) ||
+            !Number.isSafeInteger(parsed.freeGameDefaultLimitMinutes) ||
+            parsed.freeGameDefaultLimitMinutes < 1 || parsed.freeGameDefaultLimitMinutes > 1440 ||
             typeof parsed.liveAlertPushSubscriptions !== 'object' || Array.isArray(parsed.liveAlertPushSubscriptions) ||
             Object.entries(parsed.liveAlertPushSubscriptions).some(([username, subscriptions]) =>
                 !/^[a-zA-Z0-9._]{1,32}$/.test(username) ||
@@ -272,6 +299,9 @@ function readStore() {
                 tiktokPlayers: {},
                 tiktokPlayerAliases: {},
                 tiktokStarTransactions: {},
+                tiktokFreeGamePlayers: {},
+                tiktokFreeGameUsage: {},
+                freeGameDefaultLimitMinutes: 60,
                 liveAlertPushSubscriptions: {},
                 liveAlertRooms: {}
             };
@@ -1106,6 +1136,130 @@ function getDailyUsageCount(date) {
     return Object.keys(readStore().dailyUsage[date] || {}).length;
 }
 
+function getTikTokFreeGameStatus(playerId, date) {
+    const current = readStore();
+    const player = current.tiktokFreeGamePlayers[playerId];
+    if (!player) return null;
+    const usedMilliseconds = current.tiktokFreeGameUsage[date]?.[playerId]?.milliseconds || 0;
+    const limitMinutes = player.limitMinutes ?? current.freeGameDefaultLimitMinutes;
+    const limitSeconds = limitMinutes * 60;
+    return {
+        id: player.id,
+        username: player.username,
+        displayName: player.displayName,
+        banned: player.banned,
+        limitMinutes,
+        usedSeconds: Math.floor(usedMilliseconds / 1000),
+        remainingSeconds: Math.max(0, limitSeconds - Math.ceil(usedMilliseconds / 1000)),
+        allowed: !player.banned && usedMilliseconds < limitMinutes * 60_000
+    };
+}
+
+function listTikTokFreeGamePlayers(date) {
+    const current = readStore();
+    const usage = current.tiktokFreeGameUsage[date] || {};
+    return Object.values(current.tiktokFreeGamePlayers).map(player => ({
+        ...player,
+        usedSeconds: Math.floor((usage[player.id]?.milliseconds || 0) / 1000)
+    })).sort((first, second) =>
+        first.username.localeCompare(second.username, 'fr', { sensitivity: 'base' })
+    );
+}
+
+function upsertTikTokFreeGamePlayer(profile) {
+    const { id, username, displayName } = profile;
+    if (!/^[a-f0-9]{64}$/.test(id) ||
+        typeof username !== 'string' || !/^[a-zA-Z0-9._]{1,32}$/.test(username) ||
+        typeof displayName !== 'string' || !displayName.trim() || displayName.length > 80) {
+        throw new Error('Profil TikTok de jeu gratuit invalide.');
+    }
+    return updateStore(current => {
+        const existing = current.tiktokFreeGamePlayers[id];
+        const player = {
+            id,
+            username,
+            displayName: displayName.trim(),
+            banned: existing?.banned === true,
+            limitMinutes: existing?.limitMinutes ?? null,
+            updatedAt: new Date().toISOString()
+        };
+        current.tiktokFreeGamePlayers[id] = player;
+        return { ...player };
+    });
+}
+
+function setTikTokFreeGamePlayerAccess(playerId, { banned, limitMinutes }) {
+    if (!/^[a-f0-9]{64}$/.test(playerId) || typeof banned !== 'boolean' ||
+        (limitMinutes !== null &&
+            (!Number.isSafeInteger(limitMinutes) || limitMinutes < 1 || limitMinutes > 1440))) {
+        throw new Error('Réglages d’accès TikTok aux jeux gratuits invalides.');
+    }
+    return updateStore(current => {
+        const player = current.tiktokFreeGamePlayers[playerId];
+        if (!player) return false;
+        player.banned = banned;
+        player.limitMinutes = limitMinutes;
+        player.updatedAt = new Date().toISOString();
+        return true;
+    });
+}
+
+function getFreeGameDefaultLimitMinutes() {
+    return readStore().freeGameDefaultLimitMinutes;
+}
+
+function setFreeGameDefaultLimitMinutes(limitMinutes) {
+    if (!Number.isSafeInteger(limitMinutes) || limitMinutes < 1 || limitMinutes > 1440) {
+        throw new Error('La limite quotidienne par défaut doit être comprise entre 1 et 1 440 minutes.');
+    }
+    updateStore(current => {
+        current.freeGameDefaultLimitMinutes = limitMinutes;
+    });
+}
+
+function recordTikTokFreeGameHeartbeat(playerId, date, now, active) {
+    if (!/^[a-f0-9]{64}$/.test(playerId) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isSafeInteger(now) || now < 0 || typeof active !== 'boolean') {
+        throw new Error('Signal de temps de jeu TikTok invalide.');
+    }
+    return updateStore(current => {
+        const player = current.tiktokFreeGamePlayers[playerId];
+        if (!player) return null;
+        const players = current.tiktokFreeGameUsage[date] || {};
+        const usage = players[playerId] || { milliseconds: 0, lastHeartbeatAt: null };
+        const limitMilliseconds = (player.limitMinutes ?? current.freeGameDefaultLimitMinutes) * 60_000;
+        if (!player.banned && active && usage.lastHeartbeatAt !== null) {
+            const elapsed = now - usage.lastHeartbeatAt;
+            if (elapsed >= 0 && elapsed <= 60_000) {
+                usage.milliseconds = Math.min(
+                    limitMilliseconds,
+                    usage.milliseconds + Math.min(elapsed, 30_000)
+                );
+            }
+        }
+        usage.lastHeartbeatAt = active ? now : null;
+        players[playerId] = usage;
+        current.tiktokFreeGameUsage[date] = players;
+        const cutoff = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        for (const oldDate of Object.keys(current.tiktokFreeGameUsage)) {
+            if (oldDate < cutoff) delete current.tiktokFreeGameUsage[oldDate];
+        }
+        const usedSeconds = Math.floor(usage.milliseconds / 1000);
+        const remainingSeconds = Math.max(0, Math.ceil((limitMilliseconds - usage.milliseconds) / 1000));
+        return {
+            id: player.id,
+            username: player.username,
+            displayName: player.displayName,
+            banned: player.banned,
+            limitMinutes: player.limitMinutes ?? current.freeGameDefaultLimitMinutes,
+            usedSeconds,
+            remainingSeconds,
+            allowed: !player.banned && usage.milliseconds < limitMilliseconds
+        };
+    });
+}
+
 function getAccountBySubscription(subscriptionId) {
     const store = readStore();
     return Object.entries(store.users).find(([, account]) =>
@@ -1378,6 +1532,7 @@ module.exports = {
     getAdminDashboardLayout,
     getCreatorServiceAccess,
     getDailyUsageCount,
+    getFreeGameDefaultLimitMinutes,
     getGameFilesDirectory,
     getDataDirectory,
     listLiveAlertPushSubscriptions,
@@ -1395,6 +1550,7 @@ module.exports = {
     listGames,
     listAccounts,
     listTikTokPlayers,
+    listTikTokFreeGamePlayers,
     listAccountLiveTtsSources,
     getPlans,
     resolveTikTokPlayer,
@@ -1412,6 +1568,7 @@ module.exports = {
     setAccountTtsLinkRevoked,
     saveAdminDashboardLayout,
     recordDailyUsage,
+    recordTikTokFreeGameHeartbeat,
     setGameHidden,
     setCreatorRoom,
     setCreatorRoomRevoked,
@@ -1430,9 +1587,13 @@ module.exports = {
     setCreatorGameAccess,
     setCreatorServiceAccess,
     setUserRevoked,
+    getTikTokFreeGameStatus,
+    upsertTikTokFreeGamePlayer,
     closeCreatorRoom,
     removeCreator,
     saveAccount,
+    setFreeGameDefaultLimitMinutes,
+    setTikTokFreeGamePlayerAccess,
     createManualAccount,
     reserveCheckout,
     savePlans,

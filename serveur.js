@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const WebSocket = require('ws');
 const webPush = require('web-push');
 const { createTikTokSession } = require('./tiktok-session');
+const tiktokFreeGames = require('./tiktok-free-games');
 const access = require('./access-control');
 const {
     PUBLIC_PACHINKO_GAME_ID,
@@ -154,6 +155,8 @@ const homepageFile = path.join(__dirname, 'accueil.html');
 const liveTtsFile = path.join(__dirname, 'live-tts.html');
 const presenceScriptFile = path.join(__dirname, 'arcade-presence.js');
 const arcadeStarsFile = path.join(__dirname, 'arcade-stars.js');
+const freeGameSessionScriptFile = path.join(__dirname, 'free-game-session.js');
+const freeGamesAdminScriptFile = path.join(__dirname, 'free-games-admin.js');
 const retroFightFile = path.join(__dirname, 'combat-retro.html');
 const ringRunFile = path.join(__dirname, 'course-anneaux.html');
 const arenaGameFile = path.join(__dirname, 'tir-corde-goku.html');
@@ -693,7 +696,7 @@ function getPublicTikTokPlayer(player, owner) {
 }
 
 function injectArcadeScripts(html, pathname) {
-    if (pathname === '/coin-pusher-2000/views/index.html') return html;
+    if (pathname === '/coin-pusher-2000/views/index.html' || pathname === '/confidentialite.html') return html;
     const insertBeforeDocumentEnd = (content, script) => {
         if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${script}</body>`);
         if (/<\/html>/i.test(content)) return content.replace(/<\/html>/i, `${script}</html>`);
@@ -739,6 +742,10 @@ function injectArcadeScripts(html, pathname) {
     const mobileControlsScript = '<script src="/arcade-mobile-controls.js" defer></script>';
     if (!/<script\b[^>]*src=["']\/arcade-mobile-controls\.js["']/i.test(content)) {
         content = insertBeforeDocumentEnd(content, mobileControlsScript);
+    }
+    if (tiktokFreeGames.isFreeGamePath(pathname) &&
+        !/<script\b[^>]*src=["']\/free-game-session\.js["']/i.test(content)) {
+        content = insertBeforeDocumentEnd(content, '<script src="/free-game-session.js" defer></script>');
     }
     return content;
 }
@@ -1363,6 +1370,134 @@ function getOverlayTiktokUsername(owner) {
 const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url, 'http://localhost');
     const pathname = requestUrl.pathname;
+    if (pathname === '/auth/tiktok' && req.method === 'GET') {
+        tiktokFreeGames.startLogin(req, res, requestUrl.searchParams.get('returnTo'));
+        return;
+    }
+    if (pathname === '/auth/tiktok/callback' && req.method === 'GET') {
+        void tiktokFreeGames.completeLogin(req, res, requestUrl, store);
+        return;
+    }
+    if (pathname === '/auth/tiktok/logout' && req.method === 'POST') {
+        tiktokFreeGames.logout(req, res);
+        return;
+    }
+    if (pathname === '/api/free-games/status' && req.method === 'GET') {
+        const status = tiktokFreeGames.getPlayerStatus(req, store, getApplicationDate());
+        if (!status) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ authenticated: false, message: 'Connecte-toi avec TikTok pour utiliser les jeux gratuits.' }));
+            return;
+        }
+        res.writeHead(status.allowed ? 200 : 403, {
+            'Cache-Control': 'no-store',
+            'Content-Type': 'application/json; charset=utf-8'
+        });
+        res.end(JSON.stringify({ authenticated: true, ...status }));
+        return;
+    }
+    if (pathname === '/api/free-games/heartbeat' && req.method === 'POST') {
+        const identity = tiktokFreeGames.getIdentity(req);
+        if (!identity) {
+            res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ authenticated: false, message: 'La session TikTok a expiré.' }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            if (typeof body.active !== 'boolean') {
+                res.writeHead(400, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Signal de temps de jeu invalide.' }));
+                return;
+            }
+            try {
+                const current = store.getTikTokFreeGameStatus(identity.playerId, getApplicationDate());
+                if (!current) {
+                    res.writeHead(401, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ authenticated: false, message: 'Session TikTok introuvable.' }));
+                    return;
+                }
+                const result = current.allowed && !current.banned
+                    ? store.recordTikTokFreeGameHeartbeat(
+                        identity.playerId,
+                        getApplicationDate(),
+                        Date.now(),
+                        body.active
+                    )
+                    : current;
+                const status = result && result.allowed && !result.banned ? 200 : 403;
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ authenticated: true, ...result }));
+            } catch (error) {
+                console.error('Échec de suivi du temps de jeu TikTok :', error.message);
+                res.writeHead(500, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: 'Impossible d’enregistrer le temps de jeu.' }));
+            }
+        }, 1024);
+        return;
+    }
+    if (pathname === '/api/admin/free-games' &&
+        (req.method === 'GET' || req.method === 'POST')) {
+        if (!access.isAuthenticated(req) || !access.isAdmin(req)) {
+            res.writeHead(403, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ message: 'Accès réservé à un administrateur connecté.' }));
+            return;
+        }
+        if (req.method === 'GET') {
+            const date = getApplicationDate();
+            res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                date,
+                defaultLimitMinutes: store.getFreeGameDefaultLimitMinutes(),
+                games: tiktokFreeGames.FREE_GAME_IDS.map(id => ({
+                    id,
+                    title: staticGameTitles[id] || id
+                })),
+                players: store.listTikTokFreeGamePlayers(date)
+            }));
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                if (body.action === 'default-limit') {
+                    const limitMinutes = Number(body.limitMinutes);
+                    if (!Number.isSafeInteger(limitMinutes) || limitMinutes < 1 || limitMinutes > 1440) {
+                        throw invalidAdminInput('La limite quotidienne par défaut doit être comprise entre 1 et 1 440 minutes.');
+                    }
+                    store.setFreeGameDefaultLimitMinutes(limitMinutes);
+                } else if (body.action === 'player') {
+                    const id = typeof body.id === 'string' ? body.id : '';
+                    const limitMinutes = body.limitMinutes === null
+                        ? null
+                        : Number(body.limitMinutes);
+                    if (!/^[a-f0-9]{64}$/.test(id) || typeof body.banned !== 'boolean' ||
+                        (limitMinutes !== null &&
+                            (!Number.isSafeInteger(limitMinutes) || limitMinutes < 1 || limitMinutes > 1440))) {
+                        throw invalidAdminInput('Les réglages du pseudo TikTok sont invalides.');
+                    }
+                    if (!store.setTikTokFreeGamePlayerAccess(id, {
+                        banned: body.banned,
+                        limitMinutes
+                    })) {
+                        throw invalidAdminInput('Joueur TikTok introuvable.');
+                    }
+                } else {
+                    throw invalidAdminInput('Action de gestion des jeux gratuits inconnue.');
+                }
+                res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                const status = error.statusCode || 500;
+                if (status === 500) console.error('Échec de mise à jour des accès aux jeux gratuits :', error.message);
+                res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    message: status === 500
+                        ? 'Impossible d’enregistrer les réglages des jeux gratuits.'
+                        : error.message
+                }));
+            }
+        }, 4096);
+        return;
+    }
     if (handleMedia(req, res, pathname, requestUrl.searchParams)) return;
     if (pathname === '/api/progress-overlay-settings' && req.method === 'GET') {
         const owner = handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'));
@@ -3211,11 +3346,14 @@ const server = http.createServer((req, res) => {
     }
     const routes = new Map([
         ['/', [homepageFile, 'text/html; charset=utf-8']],
+        ['/confidentialite.html', [path.join(__dirname, 'confidentialite.html'), 'text/html; charset=utf-8']],
         ['/live-alerts.html', [path.join(__dirname, 'live-alerts.html'), 'text/html; charset=utf-8']],
         ['/live-alerts-sw.js', [path.join(__dirname, 'live-alerts-sw.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-treasure-overlay.html', [path.join(__dirname, 'arcade-treasure-overlay.html'), 'text/html; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
+        ['/free-game-session.js', [freeGameSessionScriptFile, 'text/javascript; charset=utf-8']],
+        ['/free-games-admin.js', [freeGamesAdminScriptFile, 'text/javascript; charset=utf-8']],
         ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
         ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
@@ -3611,6 +3749,27 @@ const server = http.createServer((req, res) => {
         });
         res.end();
     } else if (route) {
+        if (tiktokFreeGames.isFreeGamePath(pathname)) {
+            const identity = tiktokFreeGames.getIdentity(req);
+            if (!identity) {
+                tiktokFreeGames.sendAccessPage(
+                    res,
+                    401,
+                    'unauthenticated',
+                    `${pathname}${requestUrl.search}`
+                );
+                return;
+            }
+            const status = store.getTikTokFreeGameStatus(identity.playerId, getApplicationDate());
+            if (!status || status.banned || !status.allowed) {
+                tiktokFreeGames.sendAccessPage(
+                    res,
+                    403,
+                    status?.banned ? 'banned' : 'limit'
+                );
+                return;
+            }
+        }
         const gameId = gameRouteIds.get(pathname);
         if (protectedRoutes.has(pathname) && !freeTrialRoutes.has(pathname) &&
             (!access.canAccessGames(req) ||
