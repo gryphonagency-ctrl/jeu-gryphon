@@ -296,6 +296,7 @@ store.grantGameAccessToExistingCreators('/qui-veut-gagner-des-etoiles.html');
 store.grantGameAccessToExistingCreators('/escape-bunker.html');
 store.grantGameAccessToExistingCreators('/defi-des-questions.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-3d-preview.html');
+store.grantGameAccessToExistingCreators('/coin-pusher-tiktok.html');
 store.grantGameAccessToExistingCreators('/bobo-pusher.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-2000.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
@@ -368,7 +369,7 @@ const staticGameTitles = {
     '/live-photo-printer-studio.html': 'Live Photo Printer Studio',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
-    '/coin-pusher-tiktok.html': 'Coin Pusher',
+    '/coin-pusher-tiktok.html': 'Pousse les monstres',
     '/coin-pusher-2000.html': 'Coin Pusher 2000',
     '/coin-pusher-3d-preview.html': 'Astra-Push Réacteur',
     '/pousse-pieces-arcade-nouveau.html': 'Bobo Pusher',
