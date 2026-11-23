@@ -292,7 +292,8 @@ const fixedGameImageIds = new Set([
     '/quartier-des-veilleurs.html',
     '/apex-formula.html',
     '/pokefight-live.html',
-    '/grand-prix-pokemon.html'
+    '/grand-prix-pokemon.html',
+    '/live-foot-interactif-stadium.html',
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
