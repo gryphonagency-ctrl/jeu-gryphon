@@ -2452,26 +2452,14 @@ const server = http.createServer((req, res) => {
         }
         if (req.method === 'GET') {
             const source = store.getAccountLiveTts(username);
-            const creatorSettings = store.getCreatorSettings(username);
-            const tiktokUsername = source?.username || creatorSettings.tiktokUsername || null;
-            const tiktokSessionKey = String(tiktokUsername || '').toLocaleLowerCase();
-            const tiktokSession = sessions.get(tiktokSessionKey);
-            const isCentralTikTokSession = tiktokSessionKey === centralTikTokSessionKey;
-            const liveConnected = Boolean(tiktokSessionKey &&
-                (isCentralTikTokSession ? centralTikTokConnected : tiktokSession?.isLive));
-            const roomId = isCentralTikTokSession
-                ? centralTikTokRoomId
-                : tiktokSession?.roomId || null;
             res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 active: Boolean(source),
                 revoked: store.isAccountTtsLinkRevoked(username) &&
                     !access.hasActiveSubscription(store.getAccount(username)),
-                username: tiktokUsername,
-                locked: creatorSettings.locked === true,
-                roomNumber: getCreatorRoomNumber(username),
-                liveConnected,
-                roomId
+                username: source?.username || store.getCreatorSettings(username).tiktokUsername || null,
+                locked: store.getCreatorSettings(username).locked === true,
+                roomNumber: getCreatorRoomNumber(username)
             }));
             return;
         }
@@ -4513,10 +4501,6 @@ wss.on('connection', (socket, req) => {
                 request.gameId !== PUBLIC_PACHINKO_GAME_ID ||
                 publicPachinkoConnectedSockets.has(socket))) {
             socket.close(1008, 'Action non autorisée');
-            return;
-        }
-        if (request.action === 'PING' && liveTtsUsername) {
-            socket.send(JSON.stringify({ type: 'PONG' }));
             return;
         }
         if (request.action === 'BALLOON_GAME_SYNC') {
