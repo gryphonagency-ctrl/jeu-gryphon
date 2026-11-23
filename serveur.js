@@ -253,6 +253,7 @@ const protectedRoutes = new Set([
     '/plinko.html',
     '/pachinko-live.html',
     '/live-photo-printer-studio.html',
+    '/live-photo-printer-studio-realiste.html',
     '/griffon-gauche.jpg',
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
@@ -355,6 +356,7 @@ store.grantGameAccessToExistingCreators('/coffre-incandescent.html');
 store.grantGameAccessToExistingCreators('/train-gemini.html');
 store.grantGameAccessToExistingCreators('/pachinko-live.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio.html');
+store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -370,6 +372,7 @@ const staticGameTitles = {
     '/plinko.html': 'Gryphon Plinko',
     '/pachinko-live.html': 'Pachinko Live',
     '/live-photo-printer-studio.html': 'Live Photo Printer Studio',
+    '/live-photo-printer-studio-realiste.html': 'Live Photo Printer Studio réaliste',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Pousse les monstres',
@@ -447,6 +450,7 @@ const gameRouteIds = new Map([
     ['/plinko.html', '/plinko.html'],
     ['/pachinko-live.html', '/pachinko-live.html'],
     ['/live-photo-printer-studio.html', '/live-photo-printer-studio.html'],
+    ['/live-photo-printer-studio-realiste.html', '/live-photo-printer-studio-realiste.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
@@ -3520,6 +3524,7 @@ const server = http.createServer((req, res) => {
         ['/plinko.html', [plinkoFile, 'text/html; charset=utf-8']],
         ['/pachinko-live.html', [path.join(__dirname, 'pachinko-live.html'), 'text/html; charset=utf-8']],
         ['/live-photo-printer-studio.html', [path.join(__dirname, 'live-photo-printer-studio.html'), 'text/html; charset=utf-8']],
+        ['/live-photo-printer-studio-realiste.html', [path.join(__dirname, 'live-photo-printer-studio-realiste.html'), 'text/html; charset=utf-8']],
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/donut.jpg', [path.join(__dirname, 'donut.jpg'), 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],

@@ -24,6 +24,8 @@ Utilise un mot de passe d'au moins 12 caractères et garde cette variable secrè
 
 Les 19 jeux actuellement marqués gratuits dans la vitrine demandent une connexion TikTok Login Kit aux visiteurs sans session Griffon Arcade autorisée à accéder aux jeux. Un membre connecté avec cet accès n'a pas besoin de se connecter à TikTok et n'est pas soumis au suivi de temps TikTok. Pour les joueurs TikTok, la limite par défaut est de 60 minutes cumulées sur l'ensemble de ces jeux, remise à zéro à minuit (heure de Paris); les pages renvoient une réponse HTTP 403 une fois la limite atteinte ou si le pseudo est banni. Les autres jeux, notamment les jeux réservés aux membres, ne passent pas par ce contrôle.
 
+La variante **Live Photo Printer Studio réaliste** est proposée dans les jeux avec abonnement; le jeu **Live Photo Printer Studio** original reste gratuit.
+
 Pour activer Login Kit, crée ou configure une application sur [TikTok for Developers](https://developers.tiktok.com/), active **Login Kit** et autorise les scopes `user.info.basic` et `user.info.profile`. Le scope `user.info.profile` est requis pour recevoir le pseudo `username` vérifié. Dans la configuration de l'application, enregistre exactement cette redirect URI :
 
 ```text

@@ -19,6 +19,8 @@ test('only the games listed as free on the homepage are time-limited', () => {
     assert.equal(freeGames.isFreeGamePath('/pendu.html'), true);
     assert.equal(freeGames.isFreeGamePath('/bingo-gryphon.html'), false);
     assert.equal(freeGames.isFreeGamePath('/pachinko-live.html'), true);
+    assert.equal(freeGames.isFreeGamePath('/live-photo-printer-studio.html'), true);
+    assert.equal(freeGames.isFreeGamePath('/live-photo-printer-studio-realiste.html'), false);
 });
 
 test('Griffon Arcade members with game access do not need TikTok for free games', () => {

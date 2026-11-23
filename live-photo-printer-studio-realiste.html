@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Live Photo Printer Studio Réaliste</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #05070e;
+            color: #f8fafc;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #0b101d;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
+        }
+        #printer-queue-widget.detached {
+            position: fixed;
+            right: 14px;
+            bottom: 14px;
+            z-index: 40;
+            width: min(270px, calc(100vw - 28px));
+            border-color: rgba(56, 189, 248, .7);
+            background: rgba(2, 6, 23, .96);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col lg:flex-row bg-[#05070e] text-slate-100">
+
+    <!-- ZONE PRINCIPALE D'IMPRESSION (ÉCRAN LARGE 16:9 PAR DÉFAUT) -->
+    <main id="studio-main" class="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 relative min-h-[75vh] lg:min-h-screen transition-all duration-300">
+
+        <!-- Barre supérieure compacte avec connexion TikTok en haut -->
+        <div id="top-bar" class="w-full max-w-5xl flex flex-wrap items-center justify-between gap-2 mb-2.5 z-20 px-3 py-2 rounded-2xl border border-white/15">
+            <div class="flex items-center gap-2.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                <h1 class="font-display font-bold text-sm sm:text-base tracking-wide text-white">
+                    LIVE PHOTO PRINTER <span class="text-cyan-400">STUDIO RÉALISTE</span>
+                </h1>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <button type="button" onclick="openHelpModal()" class="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition flex items-center gap-1.5">
+                    <span>🔗</span> <span id="top-tiktok-connect-label">Connexion TikTok</span>
+                </button>
+                <button type="button" onclick="toggleAspect()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold border border-slate-700 transition">
+                    🖥️ <span id="aspect-text">16:9 Paysage</span>
+                </button>
+                <label class="cursor-pointer px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold border border-slate-700 transition flex items-center gap-1">
+                    🎬 <span id="video-bg-label">Vidéo Fond</span>
+                    <input id="file-bg-video-input" type="file" accept="video/*" class="hidden" onchange="handleBgVideoUpload(event)">
+                </label>
+                <button type="button" id="btn-clear-video" onclick="clearBgVideo()" class="hidden px-2.5 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 text-rose-200 text-xs font-semibold border border-rose-500/40 transition" title="Retirer la vidéo d'arrière-plan">
+                    ✕
+                </button>
+                <button type="button" id="btn-sound" onclick="toggleSound()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold border border-slate-700 transition">
+                    🔊 Son ON
+                </button>
+                <button type="button" id="btn-controls" aria-expanded="true" aria-controls="control-sidebar" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold border border-slate-700 transition">
+                    ⚙️ Masquer contrôles
+                </button>
+            </div>
+        </div>
+
+        <!-- Cadre principal de l'imprimante -->
+        <div id="printer-frame" class="relative w-full max-w-5xl aspect-video bg-[#0b101d] rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl transition-all duration-300 flex flex-col">
+
+            <!-- Vidéo d'arrière-plan optionnelle (tous formats supportés par le navigateur) -->
+            <video id="bg-video" class="hidden absolute inset-0 w-full h-full object-cover pointer-events-none z-0" autoplay loop muted playsinline></video>
+
+            <!-- Canvas principal -->
+            <canvas id="printerCanvas" class="relative z-10 w-full h-full block"></canvas>
+
+            <!-- Barre de progression en bas -->
+            <div id="progress-footer" class="hidden absolute bottom-3 left-3 right-3 z-20 pointer-events-none">
+                <div class="bg-slate-950/85 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-slate-800 flex flex-col gap-1">
+                    <div class="flex justify-between text-[11px] font-semibold">
+                        <span id="phase-text" class="text-slate-300"></span>
+                        <span id="percent-text" class="font-mono text-cyan-400">0%</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="h-full bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-400 rounded-full transition-all duration-100" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- PANNEAU LATÉRAL DE CONTRÔLE -->
+    <aside id="control-sidebar" class="w-full lg:w-[390px] bg-slate-900/95 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 flex flex-col gap-3.5 overflow-y-auto lg:max-h-screen custom-scroll z-20">
+
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div>
+                <h2 class="font-display font-bold text-base text-white">Contrôle des Impressions</h2>
+                <p class="text-xs text-slate-400">Photo ronde réelle &amp; papier continu</p>
+            </div>
+            <button type="button" onclick="openHelpModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition">
+                Compte TikTok
+            </button>
+        </div>
+
+        <!-- Compteurs (déplacés ici pour dégager la machine) -->
+        <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-950/80 px-3 py-2 rounded-2xl border border-slate-800">
+                <div class="text-[10px] uppercase text-slate-400">Photos imprimées</div>
+                <div id="printed-count" class="font-display font-bold text-lg text-emerald-400">0</div>
+            </div>
+            <div class="bg-slate-950/80 px-3 py-2 rounded-2xl border border-slate-800">
+                <div class="text-[10px] uppercase text-slate-400">File d’attente</div>
+                <div id="queue-count" class="font-display font-bold text-lg text-amber-400">0</div>
+            </div>
+        </div>
+
+        <section class="bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+            <h3 class="text-xs font-bold text-slate-300 mb-2">Partie</h3>
+            <div data-save-key="live-photo-printer-studio-realiste-save" data-save-label="🛟 Sauvegarder la partie"></div>
+        </section>
+
+        <div id="printer-queue-widget" class="bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+            <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-slate-300">File d’attente</span>
+                <button type="button" id="queue-detach-button" class="px-2.5 py-1 rounded-lg bg-slate-800 text-[11px] font-semibold border border-slate-700">Détacher</button>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-2"><span id="queue-widget-count">0</span> impression(s) en cours ou en attente</p>
+        </div>
+
+        <!-- Choix / Import de la photo de profil -->
+        <div class="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-300">Photo de Profil du Viewer</span>
+                <label class="cursor-pointer px-2.5 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-semibold transition">
+                    📷 Importer photo
+                    <input id="file-avatar-input" type="file" accept="image/*" class="hidden" onchange="handleAvatarUpload(event)">
+                </label>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+                <img id="preview-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmOWE4ZDQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiZTE4NWQiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+" alt="Aperçu photo ronde" class="w-12 h-12 rounded-full object-cover border-2 border-cyan-400/70 bg-slate-900 shrink-0">
+                <div class="flex-1 flex flex-col gap-1.5">
+                    <input id="input-viewer" type="text" value="Clara_Live" placeholder="Pseudo du donateur" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400">
+                    <input id="input-avatar-url" type="text" placeholder="URL directe d'une photo (optionnel)" onchange="handleAvatarUrlChange(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-[11px] text-slate-300 focus:outline-none focus:border-cyan-400">
+                </div>
+            </div>
+
+            <!-- Portraits prédéfinis -->
+            <div class="grid grid-cols-4 gap-1.5 pt-0.5">
+                <button type="button" onclick="selectPresetAvatar(0)" id="preset-btn-0" class="p-1 rounded-xl bg-slate-900 border border-cyan-400 flex flex-col items-center gap-1 transition">
+                    <img id="thumb-preset-0" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmOWE4ZDQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiZTE4NWQiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+" alt="Clara" class="w-8 h-8 rounded-full object-cover">
+                    <span class="text-[10px] text-slate-200 truncate w-full text-center">Clara</span>
+                </button>
+                <button type="button" onclick="selectPresetAvatar(1)" id="preset-btn-1" class="p-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-600 flex flex-col items-center gap-1 transition">
+                    <img id="thumb-preset-1" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM5M2M1ZmQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxZDRlZDgiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+" alt="Mateo" class="w-8 h-8 rounded-full object-cover">
+                    <span class="text-[10px] text-slate-200 truncate w-full text-center">Mateo</span>
+                </button>
+                <button type="button" onclick="selectPresetAvatar(2)" id="preset-btn-2" class="p-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-600 flex flex-col items-center gap-1 transition">
+                    <img id="thumb-preset-2" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmY2QzNGQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiNDUzMDkiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+" alt="Sora" class="w-8 h-8 rounded-full object-cover">
+                    <span class="text-[10px] text-slate-200 truncate w-full text-center">Sora</span>
+                </button>
+                <button type="button" onclick="selectPresetAvatar(3)" id="preset-btn-3" class="p-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-600 flex flex-col items-center gap-1 transition">
+                    <img id="thumb-preset-3" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM4NmVmYWMiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxNTgwM2QiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+" alt="Noa" class="w-8 h-8 rounded-full object-cover">
+                    <span class="text-[10px] text-slate-200 truncate w-full text-center">Noa</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Déclencheurs de cadeaux -->
+        <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Simuler un Cadeau</span>
+                <span class="text-[11px] text-slate-500">Touches [1-5]</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" onclick="triggerGift('rose')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 transition text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🌹</span>
+                        <div>
+                            <div class="text-xs font-bold text-white">Rose</div>
+                            <div class="text-[10px] text-slate-400">1 pièce</div>
+                        </div>
+                    </div>
+                    <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">1</kbd>
+                </button>
+
+                <button type="button" onclick="triggerGift('heart')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 transition text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">💖</span>
+                        <div>
+                            <div class="text-xs font-bold text-white">Cœur</div>
+                            <div class="text-[10px] text-slate-400">10 pièces</div>
+                        </div>
+                    </div>
+                    <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">2</kbd>
+                </button>
+
+                <button type="button" onclick="triggerGift('galaxy')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 transition text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🌌</span>
+                        <div>
+                            <div class="text-xs font-bold text-white">Galaxie</div>
+                            <div class="text-[10px] text-slate-400">100 pièces</div>
+                        </div>
+                    </div>
+                    <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">3</kbd>
+                </button>
+
+                <button type="button" onclick="triggerGift('lion')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 transition text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🦁</span>
+                        <div>
+                            <div class="text-xs font-bold text-amber-300">Lion</div>
+                            <div class="text-[10px] text-slate-400">500 pièces</div>
+                        </div>
+                    </div>
+                    <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">4</kbd>
+                </button>
+            </div>
+
+            <button type="button" onclick="triggerGift('universe')" class="w-full flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-indigo-950/80 via-fuchsia-950/70 to-amber-950/80 hover:brightness-110 border border-fuchsia-500/40 transition text-left">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xl">🪐</span>
+                    <div>
+                        <div class="text-xs font-bold text-white">Univers <span class="text-[10px] text-amber-300 font-normal">• 1000+ pièces</span></div>
+                        <div class="text-[10px] text-slate-300">Déroulement prioritaire haute précision</div>
+                    </div>
+                </div>
+                <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-950/80 text-amber-300 border border-amber-500/30">5</kbd>
+            </button>
+        </div>
+
+        <!-- Vitesse & actions -->
+        <div class="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-300">Vitesse d'impression</span>
+                <div class="flex gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                    <button type="button" onclick="setSpeed('slow')" id="speed-slow" class="px-2 py-0.5 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-white transition">Lent</button>
+                    <button type="button" onclick="setSpeed('normal')" id="speed-normal" class="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-cyan-600 text-white transition">Normal</button>
+                    <button type="button" onclick="setSpeed('fast')" id="speed-fast" class="px-2 py-0.5 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-white transition">Rapide</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="btn-demo" onclick="toggleDemo()" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition">
+                    🤖 Auto-Live : OFF
+                </button>
+                <button type="button" onclick="clearPrints()" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-500/40 text-xs font-bold text-slate-300 hover:text-rose-200 transition">
+                    🗑️ Vider le papier
+                </button>
+            </div>
+            <button type="button" id="btn-simulate-share" class="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition">
+                ↗ Simuler un partage
+            </button>
+        </div>
+
+        <div id="toast-msg" class="hidden text-xs text-center py-2 px-3 rounded-xl bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 font-medium"></div>
+    </aside>
+
+    <!-- MODALE DE CONFIGURATION DU COMPTE TIKTOK -->
+    <div id="help-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto custom-scroll">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <h3 class="font-display font-bold text-base text-cyan-400">Connexion Compte TikTok &amp; Pont Live</h3>
+                <button type="button" onclick="closeHelpModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-white">1. Compte TikTok du Live</span>
+                    <span id="tiktok-account-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Non lié</span>
+                </div>
+
+                <div>
+                    <label for="input-tiktok-handle" class="block text-[11px] text-slate-400 mb-1">Nom d'utilisateur TikTok (@pseudo)</label>
+                    <input id="input-tiktok-handle" type="text" maxlength="32" autocomplete="off" placeholder="@votre_pseudo_tiktok" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400">
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 pt-1">
+                    <button type="button" onclick="saveAndConnectTikTok()" class="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white transition">
+                        Connecter le compte TikTok
+                    </button>
+                    <button type="button" onclick="disconnectTikTok()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition">
+                        Déconnecter
+                    </button>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed">
+                Reliez le pseudo de votre live pour recevoir les cadeaux et les photos de profil via le relais Griffon Arcade. L’adresse de connexion est gérée automatiquement et n’est pas affichée. Utilisez les touches <strong>1 à 5</strong> ou les boutons pour tester.
+            </p>
+
+            <div class="flex items-center justify-between bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2">
+                <span class="text-[11px] text-slate-400">État de la liaison :</span>
+                <span id="modal-ws-text" class="text-xs font-semibold text-slate-300">En attente</span>
+            </div>
+
+            <button type="button" onclick="closeHelpModal()" class="mt-1 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition">
+                Fermer
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * TIKTOK LIVE PHOTO PRINTER STUDIO
+         * - Imprime uniquement une photo de profil ronde réaliste (jamais carrée)
+         * - Déroulement progressif sur un papier continu à l'arrivée d'un cadeau
+         * - Les photos déjà imprimées restent fixes tant qu'aucun nouveau cadeau n'arrive
+         * ============================================================================
+         */
+
+        const canvas = document.getElementById('printerCanvas');
+        const ctx = canvas.getContext('2d');
+        const printerFrame = document.getElementById('printer-frame');
+        const bgVideoEl = document.getElementById('bg-video');
+
+        let isPortrait = false; // Écran large 16:9 par défaut
+        let bgVideoUrl = null;
+        let isOBS = false;
+        let isDemo = false;
+        let soundEnabled = true;
+        let audioCtx = null;
+        let speedMultiplier = 1.0;
+        const GAME_SAVE_KEY = 'live-photo-printer-studio-realiste-save';
+
+        let tiktokAccount = {
+            handle: "",
+            linked: false
+        };
+
+        const GIFT_CATALOG = {
+            rose: { name: "Rose", emoji: "🌹", coins: 1, color: "#fb7185" },
+            heart: { name: "Cœur", emoji: "💖", coins: 10, color: "#f472b6" },
+            galaxy: { name: "Galaxie", emoji: "🌌", coins: 100, color: "#38bdf8" },
+            lion: { name: "Lion", emoji: "🦁", coins: 500, color: "#fbbf24" },
+            universe: { name: "Univers", emoji: "🪐", coins: 1000, color: "#c084fc" }
+        };
+
+        const presets = [
+            {
+                name: "Clara_Live",
+                url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmOWE4ZDQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiZTE4NWQiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+"
+            },
+            {
+                name: "Mateo_92",
+                url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM5M2M1ZmQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxZDRlZDgiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+"
+            },
+            {
+                name: "Sora_Vibes",
+                url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmY2QzNGQiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiNDUzMDkiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+"
+            },
+            {
+                name: "Noa_Studio",
+                url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM4NmVmYWMiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxNTgwM2QiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0idXJsKCNnKSIvPjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEwMCIgcj0iNDYiIGZpbGw9IiNmZGU3ZDMiLz48cGF0aCBkPSJNMzIgMjU2YzAtNjIgNDItMTAwIDk2LTEwMHM5NiAzOCA5NiAxMDB6IiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+"
+            }
+        ];
+
+        const sampleNames = ["Lina_Off", "Kylian_FR", "Yanis_Live", "Ines_94", "Noah_TV", "Ambre_K"];
+
+        let selectedAvatarUrl = presets[0].url;
+        const imageCache = new Map();
+
+        // État de la file d'impression et du papier continu
+        const printQueue = [];
+        let activeJob = null;
+        let completedPrints = []; // Historique ordonné du plus récent (index 0) au plus ancien
+        let totalPrintedCount = 0;
+
+        let lastFrameTime = 0;
+
+        // Imprimante réaliste : une feuille très large sort de la fente et se déroule à plat sur le sol
+        let layout = null;          // mesures recalculées à chaque image
+        let washAmount = 0;         // effet de "développement" juste sous la fente
+        let jobCooldown = 0;        // courte pause entre deux impressions
+        let flashAmount = 0;        // intensité du flash (1 = plein éclat, décroît vite)
+        let heartPhase = 0;         // phase du battement de cœur de l'écran LCD
+        let spoolAngle = 0;         // rotation de la bobine visible dans le capot
+        let stripCanvas = null;     // bande de papier dessinée hors écran
+        let stripCtx = null;
+
+        // Texture granuleuse subtile de papier photo
+        let paperGrainCanvas = null;
+        function initPaperGrain() {
+            paperGrainCanvas = document.createElement('canvas');
+            paperGrainCanvas.width = 96;
+            paperGrainCanvas.height = 96;
+            const gctx = paperGrainCanvas.getContext('2d');
+            const imgData = gctx.createImageData(96, 96);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const n = Math.floor(Math.random() * 255);
+                imgData.data[i] = n;
+                imgData.data[i + 1] = n;
+                imgData.data[i + 2] = n;
+                imgData.data[i + 3] = 10;
+            }
+            gctx.putImageData(imgData, 0, 0);
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById('toast-msg');
+            if (!el) return;
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.add('hidden'), 2600);
+        }
+
+        function getFallbackAvatarUrl(name = "Viewer") {
+            const safe = encodeURIComponent(name.slice(0, 2).toUpperCase() || "TT");
+            return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="#1e293b"/><text x="128" y="150" font-size="90" text-anchor="middle" fill="#f8fafc" font-family="sans-serif">${decodeURIComponent(safe)}</text></svg>`);
+        }
+
+        function loadAvatarImage(url, fallbackLabel = "Viewer") {
+            if (!url) return Promise.resolve(null);
+            if (imageCache.has(url)) {
+                return Promise.resolve(imageCache.get(url));
+            }
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => {
+                    imageCache.set(url, img);
+                    resolve(img);
+                };
+                img.onerror = () => {
+                    const fallbackImg = new Image();
+                    fallbackImg.crossOrigin = "anonymous";
+                    fallbackImg.onload = () => {
+                        imageCache.set(url, fallbackImg);
+                        resolve(fallbackImg);
+                    };
+                    fallbackImg.onerror = () => resolve(null);
+                    fallbackImg.src = getFallbackAvatarUrl(fallbackLabel);
+                };
+                img.src = url;
+            });
+        }
+
+        // --- SYNTHÉTISEUR SONORE LÉGER ---
+        function initAudio() {
+            try {
+                if (!audioCtx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    audioCtx = new AC();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            } catch (e) {}
+        }
+
+        function playTickSound(freq = 540) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.72, now + 0.035);
+                gain.gain.setValueAtTime(0.025, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+                osc.start(now);
+                osc.stop(now + 0.035);
+            } catch (e) {}
+        }
+
+        function playDoneSound() {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.09);
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+                osc.start(now);
+                osc.stop(now + 0.24);
+            } catch (e) {}
+        }
+
+        // --- SÉLECTION ET IMPORT DE PHOTO ---
+        function selectPresetAvatar(index) {
+            const p = presets[index];
+            if (!p) return;
+            selectedAvatarUrl = p.url;
+            const prev = document.getElementById('preview-avatar');
+            const nameInput = document.getElementById('input-viewer');
+            const urlInput = document.getElementById('input-avatar-url');
+            if (prev) prev.src = p.url;
+            if (nameInput) nameInput.value = p.name;
+            if (urlInput) urlInput.value = "";
+            loadAvatarImage(p.url, p.name);
+
+            for (let i = 0; i < presets.length; i++) {
+                const btn = document.getElementById(`preset-btn-${i}`);
+                if (btn) {
+                    btn.className = i === index
+                        ? "p-1 rounded-xl bg-slate-900 border border-cyan-400 flex flex-col items-center gap-1 transition"
+                        : "p-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-600 flex flex-col items-center gap-1 transition";
+                }
+            }
+        }
+
+        function handleAvatarUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                if (typeof dataUrl === 'string') {
+                    selectedAvatarUrl = dataUrl;
+                    const prev = document.getElementById('preview-avatar');
+                    if (prev) prev.src = dataUrl;
+                    loadAvatarImage(dataUrl, "Upload");
+                    showToast("Photo chargée");
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleAvatarUrlChange(val) {
+            const clean = (val || "").trim();
+            if (!clean) return;
+            selectedAvatarUrl = clean;
+            const prev = document.getElementById('preview-avatar');
+            if (prev) prev.src = clean;
+            loadAvatarImage(clean, "Avatar");
+        }
+
+        // --- VIDÉO D'ARRIÈRE-PLAN ---
+        function handleBgVideoUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file || !bgVideoEl) return;
+
+            if (bgVideoUrl) {
+                try { URL.revokeObjectURL(bgVideoUrl); } catch (e) {}
+            }
+
+            bgVideoUrl = URL.createObjectURL(file);
+            bgVideoEl.src = bgVideoUrl;
+            bgVideoEl.classList.remove('hidden');
+            bgVideoEl.load();
+            const playPromise = bgVideoEl.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(() => {});
+            }
+
+            const label = document.getElementById('video-bg-label');
+            const clearBtn = document.getElementById('btn-clear-video');
+            if (label) label.textContent = "Vidéo ON";
+            if (clearBtn) clearBtn.classList.remove('hidden');
+            printerFrame.style.backgroundColor = "transparent";
+            showToast(`Vidéo chargée : ${file.name}`);
+        }
+
+        function clearBgVideo() {
+            if (!bgVideoEl) return;
+            try { bgVideoEl.pause(); } catch (e) {}
+            bgVideoEl.removeAttribute('src');
+            bgVideoEl.load();
+            bgVideoEl.classList.add('hidden');
+
+            if (bgVideoUrl) {
+                try { URL.revokeObjectURL(bgVideoUrl); } catch (e) {}
+                bgVideoUrl = null;
+            }
+
+            const fileInput = document.getElementById('file-bg-video-input');
+            if (fileInput) fileInput.value = "";
+
+            const label = document.getElementById('video-bg-label');
+            const clearBtn = document.getElementById('btn-clear-video');
+            if (label) label.textContent = "Vidéo Fond";
+            if (clearBtn) clearBtn.classList.add('hidden');
+            printerFrame.style.backgroundColor = "#0b101d";
+            showToast("Vidéo d'arrière-plan retirée");
+        }
+
+        // --- ENFILEMENT & DÉROULEMENT À L'ARRIVÉE D'UN CADEAU ---
+        function triggerGift(giftKey, customViewer = null, customAvatarUrl = null, isSimulation = true) {
+            initAudio();
+            const gift = GIFT_CATALOG[giftKey] || GIFT_CATALOG.rose;
+            const viewerInput = document.getElementById('input-viewer');
+            const viewer = (customViewer && String(customViewer).trim())
+                || (viewerInput && viewerInput.value.trim())
+                || sampleNames[Math.floor(Math.random() * sampleNames.length)];
+
+            const avatarUrl = customAvatarUrl || selectedAvatarUrl || presets[0].url;
+            loadAvatarImage(avatarUrl, viewer);
+
+            const job = {
+                id: Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+                viewer,
+                avatarUrl,
+                giftName: gift.name,
+                emoji: gift.emoji,
+                coins: gift.coins,
+                color: gift.color,
+                progress: 0,
+            };
+
+            printQueue.push(job);
+            flashAmount = 1;
+            playFlashSound();
+
+            updateHudCounters();
+            if (isSimulation && gift.coins >= (window.ArcadeEffects?.config?.bigGiftCoins || 100)) {
+                if (typeof window.ArcadeEffects?.simulateBigGift !== 'function') {
+                    const message = 'Le simulateur de gros cadeaux est indisponible.';
+                    showToast(message);
+                    console.error(message);
+                } else {
+                    window.ArcadeEffects.simulateBigGift(viewer, gift.coins);
+                }
+            }
+        }
+
+        function startNextJob() {
+            if (printQueue.length === 0) {
+                activeJob = null;
+                updateHudCounters();
+                return;
+            }
+            activeJob = printQueue.shift();
+            activeJob.progress = 0;
+            activeJob.photoPct = 0;
+            updateHudCounters();
+        }
+
+        function clearPrints() {
+            printQueue.length = 0;
+            activeJob = null;
+            completedPrints = [];
+            totalPrintedCount = 0;
+            washAmount = 0;
+            jobCooldown = 0;
+            updateHudCounters();
+            showToast("Papier réinitialisé");
+        }
+
+        function setSpeed(mode) {
+            if (mode === 'slow') speedMultiplier = 0.65;
+            else if (mode === 'fast') speedMultiplier = 1.9;
+            else speedMultiplier = 1.0;
+
+            ['slow', 'normal', 'fast'].forEach((m) => {
+                const btn = document.getElementById(`speed-${m}`);
+                if (!btn) return;
+                btn.className = m === mode
+                    ? "px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-cyan-600 text-white transition"
+                    : "px-2 py-0.5 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-white transition";
+            });
+        }
+
+        // --- AFFICHAGE & CONTRÔLES ---
+        function resizeCanvas() {
+            const rect = printerFrame.getBoundingClientRect();
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.max(320, Math.floor(rect.width));
+            const h = Math.max(240, Math.floor(rect.height));
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            layout = null;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function toggleAspect() {
+            isPortrait = !isPortrait;
+            const label = document.getElementById('aspect-text');
+            if (isPortrait) {
+                printerFrame.className = "relative w-full max-w-[430px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl transition-all duration-300 flex flex-col";
+                if (label) label.textContent = "9:16 TikTok";
+            } else {
+                printerFrame.className = "relative w-full max-w-5xl aspect-video rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl transition-all duration-300 flex flex-col";
+                if (label) label.textContent = "16:9 Paysage";
+            }
+            printerFrame.style.backgroundColor = bgVideoUrl ? "transparent" : "#0b101d";
+            setTimeout(resizeCanvas, 60);
+        }
+
+        function toggleChroma() {
+            isChroma = !isChroma;
+            printerFrame.style.backgroundColor = isChroma ? "#00b140" : "#0b101d";
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('btn-sound');
+            if (btn) btn.textContent = soundEnabled ? "🔊 Son ON" : "🔇 Son OFF";
+            if (soundEnabled) initAudio();
+        }
+
+        function toggleOBS() {
+            // Mode OBS supprimé
+        }
+
+        let demoTimer = null;
+        function toggleDemo() {
+            isDemo = !isDemo;
+            const btn = document.getElementById('btn-demo');
+            if (isDemo) {
+                if (btn) {
+                    btn.textContent = "🤖 Auto-Live : ON";
+                    btn.className = "py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/40 text-xs font-bold text-white transition";
+                }
+                const keys = ['rose', 'heart', 'galaxy', 'lion', 'universe'];
+                demoTimer = setInterval(() => {
+                    const p = presets[Math.floor(Math.random() * presets.length)];
+                    const k = keys[Math.floor(Math.random() * keys.length)];
+                    triggerGift(k, p.name, p.url);
+                }, 4200);
+            } else {
+                if (btn) {
+                    btn.textContent = "🤖 Auto-Live : OFF";
+                    btn.className = "py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition";
+                }
+                clearInterval(demoTimer);
+            }
+        }
+
+        // --- BOUCLE DE SIMULATION & RENDU ---
+        function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+        function easeFeed(p) { return 0.5 - 0.5 * Math.cos(Math.PI * clamp(p, 0, 1)); }
+
+        function rr(c, x, y, w, h, r) {
+            r = Math.max(0, Math.min(r, w / 2, h / 2));
+            c.beginPath();
+            c.moveTo(x + r, y);
+            c.arcTo(x + w, y, x + w, y + h, r);
+            c.arcTo(x + w, y + h, x, y + h, r);
+            c.arcTo(x, y + h, x, y, r);
+            c.arcTo(x, y, x + w, y, r);
+            c.closePath();
+        }
+
+        // Mesures de la scène : imprimante en haut, feuille très large posée à plat sur le sol
+        function computeLayout() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = (canvas.width / dpr) || 960;
+            const h = (canvas.height / dpr) || 540;
+            const PW = Math.min(w * (isPortrait ? 0.94 : 0.80), 860);
+            const PH = Math.min(h * (isPortrait ? 0.22 : 0.31), PW * 0.47);
+            const s = clamp(PH / 173, 0.6, 1.3);
+            const py = 12;
+            const slotY = py + PH - 16 * s;
+            const floorY = h;
+            // Place pour voir 2 photos entières + un début de 3e
+            const flatMin = floorY - slotY;
+            let SP = clamp(flatMin / 2.35, 64, 230);
+            const gap = clamp(SP * 0.07, 7, 14);
+            const r = Math.max(20, (SP - gap - 42) / 2);
+            const CH = 2 * r + 42;
+            SP = CH + gap;
+            // La feuille occupe toute la largeur de l'appareil (fente comprise)
+            const pw = Math.max(120, PW * 0.96 - 16 - 24 * s);
+            return { w, h, dpr, PW, PH, s, px: (w - PW) / 2, py, slotY, floorY, SP, gap, CH, r, pw, paperLeft: (w - pw) / 2 };
+        }
+
+        // Avance du papier (en pixels) pour l'impression en cours
+        function currentFeed() {
+            if (!activeJob || !layout) return 0;
+            return layout.SP * easeFeed(activeJob.progress);
+        }
+
+        function update(dt) {
+            if (!layout) layout = computeLayout();
+            const L = layout;
+
+            if (jobCooldown > 0) jobCooldown -= dt;
+            flashAmount = Math.max(0, flashAmount - dt * 3);
+            if (!activeJob && printQueue.length > 0 && jobCooldown <= 0) {
+                startNextJob();
+            }
+
+            if (activeJob) {
+                const prevProgress = activeJob.progress;
+                activeJob.progress = Math.min(1, prevProgress + (0.34 * speedMultiplier) * dt);
+                activeJob.photoPct = clamp(currentFeed() / L.CH, 0, 1);
+                spoolAngle += dt * 6 * speedMultiplier * Math.sin(Math.PI * activeJob.progress);
+                washAmount = Math.min(1, washAmount + dt * 3);
+
+                if (Math.floor(prevProgress * 18) !== Math.floor(activeJob.progress * 18)) {
+                    playTickSound(480 + activeJob.progress * 260);
+                }
+
+                if (activeJob.progress >= 1) {
+                    totalPrintedCount += 1;
+                    completedPrints.unshift({
+                        viewer: activeJob.viewer,
+                        avatarUrl: activeJob.avatarUrl,
+                        giftName: activeJob.giftName,
+                        emoji: activeJob.emoji,
+                        coins: activeJob.coins,
+                        color: activeJob.color
+                    });
+                    if (completedPrints.length > 60) {
+                        completedPrints.pop();
+                    }
+                    activeJob = null;
+                    jobCooldown = 0.45 / speedMultiplier;
+                    playDoneSound();
+                    updateHudCounters();
+                }
+            } else {
+                washAmount = Math.max(0, washAmount - dt / 1.4);
+                heartPhase += dt / 0.9;
+            }
+
+            motorUpdate(!!activeJob, activeJob ? activeJob.progress : 0);
+            updateProgressHud();
+        }
+
+        // --- PHOTO RONDE IMPRIMÉE SUR LA BANDE ---
+        function fitText(c, text, maxW) {
+            if (c.measureText(text).width <= maxW) return text;
+            let t = text;
+            while (t.length > 3 && c.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+            return t + '…';
+        }
+
+        function drawPrintedPhoto(c, cx, cy, r, item) {
+            const img = imageCache.get(item.avatarUrl) || null;
+
+            // Liseré blanc avec ombre douce
+            c.save();
+            c.shadowColor = 'rgba(70, 50, 20, 0.28)';
+            c.shadowBlur = 9;
+            c.shadowOffsetY = 3;
+            c.fillStyle = '#ffffff';
+            c.beginPath();
+            c.arc(cx, cy, r + 4, 0, Math.PI * 2);
+            c.fill();
+            c.restore();
+
+            // Photo strictement ronde
+            c.save();
+            c.beginPath();
+            c.arc(cx, cy, r, 0, Math.PI * 2);
+            c.clip();
+            c.fillStyle = '#e2e8f0';
+            c.fillRect(cx - r, cy - r, r * 2, r * 2);
+            if (img && img.complete && img.naturalWidth > 0) {
+                const scale = Math.max((r * 2) / img.naturalWidth, (r * 2) / img.naturalHeight);
+                const dw = img.naturalWidth * scale;
+                const dh = img.naturalHeight * scale;
+                c.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+            } else {
+                const pg = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+                pg.addColorStop(0, '#94a3b8');
+                pg.addColorStop(1, '#475569');
+                c.fillStyle = pg;
+                c.fillRect(cx - r, cy - r, r * 2, r * 2);
+                c.fillStyle = 'rgba(255,255,255,0.85)';
+                c.font = `700 ${r * 0.9}px Inter, sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText((item.viewer || '?').slice(0, 1).toUpperCase(), cx, cy + 2);
+            }
+            // Léger vignettage + reflet glacé du papier photo
+            const vg = c.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
+            vg.addColorStop(0, 'rgba(0,0,0,0)');
+            vg.addColorStop(1, 'rgba(20,10,0,0.22)');
+            c.fillStyle = vg;
+            c.fillRect(cx - r, cy - r, r * 2, r * 2);
+            const gl = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+            gl.addColorStop(0, 'rgba(255,255,255,0.16)');
+            gl.addColorStop(0.45, 'rgba(255,255,255,0)');
+            c.fillStyle = gl;
+            c.fillRect(cx - r, cy - r, r * 2, r * 2);
+            c.restore();
+
+            // Anneau de couleur du cadeau
+            c.strokeStyle = item.color || '#0ea5e9';
+            c.lineWidth = 2.5;
+            c.beginPath();
+            c.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
+            c.stroke();
+        }
+
+        // --- BANDE DE PAPIER (dessinée hors écran, espace "u" = distance depuis la fente) ---
+        function renderStrip(L, Hs, feed) {
+            const W = Math.ceil(L.pw * L.dpr);
+            const H = Math.ceil(Hs * L.dpr);
+            if (!stripCanvas) {
+                stripCanvas = document.createElement('canvas');
+                stripCtx = stripCanvas.getContext('2d');
+            }
+            if (stripCanvas.width !== W || stripCanvas.height !== H) {
+                stripCanvas.width = W;
+                stripCanvas.height = H;
+            }
+            const c = stripCtx;
+            const pw = L.pw;
+            c.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+            c.clearRect(0, 0, pw, Hs);
+
+            // Papier photo blanc cassé, bords légèrement plus sombres
+            const pg = c.createLinearGradient(0, 0, pw, 0);
+            pg.addColorStop(0, '#e4dece');
+            pg.addColorStop(0.06, '#f8f5ec');
+            pg.addColorStop(0.5, '#fffdf7');
+            pg.addColorStop(0.94, '#f8f5ec');
+            pg.addColorStop(1, '#e4dece');
+            c.fillStyle = pg;
+            c.fillRect(0, 0, pw, Hs);
+            if (paperGrainCanvas) {
+                const pat = c.createPattern(paperGrainCanvas, 'repeat');
+                if (pat) {
+                    c.fillStyle = pat;
+                    c.fillRect(0, 0, pw, Hs);
+                }
+            }
+
+            // Photos : l'en cours, puis les imprimées (plus récente en premier)
+            const cards = [];
+            if (activeJob) cards.push({ item: activeJob, bottom: feed });
+            for (let k = 0; k < completedPrints.length; k++) {
+                cards.push({ item: completedPrints[k], bottom: L.SP * (k + 1) + feed });
+            }
+            for (let i = 0; i < cards.length; i++) {
+                const card = cards[i];
+                const top = card.bottom - L.CH;
+                if (top > Hs) break;
+
+                // Pointillé de découpe sous chaque photo
+                const perfY = card.bottom + L.gap / 2;
+                if (perfY > 0 && perfY < Hs) {
+                    c.save();
+                    c.strokeStyle = 'rgba(100, 90, 70, 0.4)';
+                    c.lineWidth = 1;
+                    c.setLineDash([4, 4]);
+                    c.beginPath();
+                    c.moveTo(6, perfY);
+                    c.lineTo(pw - 6, perfY);
+                    c.stroke();
+                    c.restore();
+                }
+                if (card.bottom < 0) continue;
+
+                drawPrintedPhoto(c, pw / 2, top + 10 + L.r, L.r, card.item);
+
+                const fs = clamp(L.r * 0.2, 10, 16);
+                c.font = `700 ${fs}px Inter, sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillStyle = '#1f2937';
+                c.fillText(fitText(c, `${card.item.emoji} @${card.item.viewer}`, pw - 22), pw / 2, top + L.CH - 15);
+            }
+
+            // Effet de "développement" : la photo est délavée à la sortie de la fente puis révèle ses couleurs
+            if (washAmount > 0.01) {
+                const wg = c.createLinearGradient(0, 0, 0, 80);
+                wg.addColorStop(0, `rgba(252, 249, 240, ${0.9 * washAmount})`);
+                wg.addColorStop(1, 'rgba(252, 249, 240, 0)');
+                c.fillStyle = wg;
+                c.fillRect(0, 0, pw, 80);
+            }
+        }
+
+        // --- SOL EN PARQUET SOMBRE ---
+        function drawFloor(L) {
+            const y0 = L.slotY - 6;
+            const fg = ctx.createLinearGradient(0, y0, 0, L.h);
+            fg.addColorStop(0, 'rgba(8, 12, 22, 0.0)');
+            fg.addColorStop(0.25, 'rgba(24, 30, 44, 0.55)');
+            fg.addColorStop(1, 'rgba(34, 40, 56, 0.75)');
+            ctx.fillStyle = fg;
+            ctx.fillRect(0, y0, L.w, L.h - y0);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, y0, L.w, L.h - y0);
+            ctx.clip();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+            ctx.lineWidth = 1;
+            const plank = 54;
+            for (let x = (L.w / 2) % plank; x < L.w; x += plank) {
+                ctx.beginPath();
+                ctx.moveTo(x, y0);
+                ctx.lineTo(x, L.h);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // --- FEUILLE POSÉE À PLAT : sort de la fente et glisse vers le bas, sur le sol ---
+        function drawStripOnScreen(L) {
+            const d = L.dpr;
+            const x = L.paperLeft;
+            const len = L.floorY - L.slotY;
+
+            // Ombre portée de la feuille sur le sol
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x - 50, L.slotY, L.pw + 100, len);
+            ctx.clip();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetY = 4;
+            ctx.fillStyle = '#d9d4c4';
+            ctx.fillRect(x, L.slotY, L.pw, len + 30);
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x - 1, L.slotY, L.pw + 2, len);
+            ctx.clip();
+            ctx.drawImage(stripCanvas, 0, 0, L.pw * d, len * d, x, L.slotY, L.pw, len);
+
+            // Léger éclairage : papier un peu plus sombre en s'éloignant de la fente
+            const sg = ctx.createLinearGradient(0, L.slotY, 0, L.floorY);
+            sg.addColorStop(0, 'rgba(35, 22, 8, 0)');
+            sg.addColorStop(1, 'rgba(35, 22, 8, 0.10)');
+            ctx.fillStyle = sg;
+            ctx.fillRect(x, L.slotY, L.pw, len);
+            ctx.restore();
+        }
+
+        // --- IMPRIMANTE RÉALISTE (vue de face) ---
+        function drawPrinter(L, t, feeding) {
+            const { px, py, PW, PH, s } = L;
+            const cx = px + PW / 2;
+            const feed = currentFeed();
+            const R = 18 * s;
+
+            ctx.save();
+            // Vibration du moteur (deux fréquences = plus organique)
+            ctx.translate(feeding ? Math.sin(t * 95) * 0.45 + Math.sin(t * 41) * 0.35 : 0, feeding ? Math.sin(t * 67) * 0.25 : 0);
+
+            // Câble d'alimentation qui part sur le côté
+            if (px + PW < L.w - 6) {
+                const cy = py + PH * 0.5;
+                const cable = () => {
+                    ctx.beginPath();
+                    ctx.moveTo(px + PW - 4, cy);
+                    ctx.bezierCurveTo(px + PW + 16 * s, cy, px + PW + 20 * s, cy + 50 * s, L.w + 10, cy + 34 * s);
+                };
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#080b11'; ctx.lineWidth = 5 * s; cable(); ctx.stroke();
+                ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 1.2; ctx.save(); ctx.translate(0, -1.2); cable(); ctx.stroke(); ctx.restore();
+                ctx.lineCap = 'butt';
+            }
+
+            // Ombre portée
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+            ctx.shadowBlur = 28; ctx.shadowOffsetY = 14;
+            rr(ctx, px, py, PW, PH, R);
+            ctx.fillStyle = '#1a1f2b';
+            ctx.fill();
+            ctx.restore();
+
+            // Corps en plastique satiné + volume (ombrage sur les côtés)
+            const bg = ctx.createLinearGradient(0, py, 0, py + PH);
+            bg.addColorStop(0, '#46506a'); bg.addColorStop(0.3, '#2b3447'); bg.addColorStop(1, '#131824');
+            rr(ctx, px, py, PW, PH, R);
+            ctx.fillStyle = bg; ctx.fill();
+            ctx.save();
+            rr(ctx, px, py, PW, PH, R); ctx.clip();
+            const sd = ctx.createLinearGradient(px, 0, px + PW, 0);
+            sd.addColorStop(0, 'rgba(0,0,0,0.38)'); sd.addColorStop(0.07, 'rgba(0,0,0,0)');
+            sd.addColorStop(0.93, 'rgba(0,0,0,0)'); sd.addColorStop(1, 'rgba(0,0,0,0.38)');
+            ctx.fillStyle = sd; ctx.fillRect(px, py, PW, PH);
+            // Texture brossée
+            ctx.fillStyle = 'rgba(255,255,255,0.022)';
+            for (let y = py + 2; y < py + PH; y += 3) ctx.fillRect(px, y, PW, 1);
+            // Reflet supérieur
+            const sp = ctx.createLinearGradient(px, 0, px + PW, 0);
+            sp.addColorStop(0, 'rgba(255,255,255,0)'); sp.addColorStop(0.5, 'rgba(255,255,255,0.35)'); sp.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = sp; ctx.fillRect(px + R, py + 1, PW - 2 * R, 1.5);
+            ctx.restore();
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5;
+            rr(ctx, px + 0.75, py + 0.75, PW - 1.5, PH - 1.5, R); ctx.stroke();
+
+            // Capot supérieur (volet articulé)
+            const HH = PH * 0.34;
+            const hx = px + 8 * s, hy = py + 8 * s, hw = PW - 16 * s;
+            const hg = ctx.createLinearGradient(0, hy, 0, hy + HH);
+            hg.addColorStop(0, '#68748c'); hg.addColorStop(0.5, '#454e63'); hg.addColorStop(1, '#2b3243');
+            rr(ctx, hx, hy, hw, HH, 12 * s);
+            ctx.fillStyle = hg; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(hx + 10 * s, hy + HH - 1.5, hw - 20 * s, 1.5); // fente du volet
+            rr(ctx, cx - 16 * s, hy + HH - 4 * s, 32 * s, 6 * s, 3 * s); // encoche de préhension
+            ctx.fillStyle = '#1b2130'; ctx.fill();
+            // Vis
+            [[hx + 8 * s, hy + 8 * s], [hx + hw - 8 * s, hy + 8 * s]].forEach(([vx, vy], i) => {
+                ctx.fillStyle = '#9aa3b5'; ctx.beginPath(); ctx.arc(vx, vy, 2.6 * s, 0, 6.283); ctx.fill();
+                ctx.strokeStyle = '#2a3140'; ctx.lineWidth = 1;
+                const a = i * 0.9 + 0.5;
+                ctx.beginPath(); ctx.moveTo(vx - Math.cos(a) * 2.2 * s, vy - Math.sin(a) * 2.2 * s);
+                ctx.lineTo(vx + Math.cos(a) * 2.2 * s, vy + Math.sin(a) * 2.2 * s); ctx.stroke();
+            });
+
+            // Marque (gravée)
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            ctx.font = `800 ${14 * s}px 'Space Grotesk', sans-serif`;
+            const bx0 = hx + 22 * s, by0 = hy + HH * 0.42;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('LIVE PHOTO', bx0, by0 + 1);
+            ctx.fillStyle = '#e2e8f0'; ctx.fillText('LIVE PHOTO', bx0, by0);
+            const bw = ctx.measureText('LIVE PHOTO ').width;
+            ctx.fillStyle = '#38bdf8'; ctx.fillText('P-200', bx0 + bw, by0);
+            // Marque de l'agence, à côté du modèle
+            const gx = bx0 + bw + ctx.measureText('P-200').width + 16 * s;
+            ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(gx - 8 * s, by0 - 7 * s, 1, 14 * s);
+            ctx.font = `800 ${11 * s}px 'Space Grotesk', sans-serif`;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('GRYPHON AGENCY', gx, by0 + 1);
+            ctx.fillStyle = '#fbbf24'; ctx.fillText('GRYPHON AGENCY', gx, by0);
+            ctx.fillStyle = '#a7b2c6'; ctx.font = `600 ${7.5 * s}px Inter, sans-serif`;
+            ctx.fillText('IMPRIMANTE À SUBLIMATION · 300 DPI', bx0, hy + HH * 0.78);
+
+            // Fenêtre fumée avec la bobine de papier
+            const winW = PW * 0.26, winH = HH * 0.72;
+            const wx = hx + hw - 62 * s - winW, wy = hy + (HH - winH) / 2;
+            rr(ctx, wx - 2, wy - 2, winW + 4, winH + 4, 8 * s); ctx.fillStyle = '#1a2030'; ctx.fill();
+            rr(ctx, wx, wy, winW, winH, 7 * s); ctx.fillStyle = '#05080f'; ctx.fill();
+            ctx.save();
+            rr(ctx, wx, wy, winW, winH, 7 * s); ctx.clip();
+            const spx = wx + winW / 2, spy = wy + winH / 2;
+            const spr = winH * (0.46 - Math.min(0.14, totalPrintedCount * 0.003)); // la bobine se vide
+            const rg = ctx.createRadialGradient(spx - spr * 0.3, spy - spr * 0.3, spr * 0.1, spx, spy, spr);
+            rg.addColorStop(0, '#faf4e4'); rg.addColorStop(1, '#bfb69c');
+            ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(spx, spy, spr, 0, 6.283); ctx.fill();
+            ctx.strokeStyle = 'rgba(120,100,60,0.35)'; ctx.lineWidth = 1;
+            for (let i = 1; i < 5; i++) { ctx.beginPath(); ctx.arc(spx, spy, spr * (1 - i * 0.16), 0, 6.283); ctx.stroke(); }
+            ctx.fillStyle = '#3b4252'; ctx.beginPath(); ctx.arc(spx, spy, spr * 0.24, 0, 6.283); ctx.fill();
+            ctx.strokeStyle = '#9aa4b8'; ctx.lineWidth = 1.5;
+            for (let i = 0; i < 3; i++) {
+                const a = spoolAngle + i * 2.0944;
+                ctx.beginPath(); ctx.moveTo(spx, spy); ctx.lineTo(spx + Math.cos(a) * spr * 0.24, spy + Math.sin(a) * spr * 0.24); ctx.stroke();
+            }
+            // Ombre intérieure + reflet vitre
+            const ig = ctx.createLinearGradient(0, wy, 0, wy + winH);
+            ig.addColorStop(0, 'rgba(0,0,0,0.55)'); ig.addColorStop(0.3, 'rgba(0,0,0,0)'); ig.addColorStop(1, 'rgba(0,0,0,0.35)');
+            ctx.fillStyle = ig; ctx.fillRect(wx, wy, winW, winH);
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + winW * 0.55, wy); ctx.lineTo(wx + winW * 0.25, wy + winH); ctx.lineTo(wx, wy + winH); ctx.fill();
+            ctx.restore();
+
+            // Flash (haut à droite) : réflecteur + lentille de Fresnel
+            const fw = 34 * s, fhh = winH, fx = hx + hw - 16 * s - fw, fyy = wy;
+            rr(ctx, fx - 2, fyy - 2, fw + 4, fhh + 4, 7 * s); ctx.fillStyle = '#1a2030'; ctx.fill();
+            const fl = flashAmount;
+            const lensG = ctx.createLinearGradient(0, fyy, 0, fyy + fhh);
+            lensG.addColorStop(0, fl > 0.05 ? '#ffffff' : '#e9e3cf');
+            lensG.addColorStop(1, fl > 0.05 ? '#fff6d6' : '#a79f86');
+            rr(ctx, fx, fyy, fw, fhh, 5 * s); ctx.fillStyle = lensG; ctx.fill();
+            ctx.save();
+            rr(ctx, fx, fyy, fw, fhh, 5 * s); ctx.clip();
+            ctx.strokeStyle = `rgba(90,80,50,${0.35 - 0.25 * fl})`; ctx.lineWidth = 1;
+            for (let yy = fyy + 3 * s; yy < fyy + fhh; yy += 3 * s) { ctx.beginPath(); ctx.moveTo(fx, yy); ctx.lineTo(fx + fw, yy); ctx.stroke(); }
+            ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(fx, fyy, fw * 0.35, fhh);
+            ctx.restore();
+            L.flashX = fx + fw / 2; L.flashY = fyy + fhh / 2;
+            if (fl > 0.02) {
+                const bl = ctx.createRadialGradient(L.flashX, L.flashY, 0, L.flashX, L.flashY, 90 * s * (0.5 + fl));
+                bl.addColorStop(0, `rgba(255,252,235,${0.9 * fl})`); bl.addColorStop(1, 'rgba(255,252,235,0)');
+                ctx.fillStyle = bl; ctx.beginPath(); ctx.arc(L.flashX, L.flashY, 90 * s * (0.5 + fl), 0, 6.283); ctx.fill();
+            }
+
+            // Panneau avant : écran LCD
+            const fy = hy + HH + 12 * s, fh = PH * 0.30;
+            const lx = px + PW * 0.07, lw = PW * 0.34;
+            rr(ctx, lx - 3, fy - 3, lw + 6, fh + 6, 8 * s); ctx.fillStyle = '#0c1019'; ctx.fill();
+            rr(ctx, lx, fy, lw, fh, 6 * s); ctx.fillStyle = '#05080e'; ctx.fill();
+            const lg = ctx.createLinearGradient(0, fy, 0, fy + fh);
+            lg.addColorStop(0, '#118a7e'); lg.addColorStop(1, '#065a45');
+            ctx.save();
+            rr(ctx, lx + 4 * s, fy + 4 * s, lw - 8 * s, fh - 8 * s, 4 * s);
+            ctx.fillStyle = lg; ctx.fill(); ctx.clip();
+            ctx.fillStyle = 'rgba(0,0,0,0.16)';
+            for (let y = fy + 4 * s; y < fy + fh; y += 2) ctx.fillRect(lx, y, lw, 1); // lignes de pixels
+            ctx.fillStyle = '#ccfbe8'; ctx.shadowColor = '#6ee7b7'; ctx.shadowBlur = 5;
+            ctx.font = `700 ${10 * s}px monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            const tx = lx + 10 * s, maxTx = lw - 20 * s, queued = printQueue.length;
+            if (activeJob) {
+                ctx.fillText(fitText(ctx, 'IMPRESSION…', maxTx), tx, fy + fh * 0.28);
+                ctx.fillText(fitText(ctx, '@' + activeJob.viewer, maxTx), tx, fy + fh * 0.55);
+                const bx = tx, by = fy + fh * 0.74, bw2 = lw - 20 * s;
+                ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(bx, by, bw2, 5 * s);
+                ctx.fillStyle = '#6ee7b7'; ctx.fillRect(bx, by, bw2 * (activeJob.photoPct || 0), 5 * s);
+            } else {
+                ctx.fillText(queued > 0 ? 'EN ATTENTE' : 'PRÊT' + (Math.sin(t * 3) > 0 ? '_' : ''), tx, fy + fh * 0.2);
+                ctx.fillText(fitText(ctx, `${totalPrintedCount} PHOTO${totalPrintedCount > 1 ? 'S' : ''}`, maxTx), tx, fy + fh * 0.44);
+                // Battement de cœur : défile tant qu'aucune photo n'est en cours d'impression
+                const g = (u, c, w, a) => a * Math.exp(-Math.pow((u - c) / w, 2));
+                const beat = u => g(u, 0.18, 0.035, 0.18) - g(u, 0.34, 0.012, 0.15) + g(u, 0.37, 0.012, 1) - g(u, 0.4, 0.014, 0.3) + g(u, 0.62, 0.05, 0.28);
+                const ey = fy + fh * 0.74, ea = fh * 0.17;
+                ctx.lineWidth = 1.4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#ccfbe8';
+                ctx.beginPath();
+                for (let i = 0; i <= 60; i++) {
+                    const u = (i / 60 * 2 + heartPhase) % 1;
+                    const x = tx + (i / 60) * maxTx, y = ey - beat(u) * ea;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            const lv = ctx.createLinearGradient(lx, fy, lx + lw, fy + fh);
+            lv.addColorStop(0, 'rgba(255,255,255,0.14)'); lv.addColorStop(0.4, 'rgba(255,255,255,0)');
+            ctx.shadowBlur = 0; ctx.fillStyle = lv; ctx.fillRect(lx, fy, lw, fh);
+            ctx.restore();
+
+            // Voyants (avec halo)
+            const ledY = fy + fh * 0.38, ledX = px + PW * 0.52;
+            const leds = [
+                { c: '#22c55e', on: true, label: 'PWR' },
+                { c: '#f59e0b', on: feeding && Math.sin(t * 12) > -0.2, label: 'BUSY' },
+                { c: '#22d3ee', on: !!tiktokAccount.linked, label: 'LIVE' }
+            ];
+            leds.forEach((led, i) => {
+                const lxp = ledX + i * 24 * s;
+                ctx.fillStyle = '#05070b'; ctx.beginPath(); ctx.arc(lxp, ledY, 5 * s, 0, 6.283); ctx.fill();
+                ctx.save();
+                if (led.on) {
+                    const halo = ctx.createRadialGradient(lxp, ledY, 0, lxp, ledY, 14 * s);
+                    halo.addColorStop(0, led.c + '88'); halo.addColorStop(1, led.c + '00');
+                    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(lxp, ledY, 14 * s, 0, 6.283); ctx.fill();
+                    ctx.shadowColor = led.c; ctx.shadowBlur = 8;
+                }
+                ctx.fillStyle = led.on ? led.c : '#1f2937';
+                ctx.beginPath(); ctx.arc(lxp, ledY, 3.5 * s, 0, 6.283); ctx.fill();
+                ctx.restore();
+                ctx.fillStyle = '#94a3b8'; ctx.font = `600 ${6.5 * s}px Inter, sans-serif`; ctx.textAlign = 'center';
+                ctx.fillText(led.label, lxp, ledY + 12 * s);
+            });
+
+            // Boutons ronds (le 1er s'enfonce pendant l'impression)
+            for (let i = 0; i < 2; i++) {
+                const bxp = px + PW * 0.79 + i * 24 * s, byp = fy + fh * 0.42;
+                const pressed = feeding && i === 0 ? 1.2 : 0;
+                ctx.fillStyle = '#0a0d14'; ctx.beginPath(); ctx.arc(bxp, byp, 9 * s, 0, 6.283); ctx.fill();
+                const bgR = ctx.createRadialGradient(bxp - 2, byp - 2 + pressed, 1, bxp, byp + pressed, 8 * s);
+                bgR.addColorStop(0, pressed ? '#7c869a' : '#b4bfd1'); bgR.addColorStop(1, '#3b4456');
+                ctx.fillStyle = bgR; ctx.beginPath(); ctx.arc(bxp, byp + pressed, 7 * s, 0, 6.283); ctx.fill();
+                ctx.fillStyle = 'rgba(15,20,30,0.75)';
+                ctx.beginPath();
+                if (i === 0) { ctx.moveTo(bxp - 2 * s, byp - 3 * s + pressed); ctx.lineTo(bxp + 3 * s, byp + pressed); ctx.lineTo(bxp - 2 * s, byp + 3 * s + pressed); }
+                else ctx.rect(bxp - 2.5 * s, byp - 2.5 * s, 5 * s, 5 * s);
+                ctx.fill();
+            }
+
+            // Fentes d'aération
+            ctx.lineCap = 'round'; ctx.lineWidth = 2 * s;
+            for (let i = 0; i < 4; i++) {
+                const vy = fy + 4 * s + i * 8 * s;
+                ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                ctx.beginPath(); ctx.moveTo(px + PW - 40 * s, vy); ctx.lineTo(px + PW - 20 * s, vy); ctx.stroke();
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.beginPath(); ctx.moveTo(px + PW - 40 * s, vy + 1.6 * s); ctx.lineTo(px + PW - 20 * s, vy + 1.6 * s); ctx.stroke();
+            }
+            ctx.lineCap = 'butt';
+
+            // Plaque métallique + fente de sortie
+            const SW = L.pw + 16, sx = cx - SW / 2;
+            const pgd = ctx.createLinearGradient(0, L.slotY - 17 * s, 0, L.slotY + 7 * s);
+            pgd.addColorStop(0, '#d5dbe7'); pgd.addColorStop(0.45, '#8c96aa'); pgd.addColorStop(1, '#4a5368');
+            rr(ctx, sx - 12 * s, L.slotY - 17 * s, SW + 24 * s, 24 * s, 7 * s);
+            ctx.fillStyle = pgd; ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+            rr(ctx, sx, L.slotY - 9 * s, SW, 11 * s, 3 * s); ctx.fillStyle = '#04060a'; ctx.fill();
+
+            // Rouleau d'entraînement visible dans la fente (cannelures qui défilent avec le papier)
+            ctx.save();
+            rr(ctx, sx, L.slotY - 9 * s, SW, 11 * s, 3 * s); ctx.clip();
+            const rl = ctx.createLinearGradient(0, L.slotY - 5 * s, 0, L.slotY + 2 * s);
+            rl.addColorStop(0, '#1b2029'); rl.addColorStop(0.5, '#6b7385'); rl.addColorStop(1, '#262c38');
+            ctx.fillStyle = rl; ctx.fillRect(sx, L.slotY - 5 * s, SW, 7 * s);
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            const kn = 9, off = feed % kn;
+            for (let x = sx - kn + off; x < sx + SW; x += kn) ctx.fillRect(x, L.slotY - 5 * s, 1.5, 7 * s);
+            ctx.restore();
+
+            // Tête thermique : liseré chaud + point lumineux qui balaie la fente
+            if (feeding) {
+                const pulse = 0.55 + 0.25 * Math.sin(t * 25);
+                const gl = ctx.createLinearGradient(0, L.slotY - 7 * s, 0, L.slotY);
+                gl.addColorStop(0, 'rgba(56,189,248,0)'); gl.addColorStop(1, `rgba(56,189,248,${pulse})`);
+                ctx.fillStyle = gl; ctx.fillRect(cx - L.pw / 2, L.slotY - 7 * s, L.pw, 7 * s);
+                const hxp = cx - L.pw / 2 + (0.5 + 0.5 * Math.sin(t * 9)) * L.pw;
+                const hb = ctx.createRadialGradient(hxp, L.slotY - 1, 0, hxp, L.slotY - 1, 34 * s);
+                hb.addColorStop(0, 'rgba(255,255,255,0.7)'); hb.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = hb; ctx.fillRect(hxp - 34 * s, L.slotY - 9 * s, 68 * s, 10 * s);
+            }
+
+            ctx.restore();
+        }
+
+        function playFlashSound() {
+            if (!soundEnabled || !audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(2200, now);
+                osc.frequency.exponentialRampToValueAtTime(260, now + 0.14);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.18);
+            } catch (e) {}
+        }
+
+        // --- SON DU MOTEUR (ronronnement continu pendant l'impression) ---
+        let motorOsc = null, motorGain = null;
+        function stopMotor() {
+            if (!motorOsc) return;
+            try {
+                const now = audioCtx.currentTime;
+                motorGain.gain.setTargetAtTime(0, now, 0.05);
+                motorOsc.stop(now + 0.4);
+            } catch (e) {}
+            motorOsc = null; motorGain = null;
+        }
+        function motorUpdate(active, progress) {
+            if (!soundEnabled || !audioCtx || !active) { stopMotor(); return; }
+            try {
+                if (!motorOsc) {
+                    motorOsc = audioCtx.createOscillator(); motorOsc.type = 'sawtooth';
+                    const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 240;
+                    motorGain = audioCtx.createGain(); motorGain.gain.value = 0;
+                    motorOsc.connect(f); f.connect(motorGain); motorGain.connect(audioCtx.destination);
+                    motorOsc.start();
+                }
+                const now = audioCtx.currentTime;
+                const run = Math.sin(Math.PI * clamp(progress, 0, 1));
+                motorOsc.frequency.setTargetAtTime(46 + run * 62 * speedMultiplier, now, 0.05);
+                motorGain.gain.setTargetAtTime(0.03 + run * 0.035, now, 0.06);
+            } catch (e) { motorOsc = null; }
+        }
+
+        function draw() {
+            if (!layout) layout = computeLayout();
+            const L = layout;
+            const w = L.w, h = L.h;
+            const t = performance.now() / 1000;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Fond sombre uniquement si aucune vidéo d'arrière-plan n'est active
+            if (!bgVideoUrl) {
+                const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, 24, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
+                bgGrad.addColorStop(0, '#0f172a');
+                bgGrad.addColorStop(1, '#05070e');
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, w, h);
+            }
+
+            const feeding = !!activeJob;
+            const feed = currentFeed();
+            const Hs = L.floorY - L.slotY + 2;
+
+            drawFloor(L);
+            drawPrinter(L, t, feeding);
+            renderStrip(L, Hs, feed);
+            drawStripOnScreen(L);
+
+            // Ombre portée de la fente sur le papier qui sort
+            const sh = ctx.createLinearGradient(0, L.slotY, 0, L.slotY + 18);
+            sh.addColorStop(0, 'rgba(0, 0, 0, 0.4)');
+            sh.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = sh;
+            ctx.fillRect(L.paperLeft, L.slotY, L.pw, 18);
+
+            if (flashAmount > 0.02 && L.flashX != null) {
+                const wl = ctx.createRadialGradient(L.flashX, L.flashY, 0, L.flashX, L.flashY, Math.max(w, h) * 0.9);
+                wl.addColorStop(0, `rgba(255,250,230,${0.38 * flashAmount})`);
+                wl.addColorStop(1, 'rgba(255,250,230,0)');
+                ctx.fillStyle = wl; ctx.fillRect(0, 0, w, h);
+            }
+
+            if (activeJob) {
+                const t2 = performance.now() / 1000;
+                const warm = ctx.createLinearGradient(0, L.slotY, 0, L.slotY + 46);
+                warm.addColorStop(0, `rgba(255,170,80,${0.16 + 0.05 * Math.sin(t2 * 25)})`);
+                warm.addColorStop(1, 'rgba(255,170,80,0)');
+                ctx.fillStyle = warm;
+                ctx.fillRect(L.paperLeft, L.slotY, L.pw, 46);
+            }
+        }
+
+        function updateHudCounters() {
+            const printedEl = document.getElementById('printed-count');
+            const queueEl = document.getElementById('queue-count');
+            const queueWidgetCount = document.getElementById('queue-widget-count');
+            const queued = printQueue.length + (activeJob ? 1 : 0);
+
+            if (printedEl) printedEl.textContent = String(totalPrintedCount);
+            if (queueEl) queueEl.textContent = String(queued);
+            if (queueWidgetCount) queueWidgetCount.textContent = String(queued);
+        }
+
+        const controlSidebar = document.getElementById('control-sidebar');
+        const controlsButton = document.getElementById('btn-controls');
+        controlsButton.addEventListener('click', () => {
+            const hidden = controlSidebar.style.display !== 'none';
+            controlSidebar.style.display = hidden ? 'none' : '';
+            controlsButton.textContent = hidden ? '⚙️ Afficher contrôles' : '⚙️ Masquer contrôles';
+            controlsButton.setAttribute('aria-expanded', String(!hidden));
+        });
+
+        const queueWidget = document.getElementById('printer-queue-widget');
+        const queuePlaceholder = document.createComment('file-attente');
+        queueWidget.parentNode.insertBefore(queuePlaceholder, queueWidget);
+        document.getElementById('queue-detach-button').addEventListener('click', event => {
+            const detached = !queueWidget.classList.contains('detached');
+            if (detached) {
+                document.body.appendChild(queueWidget);
+                queueWidget.classList.add('detached');
+            } else {
+                queueWidget.classList.remove('detached');
+                queuePlaceholder.parentNode.insertBefore(queueWidget, queuePlaceholder);
+            }
+            event.currentTarget.textContent = detached ? 'Rattacher' : 'Détacher';
+        });
+        document.getElementById('btn-simulate-share').addEventListener('click', simulateShare);
+
+        function updateProgressHud() {
+            const footerEl = document.getElementById('progress-footer');
+            const phaseEl = document.getElementById('phase-text');
+            const pctEl = document.getElementById('percent-text');
+            const barEl = document.getElementById('progress-bar');
+
+            if (!activeJob) {
+                if (footerEl) footerEl.classList.add('hidden');
+                if (phaseEl) phaseEl.textContent = "";
+                if (pctEl) pctEl.textContent = "0%";
+                if (barEl) barEl.style.width = "0%";
+                return;
+            }
+            if (footerEl) footerEl.classList.remove('hidden');
+            const pct = Math.round(activeJob.progress * 100);
+            if (phaseEl) phaseEl.textContent = `Impression de @${activeJob.viewer}`;
+            if (pctEl) pctEl.textContent = `${pct}%`;
+            if (barEl) barEl.style.width = `${pct}%`;
+        }
+
+        function loop(timestamp) {
+            const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1) || 0.016;
+            lastFrameTime = timestamp;
+            update(dt);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // --- CONNEXION AU RELAIS TIKTOK GRIFFON ARCADE ---
+        function openHelpModal() {
+            const handleInput = document.getElementById('input-tiktok-handle');
+            if (handleInput) handleInput.value = tiktokAccount.handle;
+            refreshTikTokAccountUI();
+            document.getElementById('help-modal').classList.remove('hidden');
+        }
+
+        function closeHelpModal() {
+            document.getElementById('help-modal').classList.add('hidden');
+        }
+
+        function refreshTikTokAccountUI() {
+            const accBadge = document.getElementById('tiktok-account-badge');
+            const topConnectLabel = document.getElementById('top-tiktok-connect-label');
+            const cleanHandle = tiktokAccount.handle
+                ? (tiktokAccount.handle.startsWith('@') ? tiktokAccount.handle : '@' + tiktokAccount.handle)
+                : '';
+
+            if (accBadge) {
+                if (tiktokAccount.linked && cleanHandle) {
+                    accBadge.textContent = `Lié : ${cleanHandle}`;
+                    accBadge.className = "text-[11px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40";
+                } else if (tiktokAccount.linked) {
+                    accBadge.textContent = "Pont actif";
+                    accBadge.className = "text-[11px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40";
+                } else {
+                    accBadge.textContent = "Non lié";
+                    accBadge.className = "text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700";
+                }
+            }
+
+            if (topConnectLabel) {
+                topConnectLabel.textContent = tiktokAccount.linked && cleanHandle ? cleanHandle : "Connexion TikTok";
+            }
+        }
+
+        function persistTikTokAccount() {
+            try {
+                localStorage.setItem(GAME_SAVE_KEY, JSON.stringify(tiktokAccount));
+            } catch (error) {
+                console.error('Impossible de sauvegarder le compte TikTok de Photo Printer Studio :', error);
+                showToast('Impossible de sauvegarder le compte TikTok.');
+            }
+        }
+
+        function saveAndConnectTikTok() {
+            const handleInput = document.getElementById('input-tiktok-handle');
+            const handle = (handleInput ? handleInput.value : '').trim().replace(/^@/, '');
+            const modalText = document.getElementById('modal-ws-text');
+            if (!/^[A-Za-z0-9._]{1,32}$/.test(handle)) {
+                if (modalText) modalText.textContent = 'Saisissez un pseudo TikTok valide (1 à 32 caractères).';
+                return;
+            }
+
+            tiktokAccount.handle = handle;
+            tiktokAccount.linked = true;
+            persistTikTokAccount();
+            refreshTikTokAccountUI();
+            connectTikTokRelay();
+        }
+
+        function disconnectTikTok() {
+            tiktokAccount.linked = false;
+            clearTimeout(reconnectTimer);
+            const activeSocket = socket;
+            socket = null;
+            if (activeSocket) activeSocket.close();
+            persistTikTokAccount();
+
+            const modalText = document.getElementById('modal-ws-text');
+            if (modalText) modalText.textContent = "Déconnecté";
+            refreshTikTokAccountUI();
+        }
+
+        function loadSavedTikTokAccount() {
+            try {
+                const raw = localStorage.getItem(GAME_SAVE_KEY) || localStorage.getItem('tt_photo_printer_account');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        tiktokAccount.handle = typeof parsed.handle === 'string' ? parsed.handle : '';
+                        tiktokAccount.linked = Boolean(parsed.linked);
+                    }
+                }
+            } catch (error) {
+                console.error('Impossible de lire le compte TikTok de Photo Printer Studio :', error);
+            }
+            refreshTikTokAccountUI();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+            if (e.key === '1') triggerGift('rose');
+            else if (e.key === '2') triggerGift('heart');
+            else if (e.key === '3') triggerGift('galaxy');
+            else if (e.key === '4') triggerGift('lion');
+            else if (e.key === '5') triggerGift('universe');
+        });
+
+        let socket = null;
+        let reconnectTimer = null;
+
+        function handleLiveMessage(message) {
+            if (!message || typeof message !== 'object') return;
+            const type = String(message.type || message.event || '').toLowerCase();
+            const modalText = document.getElementById('modal-ws-text');
+            if (type === 'status') {
+                if (modalText) modalText.textContent = String(message.message || 'État du direct mis à jour.');
+                return;
+            }
+            if (type !== 'gift' && type !== 'tiktok-gift') return;
+
+            const gift = message.gift && typeof message.gift === 'object' ? message.gift : message;
+            const unitCoins = Number(gift.coinCount || gift.diamondCount || gift.coins || 1);
+            const repeatCount = Number(gift.repeatCount || 1);
+            const coins = Math.max(1, Math.floor(unitCoins * repeatCount));
+            const user = gift.username || gift.nickname || gift.uniqueId || message.username || 'Viewer_TikTok';
+            const avatar = gift.avatarUrl || gift.profilePictureUrl || gift.avatarDataUri || gift.avatar || null;
+            let key = 'rose';
+            if (coins >= 1000) key = 'universe';
+            else if (coins >= 400) key = 'lion';
+            else if (coins >= 90) key = 'galaxy';
+            else if (coins >= 10) key = 'heart';
+            triggerGift(key, user, avatar, false);
+        }
+
+        function connectTikTokRelay() {
+            if (!tiktokAccount.linked || !tiktokAccount.handle) return;
+            clearTimeout(reconnectTimer);
+            if (socket) {
+                const previousSocket = socket;
+                socket = null;
+                previousSocket.close();
+            }
+
+            const topConnectLabel = document.getElementById('top-tiktok-connect-label');
+            const modalText = document.getElementById('modal-ws-text');
+            const cleanHandle = tiktokAccount.handle
+                ? (tiktokAccount.handle.startsWith('@') ? tiktokAccount.handle : '@' + tiktokAccount.handle)
+                : '';
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let activeSocket;
+            try {
+                activeSocket = new WebSocket(`${protocol}//${location.host}`);
+            } catch (error) {
+                if (modalText) modalText.textContent = 'Connexion au relais Griffon Arcade impossible.';
+                console.error('Impossible d’ouvrir le relais TikTok :', error);
+                return;
+            }
+            socket = activeSocket;
+            if (modalText) modalText.textContent = `Connexion au live de ${cleanHandle}…`;
+            activeSocket.addEventListener('open', () => {
+                if (socket !== activeSocket) return;
+                activeSocket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username: tiktokAccount.handle }));
+                if (modalText) modalText.textContent = `Demande envoyée pour ${cleanHandle} · attente du direct…`;
+            });
+            activeSocket.addEventListener('message', event => {
+                if (socket !== activeSocket) return;
+                try {
+                    handleLiveMessage(JSON.parse(event.data));
+                } catch (error) {
+                    console.warn('Message TikTok invalide pour Photo Printer Studio :', error);
+                }
+            });
+            activeSocket.addEventListener('error', () => {
+                if (socket !== activeSocket) return;
+                if (topConnectLabel) topConnectLabel.textContent = 'Connexion TikTok';
+                if (modalText) modalText.textContent = 'Connexion au relais Griffon Arcade impossible.';
+            });
+            activeSocket.addEventListener('close', () => {
+                if (socket !== activeSocket) return;
+                socket = null;
+                if (topConnectLabel) topConnectLabel.textContent = cleanHandle || 'Connexion TikTok';
+                if (tiktokAccount.linked) {
+                    if (modalText) modalText.textContent = 'Reconnexion au live…';
+                    reconnectTimer = setTimeout(connectTikTokRelay, 3000);
+                }
+            });
+        }
+
+        function simulateShare() {
+            if (typeof window.ArcadeEffects?.simulateShare !== 'function') {
+                const message = 'Le simulateur de partage est indisponible.';
+                showToast(message);
+                console.error(message);
+                return;
+            }
+            window.ArcadeEffects.simulateShare();
+            showToast('Partage simulé.');
+        }
+
+        window.onload = function () {
+            initPaperGrain();
+            loadSavedTikTokAccount();
+            for (let i = 0; i < presets.length; i++) {
+                const thumbEl = document.getElementById(`thumb-preset-${i}`);
+                if (thumbEl) {
+                    thumbEl.src = presets[i].url;
+                    thumbEl.onerror = () => {
+                        thumbEl.src = getFallbackAvatarUrl(presets[i].name);
+                    };
+                }
+                loadAvatarImage(presets[i].url, presets[i].name);
+            }
+            selectPresetAvatar(0);
+            resizeCanvas();
+            if (tiktokAccount.linked && tiktokAccount.handle) connectTikTokRelay();
+            draw();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>
