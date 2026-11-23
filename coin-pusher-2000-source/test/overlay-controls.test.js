@@ -61,7 +61,21 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     const giftCalls = [];
     function start() {
         machineState = { buttons: { start: true }, coins: 0 };
-        const document = { createElement: tag => new Element(tag, document) };
+        const document = {
+            createElement(tag) {
+                if (tag === "canvas") {
+                    return {
+                        width: 0,
+                        height: 0,
+                        getContext: () => ({
+                            fillRect() {}, beginPath() {}, arc() {}, fill() {}
+                        }),
+                        toDataURL: () => "data:image/png;base64,dGVzdA=="
+                    };
+                }
+                return new Element(tag, document);
+            }
+        };
         document.documentElement = new Element("html", document);
         document.documentElement.style.setProperty = (name, value) => {
             document.documentElement.style[name] = value;
@@ -145,11 +159,13 @@ test("overlay controls persist, restore and show confirmed winners", async () =>
     assert.equal(soundVolumes.at(-1), 0.72);
     assert.equal(storage.get("coin-pusher-2000-coin-volume-v1"), "72");
     elements["test-1000-coins"].dispatch("click");
-    assert.deepEqual(giftCalls.at(-1), {
-        count: 1000,
-        profile: { username: "test", uniqueId: "test" },
-        simulation: true
-    });
+    const testGift = giftCalls.at(-1);
+    assert.equal(testGift.count, 1000);
+    assert.equal(testGift.profile.username, "test");
+    assert.equal(testGift.profile.uniqueId, "test");
+    assert.equal(testGift.profile.avatarKey, "test");
+    assert.match(testGift.profile.avatarDataUri, /^data:image\/png;base64,/);
+    assert.equal(testGift.simulation, true);
     assert.match(elements["test-coins-status"].textContent, /pièces ajoutées à la file/);
     elements["leaderboard-x"].value = "80";
     elements["leaderboard-x"].dispatch("input");

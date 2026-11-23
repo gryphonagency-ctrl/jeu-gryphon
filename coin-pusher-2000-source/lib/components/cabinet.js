@@ -295,7 +295,8 @@ export default class {
                         this.#pendingClawPrizePlayers.push({
                             username: player.username,
                             avatarUrl: player.avatarUrl || "",
-                            avatarDataUri: player.avatarDataUri || ""
+                            avatarDataUri: player.avatarDataUri || "",
+                            simulation: player.simulation === true
                         });
                         this.#excavator.pick();
                     } else {
@@ -689,7 +690,8 @@ export default class {
             avatarKey: avatar?.avatarKey,
             avatarDataUri: avatar?.avatarDataUri,
             username: avatar?.username,
-            avatarUrl: avatar?.avatarUrl
+            avatarUrl: avatar?.avatarUrl,
+            simulation: avatar?.simulation === true
         });
         if (queuedCoins === 0) {
             return 0;
@@ -758,11 +760,13 @@ export default class {
                 typeof player.username === "string" &&
                 /^[a-zA-Z0-9._]{1,32}$/.test(player.username) &&
                 (typeof player.avatarUrl === "string" || player.avatarUrl === undefined) &&
-                (typeof player.avatarDataUri === "string" || player.avatarDataUri === undefined)
+                (typeof player.avatarDataUri === "string" || player.avatarDataUri === undefined) &&
+                (typeof player.simulation === "boolean" || player.simulation === undefined)
             ).map(player => ({
                 username: player.username,
                 avatarUrl: player.avatarUrl || "",
-                avatarDataUri: player.avatarDataUri || ""
+                avatarDataUri: player.avatarDataUri || "",
+                simulation: player.simulation === true
             }))
             : [];
         this.#sensorColliders = new Map();
@@ -858,7 +862,7 @@ export default class {
         }
         const avatarSource = player.avatarDataUri || player.avatarUrl || "";
         const canCredit = Boolean(this.#creditQueue && !this.#unstoredPrizes.length);
-        const preview = manual && IS_LOCAL_PREVIEW && !canCredit;
+        const preview = player.simulation === true || (manual && IS_LOCAL_PREVIEW && !canCredit);
         if (!canCredit && !preview) {
             this.#dispatchPrizeStatus("Récompenses suspendues : portefeuille ou sauvegarde indisponible.", "error");
             return false;
@@ -940,7 +944,7 @@ export default class {
                 amount: INGOT_STARS,
                 kind: "lingot",
                 manual: player.manual === true,
-                preview: player.preview === true
+                preview: player.preview === true || player.simulation === true
             });
         }
     }

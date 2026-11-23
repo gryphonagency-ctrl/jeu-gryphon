@@ -1,6 +1,7 @@
 import { renderSpectatorLeaderboard, setOverlayPosition } from "./overlay-display.js";
 import { deleteSetupVideo, loadSetupVideo, saveSetupVideo } from "./setup-video-storage.js";
 import { MAX_GIFT_COIN_COUNT } from "./gift-limits.js";
+import createTestAvatarDataUri from "./test-avatar.js";
 
 const RELAY_URL = "wss://jeu6boite.onrender.com";
 const RECONNECT_DELAY = 3000;
@@ -1433,7 +1434,12 @@ export default function initializeTikTokBridge({ receiveGift, updateGiftAvatar, 
     });
     test1000CoinsButton.addEventListener("click", () => {
         const username = "test";
-        const queued = receiveGift(1000, { username, uniqueId: username }, true);
+        const queued = receiveGift(1000, {
+            username,
+            uniqueId: username,
+            avatarKey: username,
+            avatarDataUri: createTestAvatarDataUri()
+        }, true);
         const coinLabel = `${queued.toLocaleString("fr-FR")} pièce${queued === 1 ? "" : "s"}`;
         testCoinsStatusElement.textContent = queued === 1000
             ? `Test lancé : ${coinLabel} ajoutées à la file (aucun cadeau TikTok envoyé).`

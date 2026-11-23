@@ -20,14 +20,14 @@ await Game.initialize({
         characterStatusElement.textContent = message;
     }
 });
-function receiveGift(count, avatar = {}) {
+function receiveGift(count, avatar = {}, simulation = false) {
     if (!Number.isSafeInteger(count) || count < 1 || count > MAX_GIFT_COIN_COUNT) {
         return 0;
     }
     const profile = avatar && typeof avatar === "object" ? avatar : {};
     const candidate = String(profile.uniqueId || profile.username || "").trim().replace(/^@/, "");
     const username = /^[a-zA-Z0-9._]{1,32}$/.test(candidate) ? candidate : "Spectateur";
-    return Game.receiveTikTokGift(count, { ...profile, username });
+    return Game.receiveTikTokGift(count, { ...profile, username, simulation: simulation === true });
 }
 window.CoinPusher2000 = {
     startGame: () => Game.startGame(),

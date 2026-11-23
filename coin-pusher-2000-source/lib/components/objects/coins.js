@@ -120,6 +120,7 @@ export default class {
                     instance.username = batch.username || null;
                     instance.avatarUrl = batch.avatarUrl || "";
                     instance.avatarDataUri = batch.avatarDataUri || "";
+                    instance.simulation = batch.simulation === true;
                     instance.avatarKey = batch.avatarKey || null;
                     instance.avatarTile = instance.avatarKey
                         ? this.#avatarTiles.get(instance.avatarKey) ?? null
@@ -181,6 +182,7 @@ export default class {
         instance.username = null;
         instance.avatarUrl = "";
         instance.avatarDataUri = "";
+        instance.simulation = false;
         instance.avatarKey = null;
         instance.avatarTile = null;
         this.#releaseAvatarIfUnused(previousAvatarKey);
@@ -200,7 +202,7 @@ export default class {
         this.#spawnQueue.enqueue({ remaining: 1, slot });
     }
 
-    static dropCoins({ count, avatarKey = "", avatarDataUri = "", username = "", avatarUrl = "" }) {
+    static dropCoins({ count, avatarKey = "", avatarDataUri = "", username = "", avatarUrl = "", simulation = false }) {
         if (!Number.isSafeInteger(count) || count < 1) {
             return 0;
         }
@@ -211,6 +213,7 @@ export default class {
             avatarKey: normalizedAvatarKey,
             username: String(username || "").trim().replace(/^@/, "").slice(0, 32),
             avatarUrl: String(avatarUrl || "").slice(0, 2000),
+            simulation: simulation === true,
             avatarDataUri: typeof avatarDataUri === "string" &&
                 avatarDataUri.length <= MAX_AVATAR_DATA_URI_LENGTH &&
                 /^data:image\/(?:jpeg|png|webp|gif|avif);base64,/i.test(avatarDataUri)
@@ -303,6 +306,7 @@ export default class {
         instance.username = null;
         instance.avatarUrl = "";
         instance.avatarDataUri = "";
+        instance.simulation = false;
         instance.avatarKey = null;
         instance.avatarTile = null;
         instance.body.setEnabled(false);
@@ -328,6 +332,7 @@ export default class {
                 username: instance.username || null,
                 avatarUrl: instance.avatarUrl || "",
                 avatarDataUri: instance.avatarDataUri || "",
+                simulation: instance.simulation === true,
                 avatarKey: instance.avatarKey,
                 bodyHandle: this.#instances[instance.index].body.handle,
                 pendingImpulse: instance.pendingImpulse ? instance.pendingImpulse.toArray() : undefined
@@ -346,6 +351,7 @@ export default class {
                 username: typeof instance.username === "string" ? instance.username : null,
                 avatarUrl: typeof instance.avatarUrl === "string" ? instance.avatarUrl : "",
                 avatarDataUri: typeof instance.avatarDataUri === "string" ? instance.avatarDataUri : "",
+                simulation: instance.simulation === true,
                 avatarKey: typeof instance.avatarKey === "string" ? instance.avatarKey : null,
                 avatarTile: this.#avatarTiles.get(instance.avatarKey) ?? null,
                 body,

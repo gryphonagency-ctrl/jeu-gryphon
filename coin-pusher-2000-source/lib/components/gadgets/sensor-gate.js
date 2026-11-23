@@ -223,7 +223,8 @@ function onCoinIntersect({ sensor, userData, onFallenCoin, Coins }) {
                         ? {
                             username: coin.username,
                             avatarUrl: coin.avatarUrl || "",
-                            avatarDataUri: coin.avatarDataUri || ""
+                            avatarDataUri: coin.avatarDataUri || "",
+                            simulation: coin.simulation === true
                         }
                         : null;
                     letter.state = LETTER_STATES.ACTIVATING;
