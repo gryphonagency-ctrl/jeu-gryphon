@@ -282,6 +282,10 @@ function isFreeGamePath(pathname) {
     return FREE_GAME_PATHS.has(pathname);
 }
 
+function requiresTikTokAccess(pathname, hasArcadeGameAccess) {
+    return isFreeGamePath(pathname) && !hasArcadeGameAccess;
+}
+
 module.exports = {
     FREE_GAME_IDS,
     completeLogin,
@@ -289,6 +293,7 @@ module.exports = {
     getPlayerStatus,
     isFreeGamePath,
     logout,
+    requiresTikTokAccess,
     sendAccessPage,
     startLogin
 };

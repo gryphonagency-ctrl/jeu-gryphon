@@ -21,6 +21,12 @@ test('only the games listed as free on the homepage are time-limited', () => {
     assert.equal(freeGames.isFreeGamePath('/pachinko-live.html'), true);
 });
 
+test('Griffon Arcade members with game access do not need TikTok for free games', () => {
+    assert.equal(freeGames.requiresTikTokAccess('/pendu.html', false), true);
+    assert.equal(freeGames.requiresTikTokAccess('/pendu.html', true), false);
+    assert.equal(freeGames.requiresTikTokAccess('/bingo-gryphon.html', true), false);
+});
+
 test('TikTok login uses an anti-forgery state and requests the verified username scope', async t => {
     const names = ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_REDIRECT_URI'];
     const previousValues = new Map(names.map(name => [name, process.env[name]]));

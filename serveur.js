@@ -695,7 +695,7 @@ function getPublicTikTokPlayer(player, owner) {
     };
 }
 
-function injectArcadeScripts(html, pathname) {
+function injectArcadeScripts(html, pathname, hasArcadeGameAccess = false) {
     if (pathname === '/coin-pusher-2000/views/index.html' || pathname === '/confidentialite.html') return html;
     const insertBeforeDocumentEnd = (content, script) => {
         if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${script}</body>`);
@@ -743,7 +743,7 @@ function injectArcadeScripts(html, pathname) {
     if (!/<script\b[^>]*src=["']\/arcade-mobile-controls\.js["']/i.test(content)) {
         content = insertBeforeDocumentEnd(content, mobileControlsScript);
     }
-    if (tiktokFreeGames.isFreeGamePath(pathname) &&
+    if (tiktokFreeGames.requiresTikTokAccess(pathname, hasArcadeGameAccess) &&
         !/<script\b[^>]*src=["']\/free-game-session\.js["']/i.test(content)) {
         content = insertBeforeDocumentEnd(content, '<script src="/free-game-session.js" defer></script>');
     }
@@ -3761,7 +3761,8 @@ const server = http.createServer((req, res) => {
         });
         res.end();
     } else if (route) {
-        if (tiktokFreeGames.isFreeGamePath(pathname)) {
+        const hasArcadeGameAccess = access.canAccessGames(req);
+        if (tiktokFreeGames.requiresTikTokAccess(pathname, hasArcadeGameAccess)) {
             const identity = tiktokFreeGames.getIdentity(req);
             if (!identity) {
                 tiktokFreeGames.sendAccessPage(
@@ -3821,7 +3822,7 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, headers);
             res.end(contentType.startsWith('text/html;')
-                ? injectArcadeScripts(content.toString('utf8'), pathname)
+                ? injectArcadeScripts(content.toString('utf8'), pathname, hasArcadeGameAccess)
                 : content);
         });
     } else {
