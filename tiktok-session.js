@@ -155,7 +155,7 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
     let watchdogTimer = null;
     let lastWebSocketDataAt = 0;
     let streamEnded = false;
-    let recoveryInProgress = false;
+    let watchdogInProgress = false;
     let liveMatchActive = false;
 
     const send = message => {
@@ -177,11 +177,6 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
             errorType: String(error?.exception?.name || error?.name || 'Error'),
             timestamp: new Date().toISOString()
         });
-        if (error?.info === 'WebSocket Error after connecting') {
-            disconnectAndReconnect(
-                `Connexion TikTok interrompue · reconnexion automatique en cours · @${username}`
-            );
-        }
     });
 
     const emitTeamMemberLevelUp = (user, teamMemberKey, teamMemberLevel, messageId, sentAt) => {
@@ -247,33 +242,28 @@ function createTikTokSession(sendToClients, username, onRoomState = () => {}, { 
         retryTimer.unref?.();
     };
 
-    const disconnectAndReconnect = statusMessage => {
-        if (!active || recoveryInProgress) return;
-        recoveryInProgress = true;
-        lastWebSocketDataAt = 0;
-        send({ type: 'STATUS', message: statusMessage });
-        connection.disconnect()
-            .catch(error => {
-                console.warn(`Reconnexion du flux TikTok impossible pour @${username} :`, error.message);
-            })
-            .finally(() => {
-                recoveryInProgress = false;
-                scheduleReconnect();
-            });
-    };
-
     watchdogTimer = setInterval(() => {
-        if (!active || connecting || streamEnded || recoveryInProgress || !lastWebSocketDataAt) return;
+        if (!active || connecting || streamEnded || watchdogInProgress || !lastWebSocketDataAt) return;
         const inactiveMs = Date.now() - lastWebSocketDataAt;
         if (inactiveMs < WEBSOCKET_IDLE_TIMEOUT_MS) return;
 
+        watchdogInProgress = true;
+        lastWebSocketDataAt = 0;
         logDiagnostic('connexion', {
             account: username,
             state: 'flux-inactif',
             inactiveMs,
             timestamp: new Date().toISOString()
         });
-        disconnectAndReconnect(`Flux TikTok silencieux · reconnexion en cours · @${username}`);
+        send({ type: 'STATUS', message: `Flux TikTok silencieux · reconnexion en cours · @${username}` });
+        connection.disconnect()
+            .catch(error => {
+                console.warn(`Reconnexion du flux TikTok impossible pour @${username} :`, error.message);
+            })
+            .finally(() => {
+                watchdogInProgress = false;
+                scheduleReconnect();
+            });
     }, WEBSOCKET_WATCHDOG_INTERVAL_MS);
     watchdogTimer.unref?.();
 
