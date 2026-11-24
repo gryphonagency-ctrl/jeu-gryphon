@@ -10,6 +10,7 @@ const FREE_GAME_IDS = Object.freeze([
     '/lion-temple-maya.html',
     '/petits-chevaux-tiktok.html',
     '/jeu-foot-tiktok.html',
+    '/ambiance-stade-maximale.html',
     '/super-mario-live.html',
     '/course-de-billes.html',
     '/billes-tour.html',
