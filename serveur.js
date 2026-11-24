@@ -190,6 +190,7 @@ const protectedRoutes = new Set([
     '/coffre-incandescent.html',
     '/train-gemini.html',
     '/jeu-foot-tiktok.html',
+    '/ambiance-stade-maximale.html',
     '/qui-veut-gagner-des-etoiles.html',
     '/escape-bunker.html',
     '/defi-des-questions.html',
@@ -273,6 +274,7 @@ const freeTrialRoutes = new Set([
     '/lion-temple-maya.html',
     '/petits-chevaux-tiktok.html',
     '/jeu-foot-tiktok.html',
+    '/ambiance-stade-maximale.html',
     '/super-mario-live.html',
     '/course-de-billes.html',
     '/billes-tour.html',
@@ -308,6 +310,7 @@ store.grantGameAccessToExistingCreators('/coin-pusher-2000.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-canard.html');
 store.grantGameAccessToExistingCreators('/coin-pusher-tiktok-2d-ancien.html');
 store.grantGameAccessToExistingCreators('/jeu-foot-tiktok-v2.html');
+store.grantGameAccessToExistingCreators('/ambiance-stade-maximale.html');
 store.grantGameAccessToExistingCreators('/live-foot-interactif-stadium.html');
 store.grantGameAccessToExistingCreators('/peluches-mutantes.html');
 store.grantGameAccessToExistingCreators('/noyau-des-abysses.html');
@@ -385,6 +388,7 @@ const staticGameTitles = {
     '/bobo-pusher.html': 'Bobo Pusher',
     '/coin-pusher-canard.html': 'Queen Pusher Canard',
     '/jeu-foot-tiktok.html': 'Le Coup de Pied',
+    '/ambiance-stade-maximale.html': 'Ambiance Stade Maximale',
     '/coin-pusher-tiktok-2d-ancien.html': 'Coin Pusher 2D (ancien)',
     '/jeu-foot-tiktok-v2.html': 'Le Coup de Pied (v2)',
     '/live-foot-interactif-stadium.html': 'Live Foot Interactif — Stadium Edition',
@@ -464,6 +468,7 @@ const gameRouteIds = new Map([
     ['/pousse-pieces-arcade-nouveau.html', '/bobo-pusher.html'],
     ['/coin-pusher-canard.html', '/coin-pusher-canard.html'],
     ['/jeu-foot-tiktok.html', '/jeu-foot-tiktok.html'],
+    ['/ambiance-stade-maximale.html', '/ambiance-stade-maximale.html'],
     ['/coin-pusher-tiktok-2d-ancien.html', '/coin-pusher-tiktok-2d-ancien.html'],
     ['/jeu-foot-tiktok-v2.html', '/jeu-foot-tiktok-v2.html'],
     ['/live-foot-interactif-stadium.html', '/live-foot-interactif-stadium.html'],
@@ -3414,6 +3419,7 @@ const server = http.createServer((req, res) => {
         ['/coffres', [coffersGameFile, 'text/html; charset=utf-8']],
         ['/coffres.html', [coffersGameFile, 'text/html; charset=utf-8']],
         ['/jeu-foot-tiktok.html', [footballFile, 'text/html; charset=utf-8']],
+        ['/ambiance-stade-maximale.html', [path.join(__dirname, 'ambiance-stade-maximale.html'), 'text/html; charset=utf-8']],
         ['/qui-veut-gagner-des-etoiles.html', [starsGameFile, 'text/html; charset=utf-8']],
         ['/escape-bunker.html', [path.join(__dirname, 'escape-bunker.html'), 'text/html; charset=utf-8']],
         ['/defi-des-questions.html', [path.join(__dirname, 'defi-des-questions.html'), 'text/html; charset=utf-8']],
@@ -3554,6 +3560,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/coin-pusher-canard.png', [path.join(__dirname, 'images-vitrine', 'coin-pusher-canard.png'), 'image/png']],
         ['/images-vitrine/wish-lab.png', [path.join(__dirname, 'images-vitrine', 'wish-lab.png'), 'image/png']],
         ['/images-vitrine/coup-de-pied.png', [path.join(__dirname, 'images-vitrine', 'coup-de-pied.png'), 'image/png']],
+        ['/images-vitrine/ambiance-stade-maximale.png', [path.join(__dirname, 'images-vitrine', 'ambiance-stade-maximale.png'), 'image/png']],
         ['/images-vitrine/coffres.png', [path.join(__dirname, 'images-vitrine', 'coffres.png'), 'image/png']],
         ['/images-vitrine/six-boites.png', [path.join(__dirname, 'images-vitrine', 'six-boites.png'), 'image/png']],
         ['/images-vitrine/petit-trot.png', [path.join(__dirname, 'images-vitrine', 'petit-trot.png'), 'image/png']],
