@@ -256,6 +256,7 @@ const protectedRoutes = new Set([
     '/pachinko-live.html',
     '/live-photo-printer-studio.html',
     '/live-photo-printer-studio-realiste.html',
+    '/gryphon-zombie.html',
     '/griffon-gauche.jpg',
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
@@ -363,6 +364,7 @@ store.grantGameAccessToExistingCreators('/train-gemini.html');
 store.grantGameAccessToExistingCreators('/pachinko-live.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.html');
+store.grantGameAccessToExistingCreators('/gryphon-zombie.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -379,6 +381,7 @@ const staticGameTitles = {
     '/pachinko-live.html': 'Pachinko Live',
     '/live-photo-printer-studio.html': 'Live Photo Printer Studio',
     '/live-photo-printer-studio-realiste.html': 'Live Photo Printer Studio réaliste',
+    '/gryphon-zombie.html': 'GRYPHON ZOMBIE',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Pousse les monstres',
@@ -459,6 +462,7 @@ const gameRouteIds = new Map([
     ['/pachinko-live.html', '/pachinko-live.html'],
     ['/live-photo-printer-studio.html', '/live-photo-printer-studio.html'],
     ['/live-photo-printer-studio-realiste.html', '/live-photo-printer-studio-realiste.html'],
+    ['/gryphon-zombie.html', '/gryphon-zombie.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
@@ -3537,6 +3541,7 @@ const server = http.createServer((req, res) => {
         ['/pachinko-live.html', [path.join(__dirname, 'pachinko-live.html'), 'text/html; charset=utf-8']],
         ['/live-photo-printer-studio.html', [path.join(__dirname, 'live-photo-printer-studio.html'), 'text/html; charset=utf-8']],
         ['/live-photo-printer-studio-realiste.html', [path.join(__dirname, 'live-photo-printer-studio-realiste.html'), 'text/html; charset=utf-8']],
+        ['/gryphon-zombie.html', [path.join(__dirname, 'gryphon-zombie.html'), 'text/html; charset=utf-8']],
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/donut.jpg', [path.join(__dirname, 'donut.jpg'), 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
@@ -3548,6 +3553,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/gryphon-plinko.png', [path.join(__dirname, 'images-vitrine', 'gryphon-plinko.png'), 'image/png']],
         ['/images-vitrine/pachinko-live.png', [path.join(__dirname, 'images-vitrine', 'pachinko-live.png'), 'image/png']],
         ['/images-vitrine/live-photo-printer-studio.png', [path.join(__dirname, 'images-vitrine', 'live-photo-printer-studio.png'), 'image/png']],
+        ['/images-vitrine/gryphon-zombie.png', [path.join(__dirname, 'images-vitrine', 'gryphon-zombie.png'), 'image/png']],
         ['/images-vitrine/gryphon-tiktok-profile.png', [path.join(__dirname, 'images-vitrine', 'gryphon-tiktok-profile.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],
