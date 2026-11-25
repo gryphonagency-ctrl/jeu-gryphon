@@ -1371,7 +1371,7 @@
         c.closePath();
       }
 
-      function registerPlayerGo(username, nickname, avatarUrl = "", additionalAliases = []) {
+      function registerPlayerGo(username, nickname, avatarUrl = "", additionalAliases = [], simulated = false) {
         const cleanUser = String(username || nickname || "Joueur").trim().replace(/^@+/, "");
         const cleanNick = String(nickname || cleanUser).trim();
         const aliases = [...new Set([cleanUser, ...additionalAliases]
@@ -1385,6 +1385,7 @@
         if (existingIdx !== -1) {
           const existingPlayer = campPlayers[existingIdx];
           existingPlayer.aliases = [...new Set([...(existingPlayer.aliases || []), ...aliases])];
+          existingPlayer.simulated = Boolean(existingPlayer.simulated && simulated);
           const existingAvatar = avatarUrl || viewerAvatars.get(normalizePlayerName(cleanUser));
           if (existingAvatar) {
             const fallback = createPortraitDataUrl(existingPlayer.nickname, CAMPS[existingIdx].color, "#fde047");
@@ -1408,6 +1409,7 @@
           username: cleanUser,
           nickname: cleanNick,
           aliases,
+          simulated,
           avatarUrl: resolvedAvatar,
           img: null,
           loaded: false
@@ -1497,7 +1499,7 @@
         banner.querySelector(".winner-reward strong").textContent = `+${formatEtoiles(amount)}`;
 
         const status = banner.querySelector(".winner-status");
-        if (state.isSimulation) {
+        if (state.isSimulation || player?.simulated) {
           status.textContent = "Simulation : aucune étoile réelle n’a été attribuée.";
         } else if (!player?.username) {
           status.textContent = "Pseudo TikTok introuvable : crédit impossible.";
@@ -2593,10 +2595,9 @@
 
       // Quick test controls
       document.getElementById("sim-go-btn").addEventListener("click", () => {
-        state.isSimulation = true;
         const demo = DEMO_GO_PLAYERS[state.demoIdx % DEMO_GO_PLAYERS.length];
         state.demoIdx += 1;
-        registerPlayerGo(`${demo.username}_${state.demoIdx}`, demo.nickname, demo.avatarUrl);
+        registerPlayerGo(`${demo.username}_${state.demoIdx}`, demo.nickname, demo.avatarUrl, [], true);
       });
 
       document.getElementById("gift-one-btn").addEventListener("click", () => {
