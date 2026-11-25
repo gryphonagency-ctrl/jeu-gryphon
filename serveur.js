@@ -3399,6 +3399,13 @@ const server = http.createServer((req, res) => {
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
         ['/free-game-session.js', [freeGameSessionScriptFile, 'text/javascript; charset=utf-8']],
         ['/free-games-admin.js', [freeGamesAdminScriptFile, 'text/javascript; charset=utf-8']],
+        ['/masques-vocaux.html', [path.join(__dirname, 'masques-vocaux.html'), 'text/html; charset=utf-8']],
+        ['/voice-mask-assets/iron-man/scene.gltf', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
+        ['/voice-mask-assets/iron-man/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'scene.bin'), 'application/octet-stream']],
+        ['/voice-mask-assets/iron-man/license.txt', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'license.txt'), 'text/plain; charset=utf-8']],
+        ['/voice-mask-assets/iron-man/textures/Scene_-_Root_baseColor.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'textures', 'Scene_-_Root_baseColor.png'), 'image/png']],
+        ['/voice-mask-assets/iron-man/textures/Scene_-_Root_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'textures', 'Scene_-_Root_metallicRoughness.png'), 'image/png']],
+        ['/voice-mask-assets/iron-man/textures/Scene_-_Root_normal.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man', 'textures', 'Scene_-_Root_normal.png'), 'image/png']],
         ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
         ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
@@ -3919,8 +3926,103 @@ const overlaySockets = new Map();
 const mediaAlertOverlaySockets = new WeakSet();
 const treasureOverlaySocketOwners = new Map();
 const treasureOverlaySocketTikTokUsernames = new Map();
+const voiceMaskSockets = new Map();
+const voiceMaskOverlaySocketsByOwner = new Map();
+const voiceMaskControlSocketsByOwner = new Map();
+const voiceMaskStates = new Map();
+const voiceMaskLastLevelAt = new WeakMap();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
+function getVoiceMaskSocketSet(socketMap, owner) {
+    let sockets = socketMap.get(owner);
+    if (!sockets) {
+        sockets = new Set();
+        socketMap.set(owner, sockets);
+    }
+    return sockets;
+}
+
+function sendVoiceMaskOverlayMessage(owner, message) {
+    const encoded = JSON.stringify(message);
+    for (const socket of voiceMaskOverlaySocketsByOwner.get(owner) || []) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(encoded);
+    }
+}
+
+function sendVoiceMaskControllerStatus(owner) {
+    const encoded = JSON.stringify({
+        type: 'VOICE_MASK_STATUS',
+        overlayCount: voiceMaskOverlaySocketsByOwner.get(owner)?.size || 0
+    });
+    for (const socket of voiceMaskControlSocketsByOwner.get(owner) || []) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(encoded);
+    }
+}
+
+function removeVoiceMaskSocket(socket) {
+    const connection = voiceMaskSockets.get(socket);
+    if (!connection) return;
+    voiceMaskSockets.delete(socket);
+    const socketMap = connection.role === 'overlay'
+        ? voiceMaskOverlaySocketsByOwner
+        : voiceMaskControlSocketsByOwner;
+    const sockets = socketMap.get(connection.owner);
+    sockets?.delete(socket);
+    if (sockets && !sockets.size) socketMap.delete(connection.owner);
+    if (connection.role === 'overlay') sendVoiceMaskControllerStatus(connection.owner);
+}
+
+function handleVoiceMaskMessage(socket, connection, request) {
+    if (request.type === 'PING') {
+        socket.send(JSON.stringify({ type: 'PONG' }));
+        return;
+    }
+    if (connection.role !== 'control') {
+        socket.close(1008, 'Action non autorisée');
+        return;
+    }
+    if (request.type === 'VOICE_MASK_CONFIG') {
+        if (typeof request.maskId !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(request.maskId)) {
+            socket.send(JSON.stringify({
+                type: 'VOICE_MASK_ERROR',
+                message: 'Identifiant de masque invalide.'
+            }));
+            socket.close(1008, 'Configuration invalide');
+            return;
+        }
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        state.maskId = request.maskId;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, {
+            type: 'VOICE_MASK_STATE',
+            maskId: state.maskId,
+            level: state.level
+        });
+        return;
+    }
+    if (request.type === 'VOICE_MASK_LEVEL') {
+        if (typeof request.level !== 'number' || !Number.isFinite(request.level)) {
+            socket.send(JSON.stringify({
+                type: 'VOICE_MASK_ERROR',
+                message: 'Niveau audio invalide.'
+            }));
+            socket.close(1008, 'Niveau invalide');
+            return;
+        }
+        const now = Date.now();
+        const lastSentAt = voiceMaskLastLevelAt.get(socket) || 0;
+        if (now - lastSentAt < 25) return;
+        voiceMaskLastLevelAt.set(socket, now);
+        const level = Math.min(1, Math.max(0, request.level));
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        state.level = level;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_LEVEL', level });
+        return;
+    }
+    socket.close(1008, 'Action non autorisée');
+}
+
 function closeLiveTtsSockets(username) {
     for (const socket of liveTtsSockets) {
         if (username && liveTtsClientUsernames.get(socket)?.toLocaleLowerCase() !== username.toLocaleLowerCase()) continue;
@@ -3990,6 +4092,17 @@ server.on('upgrade', (req, socket, head) => {
     const treasureOverlayOwner = isTreasureOverlayRequest
         ? store.getCreatorTreasureOverlayOwner(requestUrl.searchParams.get('token') || '')
         : '';
+    const isVoiceMaskRequest = requestUrl.pathname === '/voice-mask-relay';
+    const voiceMaskRole = requestUrl.searchParams.get('role');
+    const voiceMaskOverlay = isVoiceMaskRequest
+        ? handleMedia.findOverlay(requestUrl.searchParams.get('token'))
+        : null;
+    const voiceMaskOwner = voiceMaskOverlay?.owner?.toLowerCase() || null;
+    const canUseVoiceMask = Boolean(
+        voiceMaskOwner &&
+        canUseCreatorTts(voiceMaskOwner) &&
+        (voiceMaskRole === 'control' || voiceMaskRole === 'overlay')
+    );
     const treasureSettings = treasureOverlayOwner
         ? store.getCreatorSettings(treasureOverlayOwner)
         : null;
@@ -4010,11 +4123,16 @@ server.on('upgrade', (req, socket, head) => {
         authenticated &&
         canUseCreatorTts(accountUsername) &&
         Boolean(store.getAccountLiveTts(accountUsername));
+    if (isVoiceMaskRequest && !canUseVoiceMask) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+    }
     if ((isTtsControlRequest && !canControlTts) ||
         (isTreasureOverlayRequest && !canUseTreasureOverlay) ||
         ((!authenticated || !access.canAccessGames(req)) &&
             !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay &&
-            !publicPachinkoAdmission)) {
+            !canUseVoiceMask && !publicPachinkoAdmission)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -4024,6 +4142,20 @@ server.on('upgrade', (req, socket, head) => {
             publicPachinkoSockets.add(webSocket);
             publicPachinkoAdmissions.set(webSocket, publicPachinkoAdmission);
             webSocket.once('close', publicPachinkoAdmission.release);
+        }
+        if (canUseVoiceMask) {
+            const connection = {
+                owner: voiceMaskOwner,
+                role: voiceMaskRole,
+                token: requestUrl.searchParams.get('token')
+            };
+            voiceMaskSockets.set(webSocket, connection);
+            getVoiceMaskSocketSet(
+                voiceMaskRole === 'overlay'
+                    ? voiceMaskOverlaySocketsByOwner
+                    : voiceMaskControlSocketsByOwner,
+                voiceMaskOwner
+            ).add(webSocket);
         }
         if (ttsSource) {
             liveTtsClientUsernames.set(webSocket, ttsSource.username);
@@ -4050,6 +4182,11 @@ server.on('upgrade', (req, socket, head) => {
 setInterval(() => {
     for (const [socket, owner] of overlaySockets) {
         if (!canUseCreatorTts(owner)) socket.terminate();
+    }
+    for (const [socket, connection] of voiceMaskSockets) {
+        const activeOverlay = handleMedia.findOverlay(connection.token);
+        if (!canUseCreatorTts(connection.owner) ||
+            activeOverlay?.owner?.toLowerCase() !== connection.owner) socket.terminate();
     }
     for (const [socket, owner] of treasureOverlaySocketOwners) {
         const settings = store.getCreatorSettings(owner);
@@ -4502,6 +4639,7 @@ wss.on('connection', (socket, req) => {
     }
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
     const treasureOverlayOwner = treasureOverlaySocketOwners.get(socket) || '';
+    const voiceMaskConnection = voiceMaskSockets.get(socket);
     const ttsControlAccount = new URL(req.url, 'http://localhost').pathname === '/live-tts-control'
         ? access.usernameForRequest(req)
         : '';
@@ -4509,7 +4647,17 @@ wss.on('connection', (socket, req) => {
         authenticatedClientUsernames.set(socket, access.usernameForRequest(req));
     }
     if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
-    if (liveTtsUsername) {
+    if (voiceMaskConnection?.role === 'overlay') {
+        const state = voiceMaskStates.get(voiceMaskConnection.owner) || { maskId: 'iron-man', level: 0 };
+        socket.send(JSON.stringify({
+            type: 'VOICE_MASK_STATE',
+            maskId: state.maskId,
+            level: state.level
+        }));
+        sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
+    } else if (voiceMaskConnection?.role === 'control') {
+        sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
+    } else if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
     } else if (treasureOverlayOwner) {
         const settings = store.getCreatorSettings(treasureOverlayOwner);
@@ -4545,12 +4693,12 @@ wss.on('connection', (socket, req) => {
             request = JSON.parse(message.toString());
         } catch (error) {
             console.warn('Message reçu du jeu invalide :', error.message);
-            if (isPublicPachinkoSocket) socket.close(1008, 'Message invalide');
+            if (isPublicPachinkoSocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
             return;
         }
         if (!request || typeof request !== 'object' || Array.isArray(request)) {
             console.warn('Message reçu du jeu invalide : un objet JSON est requis.');
-            if (isPublicPachinkoSocket) socket.close(1008, 'Message invalide');
+            if (isPublicPachinkoSocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
             return;
         }
         if (isPublicPachinkoSocket &&
@@ -4558,6 +4706,11 @@ wss.on('connection', (socket, req) => {
                 request.gameId !== PUBLIC_PACHINKO_GAME_ID ||
                 publicPachinkoConnectedSockets.has(socket))) {
             socket.close(1008, 'Action non autorisée');
+            return;
+        }
+        const voiceMaskConnection = voiceMaskSockets.get(socket);
+        if (voiceMaskConnection) {
+            handleVoiceMaskMessage(socket, voiceMaskConnection, request);
             return;
         }
         if (request.action === 'PING' && liveTtsUsername) {
@@ -4787,6 +4940,7 @@ wss.on('connection', (socket, req) => {
         clearTimeout(publicPachinkoConnectTimeouts.get(socket));
         publicPachinkoAdmissions.get(socket)?.release();
         liveTtsSockets.delete(socket);
+        removeVoiceMaskSocket(socket);
         overlaySockets.delete(socket);
         treasureOverlaySocketOwners.delete(socket);
         treasureOverlaySocketTikTokUsernames.delete(socket);
