@@ -406,7 +406,7 @@
                 <p class="help">Dans OBS, ajoute le lien ci-contre comme source navigateur, coche « Fond transparent » si l’option est disponible et garde les deux pages ouvertes pendant le live.</p>
             </section>
         </div>
-        <p class="credit">Modèle : <a href="https://sketchfab.com/3d-models/iron-man-helmet-95ef9375637c4ce6b65c1c9e03aa32d7" target="_blank" rel="noopener noreferrer">« Iron Man Helmet » par cenobyte</a>, sous licence <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. <a href="/voice-mask-assets/iron-man/license.txt">Voir l’attribution complète</a>.</p>
+        <p class="credit">Modèle : <a href="https://sketchfab.com/3d-models/iron-man-helmet-mk3-901d24c9a1714deeb724c98a8cb4649e" target="_blank" rel="noopener noreferrer">« Iron-Man Helmet (MK3) » par Ritesh (Designpill)</a>, sous licence <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. <a href="/voice-mask-assets/iron-man-mk3/license.txt">Voir l’attribution complète</a>.</p>
     </main>
 
     <div id="overlay-stage" class="overlay-stage" hidden>
@@ -422,10 +422,10 @@
         const MASKS = Object.freeze([
             {
                 id: 'iron-man',
-                label: 'Iron Man · casque 3D',
+                label: 'Iron Man MK3 · mâchoire articulée',
                 kind: 'gltf',
-                source: '/voice-mask-assets/iron-man/scene.gltf',
-                description: 'Casque 3D détaillé sur fond transparent, animé par le volume du micro et le suivi de la bouche par webcam.'
+                source: '/voice-mask-assets/iron-man-mk3/scene.gltf',
+                description: 'Casque MK3 sur fond transparent, avec une vraie mâchoire mobile synchronisée à l’ouverture de la bouche par webcam.'
             }
         ]);
         const params = new URLSearchParams(location.search);
@@ -467,8 +467,7 @@
         let lastMouthSentAt = 0;
         let lastCameraStatusAt = 0;
         let smoothedLevel = 0;
-        let jawMorphMeshes = [];
-        let mouthInterior = null;
+        let jawPivot = null;
 
         function setOverlayStatus(message) {
             if (overlayPreview) overlayStatus.textContent = message;
@@ -482,28 +481,29 @@
             return MASKS.find(mask => mask.id === id) || MASKS[0];
         }
 
-        function addJawMorphTarget(mesh) {
-            const geometry = mesh.geometry;
-            const position = geometry.attributes.position;
-            if (!position || geometry.morphAttributes.position?.length) return;
-            // The supplied helmet has one static mesh, so its lower front vertices form the jaw morph.
-            const jawPositions = new Float32Array(position.count * 3);
-            for (let index = 0; index < position.count; index++) {
-                const x = position.getX(index);
-                const y = position.getY(index);
-                const z = position.getZ(index);
-                const lowerFace = 1 - THREE.MathUtils.smoothstep(y, -58, -12);
-                const frontFace = THREE.MathUtils.smoothstep(z, 68, 118);
-                const centerFace = 1 - THREE.MathUtils.smoothstep(Math.abs(x), 32, 50);
-                const weight = lowerFace * frontFace * centerFace;
-                jawPositions[index * 3] = x;
-                jawPositions[index * 3 + 1] = y - 11 * weight;
-                jawPositions[index * 3 + 2] = z - 7 * weight;
+        function createJawPivot(root) {
+            const chin = root.getObjectByName('Plane021');
+            const jaw = root.getObjectByName('Plane022');
+            if (!chin || !jaw || chin.parent !== jaw.parent) return null;
+
+            // The MK3 lower face is split into separate chin and jaw nodes.
+            const bounds = new THREE.Box3().setFromObject(jaw);
+            const hinge = new THREE.Vector3(
+                bounds.min.x,
+                bounds.max.y,
+                (bounds.min.z + bounds.max.z) / 2
+            );
+            const parent = jaw.parent;
+            const pivot = new THREE.Group();
+            pivot.position.copy(hinge);
+            parent.add(pivot);
+            for (const part of [chin, jaw]) {
+                const position = part.position.clone();
+                parent.remove(part);
+                pivot.add(part);
+                part.position.copy(position.sub(hinge));
             }
-            geometry.morphAttributes.position = [new THREE.BufferAttribute(jawPositions, 3)];
-            geometry.morphTargetsRelative = false;
-            mesh.updateMorphTargets();
-            jawMorphMeshes.push(mesh);
+            return pivot;
         }
 
         function updateMask(maskId) {
@@ -533,29 +533,17 @@
                 const size = bounds.getSize(new THREE.Vector3());
                 const largestDimension = Math.max(size.x, size.y, size.z);
                 const baseScale = 2.25 / largestDimension;
+                jawPivot = createJawPivot(root);
                 root.scale.setScalar(baseScale);
-                root.position.set(
-                    -center.x * baseScale,
-                    -center.y * baseScale,
-                    -center.z * baseScale
-                );
-                jawMorphMeshes = [];
-                mouthInterior = null;
-                root.traverse(object => {
-                    if (object.isMesh) addJawMorphTarget(object);
-                });
-                if (jawMorphMeshes.length) {
-                    const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x05070a });
-                    mouthInterior = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), mouthMaterial);
-                    mouthInterior.position.set(0, -29, 120);
-                    mouthInterior.scale.set(12, 0.08, 1);
-                    mouthInterior.renderOrder = 2;
-                    root.add(mouthInterior);
-                }
+                root.position.copy(center).multiplyScalar(-baseScale);
+                const orientedModel = new THREE.Group();
+                orientedModel.add(root);
                 modelGroup.clear();
-                modelGroup.add(root);
-                activeModel = root;
-                setOverlayStatus('Masque prêt · niveau vocal synchronisé');
+                modelGroup.add(orientedModel);
+                activeModel = orientedModel;
+                setOverlayStatus(jawPivot
+                    ? 'Casque MK3 prêt · mâchoire webcam activable'
+                    : 'Casque MK3 chargé, mais sa mâchoire articulée est introuvable.');
             }, undefined, error => {
                 console.error('Chargement du modèle de masque impossible :', error);
                 setOverlayStatus('Impossible de charger le modèle du masque.');
@@ -608,10 +596,7 @@
             currentLevel += (targetLevel - currentLevel) * smoothing;
             const mouthSmoothing = targetMouthOpen > currentMouthOpen ? 0.34 : 0.2;
             currentMouthOpen += (targetMouthOpen - currentMouthOpen) * mouthSmoothing;
-            for (const mesh of jawMorphMeshes) {
-                if (mesh.morphTargetInfluences?.length) mesh.morphTargetInfluences[0] = currentMouthOpen;
-            }
-            if (mouthInterior) mouthInterior.scale.y = 0.08 + currentMouthOpen * 5.5;
+            if (jawPivot) jawPivot.rotation.z = -currentMouthOpen * 0.48;
             if (activeModel) {
                 modelGroup.scale.setScalar(1 + currentLevel * 0.075);
                 activeModel.rotation.y = Math.sin(time * 0.00035) * 0.055 + currentLevel * 0.12;
