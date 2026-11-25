@@ -460,7 +460,7 @@
             <li>Atterrir sur un cheval adverse le renvoie dans son camp.</li>
             <li>À l'entrée de l'échelle finale, faites <strong>1</strong> pour atteindre la case 1 ; ensuite, le dé indique la case visée jusqu'à <strong>6</strong>. Un résultat inférieur ou égal à la case occupée ne fait pas reculer le cheval.</li>
             <li>Écrivez <strong>« étoile »</strong> dans le chat TikTok pour consulter votre portefeuille global.</li>
-            <li><strong>Cadeaux & Dé :</strong> seul un cadeau de <strong>1</strong> lance le dé pendant le tour de lancer (<strong>turnPhase === 'roll'</strong>) du joueur actif ; les plus gros cadeaux font monter la cagnotte en étoiles.</li>
+            <li><strong>Cadeaux & Dé :</strong> les cadeaux de <strong>1</strong> ou <strong>10 pièces</strong> donnent un lancer au joueur. S’il n’a pas encore son tour, le lancer attend automatiquement ; les autres cadeaux alimentent la cagnotte en étoiles.</li>
           </ul>
         </div>
       </div>
@@ -502,6 +502,7 @@
         </div>
         <div class="gift-grid">
           <button class="gift-btn" data-gift="rose" data-val="1" type="button">🌹 Cadeau 1 (+1 • Dé)</button>
+          <button class="gift-btn" data-gift="rose" data-val="10" type="button">🌹 Cadeau 10 (+1 • Dé en attente)</button>
           <button class="gift-btn" data-gift="heart" data-val="5" type="button">💖 Cadeau 5 (+Étoiles)</button>
           <button class="gift-btn" data-gift="donut" data-val="20" type="button">🍩 Cadeau 20 (+Étoiles)</button>
           <button class="gift-btn" data-gift="galaxy" data-val="100" type="button">🌌 Cadeau 100 (+Étoiles)</button>
@@ -511,7 +512,7 @@
 
       <div class="section">
         <div class="section-title">Journal de Course & Étoiles</div>
-        <div id="event-log">Tapez "go" pour rejoindre un camp. Seul un cadeau de 1 lance le dé en phase "roll".</div>
+        <div id="event-log">Tapez "go" pour rejoindre un camp. Les cadeaux de 1 ou 10 pièces donnent un lancer, conservé jusqu’au tour du joueur.</div>
       </div>
     </aside>
   </div>
@@ -784,6 +785,8 @@
       ];
 
       let campPlayers = [null, null, null, null];
+      let pendingDiceRolls = [0, 0, 0, 0];
+      const viewerAvatars = new Map();
       let campStarsEarned = [0, 0, 0, 0];
       let horses = [];
       let walletBannerTimer = 0;
@@ -876,19 +879,82 @@
       }
 
       function getActiveTurnPlayer() {
-        const activeCampId = state.turn % CAMPS.length;
-        return campPlayers[activeCampId] || null;
+        return campPlayers[getActiveTurnCampId()] || null;
+      }
+
+      function normalizePlayerName(name) {
+        return String(name || "").trim().replace(/^@+/, "").toLocaleLowerCase();
+      }
+
+      function getNextOccupiedCampId(startCampId, includeStart = false) {
+        for (let offset = includeStart ? 0 : 1; offset <= CAMPS.length; offset++) {
+          const campId = (startCampId + offset) % CAMPS.length;
+          if (campPlayers[campId]) return campId;
+        }
+        return (startCampId + 1) % CAMPS.length;
+      }
+
+      function getActiveTurnCampId() {
+        const currentCampId = state.turn % CAMPS.length;
+        if (!campPlayers.some(Boolean) || campPlayers[currentCampId]) return currentCampId;
+        return getNextOccupiedCampId(currentCampId);
+      }
+
+      function findPlayerCampId(playerName) {
+        const name = normalizePlayerName(playerName);
+        if (!name) return -1;
+        return campPlayers.findIndex((player) => player &&
+          (player.aliases || [player.username, player.nickname])
+            .some((alias) => normalizePlayerName(alias) === name));
       }
 
       function isSenderActiveTurnPlayer(senderName) {
-        const activePlayer = getActiveTurnPlayer();
-        if (!activePlayer) return true;
-        const cleanSender = String(senderName || "").trim().replace(/^@+/, "").toLowerCase();
-        if (!cleanSender) return false;
-        return (
-          cleanSender === activePlayer.username.toLowerCase() ||
-          cleanSender === activePlayer.nickname.toLowerCase()
-        );
+        const senderCampId = findPlayerCampId(senderName);
+        return senderCampId !== -1 && senderCampId === getActiveTurnCampId();
+      }
+
+      function loadPlayerAvatar(player, avatarUrl, fallbackUrl) {
+        const source = avatarUrl || fallbackUrl;
+        player.avatarUrl = source;
+        player.img = null;
+        player.loaded = false;
+        try {
+          const img = new Image();
+          img.onload = () => {
+            if (player.avatarUrl !== source) return;
+            player.img = img;
+            player.loaded = true;
+          };
+          img.onerror = () => {
+            if (player.avatarUrl !== source) return;
+            if (source !== fallbackUrl) {
+              loadPlayerAvatar(player, fallbackUrl, fallbackUrl);
+            } else {
+              player.img = null;
+              player.loaded = false;
+            }
+          };
+          img.src = source;
+        } catch (error) {
+          console.error("Impossible de charger la photo du joueur :", error);
+        }
+      }
+
+      function updatePlayerAvatar(viewer) {
+        const avatar = viewer.avatarDataUri || viewer.profilePictureUrl ||
+          viewer.avatarUrl || viewer.avatar || "";
+        const username = viewer.uniqueId || viewer.username || viewer.nickname;
+        if (!avatar || !username) return;
+
+        const key = normalizePlayerName(username);
+        viewerAvatars.set(key, avatar);
+        if (viewerAvatars.size > 200) viewerAvatars.delete(viewerAvatars.keys().next().value);
+        const campId = findPlayerCampId(username);
+        if (campId === -1) return;
+
+        const player = campPlayers[campId];
+        const fallback = createPortraitDataUrl(player.nickname, CAMPS[campId].color, "#fde047");
+        loadPlayerAvatar(player, avatar, fallback);
       }
 
       function initRace(keepPlayers = true, resetJackpot = false) {
@@ -915,6 +981,8 @@
         }
         if (!keepPlayers) {
           campPlayers = [null, null, null, null];
+          pendingDiceRolls = [0, 0, 0, 0];
+          viewerAvatars.clear();
           campStarsEarned = [0, 0, 0, 0];
         }
         if (resetJackpot) {
@@ -1004,14 +1072,25 @@
         c.closePath();
       }
 
-      function registerPlayerGo(username, nickname, avatarUrl = "") {
+      function registerPlayerGo(username, nickname, avatarUrl = "", additionalAliases = []) {
         const cleanUser = String(username || nickname || "Joueur").trim().replace(/^@+/, "");
         const cleanNick = String(nickname || cleanUser).trim();
+        const aliases = [...new Set([cleanUser, ...additionalAliases]
+          .map(normalizePlayerName)
+          .filter(Boolean))];
 
         const existingIdx = campPlayers.findIndex(
-          (p) => p && p.username.toLowerCase() === cleanUser.toLowerCase()
+          (p) => p && (p.aliases || [p.username, p.nickname])
+            .some((alias) => aliases.includes(normalizePlayerName(alias)))
         );
         if (existingIdx !== -1) {
+          const existingPlayer = campPlayers[existingIdx];
+          existingPlayer.aliases = [...new Set([...(existingPlayer.aliases || []), ...aliases])];
+          const existingAvatar = avatarUrl || viewerAvatars.get(normalizePlayerName(cleanUser));
+          if (existingAvatar) {
+            const fallback = createPortraitDataUrl(existingPlayer.nickname, CAMPS[existingIdx].color, "#fde047");
+            loadPlayerAvatar(existingPlayer, existingAvatar, fallback);
+          }
           logEvent(`${cleanNick} est déjà dans le camp ${CAMPS[existingIdx].name}.`);
           return;
         }
@@ -1023,30 +1102,23 @@
         }
 
         const camp = CAMPS[freeCampIdx];
-        const resolvedAvatar = avatarUrl || createPortraitDataUrl(cleanNick, camp.color, "#fde047");
+        const fallbackAvatar = createPortraitDataUrl(cleanNick, camp.color, "#fde047");
+        const resolvedAvatar = avatarUrl || viewerAvatars.get(normalizePlayerName(cleanUser)) || fallbackAvatar;
 
         const playerObj = {
           username: cleanUser,
           nickname: cleanNick,
+          aliases,
           avatarUrl: resolvedAvatar,
           img: null,
           loaded: false
         };
-
-        try {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => {
-            playerObj.img = img;
-            playerObj.loaded = true;
-          };
-          img.onerror = () => {
-            playerObj.loaded = false;
-          };
-          img.src = resolvedAvatar;
-        } catch (_) {}
+        loadPlayerAvatar(playerObj, resolvedAvatar, fallbackAvatar);
 
         campPlayers[freeCampIdx] = playerObj;
+        if (!campPlayers.some((player, index) => player && index !== freeCampIdx)) {
+          state.turn = freeCampIdx;
+        }
         playTone(587.33, 0.1, "triangle", 0.12);
         logEvent(`🙋 ${cleanNick} ("go") rejoint le camp ${camp.name} !`);
       }
@@ -1180,14 +1252,30 @@
           state.turnPhase = "finished";
           return;
         }
-        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        const activeCampId = getActiveTurnCampId();
+        const activeCamp = CAMPS[activeCampId];
         if (rolledSix) {
+          state.turn = activeCampId;
           state.turnPhase = "roll";
           logEvent(`🎲 ${activeCamp.name} fait 6 et rejoue immédiatement (phase roll) !`);
         } else {
-          state.turn = (state.turn + 1) % CAMPS.length;
+          state.turn = getNextOccupiedCampId(activeCampId);
           state.turnPhase = "roll";
         }
+        startQueuedRollForActivePlayer();
+      }
+
+      function startQueuedRollForActivePlayer() {
+        if (state.turnPhase !== "roll" || state.winnerCamp) return false;
+        const campId = getActiveTurnCampId();
+        if (pendingDiceRolls[campId] < 1) return false;
+        const player = campPlayers[campId];
+        if (!player) return false;
+
+        pendingDiceRolls[campId] -= 1;
+        logEvent(`🎁 Lancer en attente de ${player.nickname} activé à son tour.`);
+        rollDie(player.username, 0);
+        return true;
       }
 
       function startHorseMovement(horse, steps, rolledSix) {
@@ -1672,7 +1760,7 @@
         }
 
         // Render all 16 horses ON TOP of portraits and track squares
-        const activeCampId = state.turn % CAMPS.length;
+        const activeCampId = getActiveTurnCampId();
         horses.forEach((h) => drawHorsePiece(h, h.campId === activeCampId && !state.winnerCamp, false));
 
         for (const cf of state.confetti) {
@@ -1695,7 +1783,7 @@
           const by = 16 + row * 82;
           const bw = W / 2 - 24;
           const bh = 74;
-          const isTurn = state.turn % CAMPS.length === i && !state.winnerCamp;
+          const isTurn = getActiveTurnCampId() === i && !state.winnerCamp;
           const campHorses = horses.filter((h) => h.campId === i);
           const doneCount = campHorses.filter((h) => h.state === "finished").length;
           const regPlayer = campPlayers[i];
@@ -1736,7 +1824,7 @@
         ctx.lineWidth = 1.6;
         ctx.stroke();
 
-        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        const activeCamp = CAMPS[getActiveTurnCampId()];
         const activePlayer = campPlayers[activeCamp.id];
         const turnLabel = activePlayer ? `${activePlayer.nickname} (${activeCamp.name})` : activeCamp.name;
         const liveStars = computeEtoilesFromPool(state.displayedPool);
@@ -1806,7 +1894,7 @@
               state.dieValue = state.forcedDie;
             }
             state.forcedDie = null;
-            const currentCampId = state.turn % CAMPS.length;
+            const currentCampId = getActiveTurnCampId();
             const bonus = state.pendingBonus || 0;
             state.pendingBonus = 0;
             logEvent(`${CAMPS[currentCampId].name} obtient ${state.dieValue}`);
@@ -1901,26 +1989,23 @@
         // Every gift increases the progressive étoiles reward pot
         addGiftToEtoilesPool(amount, label, user);
 
-        // ONLY 1-coin gifts trigger a dice roll, and ONLY when turnPhase === 'roll' for the active player
-        if (amount !== 1) {
-          logEvent(`⭐ Cadeau (${amount}) ajouté aux étoiles (seul un cadeau à 1 lance le dé).`);
+        if (amount !== 1 && amount !== 10) {
+          logEvent(`⭐ Cadeau (${amount}) ajouté aux étoiles (cadeaux de 1 ou 10 pièces : lancer du dé).`);
           return;
         }
 
-        const activeCamp = CAMPS[state.turn % CAMPS.length];
-        if (!isSenderActiveTurnPlayer(user)) {
-          const activePlayer = getActiveTurnPlayer();
-          const expectedLabel = activePlayer ? `${activePlayer.nickname} (${activeCamp.name})` : activeCamp.name;
-          logEvent(`⏳ Tour actif : ${expectedLabel} (${user} doit attendre son tour).`);
+        const senderCampId = findPlayerCampId(user);
+        if (senderCampId === -1) {
+          logEvent(`⏳ Cadeau conservé dans la cagnotte ; ${user} doit écrire « go » pour rejoindre un camp avant de lancer le dé.`);
           return;
         }
 
-        if (state.turnPhase !== "roll" && !state.winnerCamp) {
-          logEvent(`⏳ Phase actuelle "${state.turnPhase}" : lancer réservé à la phase "roll".`);
-          return;
-        }
-
-        rollDie(user, 0);
+        pendingDiceRolls[senderCampId] = Math.min(
+          Number.MAX_SAFE_INTEGER,
+          pendingDiceRolls[senderCampId] + 1
+        );
+        logEvent(`🎲 Lancer de ${user} mis en attente (${pendingDiceRolls[senderCampId]} en file).`);
+        startQueuedRollForActivePlayer();
       }
 
       // Toggle dock via eye icon or 'H' shortcut
@@ -1967,15 +2052,15 @@
         state.isSimulation = true;
         ensureAudio();
         const activePlayer = getActiveTurnPlayer();
-        const activeCamp = CAMPS[state.turn % CAMPS.length];
-        const sender = activePlayer ? activePlayer.nickname : activeCamp.name;
+        const activeCamp = CAMPS[getActiveTurnCampId()];
+        const sender = activePlayer ? activePlayer.username : activeCamp.name;
         handleGift("rose", sender, 1);
       });
 
       document.getElementById("simulate-big-gift-btn").addEventListener("click", () => {
         state.isSimulation = true;
         const activePlayer = getActiveTurnPlayer();
-        const sender = activePlayer ? activePlayer.nickname : "Spectateur";
+        const sender = activePlayer ? activePlayer.username : "Spectateur";
         const coins = Math.max(1, Number(window.ArcadeEffects?.config?.bigGiftCoins) || 100);
         window.ArcadeEffects?.simulateBigGift(sender, coins);
         handleGift("galaxy", sender, coins);
@@ -1994,7 +2079,7 @@
 
       document.getElementById("trigger-ladder-btn").addEventListener("click", () => {
         state.isSimulation = true;
-        const campId = state.turn % CAMPS.length;
+        const campId = getActiveTurnCampId();
         const campHorses = horses.filter((h) => h.campId === campId);
         campHorses.forEach((h, idx) => {
           h.state = "ladder";
@@ -2008,7 +2093,7 @@
       document.getElementById("near-finish-btn").addEventListener("click", () => {
         state.isSimulation = true;
         ensureAudio();
-        const campId = state.turn % CAMPS.length;
+        const campId = getActiveTurnCampId();
         const campHorses = horses.filter((h) => h.campId === campId);
         campHorses.forEach((h, idx) => {
           h.exitedOnSixBadge = false;
@@ -2036,8 +2121,8 @@
           const rawVal = Number(btn.dataset.val);
           const giftCoins = Number.isFinite(rawVal) && rawVal > 0 ? Math.floor(rawVal) : 1;
           const activePlayer = getActiveTurnPlayer();
-          const activeCamp = CAMPS[state.turn % CAMPS.length];
-          const sender = activePlayer ? activePlayer.nickname : activeCamp.name;
+          const activeCamp = CAMPS[getActiveTurnCampId()];
+          const sender = activePlayer ? activePlayer.username : activeCamp.name;
           handleGift(btn.dataset.gift, sender, giftCoins);
         });
       });
@@ -2101,12 +2186,18 @@
                 logEvent(message);
                 return;
               }
+              if (evName === "viewer") {
+                updatePlayerAvatar(msg.viewer || msg.data || msg);
+                return;
+              }
               const d = evName === "gift" && msg.gift
                 ? msg.gift
                 : msg[evName] || msg.data || msg;
               const commentData = d.commentData || d;
               const sender = d.uniqueId || d.username || d.nickname || commentData.username || "Spectateur";
-              const avatar = d.avatarDataUri || d.profilePictureUrl || d.avatarUrl || d.avatar || "";
+              const avatar = commentData.avatarDataUri || commentData.profilePictureUrl ||
+                commentData.avatarUrl || commentData.avatar || d.avatarDataUri ||
+                d.profilePictureUrl || d.avatarUrl || d.avatar || "";
 
               if (evName === "gift") {
                 if (d.repeatEnd === false) return;
@@ -2117,10 +2208,16 @@
                   ? coinCount
                   : Math.max(1, Math.floor(unitCoins * count));
                 handleGift(d.giftName || d.giftId || "rose", sender, totalCoins);
-              } else if ((evName === "chat" || evName === "comment") && commentData.comment) {
-                const c = String(commentData.comment).toLowerCase().trim();
+              } else if ((evName === "chat" || evName === "comment") &&
+                (commentData.comment || commentData.content)) {
+                const c = String(commentData.comment || commentData.content).toLowerCase().trim();
                 if (c === "go") {
-                  registerPlayerGo(commentData.uniqueId || commentData.username || sender, commentData.nickname || sender, avatar);
+                  registerPlayerGo(
+                    commentData.username || commentData.uniqueId || sender,
+                    commentData.nickname || sender,
+                    avatar,
+                    [commentData.uniqueId]
+                  );
                 } else if (c === "!roll" || c === "!de" || c === "!dé" || c === "!go") {
                   if (state.turnPhase === "roll" && isSenderActiveTurnPlayer(commentData.username || sender)) {
                     rollDie(commentData.username || sender);
