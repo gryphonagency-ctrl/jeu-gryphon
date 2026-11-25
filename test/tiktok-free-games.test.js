@@ -7,7 +7,7 @@ const test = require('node:test');
 const freeGames = require('../tiktok-free-games');
 
 test('only the games listed as free on the homepage are time-limited', () => {
-    assert.equal(freeGames.FREE_GAME_IDS.length, 20);
+    assert.equal(freeGames.FREE_GAME_IDS.length, 21);
     const homepage = fs.readFileSync(path.join(__dirname, '..', 'accueil.html'), 'utf8');
     const trialList = homepage.match(/const FREE_TRIAL_GAMES = new Set\((\[[^\]]+\])\);/);
     assert(trialList, 'the homepage free-game catalog is present');
@@ -18,6 +18,7 @@ test('only the games listed as free on the homepage are time-limited', () => {
     assert.equal(freeGames.isFreeGamePath('/pendu'), true);
     assert.equal(freeGames.isFreeGamePath('/pendu.html'), true);
     assert.equal(freeGames.isFreeGamePath('/ambiance-stade-maximale.html'), true);
+    assert.equal(freeGames.isFreeGamePath('/petits-chevaux.html'), true);
     assert.equal(freeGames.isFreeGamePath('/bingo-gryphon.html'), false);
     assert.equal(freeGames.isFreeGamePath('/pachinko-live.html'), true);
     assert.equal(freeGames.isFreeGamePath('/live-photo-printer-studio.html'), true);
@@ -29,6 +30,8 @@ test('Griffon Arcade members with game access do not need TikTok for free games'
     assert.equal(freeGames.requiresTikTokAccess('/pendu.html', true), false);
     assert.equal(freeGames.requiresTikTokAccess('/ambiance-stade-maximale.html', false), true);
     assert.equal(freeGames.requiresTikTokAccess('/ambiance-stade-maximale.html', true), false);
+    assert.equal(freeGames.requiresTikTokAccess('/petits-chevaux.html', false), true);
+    assert.equal(freeGames.requiresTikTokAccess('/petits-chevaux.html', true), false);
     assert.equal(freeGames.requiresTikTokAccess('/bingo-gryphon.html', true), false);
 });
 

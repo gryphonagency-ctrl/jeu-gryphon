@@ -124,6 +124,7 @@ const coinPusher2dOldFile = path.join(__dirname, 'coin-pusher-tiktok-2d-ancien.h
 const footballV2File = path.join(__dirname, 'jeu-foot-tiktok (1).html');
 const aquariumLiveFile = path.join(__dirname, 'aquarium-tiktok-live.html');
 const petitTrotFile = path.join(__dirname, 'petits-chevaux-tiktok.html');
+const petitsChevauxFile = path.join(__dirname, 'petits-chevaux.html');
 const wishLabFile = path.join(__dirname, 'wish-lab.html');
 const balloonGameFile = path.join(__dirname, 'monde-du-ballon.html');
 const montgolfieresTourFile = path.join(__dirname, 'montgolfieres-tour.html');
@@ -211,6 +212,7 @@ const protectedRoutes = new Set([
     '/ile-au-tresor.html',
     '/course-karts.html',
     '/petits-chevaux-tiktok.html',
+    '/petits-chevaux.html',
     '/wish-lab.html',
     '/bataille-des-planetes.html',
     '/maya-island.html',
@@ -274,6 +276,7 @@ const freeTrialRoutes = new Set([
     '/qui-veut-gagner-des-etoiles.html',
     '/lion-temple-maya.html',
     '/petits-chevaux-tiktok.html',
+    '/petits-chevaux.html',
     '/jeu-foot-tiktok.html',
     '/ambiance-stade-maximale.html',
     '/super-mario-live.html',
@@ -297,6 +300,7 @@ const fixedGameImageIds = new Set([
     '/pokefight-live.html',
     '/grand-prix-pokemon.html',
     '/live-foot-interactif-stadium.html',
+    '/petits-chevaux.html',
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
@@ -365,6 +369,7 @@ store.grantGameAccessToExistingCreators('/pachinko-live.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.html');
 store.grantGameAccessToExistingCreators('/gryphon-zombie.html');
+store.grantGameAccessToExistingCreators('/petits-chevaux.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -399,6 +404,7 @@ const staticGameTitles = {
     '/escape-bunker.html': 'Escape Bunker : Protocole Oméga',
     '/defi-des-questions.html': 'Le Défi des Questions',
     '/petits-chevaux-tiktok.html': 'Petit Trot',
+    '/petits-chevaux.html': 'Petits chevaux',
     '/wish-lab.html': 'Wish Lab',
     '/bataille-des-planetes.html': 'Bataille des planètes',
     '/maya-island.html': 'Maya Island',
@@ -480,6 +486,7 @@ const gameRouteIds = new Map([
     ['/escape-bunker.html', '/escape-bunker.html'],
     ['/defi-des-questions.html', '/defi-des-questions.html'],
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
+    ['/petits-chevaux.html', '/petits-chevaux.html'],
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
     ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
@@ -3464,6 +3471,8 @@ const server = http.createServer((req, res) => {
         ['/aquarium-tiktok-live.html', [aquariumLiveFile, 'text/html; charset=utf-8']],
         ['/quartier-des-veilleurs.html', [path.join(__dirname, 'quartier-des-veilleurs.html'), 'text/html; charset=utf-8']],
         ['/petits-chevaux-tiktok.html', [petitTrotFile, 'text/html; charset=utf-8']],
+        ['/petits-chevaux.html', [petitsChevauxFile, 'text/html; charset=utf-8']],
+        ['/images-vitrine/petits-chevaux.png', [path.join(__dirname, 'images-vitrine', 'petits-chevaux.png'), 'image/png']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
         ['/bataille-planetes-centre-frames.webp', [path.join(__dirname, 'bataille-planetes-centre-frames.webp'), 'image/webp']],

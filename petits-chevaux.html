@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Petits chevaux</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Base reset and vertical 9:16 live stage styling */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #040711;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+    }
+
+    /* Centered 9:16 vertical container responsive across mobile & desktop */
+    #stage-wrap {
+      position: relative;
+      height: 100vh;
+      aspect-ratio: 9 / 16;
+      max-width: 100vw;
+      background: radial-gradient(circle at 50% 18%, #1f304d 0%, #070c17 82%);
+      box-shadow: 0 0 80px rgba(0, 0, 0, 0.96), 0 0 36px rgba(250, 204, 21, 0.16);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    /* Compact top-right eye button to toggle the live control & rules dock */
+    #toggle-panel-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 30;
+      width: 42px;
+      height: 42px;
+      border-radius: 9999px;
+      border: 1px solid rgba(250, 204, 21, 0.55);
+      background: rgba(11, 17, 30, 0.88);
+      color: #fde047;
+      font-size: 19px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    #toggle-panel-btn:hover {
+      transform: scale(1.06);
+      background: rgba(24, 36, 62, 0.96);
+    }
+
+    /* Floating draggable control & rules dock (hidden by default) */
+    #control-panel {
+      display: none;
+      position: absolute;
+      top: 64px;
+      right: 12px;
+      width: 332px;
+      max-width: calc(100% - 24px);
+      max-height: calc(100% - 78px);
+      overflow-y: auto;
+      z-index: 25;
+      background: rgba(11, 16, 28, 0.97);
+      border: 1px solid rgba(250, 204, 21, 0.4);
+      border-radius: 14px;
+      padding: 12px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.88);
+      font-size: 12px;
+    }
+
+    #control-panel.open {
+      display: block;
+    }
+
+    #panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: grab;
+      font-weight: 800;
+      color: #fde047;
+      touch-action: none;
+    }
+
+    #panel-header:active {
+      cursor: grabbing;
+    }
+
+    .section {
+      margin-bottom: 11px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .section-title {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9bb0d4;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      color: #dce6f7;
+      font-size: 11.5px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 7px 9px;
+      margin-bottom: 7px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.07);
+      color: #ffffff;
+      font-size: 12px;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: #fde047;
+    }
+
+    select option {
+      background: #10172a;
+      color: #ffffff;
+    }
+
+    .row-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    button.action-btn {
+      padding: 7px 8px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #111111;
+      font-weight: 700;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+
+    button.action-btn:hover {
+      filter: brightness(1.08);
+    }
+
+    button.secondary-btn {
+      background: rgba(255, 255, 255, 0.11);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      margin-top: 4px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef5350;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .dot.ok {
+      background: #66bb6a;
+      box-shadow: 0 0 8px #66bb6a;
+    }
+
+    .gift-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .gift-btn {
+      padding: 7px 7px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.07);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .gift-btn:hover {
+      background: rgba(250, 204, 21, 0.18);
+      border-color: #fde047;
+    }
+
+    .gift-btn.span-2 {
+      grid-column: span 2;
+      text-align: center;
+      background: rgba(250, 204, 21, 0.14);
+    }
+
+    .rules-box {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: #e2e8f0;
+    }
+
+    .rules-box ul {
+      padding-left: 15px;
+      margin-top: 4px;
+    }
+
+    .rules-box li {
+      margin-bottom: 3px;
+    }
+
+    #event-log {
+      max-height: 94px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.36);
+      border-radius: 8px;
+      padding: 6px;
+      font-size: 11px;
+      color: #cfd8dc;
+      line-height: 1.42;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage-wrap">
+    <canvas id="gameCanvas" width="720" height="1280"></canvas>
+
+    <!-- Compact eye button in top-right corner to toggle the live control & rules dock -->
+    <button id="toggle-panel-btn" type="button" title="Régie & Règles (H)" aria-label="Ouvrir ou fermer la régie et les règles">👁️</button>
+
+    <!-- Floating draggable control & rules panel (hidden by default) -->
+    <aside id="control-panel" aria-label="Régie et Règles Petits Chevaux Live">
+      <div id="panel-header">
+        <span>🐴 Régie & Règles Live</span>
+        <span id="close-panel" style="cursor:pointer;padding:0 4px;" title="Fermer">✕</span>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Règles Essentielles</div>
+        <div class="rules-box">
+          <strong>Rejoindre & Départ :</strong>
+          <ul>
+            <li>Tapez <strong>"go"</strong> pour entrer dans un camp et afficher votre portrait.</li>
+            <li>Faites un <strong>6</strong> pour sortir un cheval sur votre pastille de départ <strong>1</strong> et rejouer aussitôt.</li>
+            <li>Atterrir sur un cheval adverse le renvoie dans son camp.</li>
+            <li>Montez l'échelle finale <strong>1 → 6</strong> (ou choisissez d'y entrer sur un 6) pour ramener vos <strong>4/4</strong> chevaux.</li>
+            <li><strong>Cadeaux & Dé :</strong> seul un cadeau de <strong>1</strong> lance le dé pendant le tour de lancer (<strong>turnPhase === 'roll'</strong>) du joueur actif ; les plus gros cadeaux font monter la cagnotte en étoiles.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Connexion TikTok Live</div>
+        <label for="tt-username">Pseudo TikTok</label>
+        <input id="tt-username" type="text" maxlength="32" placeholder="moncompte_tiktok" autocomplete="off" />
+
+        <div class="row-btns">
+          <button class="action-btn" id="connect-btn" type="button">Connecter</button>
+          <button class="action-btn secondary-btn" id="disconnect-btn" type="button">Déconnecter</button>
+        </div>
+
+        <div class="status-line">
+          <span id="status-dot" class="dot"></span>
+          <span id="status-text">Déconnecté</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tests "go", Cadeaux, Échelle & 4/4</div>
+        <div data-save-key="petits-chevaux-save" data-save-label="💾 Sauvegarder mon pseudo"></div>
+        <div class="row-btns" style="margin-bottom:6px;">
+          <button class="action-btn secondary-btn" id="sim-go-btn" type="button">🙋 Simuler "go"</button>
+          <button class="action-btn" id="gift-one-btn" type="button">🪙 Cadeau 1 (Dé)</button>
+        </div>
+        <div class="row-btns" style="margin-bottom:6px;">
+          <button class="action-btn secondary-btn" id="force-six-btn" type="button">🎯 Sortie / 6</button>
+          <button class="action-btn secondary-btn" id="trigger-ladder-btn" type="button">🪜 Échelle 1-6</button>
+        </div>
+        <div class="row-btns" style="margin-bottom:6px;">
+          <button class="action-btn secondary-btn" id="simulate-big-gift-btn" type="button">🎁 Simuler un gros cadeau</button>
+          <button class="action-btn secondary-btn" id="simulate-share-btn" type="button">📨 Simuler un partage</button>
+        </div>
+        <div class="row-btns" style="margin-bottom:6px;">
+          <button class="action-btn secondary-btn" id="near-finish-btn" type="button">🏁 Presque 4/4</button>
+          <button class="action-btn secondary-btn" id="reset-game-btn" type="button">🔄 Réinitialiser</button>
+        </div>
+        <div class="gift-grid">
+          <button class="gift-btn" data-gift="rose" data-val="1" type="button">🌹 Cadeau 1 (+1 • Dé)</button>
+          <button class="gift-btn" data-gift="heart" data-val="5" type="button">💖 Cadeau 5 (+Étoiles)</button>
+          <button class="gift-btn" data-gift="donut" data-val="20" type="button">🍩 Cadeau 20 (+Étoiles)</button>
+          <button class="gift-btn" data-gift="galaxy" data-val="100" type="button">🌌 Cadeau 100 (+Étoiles)</button>
+          <button class="gift-btn span-2" data-gift="lion" data-val="500" type="button">🦁 Cadeau 500 (+Étoiles)</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Journal de Course & Étoiles</div>
+        <div id="event-log">Tapez "go" pour rejoindre un camp. Seul un cadeau de 1 lance le dé en phase "roll".</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Web Audio sound effects synthesizer (zero external audio URLs)
+      let audioCtx = null;
+      function ensureAudio() {
+        try {
+          if (!audioCtx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) audioCtx = new AC();
+          }
+          if (audioCtx && audioCtx.state === "suspended") {
+            audioCtx.resume().catch(() => {});
+          }
+        } catch (_) {}
+      }
+
+      function playTone(freq, dur = 0.08, type = "sine", gainVal = 0.1) {
+        if (!audioCtx) return;
+        try {
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          g.gain.setValueAtTime(gainVal, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          osc.connect(g);
+          g.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + dur);
+        } catch (_) {}
+      }
+
+      function playGiftSound() {
+        playTone(659.25, 0.09, "triangle", 0.12);
+        setTimeout(() => playTone(880, 0.12, "triangle", 0.12), 70);
+      }
+
+      function playCaptureSound() {
+        playTone(340, 0.1, "sawtooth", 0.1);
+        setTimeout(() => playTone(210, 0.16, "sawtooth", 0.1), 80);
+      }
+
+      function playVictorySound() {
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((n, idx) => {
+          setTimeout(() => playTone(n, 0.18, "triangle", 0.14), idx * 110);
+        });
+      }
+
+      // 15x15 square board geometry inside the 9:16 vertical stage (rows 0..14, cols 0..14)
+      const BOARD = {
+        x: 34,
+        y: 262,
+        size: 652,
+        grid: 15
+      };
+
+      const CELL = BOARD.size / BOARD.grid;
+
+      // Single source-of-truth helpers for any (row, col) square on the 15x15 grid
+      function cellRect(r, c) {
+        return {
+          x: BOARD.x + c * CELL,
+          y: BOARD.y + r * CELL,
+          w: CELL,
+          h: CELL
+        };
+      }
+
+      function cellCenter(r, c) {
+        return {
+          x: BOARD.x + (c + 0.5) * CELL,
+          y: BOARD.y + (r + 0.5) * CELL
+        };
+      }
+
+      // 52-cell clockwise outer circuit around the 15x15 grid:
+      // - Bleu departure start square at (r=6, c=1) [index 0]
+      // - Jaune departure start square at (r=1, c=8) [index 13]
+      // - Vert departure start square at (r=8, c=13) [index 26]
+      // - Rouge departure start square at (r=13, c=6) [index 39]
+      const TRACK_COORDS = (() => {
+        const coords = [];
+        for (let c = 1; c <= 5; c++) coords.push({ r: 6, c });     // 0..4
+        for (let r = 5; r >= 0; r--) coords.push({ r, c: 6 });    // 5..10
+        coords.push({ r: 0, c: 7 });                                // 11
+        coords.push({ r: 0, c: 8 });                                // 12
+        for (let r = 1; r <= 5; r++) coords.push({ r, c: 8 });     // 13..17 (Jaune start at 13)
+        for (let c = 9; c <= 14; c++) coords.push({ r: 6, c });    // 18..23
+        coords.push({ r: 7, c: 14 });                               // 24
+        coords.push({ r: 8, c: 14 });                               // 25
+        for (let c = 13; c >= 9; c--) coords.push({ r: 8, c });    // 26..30 (Vert start at 26)
+        for (let r = 9; r <= 14; r++) coords.push({ r, c: 8 });    // 31..36
+        coords.push({ r: 14, c: 7 });                               // 37
+        coords.push({ r: 14, c: 6 });                               // 38
+        for (let r = 13; r >= 9; r--) coords.push({ r, c: 6 });   // 39..43 (Rouge start at 39)
+        for (let c = 5; c >= 0; c--) coords.push({ r: 8, c });     // 44..49
+        coords.push({ r: 7, c: 0 });                                // 50
+        coords.push({ r: 6, c: 0 });                                // 51
+        return coords;
+      })();
+
+      // Four camps: Bleu (0, top-left), Jaune (1, top-right), Rouge (2, bottom-left), Vert (3, bottom-right)
+      const CAMPS = [
+        {
+          id: 0,
+          name: "Bleu",
+          color: "#3b82f6",
+          dark: "#1e3a8a",
+          light: "#dbeafe",
+          startTrackIndex: 0, // (r=6, c=1)
+          ladder: [
+            { r: 7, c: 1 },
+            { r: 7, c: 2 },
+            { r: 7, c: 3 },
+            { r: 7, c: 4 },
+            { r: 7, c: 5 },
+            { r: 7, c: 6 }
+          ]
+        },
+        {
+          id: 1,
+          name: "Jaune",
+          color: "#eab308",
+          dark: "#713f12",
+          light: "#fef9c3",
+          startTrackIndex: 13, // (r=1, c=8)
+          ladder: [
+            { r: 1, c: 7 },
+            { r: 2, c: 7 },
+            { r: 3, c: 7 },
+            { r: 4, c: 7 },
+            { r: 5, c: 7 },
+            { r: 6, c: 7 }
+          ]
+        },
+        {
+          id: 2,
+          name: "Rouge",
+          color: "#ef4444",
+          dark: "#7f1d1d",
+          light: "#fee2e2",
+          startTrackIndex: 39, // (r=13, c=6)
+          ladder: [
+            { r: 13, c: 7 },
+            { r: 12, c: 7 },
+            { r: 11, c: 7 },
+            { r: 10, c: 7 },
+            { r: 9, c: 7 },
+            { r: 8, c: 7 }
+          ]
+        },
+        {
+          id: 3,
+          name: "Vert",
+          color: "#22c55e",
+          dark: "#14532d",
+          light: "#dcfce7",
+          startTrackIndex: 26, // (r=8, c=13)
+          ladder: [
+            { r: 7, c: 13 },
+            { r: 7, c: 12 },
+            { r: 7, c: 11 },
+            { r: 7, c: 10 },
+            { r: 7, c: 9 },
+            { r: 7, c: 8 }
+          ]
+        }
+      ];
+
+      // Unified geometry for all 4 identical camps
+      const CAMP_FRAME_SPEC = {
+        boxCells: 4.5,
+        insetCells: 1.0,
+        outerRadius: 11,
+        innerPad: 3,
+        innerRadius: 8,
+        headerHeight: 24,
+        slotCols: [-0.24, 0.24],
+        slotRows: [-0.14, 0.23]
+      };
+
+      function getCampRect(campOrIndex) {
+        const camp = typeof campOrIndex === "number" ? CAMPS[campOrIndex] : campOrIndex;
+        const boxSize = CAMP_FRAME_SPEC.boxCells * CELL;
+        const inset = CAMP_FRAME_SPEC.insetCells * CELL;
+        const leftX = BOARD.x + inset;
+        const rightX = BOARD.x + BOARD.size - inset - boxSize;
+        const topY = BOARD.y + inset;
+        const bottomY = BOARD.y + BOARD.size - inset - boxSize;
+
+        if (camp.id === 0) return { x: leftX, y: topY, w: boxSize, h: boxSize };
+        if (camp.id === 1) return { x: rightX, y: topY, w: boxSize, h: boxSize };
+        if (camp.id === 2) return { x: leftX, y: bottomY, w: boxSize, h: boxSize };
+        return { x: rightX, y: bottomY, w: boxSize, h: boxSize };
+      }
+
+      function getCampYardSlotCoords(camp, slotIndex) {
+        const rect = getCampRect(camp);
+        const colOffset = CAMP_FRAME_SPEC.slotCols[slotIndex % 2];
+        const rowOffset = CAMP_FRAME_SPEC.slotRows[Math.floor(slotIndex / 2) % 2];
+        const playTop = rect.y + CAMP_FRAME_SPEC.headerHeight;
+        const playHeight = rect.h - CAMP_FRAME_SPEC.headerHeight;
+        return {
+          x: rect.x + rect.w * (0.5 + colOffset),
+          y: playTop + playHeight * (0.5 + rowOffset)
+        };
+      }
+
+      // Departure '1' badges locked to each camp's exact starting anchor and used as spawn point on 6
+      function getDepartureBadgeAnchor(camp) {
+        const startCell = TRACK_COORDS[camp.startTrackIndex];
+        const rect = cellRect(startCell.r, startCell.c);
+        const rBadge = CELL * 0.30;
+        const flushGap = rBadge * 0.85;
+
+        if (camp.id === 0) {
+          return { x: rect.x + rBadge * 0.45, y: rect.y - flushGap * 0.32, r: rBadge };
+        }
+        if (camp.id === 1) {
+          return { x: rect.x - flushGap * 0.32, y: rect.y + rBadge * 0.45, r: rBadge };
+        }
+        if (camp.id === 3) {
+          return { x: rect.x + rect.w + flushGap * 0.32, y: rect.y + rect.h - rBadge * 0.45, r: rBadge };
+        }
+        return { x: rect.x + rect.w - rBadge * 0.45, y: rect.y + rect.h + flushGap * 0.32, r: rBadge };
+      }
+
+      function getCampSpawnPosition(camp) {
+        const anchor = getDepartureBadgeAnchor(camp);
+        return { x: anchor.x, y: anchor.y };
+      }
+
+      // Stylized portrait SVG helper for instant full-bleed avatar rendering on "go"
+      function createPortraitDataUrl(name, bgHex, accentHex) {
+        const initial = String(name || "GO").slice(0, 1).toUpperCase();
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="${bgHex}"/>
+              <stop offset="100%" stop-color="#0f172a"/>
+            </linearGradient>
+          </defs>
+          <rect width="320" height="320" fill="url(#g)"/>
+          <circle cx="160" cy="118" r="54" fill="#f8fafc" fill-opacity="0.28" stroke="${accentHex}" stroke-width="5"/>
+          <path d="M58 286 C58 214, 262 214, 262 286 Z" fill="#f8fafc" fill-opacity="0.24"/>
+          <text x="160" y="135" text-anchor="middle" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="52" font-weight="900">${initial}</text>
+          <text x="160" y="256" text-anchor="middle" fill="#fde047" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800">@${name}</text>
+        </svg>`;
+        return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      }
+
+      const DEMO_GO_PLAYERS = [
+        { username: "alex_live", nickname: "Alex", avatarUrl: createPortraitDataUrl("alex_live", "#2563eb", "#93c5fd") },
+        { username: "maya_star", nickname: "Maya", avatarUrl: createPortraitDataUrl("maya_star", "#ca8a04", "#fde047") },
+        { username: "leo_turbo", nickname: "Leo", avatarUrl: createPortraitDataUrl("leo_turbo", "#dc2626", "#fca5a5") },
+        { username: "chloe_gg", nickname: "Chloe", avatarUrl: createPortraitDataUrl("chloe_gg", "#16a34a", "#86efac") }
+      ];
+
+      let campPlayers = [null, null, null, null];
+      let campStarsEarned = [0, 0, 0, 0];
+      let horses = [];
+
+      // Turn phase state machine: 'roll' | 'rolling' | 'choice' | 'moving' | 'finished'
+      const state = {
+        time: 0,
+        turn: 0,
+        turnPhase: "roll",
+        dieValue: 6,
+        diceTimer: 0,
+        dieBounceY: 0,
+        dieVelY: 0,
+        pendingBonus: 0,
+        forcedDie: null,
+        pendingChoice: null,
+        movingQueue: null,
+        winnerCamp: null,
+        // Progressive gift pool and étoiles reward
+        giftPoolRaw: 100,
+        displayedPool: 100,
+        recompenseEtoiles: 20,
+        jackpotPulse: 0,
+        payoutWinner: null,
+        payoutEtoiles: 0,
+        trails: [],
+        dustPuffs: [],
+        confetti: [],
+        ws: null,
+        reconnectTimer: null,
+        manualDisconnect: false,
+        isSimulation: false,
+        demoIdx: 0
+      };
+
+      function computeEtoilesFromPool(poolVal) {
+        return Math.max(0, Math.floor(Number(poolVal || 0) * 0.2));
+      }
+
+      function formatEtoiles(count) {
+        const n = Math.max(0, Math.floor(Number(count) || 0));
+        return `${n} ${n === 1 ? "étoile" : "étoiles"}`;
+      }
+
+      function syncEtoilesReward() {
+        state.recompenseEtoiles = computeEtoilesFromPool(state.giftPoolRaw);
+      }
+
+      function addGiftToEtoilesPool(amount, label, sender) {
+        const val = Math.max(1, Math.floor(Number(amount) || 1));
+        state.giftPoolRaw += val;
+        syncEtoilesReward();
+        state.jackpotPulse = 1.0;
+        playGiftSound();
+        logEvent(`🎁 ${sender} (${label}) • Cagnotte : ${formatEtoiles(state.recompenseEtoiles)}`);
+      }
+
+      function getActiveTurnPlayer() {
+        const activeCampId = state.turn % CAMPS.length;
+        return campPlayers[activeCampId] || null;
+      }
+
+      function isSenderActiveTurnPlayer(senderName) {
+        const activePlayer = getActiveTurnPlayer();
+        if (!activePlayer) return true;
+        const cleanSender = String(senderName || "").trim().replace(/^@+/, "").toLowerCase();
+        if (!cleanSender) return false;
+        return (
+          cleanSender === activePlayer.username.toLowerCase() ||
+          cleanSender === activePlayer.nickname.toLowerCase()
+        );
+      }
+
+      function initRace(keepPlayers = true, resetJackpot = false) {
+        horses = [];
+        for (const camp of CAMPS) {
+          for (let hIdx = 0; hIdx < 4; hIdx++) {
+            horses.push({
+              id: `${camp.id}-${hIdx}`,
+              campId: camp.id,
+              slotIndex: hIdx,
+              name: `${camp.name} #${hIdx + 1}`,
+              color: camp.color,
+              dark: camp.dark,
+              state: "stable", // 'stable' | 'track' | 'ladder' | 'finished'
+              trackSteps: 0,
+              ladderStep: -1,
+              exitedOnSixBadge: false
+            });
+          }
+        }
+        if (!keepPlayers) {
+          campPlayers = [null, null, null, null];
+          campStarsEarned = [0, 0, 0, 0];
+        }
+        if (resetJackpot) {
+          state.giftPoolRaw = 100;
+          state.displayedPool = 100;
+          syncEtoilesReward();
+        }
+        state.turn = 0;
+        state.turnPhase = "roll";
+        state.dieValue = 6;
+        state.diceTimer = 0;
+        state.dieBounceY = 0;
+        state.dieVelY = 0;
+        state.pendingBonus = 0;
+        state.forcedDie = null;
+        state.pendingChoice = null;
+        state.movingQueue = null;
+        state.winnerCamp = null;
+        state.isSimulation = false;
+        state.payoutWinner = null;
+        state.payoutEtoiles = 0;
+        state.trails = [];
+        state.dustPuffs = [];
+        state.confetti = [];
+      }
+
+      function getTrackTileIndex(horse) {
+        const camp = CAMPS[horse.campId];
+        return (camp.startTrackIndex + horse.trackSteps) % TRACK_COORDS.length;
+      }
+
+      function getHorsePosition(horse) {
+        const camp = CAMPS[horse.campId];
+        if (horse.state === "stable") {
+          return getCampYardSlotCoords(camp, horse.slotIndex);
+        }
+        if (horse.state === "track") {
+          // On exact exit via 6, stand on the departure '1' badge anchor; on subsequent steps, stand on the grid square
+          if (horse.trackSteps === 0 && horse.exitedOnSixBadge) {
+            return getCampSpawnPosition(camp);
+          }
+          const cell = TRACK_COORDS[getTrackTileIndex(horse)];
+          return cellCenter(cell.r, cell.c);
+        }
+        const ladderIdx = Math.max(0, Math.min(5, horse.ladderStep));
+        const cell = camp.ladder[ladderIdx];
+        return cellCenter(cell.r, cell.c);
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (m) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        }[m]));
+      }
+
+      function logEvent(msg) {
+        const el = document.getElementById("event-log");
+        if (!el) return;
+        const t = new Date().toLocaleTimeString("fr-FR", { hour12: false });
+        el.innerHTML = `<div>[${t}] ${escapeHtml(msg)}</div>` + el.innerHTML;
+      }
+
+      function roundRect(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+        c.closePath();
+      }
+
+      function drawStarShape(c, cx, cy, spikes, outerR, innerR) {
+        let rot = (Math.PI / 2) * 3;
+        const step = Math.PI / spikes;
+        c.beginPath();
+        c.moveTo(cx, cy - outerR);
+        for (let i = 0; i < spikes; i++) {
+          c.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+          rot += step;
+          c.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+          rot += step;
+        }
+        c.closePath();
+      }
+
+      function registerPlayerGo(username, nickname, avatarUrl = "") {
+        const cleanUser = String(username || nickname || "Joueur").trim().replace(/^@+/, "");
+        const cleanNick = String(nickname || cleanUser).trim();
+
+        const existingIdx = campPlayers.findIndex(
+          (p) => p && p.username.toLowerCase() === cleanUser.toLowerCase()
+        );
+        if (existingIdx !== -1) {
+          logEvent(`${cleanNick} est déjà dans le camp ${CAMPS[existingIdx].name}.`);
+          return;
+        }
+
+        const freeCampIdx = campPlayers.findIndex((p) => p === null);
+        if (freeCampIdx === -1) {
+          logEvent(`Les 4 camps sont complets ! ${cleanNick} est en attente.`);
+          return;
+        }
+
+        const camp = CAMPS[freeCampIdx];
+        const resolvedAvatar = avatarUrl || createPortraitDataUrl(cleanNick, camp.color, "#fde047");
+
+        const playerObj = {
+          username: cleanUser,
+          nickname: cleanNick,
+          avatarUrl: resolvedAvatar,
+          img: null,
+          loaded: false
+        };
+
+        try {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            playerObj.img = img;
+            playerObj.loaded = true;
+          };
+          img.onerror = () => {
+            playerObj.loaded = false;
+          };
+          img.src = resolvedAvatar;
+        } catch (_) {}
+
+        campPlayers[freeCampIdx] = playerObj;
+        playTone(587.33, 0.1, "triangle", 0.12);
+        logEvent(`🙋 ${cleanNick} ("go") rejoint le camp ${camp.name} !`);
+      }
+
+      function spawnDust(x, y, color) {
+        for (let i = 0; i < 6; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 25 + Math.random() * 55;
+          state.dustPuffs.push({
+            x,
+            y: y + 6,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 18,
+            radius: 3 + Math.random() * 4,
+            color,
+            life: 0.45 + Math.random() * 0.25
+          });
+        }
+      }
+
+      function spawnVictoryCelebration(camp) {
+        state.winnerCamp = camp;
+        state.turnPhase = "finished";
+        syncEtoilesReward();
+        const wonStars = state.recompenseEtoiles;
+        state.payoutEtoiles = wonStars;
+        campStarsEarned[camp.id] = (campStarsEarned[camp.id] || 0) + wonStars;
+        const regPlayer = campPlayers[camp.id];
+        state.payoutWinner = regPlayer ? `${regPlayer.nickname} (${camp.name})` : camp.name;
+        if (!state.isSimulation && regPlayer && wonStars > 0 && window.ArcadeStars) {
+          window.ArcadeStars.award({ username: regPlayer.username, amount: wonStars })
+            .catch(error => console.error("Impossible d’ajouter les étoiles des Petits chevaux au solde global :", error));
+        }
+
+        const palette = ["#ef4444", "#3b82f6", "#eab308", "#22c55e", "#fde047", "#ffffff"];
+        for (let i = 0; i < 84; i++) {
+          state.confetti.push({
+            x: W * (0.16 + Math.random() * 0.68),
+            y: BOARD.y + BOARD.size * 0.45,
+            vx: (Math.random() - 0.5) * 360,
+            vy: -170 - Math.random() * 260,
+            size: 6 + Math.random() * 7,
+            color: palette[i % palette.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 10,
+            life: 2.5 + Math.random() * 0.9
+          });
+        }
+        playVictorySound();
+        logEvent(`🏆 4/4 CHEVAUX RAMENÉS par ${state.payoutWinner} (+${formatEtoiles(wonStars)}) !`);
+      }
+
+      function checkAndSendBackOpponent(movingHorse) {
+        if (movingHorse.state !== "track") return;
+        const targetTile = getTrackTileIndex(movingHorse);
+
+        horses.forEach((other) => {
+          if (other.campId !== movingHorse.campId && other.state === "track") {
+            if (getTrackTileIndex(other) === targetTile) {
+              const pos = getHorsePosition(other);
+              spawnDust(pos.x, pos.y, other.color);
+              other.state = "stable";
+              other.trackSteps = 0;
+              other.ladderStep = -1;
+              other.exitedOnSixBadge = false;
+              playCaptureSound();
+              logEvent(`💥 ${movingHorse.name} renvoie ${other.name} dans son camp !`);
+            }
+          }
+        });
+      }
+
+      function isHorseAheadOfLadder(horse, steps) {
+        if (horse.state === "ladder" || horse.state === "finished") return true;
+        if (horse.state === "track") {
+          return horse.trackSteps + steps >= 46;
+        }
+        return false;
+      }
+
+      function finishTurn(rolledSix) {
+        if (state.winnerCamp) {
+          state.turnPhase = "finished";
+          return;
+        }
+        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        if (rolledSix) {
+          state.turnPhase = "roll";
+          logEvent(`🎲 ${activeCamp.name} fait 6 et rejoue immédiatement (phase roll) !`);
+        } else {
+          state.turn = (state.turn + 1) % CAMPS.length;
+          state.turnPhase = "roll";
+        }
+      }
+
+      function startHorseMovement(horse, steps, rolledSix) {
+        if (state.winnerCamp) return;
+        horse.exitedOnSixBadge = false;
+        state.turnPhase = "moving";
+        state.movingQueue = {
+          horse,
+          remaining: steps,
+          stepTimer: 0.12,
+          rolledSix
+        };
+      }
+
+      function checkCampAllFourFinished(campId) {
+        const campHorses = horses.filter((h) => h.campId === campId);
+        return campHorses.length === 4 && campHorses.every((h) => h.state === "finished");
+      }
+
+      function stepSingleMove(queueItem) {
+        const horse = queueItem.horse;
+        const prevPos = getHorsePosition(horse);
+        state.trails.push({
+          x: prevPos.x,
+          y: prevPos.y,
+          color: horse.color,
+          life: 0.38
+        });
+
+        playTone(500 + (horse.trackSteps % 8) * 36, 0.06, "sine", 0.1);
+
+        if (horse.state === "track") {
+          if (horse.trackSteps >= 51) {
+            horse.state = "ladder";
+            horse.ladderStep = 0;
+            logEvent(`${horse.name} entre dans la case 1 de son échelle finale !`);
+          } else {
+            horse.trackSteps += 1;
+          }
+        } else if (horse.state === "ladder") {
+          if (horse.ladderStep < 5) {
+            horse.ladderStep += 1;
+            const num = horse.ladderStep + 1;
+            if (num === 6) {
+              horse.state = "finished";
+              const endPos = getHorsePosition(horse);
+              spawnDust(endPos.x, endPos.y, "#fde047");
+              const doneCount = horses.filter((h) => h.campId === horse.campId && h.state === "finished").length;
+              logEvent(`⭐ ${horse.name} atteint la case 6 (${doneCount}/4 chevaux ramenés) !`);
+              if (checkCampAllFourFinished(horse.campId)) {
+                spawnVictoryCelebration(CAMPS[horse.campId]);
+                return true;
+              }
+            }
+          } else {
+            horse.state = "finished";
+            if (checkCampAllFourFinished(horse.campId)) {
+              spawnVictoryCelebration(CAMPS[horse.campId]);
+              return true;
+            }
+          }
+        }
+
+        const nextPos = getHorsePosition(horse);
+        spawnDust(nextPos.x, nextPos.y, horse.color);
+        return false;
+      }
+
+      function applyRollRules(campId, dieVal, bonusSteps = 0) {
+        const camp = CAMPS[campId];
+        const totalSteps = dieVal + bonusSteps;
+        const rolledSix = dieVal === 6;
+        const campHorses = horses.filter((h) => h.campId === campId);
+        const yardHorse = campHorses.find((h) => h.state === "stable");
+
+        // Roll 6 exits a horse from camp onto departure badge '1' and grants instant replay
+        if (rolledSix && yardHorse) {
+          yardHorse.state = "track";
+          yardHorse.trackSteps = 0;
+          yardHorse.exitedOnSixBadge = true;
+          const spawnPos = getCampSpawnPosition(camp);
+          spawnDust(spawnPos.x, spawnPos.y, camp.color);
+          checkAndSendBackOpponent(yardHorse);
+          playTone(440, 0.09, "triangle", 0.13);
+          logEvent(`${camp.name} fait 6 : ${yardHorse.name} démarre sur la case 1 !`);
+          finishTurn(true);
+          return;
+        }
+
+        const movableHorses = campHorses.filter((h) => h.state === "track" || h.state === "ladder");
+        if (movableHorses.length === 0) {
+          logEvent(`${camp.name} n'a aucun cheval actif sur la piste.`);
+          finishTurn(rolledSix);
+          return;
+        }
+
+        // Optional 1-6 ladder climb choice when candidates can enter/climb the ladder
+        const ladderCandidates = movableHorses.filter((h) => isHorseAheadOfLadder(h, totalSteps));
+        if (rolledSix && !yardHorse && ladderCandidates.length > 0) {
+          state.turnPhase = "choice";
+          state.pendingChoice = {
+            campId,
+            dieValue: dieVal,
+            totalSteps,
+            candidates: ladderCandidates
+          };
+          logEvent(`${camp.name} (6) : Choisissez de monter sur l'échelle 1-2-3-4-5-6 !`);
+          return;
+        }
+
+        const targetHorse = movableHorses.sort((a, b) => {
+          const scoreA = a.state === "ladder" ? 100 + a.ladderStep : a.trackSteps;
+          const scoreB = b.state === "ladder" ? 100 + b.ladderStep : b.trackSteps;
+          return scoreB - scoreA;
+        })[0];
+
+        startHorseMovement(targetHorse, totalSteps, rolledSix);
+      }
+
+      function rollDie(actorName = null, bonusSteps = 0, forcedValue = null) {
+        ensureAudio();
+        if (state.turnPhase !== "roll" && !state.winnerCamp) return;
+
+        if (state.winnerCamp) {
+          initRace(true, false);
+          logEvent("Nouvelle manche lancée !");
+        }
+
+        state.turnPhase = "rolling";
+        state.diceTimer = 0.65;
+        state.dieBounceY = -14;
+        state.dieVelY = -120;
+        state.pendingBonus = bonusSteps;
+        state.forcedDie = forcedValue;
+        playTone(280, 0.07, "square", 0.08);
+        if (actorName) {
+          logEvent(`${actorName} lance le dé${forcedValue === 6 ? " (6)" : ""} !`);
+        }
+      }
+
+      function drawDie3D(cx, cy, size, val, rolling) {
+        ctx.save();
+        ctx.translate(cx, cy + state.dieBounceY);
+        if (rolling) {
+          ctx.rotate(Math.sin(state.time * 52) * 0.36);
+        }
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        roundRect(ctx, -size / 2 + 3, -size / 2 + 6 - state.dieBounceY * 0.5, size, size, 10);
+        ctx.fill();
+
+        const grad = ctx.createLinearGradient(-size / 2, -size / 2, size / 2, size / 2);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.65, "#f1f5f9");
+        grad.addColorStop(1, "#cbd5e1");
+        ctx.fillStyle = grad;
+        roundRect(ctx, -size / 2, -size / 2, size, size, 10);
+        ctx.fill();
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#64748b";
+        ctx.stroke();
+
+        const pips = {
+          1: [[0, 0]],
+          2: [[-0.25, -0.25], [0.25, 0.25]],
+          3: [[-0.25, -0.25], [0, 0], [0.25, 0.25]],
+          4: [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]],
+          5: [[-0.25, -0.25], [0.25, -0.25], [0, 0], [-0.25, 0.25], [0.25, 0.25]],
+          6: [[-0.25, -0.28], [0.25, -0.28], [-0.25, 0], [0.25, 0], [-0.25, 0.28], [0.25, 0.28]]
+        }[val] || [[0, 0]];
+
+        for (const [px, py] of pips) {
+          ctx.fillStyle = val === 1 || val === 6 ? "#dc2626" : "#0f172a";
+          ctx.beginPath();
+          ctx.arc(px * size, py * size, size * 0.09, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Renders full-bleed player avatar portrait when joined via "go", or "TAPER 'GO'" when empty
+      function drawCampFullFramePhoto(camp, player, hx, hy, hw, hh) {
+        ctx.save();
+        const pad = CAMP_FRAME_SPEC.innerPad;
+        const innerX = hx + pad;
+        const innerY = hy + pad;
+        const innerW = hw - pad * 2;
+        const innerH = hh - pad * 2;
+
+        roundRect(ctx, innerX, innerY, innerW, innerH, CAMP_FRAME_SPEC.innerRadius);
+        ctx.clip();
+
+        if (player && player.loaded && player.img) {
+          const imgRatio = player.img.width / Math.max(1, player.img.height);
+          const boxRatio = innerW / Math.max(1, innerH);
+          let dw = innerW;
+          let dh = innerH;
+          let dx = innerX;
+          let dy = innerY;
+
+          if (imgRatio > boxRatio) {
+            dw = dh * imgRatio;
+            dx = innerX - (dw - innerW) / 2;
+          } else {
+            dh = dw / imgRatio;
+            dy = innerY - (dh - innerH) / 2;
+          }
+
+          ctx.drawImage(player.img, dx, dy, dw, dh);
+          ctx.fillStyle = "rgba(15, 23, 42, 0.22)";
+          ctx.fillRect(innerX, innerY, innerW, innerH);
+        } else {
+          const bgGrad = ctx.createLinearGradient(innerX, innerY, innerX + innerW, innerY + innerH);
+          bgGrad.addColorStop(0, camp.color);
+          bgGrad.addColorStop(1, camp.dark);
+          ctx.fillStyle = bgGrad;
+          ctx.fillRect(innerX, innerY, innerW, innerH);
+
+          const bodyCenterY = innerY + CAMP_FRAME_SPEC.headerHeight + (innerH - CAMP_FRAME_SPEC.headerHeight) * 0.54;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+          ctx.beginPath();
+          ctx.arc(innerX + innerW / 2, bodyCenterY - 12, Math.min(innerW, innerH) * 0.16, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(innerX + innerW / 2, bodyCenterY + 24, Math.min(innerW, innerH) * 0.31, Math.min(innerW, innerH) * 0.18, 0, Math.PI, 0);
+          ctx.fill();
+
+          ctx.fillStyle = "rgba(255, 255, 255, 0.42)";
+          ctx.font = "900 25px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(player ? player.nickname.slice(0, 2).toUpperCase() : "GO", innerX + innerW / 2, bodyCenterY - 12);
+        }
+
+        const hdrH = CAMP_FRAME_SPEC.headerHeight - pad;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+        ctx.fillRect(innerX, innerY, innerW, hdrH);
+        ctx.fillStyle = "#fde047";
+        ctx.font = "800 10.5px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const headerLabel = player
+          ? `${camp.name.toUpperCase()} • ${player.nickname.slice(0, 12)}`
+          : `${camp.name.toUpperCase()} • TAPER "GO"`;
+        ctx.fillText(headerLabel, innerX + innerW / 2, innerY + hdrH / 2 + 0.5);
+
+        ctx.restore();
+      }
+
+      // Renders numbered horse tokens ON TOP of camp portraits and track squares
+      function drawHorsePiece(horse, activeTurn, isCandidate = false) {
+        const pos = getHorsePosition(horse);
+        const hop = state.movingQueue && state.movingQueue.horse === horse
+          ? Math.abs(Math.sin(state.time * 26)) * 10
+          : Math.sin(state.time * 4 + horse.slotIndex) * 2;
+        const onCampPhoto = horse.state === "stable";
+        const radius = CELL * (onCampPhoto ? 0.35 : 0.31);
+
+        ctx.save();
+        ctx.translate(pos.x, pos.y - hop);
+
+        if (isCandidate) {
+          const pulse = 1 + Math.sin(state.time * 10) * 0.14;
+          ctx.strokeStyle = "#fde047";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius * 1.35 * pulse, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (activeTurn) {
+          ctx.strokeStyle = "rgba(253, 224, 71, 0.72)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius * 1.24, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.84)";
+        ctx.beginPath();
+        ctx.arc(0, 1.5, radius + 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        const grad = ctx.createRadialGradient(-3, -4, 2, 0, 0, radius);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.24, horse.color);
+        grad.addColorStop(1, horse.dark);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        ctx.font = `${Math.round(radius * 1.15)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🐴", 0, 0.5);
+
+        ctx.fillStyle = "#0f172a";
+        ctx.beginPath();
+        ctx.arc(radius * 0.72, radius * 0.72, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "#fde047";
+        ctx.stroke();
+
+        ctx.fillStyle = "#fde047";
+        ctx.font = "900 8.5px Inter, system-ui, sans-serif";
+        ctx.fillText(String(horse.slotIndex + 1), radius * 0.72, radius * 0.75);
+
+        ctx.restore();
+      }
+
+      // Center hub displaying ONLY "<N> étoiles" (no "%" or "pièces TikTok") plus die
+      function drawCentralHub(center) {
+        const pulseScale = 1 + state.jackpotPulse * 0.08;
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.scale(pulseScale, pulseScale);
+
+        ctx.save();
+        ctx.shadowColor = "#fde047";
+        ctx.shadowBlur = 18 + state.jackpotPulse * 14;
+        drawStarShape(ctx, 0, 0, 5, CELL * 1.52, CELL * 0.72);
+        ctx.fillStyle = "rgba(250, 204, 21, 0.2)";
+        ctx.fill();
+        ctx.restore();
+
+        const hubW = CELL * 2.76;
+        const hubH = CELL * 2.86;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        roundRect(ctx, -hubW / 2, -hubH / 2, hubW, hubH, 14);
+        ctx.fill();
+        ctx.strokeStyle = state.jackpotPulse > 0.05 ? "#ffffff" : "#facc15";
+        ctx.lineWidth = 2.4;
+        ctx.stroke();
+
+        const liveStars = computeEtoilesFromPool(state.displayedPool);
+        ctx.fillStyle = "#fde047";
+        ctx.font = "900 11.5px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`⭐ ${formatEtoiles(liveStars)}`, 0, -hubH / 2 + 16);
+
+        const barW = hubW - 16;
+        const barH = 5;
+        const barX = -barW / 2;
+        const barY = -hubH / 2 + 30;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+        roundRect(ctx, barX, barY, barW, barH, 3);
+        ctx.fill();
+
+        const ratio = Math.max(0.08, Math.min(1, (state.displayedPool % 500) / 500 || (state.displayedPool > 0 ? 1 : 0.08)));
+        ctx.fillStyle = "#facc15";
+        roundRect(ctx, barX, barY, barW * ratio, barH, 3);
+        ctx.fill();
+
+        drawDie3D(0, 17, Math.round(CELL * 1.18), state.dieValue, state.turnPhase === "rolling");
+
+        ctx.restore();
+      }
+
+      function drawBoard() {
+        const frameGrad = ctx.createLinearGradient(BOARD.x - 14, BOARD.y - 14, BOARD.x + BOARD.size + 14, BOARD.y + BOARD.size + 14);
+        frameGrad.addColorStop(0, "#5c2d16");
+        frameGrad.addColorStop(0.5, "#36190c");
+        frameGrad.addColorStop(1, "#1e0e06");
+        ctx.fillStyle = frameGrad;
+        roundRect(ctx, BOARD.x - 14, BOARD.y - 14, BOARD.size + 28, BOARD.size + 28, 24);
+        ctx.fill();
+
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(BOARD.x, BOARD.y, BOARD.size, BOARD.size);
+
+        // 52 outer track squares + colored start squares
+        TRACK_COORDS.forEach((cell, idx) => {
+          const rect = cellRect(cell.r, cell.c);
+          const { x, y, w, h } = rect;
+          const startCamp = CAMPS.find((c) => c.startTrackIndex === idx);
+
+          ctx.fillStyle = startCamp ? startCamp.color : "#ffffff";
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = startCamp ? "#0f172a" : "#475569";
+          ctx.lineWidth = startCamp ? 2.2 : 1.3;
+          ctx.strokeRect(x, y, w, h);
+        });
+
+        // Arrival ladders 1..6 leading to the center
+        for (const camp of CAMPS) {
+          camp.ladder.forEach((cell, idx) => {
+            const rect = cellRect(cell.r, cell.c);
+            const { x, y, w, h } = rect;
+            const center = cellCenter(cell.r, cell.c);
+            const num = idx + 1;
+
+            ctx.fillStyle = num === 6 ? "#fde047" : camp.color;
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, w, h);
+
+            ctx.fillStyle = num === 6 ? "#0f172a" : "#ffffff";
+            ctx.font = "900 13px Inter, system-ui, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(num === 6 ? "⭐" : String(num), center.x, center.y + 0.5);
+          });
+        }
+
+        // Four IDENTICAL camp frames with full-bleed avatars when joined ("go")
+        for (const camp of CAMPS) {
+          const rect = getCampRect(camp);
+          const { x: hx, y: hy, w: hw, h: hh } = rect;
+
+          ctx.save();
+          ctx.fillStyle = "rgba(15, 23, 42, 0.22)";
+          roundRect(ctx, hx + 2, hy + 4, hw, hh, CAMP_FRAME_SPEC.outerRadius);
+          ctx.fill();
+          ctx.restore();
+
+          drawCampFullFramePhoto(camp, campPlayers[camp.id], hx, hy, hw, hh);
+
+          ctx.strokeStyle = camp.color;
+          ctx.lineWidth = 3;
+          roundRect(ctx, hx, hy, hw, hh, CAMP_FRAME_SPEC.outerRadius);
+          ctx.stroke();
+        }
+
+        // Departure '1' badges locked to each camp's starting anchor
+        for (const camp of CAMPS) {
+          const badge = getDepartureBadgeAnchor(camp);
+
+          ctx.save();
+          ctx.fillStyle = "rgba(15, 23, 42, 0.42)";
+          ctx.beginPath();
+          ctx.arc(badge.x, badge.y + 1.5, badge.r + 1.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = camp.color;
+          ctx.beginPath();
+          ctx.arc(badge.x, badge.y, badge.r, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "900 12.5px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("1", badge.x, badge.y + 0.5);
+          ctx.restore();
+        }
+
+        // Central étoiles reward & die hub
+        drawCentralHub(cellCenter(7, 7));
+
+        for (const tr of state.trails) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, tr.life * 1.5);
+          ctx.fillStyle = tr.color;
+          ctx.beginPath();
+          ctx.arc(tr.x, tr.y, CELL * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        for (const dp of state.dustPuffs) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, dp.life * 1.4);
+          ctx.fillStyle = dp.color;
+          ctx.beginPath();
+          ctx.arc(dp.x, dp.y, dp.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Render all 16 horses ON TOP of portraits and track squares
+        const activeCampId = state.turn % CAMPS.length;
+        const candidateIds = new Set(state.pendingChoice ? state.pendingChoice.candidates.map((c) => c.id) : []);
+        horses.forEach((h) => drawHorsePiece(h, h.campId === activeCampId && !state.winnerCamp, candidateIds.has(h.id)));
+
+        // Optional 1-6 ladder choice modal
+        if (state.turnPhase === "choice" && state.pendingChoice) {
+          const camp = CAMPS[state.pendingChoice.campId];
+          ctx.save();
+          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          roundRect(ctx, 56, BOARD.y + BOARD.size * 0.36, W - 112, 130, 16);
+          ctx.fill();
+          ctx.strokeStyle = "#fde047";
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+
+          ctx.fillStyle = "#fde047";
+          ctx.font = "900 16px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(`6 OBTENU (${camp.name}) — ÉCHELLE 1 à 6`, W / 2, BOARD.y + BOARD.size * 0.36 + 34);
+
+          ctx.fillStyle = "#f8fafc";
+          ctx.font = "bold 13px Inter, system-ui, sans-serif";
+          ctx.fillText("Cliquez pour monter / entrer dans la ligne 1-2-3-4-5-6", W / 2, BOARD.y + BOARD.size * 0.36 + 66);
+
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "11.5px Inter, system-ui, sans-serif";
+          ctx.fillText("(Ou tapez !passer pour avancer normalement)", W / 2, BOARD.y + BOARD.size * 0.36 + 96);
+          ctx.restore();
+        }
+
+        // Celebratory 4/4 victory banner displaying ONLY "<N> étoiles"
+        if (state.winnerCamp) {
+          ctx.save();
+          ctx.fillStyle = "rgba(15, 23, 42, 0.96)";
+          roundRect(ctx, 48, BOARD.y + BOARD.size * 0.32, W - 96, 174, 18);
+          ctx.fill();
+          ctx.strokeStyle = "#fde047";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.fillStyle = "#fde047";
+          ctx.font = "900 17px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("🏆 VICTOIRE 4/4 CHEVAUX !", W / 2, BOARD.y + BOARD.size * 0.32 + 38);
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "800 15px Inter, system-ui, sans-serif";
+          ctx.fillText(`Gagnant : ${state.payoutWinner || state.winnerCamp.name}`, W / 2, BOARD.y + BOARD.size * 0.32 + 72);
+
+          ctx.fillStyle = "#4ade80";
+          ctx.font = "900 18px Inter, system-ui, sans-serif";
+          ctx.fillText(`+${formatEtoiles(state.payoutEtoiles)}`, W / 2, BOARD.y + BOARD.size * 0.32 + 108);
+
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "12px Inter, system-ui, sans-serif";
+          ctx.fillText("Cliquez pour lancer une nouvelle manche", W / 2, BOARD.y + BOARD.size * 0.32 + 144);
+          ctx.restore();
+        }
+
+        for (const cf of state.confetti) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, cf.life));
+          ctx.translate(cf.x, cf.y);
+          ctx.rotate(cf.rot);
+          ctx.fillStyle = cf.color;
+          ctx.fillRect(-cf.size / 2, -cf.size / 2, cf.size, cf.size * 0.65);
+          ctx.restore();
+        }
+      }
+
+      // Top 4-camp summary cards + bottom étoiles & turn strip
+      function drawHud() {
+        CAMPS.forEach((camp, i) => {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          const bx = col === 0 ? 18 : W / 2 + 6;
+          const by = 16 + row * 82;
+          const bw = W / 2 - 24;
+          const bh = 74;
+          const isTurn = state.turn % CAMPS.length === i && !state.winnerCamp;
+          const campHorses = horses.filter((h) => h.campId === i);
+          const doneCount = campHorses.filter((h) => h.state === "finished").length;
+          const regPlayer = campPlayers[i];
+          const liveBadge = regPlayer ? `${regPlayer.nickname} (${camp.name})` : `${camp.name} • GO`;
+
+          ctx.save();
+          ctx.fillStyle = isTurn ? "rgba(30, 41, 59, 0.96)" : "rgba(15, 23, 42, 0.84)";
+          roundRect(ctx, bx, by, bw, bh, 12);
+          ctx.fill();
+          ctx.strokeStyle = isTurn ? "#fde047" : camp.color;
+          ctx.lineWidth = isTurn ? 2.5 : 1.5;
+          ctx.stroke();
+
+          ctx.fillStyle = camp.color;
+          ctx.beginPath();
+          ctx.arc(bx + 20, by + bh / 2, 10, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 12.5px Inter, system-ui, sans-serif";
+          ctx.fillText(`🐴 ${liveBadge.slice(0, 17)} ${isTurn ? "●" : ""}`, bx + 36, by + 27);
+
+          ctx.fillStyle = "#fde047";
+          ctx.font = "bold 11px Inter, system-ui, sans-serif";
+          ctx.fillText(
+            `Arrivés: ${doneCount}/4 • ⭐ ${campStarsEarned[i] || 0}`,
+            bx + 36,
+            by + 49
+          );
+          ctx.restore();
+        });
+
+        ctx.save();
+        ctx.fillStyle = state.winnerCamp ? "rgba(120, 53, 15, 0.94)" : "rgba(15, 23, 42, 0.9)";
+        roundRect(ctx, 18, H - 152, W - 36, 72, 14);
+        ctx.fill();
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        const activePlayer = campPlayers[activeCamp.id];
+        const turnLabel = activePlayer ? `${activePlayer.nickname} (${activeCamp.name})` : activeCamp.name;
+        const liveStars = computeEtoilesFromPool(state.displayedPool);
+
+        ctx.fillStyle = "#fde047";
+        ctx.font = "bold 12px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          state.winnerCamp
+            ? `🏆 ${state.payoutWinner} remporte ${formatEtoiles(state.payoutEtoiles)} !`
+            : `⭐ ${formatEtoiles(liveStars)} • Tour ${turnLabel} [${state.turnPhase}]`,
+          W / 2,
+          H - 127
+        );
+
+        const pBarX = 36;
+        const pBarY = H - 108;
+        const pBarW = W - 72;
+        const pBarH = 10;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+        roundRect(ctx, pBarX, pBarY, pBarW, pBarH, 5);
+        ctx.fill();
+
+        const prog = Math.max(0.05, Math.min(1, state.displayedPool / 1500));
+        const barGrad = ctx.createLinearGradient(pBarX, 0, pBarX + pBarW, 0);
+        barGrad.addColorStop(0, "#f59e0b");
+        barGrad.addColorStop(1, "#4ade80");
+        ctx.fillStyle = barGrad;
+        roundRect(ctx, pBarX, pBarY, pBarW * prog, pBarH, 5);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function update(dt) {
+        state.time += dt;
+
+        // Smoothly animate progressive étoiles pot as gifts arrive
+        if (state.displayedPool < state.giftPoolRaw) {
+          const diff = state.giftPoolRaw - state.displayedPool;
+          state.displayedPool += Math.max(diff * Math.min(1, dt * 10), Math.min(diff, dt * 140));
+          if (Math.abs(state.giftPoolRaw - state.displayedPool) < 0.05) {
+            state.displayedPool = state.giftPoolRaw;
+          }
+        }
+        if (state.jackpotPulse > 0) {
+          state.jackpotPulse = Math.max(0, state.jackpotPulse - dt * 2.4);
+        }
+
+        if (state.dieBounceY < 0 || Math.abs(state.dieVelY) > 1) {
+          state.dieVelY += 460 * dt;
+          state.dieBounceY += state.dieVelY * dt;
+          if (state.dieBounceY >= 0) {
+            state.dieBounceY = 0;
+            state.dieVelY = state.turnPhase === "rolling" ? -85 : 0;
+          }
+        }
+
+        if (state.turnPhase === "rolling") {
+          state.diceTimer -= dt;
+          if (Math.random() < dt * 28) {
+            state.dieValue = 1 + Math.floor(Math.random() * 6);
+          }
+          if (state.diceTimer <= 0) {
+            state.dieBounceY = 0;
+            state.dieVelY = 0;
+            if (state.forcedDie >= 1 && state.forcedDie <= 6) {
+              state.dieValue = state.forcedDie;
+            }
+            state.forcedDie = null;
+            const currentCampId = state.turn % CAMPS.length;
+            const bonus = state.pendingBonus || 0;
+            state.pendingBonus = 0;
+            logEvent(`${CAMPS[currentCampId].name} obtient ${state.dieValue}`);
+            applyRollRules(currentCampId, state.dieValue, bonus);
+          }
+        }
+
+        if (state.turnPhase === "moving" && state.movingQueue) {
+          state.movingQueue.stepTimer -= dt;
+          if (state.movingQueue.stepTimer <= 0) {
+            state.movingQueue.stepTimer = 0.12;
+            const won = stepSingleMove(state.movingQueue);
+            state.movingQueue.remaining -= 1;
+
+            if (won || state.movingQueue.remaining <= 0) {
+              const finishedHorse = state.movingQueue.horse;
+              const rolledSix = state.movingQueue.rolledSix;
+              state.movingQueue = null;
+              if (!won) {
+                checkAndSendBackOpponent(finishedHorse);
+                finishTurn(rolledSix);
+              }
+            }
+          }
+        }
+
+        for (let i = state.trails.length - 1; i >= 0; i--) {
+          state.trails[i].life -= dt;
+          if (state.trails[i].life <= 0) state.trails.splice(i, 1);
+        }
+
+        for (let i = state.dustPuffs.length - 1; i >= 0; i--) {
+          const dp = state.dustPuffs[i];
+          dp.x += dp.vx * dt;
+          dp.y += dp.vy * dt;
+          dp.life -= dt;
+          if (dp.life <= 0) state.dustPuffs.splice(i, 1);
+        }
+
+        for (let i = state.confetti.length - 1; i >= 0; i--) {
+          const cf = state.confetti[i];
+          cf.x += cf.vx * dt;
+          cf.y += cf.vy * dt;
+          cf.vy += 320 * dt;
+          cf.rot += cf.vRot * dt;
+          cf.life -= dt;
+          if (cf.life <= 0) state.confetti.splice(i, 1);
+        }
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, W, H);
+        drawHud();
+        drawBoard();
+      }
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        update(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      canvas.addEventListener("pointerdown", () => {
+        if (state.turnPhase === "choice" && state.pendingChoice) {
+          const chosenHorse = state.pendingChoice.candidates[0];
+          const steps = state.pendingChoice.totalSteps;
+          state.pendingChoice = null;
+          logEvent(`${chosenHorse.name} grimpe sur l'échelle 1-2-3-4-5-6 !`);
+          startHorseMovement(chosenHorse, steps, true);
+          return;
+        }
+        if (state.turnPhase === "roll" || state.winnerCamp) {
+          rollDie("Clic");
+        }
+      });
+
+      function handleGift(giftKey, user = "ViewerTikTok", customValue = null) {
+        const k = (giftKey || "").toLowerCase();
+        let amount = Number(customValue);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          if (k.includes("lion") || k.includes("univers")) amount = 500;
+          else if (k.includes("galaxy") || k.includes("galaxie")) amount = 100;
+          else if (k.includes("donut") || k.includes("doughnut")) amount = 20;
+          else if (k.includes("heart") || k.includes("cœur") || k.includes("coeur")) amount = 5;
+          else amount = 1;
+        }
+        amount = Math.floor(amount);
+
+        let label = giftKey || "Cadeau";
+        if (k.includes("lion") || k.includes("univers")) label = "Lion 🦁";
+        else if (k.includes("galaxy") || k.includes("galaxie")) label = "Galaxie 🌌";
+        else if (k.includes("donut") || k.includes("doughnut")) label = "Donut 🍩";
+        else if (k.includes("heart") || k.includes("cœur") || k.includes("coeur")) label = "Cœur 💖";
+        else if (amount === 1) label = "Cadeau 1";
+
+        // Every gift increases the progressive étoiles reward pot
+        addGiftToEtoilesPool(amount, label, user);
+
+        // ONLY 1-coin gifts trigger a dice roll, and ONLY when turnPhase === 'roll' for the active player
+        if (amount !== 1) {
+          logEvent(`⭐ Cadeau (${amount}) ajouté aux étoiles (seul un cadeau à 1 lance le dé).`);
+          return;
+        }
+
+        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        if (!isSenderActiveTurnPlayer(user)) {
+          const activePlayer = getActiveTurnPlayer();
+          const expectedLabel = activePlayer ? `${activePlayer.nickname} (${activeCamp.name})` : activeCamp.name;
+          logEvent(`⏳ Tour actif : ${expectedLabel} (${user} doit attendre son tour).`);
+          return;
+        }
+
+        if (state.turnPhase !== "roll" && !state.winnerCamp) {
+          logEvent(`⏳ Phase actuelle "${state.turnPhase}" : lancer réservé à la phase "roll".`);
+          return;
+        }
+
+        rollDie(user, 0);
+      }
+
+      // Toggle dock via eye icon or 'H' shortcut
+      const panel = document.getElementById("control-panel");
+      const toggleBtn = document.getElementById("toggle-panel-btn");
+      const closeBtn = document.getElementById("close-panel");
+      toggleBtn.addEventListener("click", () => panel.classList.toggle("open"));
+      closeBtn.addEventListener("click", () => panel.classList.remove("open"));
+      window.addEventListener("keydown", (e) => {
+        if (e.key.toLowerCase() === "h" && document.activeElement.tagName !== "INPUT") {
+          panel.classList.toggle("open");
+        }
+      });
+
+      // Drag dock inside 9:16 stage
+      const panelHeader = document.getElementById("panel-header");
+      let drag = null;
+      panelHeader.addEventListener("pointerdown", (e) => {
+        const r = panel.getBoundingClientRect();
+        const w = document.getElementById("stage-wrap").getBoundingClientRect();
+        drag = { x: e.clientX - (r.left - w.left), y: e.clientY - (r.top - w.top) };
+        panelHeader.setPointerCapture(e.pointerId);
+      });
+      panelHeader.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        const w = document.getElementById("stage-wrap").getBoundingClientRect();
+        panel.style.left = Math.max(8, Math.min(w.width - panel.offsetWidth - 8, e.clientX - w.left - drag.x)) + "px";
+        panel.style.top = Math.max(8, Math.min(w.height - panel.offsetHeight - 8, e.clientY - w.top - drag.y)) + "px";
+        panel.style.right = "auto";
+      });
+      panelHeader.addEventListener("pointerup", () => {
+        drag = null;
+      });
+
+      // Quick test controls
+      document.getElementById("sim-go-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        const demo = DEMO_GO_PLAYERS[state.demoIdx % DEMO_GO_PLAYERS.length];
+        state.demoIdx += 1;
+        registerPlayerGo(`${demo.username}_${state.demoIdx}`, demo.nickname, demo.avatarUrl);
+      });
+
+      document.getElementById("gift-one-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        ensureAudio();
+        const activePlayer = getActiveTurnPlayer();
+        const activeCamp = CAMPS[state.turn % CAMPS.length];
+        const sender = activePlayer ? activePlayer.nickname : activeCamp.name;
+        handleGift("rose", sender, 1);
+      });
+
+      document.getElementById("simulate-big-gift-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        const activePlayer = getActiveTurnPlayer();
+        const sender = activePlayer ? activePlayer.nickname : "Spectateur";
+        const coins = Math.max(1, Number(window.ArcadeEffects?.config?.bigGiftCoins) || 100);
+        window.ArcadeEffects?.simulateBigGift(sender, coins);
+        handleGift("galaxy", sender, coins);
+      });
+
+      document.getElementById("simulate-share-btn").addEventListener("click", () => {
+        window.ArcadeEffects?.simulateShare();
+      });
+
+      document.getElementById("force-six-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        if (state.turnPhase === "roll" || state.winnerCamp) {
+          rollDie("Test 6", 0, 6);
+        }
+      });
+
+      document.getElementById("trigger-ladder-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        const campId = state.turn % CAMPS.length;
+        const campHorses = horses.filter((h) => h.campId === campId);
+        campHorses.forEach((h, idx) => {
+          h.state = "ladder";
+          h.ladderStep = Math.min(4, idx);
+          h.exitedOnSixBadge = false;
+        });
+        state.turnPhase = "choice";
+        state.pendingChoice = {
+          campId,
+          dieValue: 6,
+          totalSteps: 6,
+          candidates: [campHorses[0]]
+        };
+        logEvent(`Échelle 1-6 activée pour ${CAMPS[campId].name}.`);
+      });
+
+      document.getElementById("near-finish-btn").addEventListener("click", () => {
+        state.isSimulation = true;
+        ensureAudio();
+        const campId = state.turn % CAMPS.length;
+        const campHorses = horses.filter((h) => h.campId === campId);
+        campHorses.forEach((h, idx) => {
+          h.exitedOnSixBadge = false;
+          if (idx < 3) {
+            h.state = "finished";
+            h.ladderStep = 5;
+          } else {
+            h.state = "ladder";
+            h.ladderStep = 4; // Step 5 ("5") on the ladder, ready for "6" finish
+          }
+        });
+        state.turnPhase = "roll";
+        logEvent(`${CAMPS[campId].name} est à 3/4 arrivés et le 4e cheval est sur la case 5 !`);
+      });
+
+      document.getElementById("reset-game-btn").addEventListener("click", () => {
+        initRace(false, true);
+        logEvent("Partie, camps et étoiles réinitialisés.");
+      });
+
+      document.querySelectorAll(".gift-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.isSimulation = true;
+          ensureAudio();
+          const rawVal = Number(btn.dataset.val);
+          const giftCoins = Number.isFinite(rawVal) && rawVal > 0 ? Math.floor(rawVal) : 1;
+          const activePlayer = getActiveTurnPlayer();
+          const activeCamp = CAMPS[state.turn % CAMPS.length];
+          const sender = activePlayer ? activePlayer.nickname : activeCamp.name;
+          handleGift(btn.dataset.gift, sender, giftCoins);
+        });
+      });
+
+      // TikTok Live WebSocket bridge integration
+      const usernameInput = document.getElementById("tt-username");
+      const statusDot = document.getElementById("status-dot");
+      const statusText = document.getElementById("status-text");
+      const TIKTOK_WEBSOCKET_URL = "wss://jeu6boite.onrender.com";
+      const SAVE_KEY = "petits-chevaux-save";
+
+      let savedSettings = null;
+      try {
+        savedSettings = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      } catch (error) {
+        console.error("Réglages Petits chevaux illisibles :", error);
+      }
+      usernameInput.value = String(savedSettings?.username || localStorage.getItem("pc_prev_user") || "").replace(/^@+/, "");
+
+      function saveTikTokUsername(username) {
+        const cleanUsername = String(username || "").trim().replace(/^@+/, "");
+        localStorage.setItem("pc_prev_user", cleanUsername);
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ username: cleanUsername }));
+      }
+
+      function setStatus(ok, txt) {
+        statusDot.classList.toggle("ok", ok);
+        statusText.textContent = txt;
+      }
+
+      function connectTikTok() {
+        const user = usernameInput.value.trim().replace(/^@+/, "");
+        if (!/^[a-zA-Z0-9._]{1,32}$/.test(user)) {
+          setStatus(false, "Saisis un pseudo TikTok valide, sans arobase.");
+          usernameInput.focus();
+          return;
+        }
+        usernameInput.value = user;
+        saveTikTokUsername(user);
+        state.manualDisconnect = false;
+        if (state.ws) {
+          try { state.ws.close(); } catch (_) {}
+        }
+
+        setStatus(false, "Connexion...");
+        try {
+          const ws = new WebSocket(TIKTOK_WEBSOCKET_URL);
+          state.ws = ws;
+          ws.onopen = () => {
+            ws.send(JSON.stringify({ action: "CONNECT_TIKTOK", username: user }));
+            setStatus(true, `Connexion demandée pour @${user}`);
+            logEvent(`Connexion demandée pour @${user}`);
+          };
+          ws.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              const evName = String(msg.event || msg.type || "").toLowerCase();
+              if (evName === "status") {
+                const message = String(msg.message || "Statut TikTok reçu.");
+                setStatus(!/erreur|interrompue/i.test(message), message);
+                logEvent(message);
+                return;
+              }
+              const d = evName === "gift" && msg.gift
+                ? msg.gift
+                : msg[evName] || msg.data || msg;
+              const commentData = d.commentData || d;
+              const sender = d.uniqueId || d.username || d.nickname || commentData.username || "Spectateur";
+              const avatar = d.avatarDataUri || d.profilePictureUrl || d.avatarUrl || d.avatar || "";
+
+              if (evName === "gift") {
+                if (d.repeatEnd === false) return;
+                const count = Number(d.repeatCount) || 1;
+                const coinCount = Number(d.coinCount);
+                const unitCoins = Number(d.diamondCount ?? d.giftValue ?? d.coins ?? 1);
+                const totalCoins = Number.isSafeInteger(coinCount) && coinCount > 0
+                  ? coinCount
+                  : Math.max(1, Math.floor(unitCoins * count));
+                handleGift(d.giftName || d.giftId || "rose", sender, totalCoins);
+              } else if ((evName === "chat" || evName === "comment") && commentData.comment) {
+                const c = String(commentData.comment).toLowerCase().trim();
+                if (c === "go") {
+                  registerPlayerGo(commentData.uniqueId || commentData.username || sender, commentData.nickname || sender, avatar);
+                } else if (c === "!roll" || c === "!de" || c === "!dé" || c === "!go") {
+                  if (state.turnPhase === "roll" && isSenderActiveTurnPlayer(commentData.username || sender)) {
+                    rollDie(commentData.username || sender);
+                  }
+                } else if ((c === "!passer" || c === "!skip") && state.turnPhase === "choice" && state.pendingChoice) {
+                  const steps = state.pendingChoice.totalSteps;
+                  const horse = state.pendingChoice.candidates[0];
+                  state.pendingChoice = null;
+                  startHorseMovement(horse, steps, true);
+                }
+              }
+            } catch (error) {
+              console.error("Événement reçu du relais TikTok invalide :", error);
+            }
+          };
+          ws.onclose = () => {
+            setStatus(false, "Déconnecté");
+            if (!state.manualDisconnect) {
+              clearTimeout(state.reconnectTimer);
+              state.reconnectTimer = setTimeout(connectTikTok, 4000);
+            }
+          };
+          ws.onerror = () => setStatus(false, "Connexion au relais TikTok impossible.");
+        } catch (e) {
+          setStatus(false, "Connexion au relais TikTok impossible.");
+          console.error("Connexion Petits chevaux au relais TikTok impossible :", e);
+        }
+      }
+
+      usernameInput.addEventListener("change", () => saveTikTokUsername(usernameInput.value));
+      document.getElementById("connect-btn").addEventListener("click", connectTikTok);
+      document.getElementById("disconnect-btn").addEventListener("click", () => {
+        state.manualDisconnect = true;
+        clearTimeout(state.reconnectTimer);
+        if (state.ws) {
+          try { state.ws.close(); } catch (_) {}
+          state.ws = null;
+        }
+        setStatus(false, "Déconnecté");
+      });
+
+      syncEtoilesReward();
+      initRace(false, false);
+    })();
+  </script>
+</body>
+</html>
