@@ -301,6 +301,7 @@ const fixedGameImageIds = new Set([
     '/grand-prix-pokemon.html',
     '/live-foot-interactif-stadium.html',
     '/petits-chevaux.html',
+    '/gryphon-zombie.html',
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
