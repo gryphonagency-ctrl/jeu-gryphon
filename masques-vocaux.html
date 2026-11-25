@@ -204,6 +204,30 @@
             border-top: 1px solid rgba(154, 174, 218, .16);
         }
 
+        .camera-panel {
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid rgba(154, 174, 218, .16);
+        }
+
+        .camera-panel h3 {
+            margin: 0;
+            font-size: .98rem;
+        }
+
+        .face-camera {
+            display: block;
+            width: 100%;
+            max-height: 220px;
+            aspect-ratio: 16 / 9;
+            margin-top: 14px;
+            border: 1px solid rgba(165, 184, 225, .2);
+            border-radius: 12px;
+            background: #080e19;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
         .source-url {
             width: 100%;
             min-height: 42px;
@@ -327,7 +351,7 @@
     <main id="studio" class="studio">
         <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span> Griffon Arcade · Studio overlay</div>
         <h1>Masque animé par la voix</h1>
-        <p class="intro">Choisis un masque, autorise le microphone et ajoute la source transparente à OBS ou TikTok LIVE Studio. Le masque réagit au volume capté en temps réel.</p>
+        <p class="intro">Choisis un masque, autorise le microphone ou la webcam, puis ajoute la source transparente à OBS ou TikTok LIVE Studio. Le masque réagit au volume et à l’ouverture de ta bouche.</p>
         <div class="layout">
             <section class="card" aria-labelledby="settings-heading">
                 <h2 id="settings-heading">Configuration du masque</h2>
@@ -350,6 +374,18 @@
                     <button id="start-microphone" class="button button-primary" type="button">Activer le microphone</button>
                     <button id="stop-microphone" class="button" type="button" disabled>Arrêter</button>
                 </div>
+
+                <section class="camera-panel" aria-labelledby="camera-heading">
+                    <h3 id="camera-heading">Suivi réel de la bouche</h3>
+                    <p class="help">La webcam suit l’ouverture de ta bouche pour animer la mâchoire du casque. Le traitement se fait dans ton navigateur : aucune image vidéo n’est envoyée.</p>
+                    <video id="face-camera" class="face-camera" autoplay muted playsinline hidden></video>
+                    <p id="camera-status" class="status" role="status" aria-live="polite">Caméra désactivée. Active le suivi pour commencer.</p>
+                    <div class="buttons">
+                        <button id="start-face-tracking" class="button button-primary" type="button">Activer le suivi webcam</button>
+                        <button id="stop-face-tracking" class="button" type="button" disabled>Arrêter le suivi</button>
+                    </div>
+                    <div class="privacy"><strong>Confidentialité :</strong> seules les données numériques d’ouverture de la bouche (0 à 1) sont relayées au masque. La vidéo reste dans ce navigateur.</div>
+                </section>
 
                 <div class="source-panel">
                     <label class="field-label" for="overlay-url">Lien de la source navigateur transparente</label>
@@ -389,7 +425,7 @@
                 label: 'Iron Man · casque 3D',
                 kind: 'gltf',
                 source: '/voice-mask-assets/iron-man/scene.gltf',
-                description: 'Casque 3D détaillé, rendu sur fond transparent et animé par le volume du micro.'
+                description: 'Casque 3D détaillé sur fond transparent, animé par le volume du micro et le suivi de la bouche par webcam.'
             }
         ]);
         const params = new URLSearchParams(location.search);
@@ -401,6 +437,7 @@
         const overlayStatus = document.getElementById('overlay-status');
         const canvas = document.getElementById('mask-canvas');
         const maskImage = document.getElementById('mask-image');
+        const faceCameraVideo = document.getElementById('face-camera');
         const socketUrl = new URL('/voice-mask-relay', location.href);
         socketUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         socketUrl.searchParams.set('token', token);
@@ -412,15 +449,26 @@
         let shouldReconnect = true;
         let currentLevel = 0;
         let targetLevel = 0;
+        let currentMouthOpen = 0;
+        let targetMouthOpen = 0;
         let selectedMaskId = 'iron-man';
         let mediaStream = null;
+        let faceCameraStream = null;
+        let faceLandmarker = null;
+        let faceTrackingFrameRequest = 0;
+        let faceTrackingSession = 0;
+        let lastFaceVideoTime = -1;
         let audioContext = null;
         let analyser = null;
         let samples = null;
         let microphoneInterval = 0;
         let renderFrameRequest = 0;
         let lastLevelSentAt = 0;
+        let lastMouthSentAt = 0;
+        let lastCameraStatusAt = 0;
         let smoothedLevel = 0;
+        let jawMorphMeshes = [];
+        let mouthInterior = null;
 
         function setOverlayStatus(message) {
             if (overlayPreview) overlayStatus.textContent = message;
@@ -432,6 +480,30 @@
 
         function availableMask(id) {
             return MASKS.find(mask => mask.id === id) || MASKS[0];
+        }
+
+        function addJawMorphTarget(mesh) {
+            const geometry = mesh.geometry;
+            const position = geometry.attributes.position;
+            if (!position || geometry.morphAttributes.position?.length) return;
+            // The supplied helmet has one static mesh, so its lower front vertices form the jaw morph.
+            const jawPositions = new Float32Array(position.count * 3);
+            for (let index = 0; index < position.count; index++) {
+                const x = position.getX(index);
+                const y = position.getY(index);
+                const z = position.getZ(index);
+                const lowerFace = 1 - THREE.MathUtils.smoothstep(y, -58, -12);
+                const frontFace = THREE.MathUtils.smoothstep(z, 68, 118);
+                const centerFace = 1 - THREE.MathUtils.smoothstep(Math.abs(x), 32, 50);
+                const weight = lowerFace * frontFace * centerFace;
+                jawPositions[index * 3] = x;
+                jawPositions[index * 3 + 1] = y - 11 * weight;
+                jawPositions[index * 3 + 2] = z - 7 * weight;
+            }
+            geometry.morphAttributes.position = [new THREE.BufferAttribute(jawPositions, 3)];
+            geometry.morphTargetsRelative = false;
+            mesh.updateMorphTargets();
+            jawMorphMeshes.push(mesh);
         }
 
         function updateMask(maskId) {
@@ -467,6 +539,19 @@
                     -center.y * baseScale,
                     -center.z * baseScale
                 );
+                jawMorphMeshes = [];
+                mouthInterior = null;
+                root.traverse(object => {
+                    if (object.isMesh) addJawMorphTarget(object);
+                });
+                if (jawMorphMeshes.length) {
+                    const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x05070a });
+                    mouthInterior = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), mouthMaterial);
+                    mouthInterior.position.set(0, -29, 120);
+                    mouthInterior.scale.set(12, 0.08, 1);
+                    mouthInterior.renderOrder = 2;
+                    root.add(mouthInterior);
+                }
                 modelGroup.clear();
                 modelGroup.add(root);
                 activeModel = root;
@@ -521,6 +606,12 @@
             if (!renderer) return;
             const smoothing = targetLevel > currentLevel ? 0.26 : 0.12;
             currentLevel += (targetLevel - currentLevel) * smoothing;
+            const mouthSmoothing = targetMouthOpen > currentMouthOpen ? 0.34 : 0.2;
+            currentMouthOpen += (targetMouthOpen - currentMouthOpen) * mouthSmoothing;
+            for (const mesh of jawMorphMeshes) {
+                if (mesh.morphTargetInfluences?.length) mesh.morphTargetInfluences[0] = currentMouthOpen;
+            }
+            if (mouthInterior) mouthInterior.scale.y = 0.08 + currentMouthOpen * 5.5;
             if (activeModel) {
                 modelGroup.scale.setScalar(1 + currentLevel * 0.075);
                 activeModel.rotation.y = Math.sin(time * 0.00035) * 0.055 + currentLevel * 0.12;
@@ -561,8 +652,15 @@
                 if (message.type === 'VOICE_MASK_STATE') {
                     updateMask(message.maskId);
                     targetLevel = Number.isFinite(message.level) ? Math.min(1, Math.max(0, message.level)) : 0;
+                    targetMouthOpen = Number.isFinite(message.mouthOpen)
+                        ? Math.min(1, Math.max(0, message.mouthOpen))
+                        : 0;
                 } else if (message.type === 'VOICE_MASK_LEVEL') {
                     targetLevel = Number.isFinite(message.level) ? Math.min(1, Math.max(0, message.level)) : 0;
+                } else if (message.type === 'VOICE_MASK_JAW') {
+                    targetMouthOpen = Number.isFinite(message.mouthOpen)
+                        ? Math.min(1, Math.max(0, message.mouthOpen))
+                        : 0;
                 } else if (message.type === 'VOICE_MASK_STATUS' && !overlayMode) {
                     const count = Number(message.overlayCount) || 0;
                     document.getElementById('studio-relay-status').textContent = count
@@ -634,6 +732,120 @@
             const sensitivity = document.getElementById('sensitivity');
             sensitivity.addEventListener('input', () => {
                 document.getElementById('sensitivity-value').value = sensitivity.value;
+            });
+            const cameraStatus = document.getElementById('camera-status');
+            const startFaceTrackingButton = document.getElementById('start-face-tracking');
+            const stopFaceTrackingButton = document.getElementById('stop-face-tracking');
+
+            function releaseFaceTracking() {
+                faceTrackingSession++;
+                window.cancelAnimationFrame(faceTrackingFrameRequest);
+                faceTrackingFrameRequest = 0;
+                if (faceCameraStream) {
+                    for (const track of faceCameraStream.getTracks()) track.stop();
+                    faceCameraStream = null;
+                }
+                faceCameraVideo.srcObject = null;
+                faceCameraVideo.hidden = true;
+                if (faceLandmarker) {
+                    faceLandmarker.close();
+                    faceLandmarker = null;
+                }
+                lastFaceVideoTime = -1;
+                targetMouthOpen = 0;
+                send({ type: 'VOICE_MASK_JAW', mouthOpen: 0 });
+                startFaceTrackingButton.disabled = false;
+                stopFaceTrackingButton.disabled = true;
+            }
+
+            function sendMouthOpen(value) {
+                targetMouthOpen = Math.min(1, Math.max(0, value));
+                if (performance.now() - lastMouthSentAt < 33) return;
+                send({ type: 'VOICE_MASK_JAW', mouthOpen: Number(targetMouthOpen.toFixed(3)) });
+                lastMouthSentAt = performance.now();
+            }
+
+            function trackFaceFrame(timestamp) {
+                faceTrackingFrameRequest = window.requestAnimationFrame(trackFaceFrame);
+                if (!faceLandmarker || faceCameraVideo.readyState < 2 ||
+                    faceCameraVideo.currentTime === lastFaceVideoTime) return;
+                lastFaceVideoTime = faceCameraVideo.currentTime;
+                const result = faceLandmarker.detectForVideo(faceCameraVideo, timestamp);
+                const blendshapes = result.faceBlendshapes?.[0]?.categories || [];
+                const jawOpen = blendshapes.find(shape => shape.categoryName === 'jawOpen')?.score || 0;
+                sendMouthOpen((jawOpen - 0.025) * 1.8);
+                if (performance.now() - lastCameraStatusAt >= 1000) {
+                    const detected = result.faceLandmarks?.length > 0;
+                    cameraStatus.textContent = detected
+                        ? 'Suivi actif · ouvre la bouche pour animer la mâchoire.'
+                        : 'Visage non détecté · place-toi face à la caméra.';
+                    cameraStatus.className = detected ? 'status good' : 'status';
+                    lastCameraStatusAt = performance.now();
+                }
+            }
+
+            async function startFaceTracking() {
+                startFaceTrackingButton.disabled = true;
+                cameraStatus.textContent = 'Demande d’autorisation de la webcam…';
+                cameraStatus.className = 'status';
+                const session = ++faceTrackingSession;
+                try {
+                    if (!window.isSecureContext && location.hostname !== 'localhost') {
+                        throw new Error('La webcam exige une page HTTPS.');
+                    }
+                    if (!navigator.mediaDevices?.getUserMedia) {
+                        throw new Error('La webcam n’est pas prise en charge par ce navigateur.');
+                    }
+                    faceCameraStream = await navigator.mediaDevices.getUserMedia({
+                        audio: false,
+                        video: {
+                            facingMode: { ideal: 'user' },
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        }
+                    });
+                    if (session !== faceTrackingSession) return;
+                    faceCameraVideo.srcObject = faceCameraStream;
+                    faceCameraVideo.hidden = false;
+                    await faceCameraVideo.play();
+                    cameraStatus.textContent = 'Chargement du suivi facial…';
+                    const visionModule = await import(
+                        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs'
+                    );
+                    const vision = await visionModule.FilesetResolver.forVisionTasks(
+                        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm'
+                    );
+                    const tracker = await visionModule.FaceLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+                        },
+                        runningMode: 'VIDEO',
+                        numFaces: 1,
+                        outputFaceBlendshapes: true
+                    });
+                    if (session !== faceTrackingSession) {
+                        tracker.close();
+                        return;
+                    }
+                    faceLandmarker = tracker;
+                    stopFaceTrackingButton.disabled = false;
+                    cameraStatus.textContent = 'Suivi actif · ouvre la bouche pour animer la mâchoire.';
+                    cameraStatus.className = 'status good';
+                    faceTrackingFrameRequest = window.requestAnimationFrame(trackFaceFrame);
+                } catch (error) {
+                    if (session !== faceTrackingSession) return;
+                    console.error('Démarrage du suivi webcam impossible :', error);
+                    releaseFaceTracking();
+                    cameraStatus.textContent = error.message || 'Impossible de démarrer le suivi webcam.';
+                    cameraStatus.className = 'status error';
+                }
+            }
+
+            startFaceTrackingButton.addEventListener('click', startFaceTracking);
+            stopFaceTrackingButton.addEventListener('click', () => {
+                releaseFaceTracking();
+                cameraStatus.textContent = 'Suivi webcam arrêté.';
+                cameraStatus.className = 'status';
             });
             document.getElementById('copy-url').addEventListener('click', async () => {
                 const input = document.getElementById('overlay-url');
@@ -750,7 +962,12 @@
             window.clearInterval(pingTimer);
             window.clearInterval(microphoneInterval);
             cancelAnimationFrame(renderFrameRequest);
+            cancelAnimationFrame(faceTrackingFrameRequest);
+            faceTrackingSession++;
             if (mediaStream) for (const track of mediaStream.getTracks()) track.stop();
+            if (faceCameraStream) for (const track of faceCameraStream.getTracks()) track.stop();
+            if (faceLandmarker) faceLandmarker.close();
+            send({ type: 'VOICE_MASK_JAW', mouthOpen: 0 });
             if (socket) socket.close();
             if (audioContext && audioContext.state !== 'closed') audioContext.close();
         });

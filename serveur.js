@@ -3931,6 +3931,7 @@ const voiceMaskOverlaySocketsByOwner = new Map();
 const voiceMaskControlSocketsByOwner = new Map();
 const voiceMaskStates = new Map();
 const voiceMaskLastLevelAt = new WeakMap();
+const voiceMaskLastJawAt = new WeakMap();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
 function getVoiceMaskSocketSet(socketMap, owner) {
@@ -3969,7 +3970,14 @@ function removeVoiceMaskSocket(socket) {
     const sockets = socketMap.get(connection.owner);
     sockets?.delete(socket);
     if (sockets && !sockets.size) socketMap.delete(connection.owner);
-    if (connection.role === 'overlay') sendVoiceMaskControllerStatus(connection.owner);
+    if (connection.role === 'overlay') {
+        sendVoiceMaskControllerStatus(connection.owner);
+    } else if (!sockets?.size) {
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        state.mouthOpen = 0;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_JAW', mouthOpen: 0 });
+    }
 }
 
 function handleVoiceMaskMessage(socket, connection, request) {
@@ -3990,13 +3998,14 @@ function handleVoiceMaskMessage(socket, connection, request) {
             socket.close(1008, 'Configuration invalide');
             return;
         }
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
         state.maskId = request.maskId;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, {
             type: 'VOICE_MASK_STATE',
             maskId: state.maskId,
-            level: state.level
+            level: state.level,
+            mouthOpen: state.mouthOpen || 0
         });
         return;
     }
@@ -4014,10 +4023,31 @@ function handleVoiceMaskMessage(socket, connection, request) {
         if (now - lastSentAt < 25) return;
         voiceMaskLastLevelAt.set(socket, now);
         const level = Math.min(1, Math.max(0, request.level));
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
         state.level = level;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_LEVEL', level });
+        return;
+    }
+    if (request.type === 'VOICE_MASK_JAW') {
+        if (typeof request.mouthOpen !== 'number' || !Number.isFinite(request.mouthOpen)) {
+            socket.send(JSON.stringify({
+                type: 'VOICE_MASK_ERROR',
+                message: 'Ouverture de mâchoire invalide.'
+            }));
+            socket.close(1008, 'Ouverture invalide');
+            return;
+        }
+        const now = Date.now();
+        const lastSentAt = voiceMaskLastJawAt.get(socket) || 0;
+        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
+        const mouthOpen = Math.min(1, Math.max(0, request.mouthOpen));
+        const closingJaw = mouthOpen === 0 && state.mouthOpen > 0;
+        if (!closingJaw && now - lastSentAt < 30) return;
+        voiceMaskLastJawAt.set(socket, now);
+        state.mouthOpen = mouthOpen;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_JAW', mouthOpen });
         return;
     }
     socket.close(1008, 'Action non autorisée');
@@ -4648,11 +4678,12 @@ wss.on('connection', (socket, req) => {
     }
     if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
     if (voiceMaskConnection?.role === 'overlay') {
-        const state = voiceMaskStates.get(voiceMaskConnection.owner) || { maskId: 'iron-man', level: 0 };
+        const state = voiceMaskStates.get(voiceMaskConnection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
         socket.send(JSON.stringify({
             type: 'VOICE_MASK_STATE',
             maskId: state.maskId,
-            level: state.level
+            level: state.level,
+            mouthOpen: state.mouthOpen || 0
         }));
         sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
     } else if (voiceMaskConnection?.role === 'control') {
