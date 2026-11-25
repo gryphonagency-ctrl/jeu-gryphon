@@ -3431,6 +3431,10 @@ const server = http.createServer((req, res) => {
         ['/voice-mask-assets/iron-man-mk3/textures/material_baseColor.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man-mk3', 'textures', 'material_baseColor.png'), 'image/png']],
         ['/voice-mask-assets/iron-man-mk3/textures/material_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man-mk3', 'textures', 'material_metallicRoughness.png'), 'image/png']],
         ['/voice-mask-assets/iron-man-mk3/textures/material_normal.png', [path.join(__dirname, 'voice-mask-assets', 'iron-man-mk3', 'textures', 'material_normal.png'), 'image/png']],
+        ['/voice-mask-assets/deadpool/scene.gltf', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
+        ['/voice-mask-assets/deadpool/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'scene.bin'), 'application/octet-stream']],
+        ['/voice-mask-assets/deadpool/license.txt', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'license.txt'), 'text/plain; charset=utf-8']],
+        ['/voice-mask-assets/deadpool/textures/Material_0_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'textures', 'Material_0_baseColor.jpeg'), 'image/jpeg']],
         ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
         ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
@@ -3957,8 +3961,19 @@ const voiceMaskControlSocketsByOwner = new Map();
 const voiceMaskStates = new Map();
 const voiceMaskLastLevelAt = new WeakMap();
 const voiceMaskLastJawAt = new WeakMap();
+const voiceMaskLastFaceAt = new WeakMap();
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
+
+function createDefaultVoiceMaskState() {
+    return {
+        maskId: 'iron-man',
+        level: 0,
+        mouthOpen: 0,
+        face: { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, scale: 1, blinkLeft: 0, blinkRight: 0, active: false }
+    };
+}
+
 function getVoiceMaskSocketSet(socketMap, owner) {
     let sockets = socketMap.get(owner);
     if (!sockets) {
@@ -3998,10 +4013,12 @@ function removeVoiceMaskSocket(socket) {
     if (connection.role === 'overlay') {
         sendVoiceMaskControllerStatus(connection.owner);
     } else if (!sockets?.size) {
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0 };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         state.mouthOpen = 0;
+        state.face = createDefaultVoiceMaskState().face;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_JAW', mouthOpen: 0 });
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_FACE', face: state.face });
     }
 }
 
@@ -4023,14 +4040,15 @@ function handleVoiceMaskMessage(socket, connection, request) {
             socket.close(1008, 'Configuration invalide');
             return;
         }
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         state.maskId = request.maskId;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, {
             type: 'VOICE_MASK_STATE',
             maskId: state.maskId,
             level: state.level,
-            mouthOpen: state.mouthOpen || 0
+            mouthOpen: state.mouthOpen || 0,
+            face: state.face
         });
         return;
     }
@@ -4048,7 +4066,7 @@ function handleVoiceMaskMessage(socket, connection, request) {
         if (now - lastSentAt < 25) return;
         voiceMaskLastLevelAt.set(socket, now);
         const level = Math.min(1, Math.max(0, request.level));
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         state.level = level;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_LEVEL', level });
@@ -4065,7 +4083,7 @@ function handleVoiceMaskMessage(socket, connection, request) {
         }
         const now = Date.now();
         const lastSentAt = voiceMaskLastJawAt.get(socket) || 0;
-        const state = voiceMaskStates.get(connection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         const mouthOpen = Math.min(1, Math.max(0, request.mouthOpen));
         const closingJaw = mouthOpen === 0 && state.mouthOpen > 0;
         if (!closingJaw && now - lastSentAt < 30) return;
@@ -4073,6 +4091,39 @@ function handleVoiceMaskMessage(socket, connection, request) {
         state.mouthOpen = mouthOpen;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_JAW', mouthOpen });
+        return;
+    }
+    if (request.type === 'VOICE_MASK_FACE') {
+        const face = request.face;
+        const keys = ['yaw', 'pitch', 'roll', 'x', 'y', 'scale', 'blinkLeft', 'blinkRight'];
+        if (!face || typeof face.active !== 'boolean' ||
+            keys.some(key => typeof face[key] !== 'number' || !Number.isFinite(face[key]))) {
+            socket.send(JSON.stringify({
+                type: 'VOICE_MASK_ERROR',
+                message: 'Données de suivi facial invalides.'
+            }));
+            socket.close(1008, 'Données faciales invalides');
+            return;
+        }
+        const now = Date.now();
+        const lastSentAt = voiceMaskLastFaceAt.get(socket) || 0;
+        if (now - lastSentAt < 25) return;
+        voiceMaskLastFaceAt.set(socket, now);
+        const faceState = {
+            yaw: Math.min(1.65, Math.max(-1.65, face.yaw)),
+            pitch: Math.min(1.2, Math.max(-1.2, face.pitch)),
+            roll: Math.min(0.7, Math.max(-0.7, face.roll)),
+            x: Math.min(0.9, Math.max(-0.9, face.x)),
+            y: Math.min(0.75, Math.max(-0.75, face.y)),
+            scale: Math.min(1.35, Math.max(0.72, face.scale)),
+            blinkLeft: Math.min(1, Math.max(0, face.blinkLeft)),
+            blinkRight: Math.min(1, Math.max(0, face.blinkRight)),
+            active: face.active
+        };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
+        state.face = faceState;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_FACE', face: faceState });
         return;
     }
     socket.close(1008, 'Action non autorisée');
@@ -4703,12 +4754,13 @@ wss.on('connection', (socket, req) => {
     }
     if (ttsControlAccount) authenticatedTtsClientUsernames.set(socket, ttsControlAccount);
     if (voiceMaskConnection?.role === 'overlay') {
-        const state = voiceMaskStates.get(voiceMaskConnection.owner) || { maskId: 'iron-man', level: 0, mouthOpen: 0 };
+        const state = voiceMaskStates.get(voiceMaskConnection.owner) || createDefaultVoiceMaskState();
         socket.send(JSON.stringify({
             type: 'VOICE_MASK_STATE',
             maskId: state.maskId,
             level: state.level,
-            mouthOpen: state.mouthOpen || 0
+            mouthOpen: state.mouthOpen || 0,
+            face: state.face
         }));
         sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
     } else if (voiceMaskConnection?.role === 'control') {
