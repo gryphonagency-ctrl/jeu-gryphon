@@ -6,7 +6,7 @@
   <title>Petits chevaux</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Base reset and vertical 9:16 live stage styling */
+    /* Base reset and horizontal 16:9 live stage styling */
     * {
       box-sizing: border-box;
       margin: 0;
@@ -27,12 +27,12 @@
       color: #f8fafc;
     }
 
-    /* Centered 9:16 vertical container responsive across mobile & desktop */
+    /* Centered 16:9 stage, with the original portrait game composition turned sideways */
     #stage-wrap {
       position: relative;
-      height: 100vh;
-      aspect-ratio: 9 / 16;
-      max-width: 100vw;
+      width: min(100vw, 177.7778vh);
+      height: min(100vh, 56.25vw);
+      aspect-ratio: 16 / 9;
       background: radial-gradient(circle at 50% 18%, #1f304d 0%, #070c17 82%);
       box-shadow: 0 0 80px rgba(0, 0, 0, 0.96), 0 0 36px rgba(250, 204, 21, 0.16);
       overflow: hidden;
@@ -408,6 +408,122 @@
       color: #cfd8dc;
       line-height: 1.42;
     }
+
+    #queue-widget {
+      position: absolute;
+      left: 14px;
+      top: 170px;
+      width: 250px;
+      height: 224px;
+      min-width: 180px;
+      min-height: 132px;
+      max-width: calc(100% - 16px);
+      max-height: calc(100% - 16px);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 9px;
+      overflow: hidden;
+      z-index: 26;
+      border: 1px solid rgba(250, 204, 21, 0.58);
+      border-radius: 12px;
+      background: rgba(11, 16, 28, 0.94);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+    }
+
+    #queue-widget[hidden] {
+      display: none;
+    }
+
+    #queue-widget-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 28px;
+      color: #fde047;
+      font-weight: 800;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #queue-widget-header:active {
+      cursor: grabbing;
+    }
+
+    #queue-widget-header button,
+    #queue-resize-handle {
+      border: 0;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #queue-widget-header button {
+      width: 26px;
+      height: 24px;
+      font-size: 15px;
+    }
+
+    #queue-widget-list {
+      display: grid;
+      gap: 5px;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .queue-row {
+      display: grid;
+      grid-template-columns: 9px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 5px 7px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .queue-row.is-active {
+      border-color: #fde047;
+      background: rgba(250, 204, 21, 0.12);
+    }
+
+    .queue-row-color {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .queue-row-player {
+      overflow: hidden;
+      color: #e2e8f0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-row-count {
+      color: #fde047;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    #queue-resize-handle {
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      width: 22px;
+      height: 22px;
+      color: #fde047;
+      background: rgba(15, 23, 42, 0.9);
+      font-size: 14px;
+      line-height: 1;
+      cursor: nwse-resize;
+      touch-action: none;
+    }
   </style>
 </head>
 <body>
@@ -460,7 +576,7 @@
             <li>Atterrir sur un cheval adverse le renvoie dans son camp.</li>
             <li>À l'entrée de l'échelle finale, faites <strong>1</strong> pour atteindre la case 1 ; ensuite, le dé indique la case visée jusqu'à <strong>6</strong>. Un résultat inférieur ou égal à la case occupée ne fait pas reculer le cheval.</li>
             <li>Écrivez <strong>« étoile »</strong> dans le chat TikTok pour consulter votre portefeuille global.</li>
-            <li><strong>Cadeaux & Dé :</strong> les cadeaux de <strong>1</strong> ou <strong>10 pièces</strong> donnent un lancer au joueur. S’il n’a pas encore son tour, le lancer attend automatiquement ; les autres cadeaux alimentent la cagnotte en étoiles.</li>
+            <li><strong>Cadeaux & Dé :</strong> chaque pièce TikTok ajoute un lancer à la file du joueur inscrit. Un cadeau de 100 pièces donne donc 100 lancers. Les lancers démarrent à son tour et alimentent aussi la cagnotte.</li>
           </ul>
         </div>
       </div>
@@ -482,8 +598,19 @@
       </div>
 
       <div class="section">
+        <div class="section-title">Gestion des joueurs</div>
+        <label for="remove-player-select">Joueur à éliminer de la partie</label>
+        <select id="remove-player-select" aria-label="Choisir le joueur à éliminer">
+          <option value="">Aucun joueur inscrit</option>
+        </select>
+        <button class="action-btn secondary-btn" id="remove-player-btn" type="button" style="width:100%;border-color:rgba(248,113,113,.65);color:#fecaca;" disabled>🚪 Éliminer le joueur</button>
+        <div id="remove-player-status" class="status-line" role="status" aria-live="polite">Aucun joueur à éliminer.</div>
+      </div>
+
+      <div class="section">
         <div class="section-title">Tests "go", Cadeaux, Échelle & 4/4</div>
         <div data-save-key="petits-chevaux-save" data-save-label="💾 Sauvegarder mon pseudo"></div>
+        <button class="action-btn secondary-btn" id="toggle-queue-widget" type="button" style="width:100%;margin-bottom:7px;">📋 Détacher la file d'attente</button>
         <div class="row-btns" style="margin-bottom:6px;">
           <button class="action-btn secondary-btn" id="sim-go-btn" type="button">🙋 Simuler "go"</button>
           <button class="action-btn" id="gift-one-btn" type="button">🪙 Cadeau 1 (Dé)</button>
@@ -501,19 +628,44 @@
           <button class="action-btn secondary-btn" id="reset-game-btn" type="button">🔄 Réinitialiser</button>
         </div>
         <div class="gift-grid">
-          <button class="gift-btn" data-gift="rose" data-val="1" type="button">🌹 Cadeau 1 (+1 • Dé)</button>
-          <button class="gift-btn" data-gift="rose" data-val="10" type="button">🌹 Cadeau 10 (+1 • Dé en attente)</button>
-          <button class="gift-btn" data-gift="heart" data-val="5" type="button">💖 Cadeau 5 (+Étoiles)</button>
-          <button class="gift-btn" data-gift="donut" data-val="20" type="button">🍩 Cadeau 20 (+Étoiles)</button>
-          <button class="gift-btn" data-gift="galaxy" data-val="100" type="button">🌌 Cadeau 100 (+Étoiles)</button>
-          <button class="gift-btn span-2" data-gift="lion" data-val="500" type="button">🦁 Cadeau 500 (+Étoiles)</button>
+          <button class="gift-btn" data-gift="rose" data-val="1" type="button">🌹 Cadeau 1 (+Dé • étoiles)</button>
+          <button class="gift-btn" data-gift="rose" data-val="10" type="button">🌹 Cadeau 10 (+Dé • étoiles)</button>
+          <button class="gift-btn" data-gift="heart" data-val="5" type="button">💖 Cadeau 5 (+Dé • étoiles)</button>
+          <button class="gift-btn" data-gift="donut" data-val="20" type="button">🍩 Cadeau 20 (+Dé • étoiles)</button>
+          <button class="gift-btn" data-gift="galaxy" data-val="100" type="button">🌌 Cadeau 100 (+Dé • étoiles)</button>
+          <button class="gift-btn span-2" data-gift="lion" data-val="500" type="button">🦁 Cadeau 500 (+Dé • étoiles)</button>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Journal de Course & Étoiles</div>
-        <div id="event-log">Tapez "go" pour rejoindre un camp. Les cadeaux de 1 ou 10 pièces donnent un lancer, conservé jusqu’au tour du joueur.</div>
+        <div class="section-title">Cagnotte d'étoiles</div>
+        <label for="jackpot-stars-input">Montant en étoiles</label>
+        <input id="jackpot-stars-input" type="number" min="0" step="1" value="20" inputmode="numeric">
+        <div class="row-btns">
+          <button class="action-btn" id="add-jackpot-stars" type="button">Ajouter</button>
+          <button class="action-btn secondary-btn" id="set-jackpot-stars" type="button">Définir</button>
+        </div>
+        <div id="jackpot-control-status" class="status-line" role="status">Cagnotte actuelle : 20 étoiles.</div>
       </div>
+
+      <div class="section">
+        <div class="section-title">Journal de Course & Étoiles</div>
+        <div id="event-log">Tapez "go" pour rejoindre un camp. Chaque pièce d'un cadeau ajoute un lancer à la file du joueur inscrit.</div>
+      </div>
+    </aside>
+
+    <aside id="queue-widget" aria-label="File des lancers en attente" hidden>
+      <div id="queue-widget-header">
+        <span>🎲 File des lancers</span>
+        <button id="close-queue-widget" type="button" aria-label="Masquer la file d'attente">×</button>
+      </div>
+      <div id="queue-widget-list" aria-live="polite">
+        <div class="queue-row"><span class="queue-row-color"></span><span class="queue-row-player"></span><strong class="queue-row-count"></strong></div>
+        <div class="queue-row"><span class="queue-row-color"></span><span class="queue-row-player"></span><strong class="queue-row-count"></strong></div>
+        <div class="queue-row"><span class="queue-row-color"></span><span class="queue-row-player"></span><strong class="queue-row-count"></strong></div>
+        <div class="queue-row"><span class="queue-row-color"></span><span class="queue-row-player"></span><strong class="queue-row-count"></strong></div>
+      </div>
+      <button id="queue-resize-handle" type="button" aria-label="Redimensionner la file d'attente" title="Faire glisser pour redimensionner">↘</button>
     </aside>
   </div>
 
@@ -522,6 +674,8 @@
       "use strict";
 
       const canvas = document.getElementById("gameCanvas");
+      canvas.width = 1280;
+      canvas.height = 720;
       const ctx = canvas.getContext("2d");
       const W = canvas.width;
       const H = canvas.height;
@@ -574,10 +728,10 @@
         });
       }
 
-      // 15x15 square board geometry inside the 9:16 vertical stage (rows 0..14, cols 0..14)
+      // 15x15 square board geometry centered in the 16:9 live stage
       const BOARD = {
-        x: 34,
-        y: 262,
+        x: 314,
+        y: 34,
         size: 652,
         grid: 15
       };
@@ -803,6 +957,7 @@
         dieVelY: 0,
         pendingBonus: 0,
         forcedDie: null,
+        rollCampId: null,
         movingQueue: null,
         winnerCamp: null,
         // Progressive gift pool and étoiles reward
@@ -821,6 +976,15 @@
         isSimulation: false,
         demoIdx: 0
       };
+
+      const jackpotStarsInput = document.getElementById("jackpot-stars-input");
+      const jackpotControlStatus = document.getElementById("jackpot-control-status");
+      const queueWidget = document.getElementById("queue-widget");
+      const queueWidgetHeader = document.getElementById("queue-widget-header");
+      const queueResizeHandle = document.getElementById("queue-resize-handle");
+      const stageWrap = document.getElementById("stage-wrap");
+      const queueLayoutKey = "petits-chevaux-queue-layout";
+      let queueLayoutLoaded = false;
 
       function computeEtoilesFromPool(poolVal) {
         return Math.max(0, Math.floor(Number(poolVal || 0) * 0.2));
@@ -867,6 +1031,139 @@
 
       function syncEtoilesReward() {
         state.recompenseEtoiles = computeEtoilesFromPool(state.giftPoolRaw);
+        if (jackpotStarsInput && document.activeElement !== jackpotStarsInput) {
+          jackpotStarsInput.value = String(state.recompenseEtoiles);
+        }
+        if (jackpotControlStatus) {
+          jackpotControlStatus.textContent = `Cagnotte actuelle : ${formatEtoiles(state.recompenseEtoiles)}.`;
+        }
+      }
+
+      function refreshQueueWidget() {
+        const rows = queueWidget.querySelectorAll(".queue-row");
+        const activeCampId = getActiveTurnCampId();
+        rows.forEach((row, index) => {
+          const camp = CAMPS[index];
+          const player = campPlayers[index];
+          const count = pendingDiceRolls[index] || 0;
+          row.classList.toggle("is-active", !state.winnerCamp && index === activeCampId);
+          row.querySelector(".queue-row-color").style.backgroundColor = camp.color;
+          row.querySelector(".queue-row-player").textContent = player
+            ? `${player.nickname} · ${camp.name}`
+            : `${camp.name} · Libre`;
+          row.querySelector(".queue-row-count").textContent =
+            `${count} lancer${count === 1 ? "" : "s"}`;
+          row.setAttribute("aria-label", `${camp.name}, ${player ? player.nickname : "aucun joueur"}, ${count} lancer(s) en attente`);
+        });
+        refreshPlayerRemovalOptions();
+      }
+
+      function refreshPlayerRemovalOptions() {
+        const select = document.getElementById("remove-player-select");
+        const button = document.getElementById("remove-player-btn");
+        const status = document.getElementById("remove-player-status");
+        if (!select || !button || !status) return;
+
+        const selectedCampId = select.value;
+        select.replaceChildren();
+        const availablePlayers = campPlayers
+          .map((player, campId) => player ? { player, campId } : null)
+          .filter(Boolean);
+
+        if (availablePlayers.length === 0) {
+          select.add(new Option("Aucun joueur inscrit", ""));
+          button.disabled = true;
+          status.textContent = "Aucun joueur à éliminer.";
+          return;
+        }
+
+        select.add(new Option("Choisir un joueur…", ""));
+        availablePlayers.forEach(({ player, campId }) => {
+          select.add(new Option(`${player.nickname} (@${player.username}) · ${CAMPS[campId].name}`, String(campId)));
+        });
+        select.value = availablePlayers.some(({ campId }) => String(campId) === selectedCampId)
+          ? selectedCampId
+          : "";
+        button.disabled = select.value === "";
+        status.textContent = button.disabled
+          ? "Choisis le joueur que tu veux éliminer."
+          : "Le joueur et ses chevaux sortiront de la partie en cours.";
+      }
+
+      function loadQueueWidgetLayout() {
+        if (queueLayoutLoaded) return;
+        queueLayoutLoaded = true;
+        try {
+          const saved = JSON.parse(localStorage.getItem(queueLayoutKey) || "null");
+          if (!saved || typeof saved !== "object") return;
+          ["left", "top", "width", "height"].forEach((key) => {
+            if (Number.isFinite(saved[key])) queueWidget.style[key] = `${saved[key]}px`;
+          });
+        } catch (error) {
+          console.error("Position de la file Petits chevaux illisible :", error);
+        }
+      }
+
+      function clampQueueWidgetLayout() {
+        const stageRect = stageWrap.getBoundingClientRect();
+        const maxWidth = Math.max(1, stageRect.width - 16);
+        const maxHeight = Math.max(1, stageRect.height - 16);
+        const minWidth = Math.min(180, maxWidth);
+        const minHeight = Math.min(132, maxHeight);
+        const width = Math.max(minWidth, Math.min(queueWidget.offsetWidth, maxWidth));
+        const height = Math.max(minHeight, Math.min(queueWidget.offsetHeight, maxHeight));
+        const maxLeft = Math.max(8, stageRect.width - width - 8);
+        const maxTop = Math.max(8, stageRect.height - height - 8);
+        const left = Math.max(8, Math.min(Number.parseFloat(queueWidget.style.left) || 14, maxLeft));
+        const top = Math.max(8, Math.min(Number.parseFloat(queueWidget.style.top) || 170, maxTop));
+        queueWidget.style.width = `${width}px`;
+        queueWidget.style.height = `${height}px`;
+        queueWidget.style.left = `${left}px`;
+        queueWidget.style.top = `${top}px`;
+        queueWidget.style.right = "auto";
+      }
+
+      function saveQueueWidgetLayout() {
+        try {
+          localStorage.setItem(queueLayoutKey, JSON.stringify({
+            left: Number.parseFloat(queueWidget.style.left),
+            top: Number.parseFloat(queueWidget.style.top),
+            width: queueWidget.offsetWidth,
+            height: queueWidget.offsetHeight
+          }));
+        } catch (error) {
+          console.error("Impossible de sauvegarder la position de la file Petits chevaux :", error);
+        }
+      }
+
+      function setQueueWidgetVisible(visible) {
+        loadQueueWidgetLayout();
+        queueWidget.hidden = !visible;
+        document.getElementById("toggle-queue-widget").textContent =
+          visible ? "📋 Masquer la file d'attente" : "📋 Détacher la file d'attente";
+        if (visible) clampQueueWidgetLayout();
+      }
+
+      function readJackpotStarsInput() {
+        const raw = jackpotStarsInput.value.trim();
+        const value = Number(raw);
+        if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) ||
+          !Number.isSafeInteger(value * 5)) {
+          jackpotControlStatus.textContent = "Saisis un nombre entier d'étoiles valide.";
+          jackpotStarsInput.focus();
+          return null;
+        }
+        return value;
+      }
+
+      function setJackpotStars(value, action) {
+        state.giftPoolRaw = value * 5;
+        state.displayedPool = state.giftPoolRaw;
+        syncEtoilesReward();
+        state.jackpotPulse = 1;
+        jackpotControlStatus.textContent =
+          `Cagnotte ${action} : ${formatEtoiles(state.recompenseEtoiles)}.`;
+        logEvent(`⭐ Cagnotte ${action} : ${formatEtoiles(state.recompenseEtoiles)}.`);
       }
 
       function addGiftToEtoilesPool(amount, label, sender) {
@@ -998,6 +1295,7 @@
         state.dieVelY = 0;
         state.pendingBonus = 0;
         state.forcedDie = null;
+        state.rollCampId = null;
         state.movingQueue = null;
         state.winnerCamp = null;
         state.isSimulation = false;
@@ -1006,6 +1304,7 @@
         state.trails = [];
         state.dustPuffs = [];
         state.confetti = [];
+        refreshQueueWidget();
       }
 
       function getTrackTileIndex(horse) {
@@ -1119,8 +1418,49 @@
         if (!campPlayers.some((player, index) => player && index !== freeCampIdx)) {
           state.turn = freeCampIdx;
         }
+        refreshQueueWidget();
         playTone(587.33, 0.1, "triangle", 0.12);
         logEvent(`🙋 ${cleanNick} ("go") rejoint le camp ${camp.name} !`);
+      }
+
+      function eliminatePlayer(campId) {
+        const player = campPlayers[campId];
+        if (!Number.isInteger(campId) || !player) return false;
+
+        const camp = CAMPS[campId];
+        const wasRollingOrMoving =
+          state.rollCampId === campId ||
+          (state.movingQueue && state.movingQueue.campId === campId);
+
+        campPlayers[campId] = null;
+        pendingDiceRolls[campId] = 0;
+        horses.filter((horse) => horse.campId === campId).forEach((horse) => {
+          horse.state = "stable";
+          horse.trackSteps = 0;
+          horse.ladderStep = -1;
+          horse.exitedOnSixBadge = false;
+        });
+
+        if (wasRollingOrMoving || (state.winnerCamp && state.winnerCamp.id === campId)) {
+          state.turn = campId;
+          state.turnPhase = "roll";
+          state.diceTimer = 0;
+          state.dieBounceY = 0;
+          state.dieVelY = 0;
+          state.pendingBonus = 0;
+          state.forcedDie = null;
+          state.rollCampId = null;
+          state.movingQueue = null;
+          state.winnerCamp = null;
+          state.payoutWinner = null;
+          state.payoutEtoiles = 0;
+          document.getElementById("winner-banner").hidden = true;
+        }
+
+        refreshQueueWidget();
+        logEvent(`🚪 ${player.nickname} a été éliminé de la partie. Ses chevaux et ses lancers en attente ont été retirés.`);
+        startQueuedRollForActivePlayer();
+        return true;
       }
 
       function spawnDust(x, y, color) {
@@ -1190,6 +1530,7 @@
       function spawnVictoryCelebration(camp) {
         state.winnerCamp = camp;
         state.turnPhase = "finished";
+        refreshQueueWidget();
         syncEtoilesReward();
         const wonStars = state.recompenseEtoiles;
         state.payoutEtoiles = wonStars;
@@ -1247,12 +1588,18 @@
         return Math.min(totalSteps, 51 - horse.trackSteps);
       }
 
-      function finishTurn(rolledSix) {
+      function finishTurn(rolledSix, finishingCampId = getActiveTurnCampId()) {
         if (state.winnerCamp) {
           state.turnPhase = "finished";
           return;
         }
         const activeCampId = getActiveTurnCampId();
+        if (activeCampId !== finishingCampId) {
+          logEvent(`⚠️ Tour de ${CAMPS[finishingCampId].name} interrompu : aucun cheval adverse ne sera déplacé.`);
+          state.turnPhase = "roll";
+          startQueuedRollForActivePlayer();
+          return;
+        }
         const activeCamp = CAMPS[activeCampId];
         if (rolledSix) {
           state.turn = activeCampId;
@@ -1262,6 +1609,7 @@
           state.turn = getNextOccupiedCampId(activeCampId);
           state.turnPhase = "roll";
         }
+        refreshQueueWidget();
         startQueuedRollForActivePlayer();
       }
 
@@ -1273,21 +1621,28 @@
         if (!player) return false;
 
         pendingDiceRolls[campId] -= 1;
+        refreshQueueWidget();
         logEvent(`🎁 Lancer en attente de ${player.nickname} activé à son tour.`);
-        rollDie(player.username, 0);
+        rollDie(player.username, 0, null, campId);
         return true;
       }
 
-      function startHorseMovement(horse, steps, rolledSix) {
-        if (state.winnerCamp) return;
+      function startHorseMovement(horse, steps, rolledSix, campId) {
+        if (state.winnerCamp) return false;
+        if (!horse || horse.campId !== campId || campId !== getActiveTurnCampId()) {
+          logEvent("⚠️ Déplacement refusé : le cheval ne correspond pas au camp qui joue.");
+          return false;
+        }
         horse.exitedOnSixBadge = false;
         state.turnPhase = "moving";
         state.movingQueue = {
           horse,
+          campId,
           remaining: steps,
           stepTimer: 0.12,
           rolledSix
         };
+        return true;
       }
 
       function checkCampAllFourFinished(campId) {
@@ -1346,6 +1701,16 @@
 
       function applyRollRules(campId, dieVal, bonusSteps = 0) {
         const camp = CAMPS[campId];
+        if (!camp || campId !== getActiveTurnCampId()) {
+          if (camp && campPlayers[campId]) {
+            pendingDiceRolls[campId] = Math.min(Number.MAX_SAFE_INTEGER, pendingDiceRolls[campId] + 1);
+          }
+          state.turnPhase = "roll";
+          logEvent("⚠️ Lancer conservé : le camp actif a changé, aucun cheval d'un autre joueur ne bouge.");
+          refreshQueueWidget();
+          startQueuedRollForActivePlayer();
+          return;
+        }
         const totalSteps = dieVal + bonusSteps;
         const rolledSix = dieVal === 6;
         const campHorses = horses.filter((h) => h.campId === campId);
@@ -1361,7 +1726,7 @@
           checkAndSendBackOpponent(yardHorse);
           playTone(440, 0.09, "triangle", 0.13);
           logEvent(`${camp.name} fait 6 : ${yardHorse.name} démarre sur la case 1 !`);
-          finishTurn(true);
+          finishTurn(true, campId);
           return;
         }
 
@@ -1391,10 +1756,15 @@
           return scoreB - scoreA;
         })[0];
 
-        startHorseMovement(selected.horse, selected.steps, rolledSix);
+        if (!startHorseMovement(selected.horse, selected.steps, rolledSix, campId)) {
+          pendingDiceRolls[campId] = Math.min(Number.MAX_SAFE_INTEGER, pendingDiceRolls[campId] + 1);
+          state.turnPhase = "roll";
+          refreshQueueWidget();
+          startQueuedRollForActivePlayer();
+        }
       }
 
-      function rollDie(actorName = null, bonusSteps = 0, forcedValue = null) {
+      function rollDie(actorName = null, bonusSteps = 0, forcedValue = null, expectedCampId = null) {
         ensureAudio();
         if (state.turnPhase !== "roll" && !state.winnerCamp) return;
 
@@ -1403,6 +1773,19 @@
           logEvent("Nouvelle manche lancée !");
         }
 
+        const activeCampId = getActiveTurnCampId();
+        if (expectedCampId !== null && expectedCampId !== activeCampId) {
+          if (CAMPS[expectedCampId] && campPlayers[expectedCampId]) {
+            pendingDiceRolls[expectedCampId] = Math.min(
+              Number.MAX_SAFE_INTEGER,
+              pendingDiceRolls[expectedCampId] + 1
+            );
+            refreshQueueWidget();
+          }
+          logEvent("⚠️ Lancer gardé dans la file de son camp d'origine.");
+          return;
+        }
+        state.rollCampId = activeCampId;
         state.turnPhase = "rolling";
         state.diceTimer = 0.65;
         state.dieBounceY = -14;
@@ -1691,9 +2074,11 @@
         }
 
         // Four IDENTICAL camp frames with full-bleed avatars when joined ("go")
+        const activeCampFrameId = getActiveTurnCampId();
         for (const camp of CAMPS) {
           const rect = getCampRect(camp);
           const { x: hx, y: hy, w: hw, h: hh } = rect;
+          const isActiveCamp = camp.id === activeCampFrameId && !state.winnerCamp;
 
           ctx.save();
           ctx.fillStyle = "rgba(15, 23, 42, 0.22)";
@@ -1703,10 +2088,21 @@
 
           drawCampFullFramePhoto(camp, campPlayers[camp.id], hx, hy, hw, hh);
 
+          ctx.save();
           ctx.strokeStyle = camp.color;
           ctx.lineWidth = 3;
           roundRect(ctx, hx, hy, hw, hh, CAMP_FRAME_SPEC.outerRadius);
           ctx.stroke();
+          if (isActiveCamp) {
+            const pulse = (Math.sin(state.time * 7) + 1) / 2;
+            ctx.shadowColor = "#fde047";
+            ctx.shadowBlur = 10 + pulse * 12;
+            ctx.strokeStyle = "#fde047";
+            ctx.lineWidth = 4 + pulse * 1.5;
+            roundRect(ctx, hx, hy, hw, hh, CAMP_FRAME_SPEC.outerRadius);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
 
         // Departure '1' badges locked to each camp's starting anchor
@@ -1774,25 +2170,29 @@
         }
       }
 
-      // Top 4-camp summary cards + bottom étoiles & turn strip
+      // Camp summaries stay at the left; the former bottom reward strip sits at the right.
       function drawHud() {
         CAMPS.forEach((camp, i) => {
-          const col = i % 2;
-          const row = Math.floor(i / 2);
-          const bx = col === 0 ? 18 : W / 2 + 6;
-          const by = 16 + row * 82;
-          const bw = W / 2 - 24;
-          const bh = 74;
+          const bx = 14;
+          const by = 162 + i * 91;
+          const bw = 280;
+          const bh = 80;
           const isTurn = getActiveTurnCampId() === i && !state.winnerCamp;
           const campHorses = horses.filter((h) => h.campId === i);
           const doneCount = campHorses.filter((h) => h.state === "finished").length;
           const regPlayer = campPlayers[i];
           const liveBadge = regPlayer ? `${regPlayer.nickname} (${camp.name})` : `${camp.name} • GO`;
+          const queuedRolls = pendingDiceRolls[i] || 0;
 
           ctx.save();
+          if (isTurn) {
+            ctx.shadowColor = "#fde047";
+            ctx.shadowBlur = 5 + (Math.sin(state.time * 7) + 1) * 3;
+          }
           ctx.fillStyle = isTurn ? "rgba(30, 41, 59, 0.96)" : "rgba(15, 23, 42, 0.84)";
           roundRect(ctx, bx, by, bw, bh, 12);
           ctx.fill();
+          ctx.shadowBlur = 0;
           ctx.strokeStyle = isTurn ? "#fde047" : camp.color;
           ctx.lineWidth = isTurn ? 2.5 : 1.5;
           ctx.stroke();
@@ -1804,6 +2204,7 @@
 
           ctx.fillStyle = "#ffffff";
           ctx.font = "bold 12.5px Inter, system-ui, sans-serif";
+          ctx.textAlign = "left";
           ctx.fillText(`🐴 ${liveBadge.slice(0, 17)} ${isTurn ? "●" : ""}`, bx + 36, by + 27);
 
           ctx.fillStyle = "#fde047";
@@ -1813,37 +2214,44 @@
             bx + 36,
             by + 49
           );
+          ctx.fillStyle = queuedRolls > 0 ? "#fde047" : "#cbd5e1";
+          ctx.font = "bold 10px Inter, system-ui, sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText(`🎲 ${queuedRolls} en attente`, bx + bw - 12, by + 66);
           ctx.restore();
         });
 
-        ctx.save();
-        ctx.fillStyle = state.winnerCamp ? "rgba(120, 53, 15, 0.94)" : "rgba(15, 23, 42, 0.9)";
-        roundRect(ctx, 18, H - 152, W - 36, 72, 14);
-        ctx.fill();
-        ctx.strokeStyle = "#facc15";
-        ctx.lineWidth = 1.6;
-        ctx.stroke();
-
+        const panelX = W - 288;
+        const panelY = 178;
+        const panelW = 274;
+        const panelH = 365;
         const activeCamp = CAMPS[getActiveTurnCampId()];
         const activePlayer = campPlayers[activeCamp.id];
         const turnLabel = activePlayer ? `${activePlayer.nickname} (${activeCamp.name})` : activeCamp.name;
         const liveStars = computeEtoilesFromPool(state.displayedPool);
 
+        ctx.save();
+        ctx.fillStyle = state.winnerCamp ? "rgba(120, 53, 15, 0.94)" : "rgba(15, 23, 42, 0.9)";
+        roundRect(ctx, panelX, panelY, panelW, panelH, 14);
+        ctx.fill();
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
         ctx.fillStyle = "#fde047";
         ctx.font = "bold 12px Inter, system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(
-          state.winnerCamp
-            ? `🏆 ${state.payoutWinner} remporte ${formatEtoiles(state.payoutEtoiles)} !`
-            : `⭐ ${formatEtoiles(liveStars)} • Tour ${turnLabel} [${state.turnPhase}]`,
-          W / 2,
-          H - 127
-        );
+        ctx.fillText("CAGNOTTE DE LA COURSE", panelX + panelW / 2, panelY + 36);
+        ctx.font = "900 26px Inter, system-ui, sans-serif";
+        ctx.fillText(`⭐ ${formatEtoiles(liveStars)}`, panelX + panelW / 2, panelY + 91);
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "bold 10px Inter, system-ui, sans-serif";
+        ctx.fillText("ÉTOILES À GAGNER", panelX + panelW / 2, panelY + 116);
 
-        const pBarX = 36;
-        const pBarY = H - 108;
-        const pBarW = W - 72;
-        const pBarH = 10;
+        const pBarX = panelX + 24;
+        const pBarY = panelY + 145;
+        const pBarW = panelW - 48;
+        const pBarH = 12;
         ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
         roundRect(ctx, pBarX, pBarY, pBarW, pBarH, 5);
         ctx.fill();
@@ -1855,6 +2263,27 @@
         ctx.fillStyle = barGrad;
         roundRect(ctx, pBarX, pBarY, pBarW * prog, pBarH, 5);
         ctx.fill();
+
+        ctx.fillStyle = "#fde047";
+        ctx.font = "bold 12px Inter, system-ui, sans-serif";
+        ctx.fillText(state.winnerCamp ? "🏆 PARTIE TERMINÉE" : "TOUR EN COURS", panelX + panelW / 2, panelY + 210);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 15px Inter, system-ui, sans-serif";
+        ctx.fillText(
+          state.winnerCamp ? `${state.payoutWinner} remporte` : `Tour de ${turnLabel}`,
+          panelX + panelW / 2,
+          panelY + 245,
+          panelW - 24
+        );
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "11px Inter, system-ui, sans-serif";
+        ctx.fillText(
+          state.winnerCamp
+            ? `${formatEtoiles(state.payoutEtoiles)} étoiles gagnées`
+            : `Phase : ${state.turnPhase}`,
+          panelX + panelW / 2,
+          panelY + 274
+        );
         ctx.restore();
       }
 
@@ -1894,28 +2323,50 @@
               state.dieValue = state.forcedDie;
             }
             state.forcedDie = null;
-            const currentCampId = getActiveTurnCampId();
+            const currentCampId = state.rollCampId;
+            state.rollCampId = null;
             const bonus = state.pendingBonus || 0;
             state.pendingBonus = 0;
+            if (!CAMPS[currentCampId] || currentCampId !== getActiveTurnCampId()) {
+              if (CAMPS[currentCampId] && campPlayers[currentCampId]) {
+                pendingDiceRolls[currentCampId] = Math.min(
+                  Number.MAX_SAFE_INTEGER,
+                  pendingDiceRolls[currentCampId] + 1
+                );
+              }
+              state.turnPhase = "roll";
+              logEvent("⚠️ Le tour a changé pendant le lancer : lancer gardé pour son camp, aucun cheval adverse ne bouge.");
+              refreshQueueWidget();
+              startQueuedRollForActivePlayer();
+              return;
+            }
             logEvent(`${CAMPS[currentCampId].name} obtient ${state.dieValue}`);
             applyRollRules(currentCampId, state.dieValue, bonus);
           }
         }
 
         if (state.turnPhase === "moving" && state.movingQueue) {
-          state.movingQueue.stepTimer -= dt;
-          if (state.movingQueue.stepTimer <= 0) {
-            state.movingQueue.stepTimer = 0.12;
-            const won = stepSingleMove(state.movingQueue);
-            state.movingQueue.remaining -= 1;
+          const movement = state.movingQueue;
+          if (movement.horse.campId !== movement.campId) {
+            logEvent("⚠️ Déplacement annulé : cheval et camp de la file ne correspondent pas.");
+            state.movingQueue = null;
+            state.turnPhase = "roll";
+            return;
+          }
+          movement.stepTimer -= dt;
+          if (movement.stepTimer <= 0) {
+            movement.stepTimer = 0.12;
+            const won = stepSingleMove(movement);
+            movement.remaining -= 1;
 
-            if (won || state.movingQueue.remaining <= 0) {
-              const finishedHorse = state.movingQueue.horse;
-              const rolledSix = state.movingQueue.rolledSix;
+            if (won || movement.remaining <= 0) {
+              const finishedHorse = movement.horse;
+              const finishedCampId = movement.campId;
+              const rolledSix = movement.rolledSix;
               state.movingQueue = null;
               if (!won) {
                 checkAndSendBackOpponent(finishedHorse);
-                finishTurn(rolledSix);
+                finishTurn(rolledSix, finishedCampId);
               }
             }
           }
@@ -1989,22 +2440,18 @@
         // Every gift increases the progressive étoiles reward pot
         addGiftToEtoilesPool(amount, label, user);
 
-        if (amount !== 1 && amount !== 10) {
-          logEvent(`⭐ Cadeau (${amount}) ajouté aux étoiles (cadeaux de 1 ou 10 pièces : lancer du dé).`);
-          return;
-        }
-
         const senderCampId = findPlayerCampId(user);
         if (senderCampId === -1) {
-          logEvent(`⏳ Cadeau conservé dans la cagnotte ; ${user} doit écrire « go » pour rejoindre un camp avant de lancer le dé.`);
+          logEvent(`⏳ Cadeau de ${amount} pièces comptabilisé ; ${user} doit écrire « go » pour rejoindre un camp et mettre son lancer en file.`);
           return;
         }
 
         pendingDiceRolls[senderCampId] = Math.min(
           Number.MAX_SAFE_INTEGER,
-          pendingDiceRolls[senderCampId] + 1
+          pendingDiceRolls[senderCampId] + amount
         );
-        logEvent(`🎲 Lancer de ${user} mis en attente (${pendingDiceRolls[senderCampId]} en file).`);
+        refreshQueueWidget();
+        logEvent(`🎲 Cadeau de ${amount} pièces : ${amount} lancer(s) ajouté(s) à la file de ${user} (${pendingDiceRolls[senderCampId]} en attente).`);
         startQueuedRollForActivePlayer();
       }
 
@@ -2014,10 +2461,114 @@
       const closeBtn = document.getElementById("close-panel");
       toggleBtn.addEventListener("click", () => panel.classList.toggle("open"));
       closeBtn.addEventListener("click", () => panel.classList.remove("open"));
+      document.getElementById("toggle-queue-widget").addEventListener("click", () => {
+        setQueueWidgetVisible(queueWidget.hidden);
+      });
+      document.getElementById("close-queue-widget").addEventListener("click", () => {
+        setQueueWidgetVisible(false);
+      });
+      document.getElementById("remove-player-select").addEventListener("change", refreshPlayerRemovalOptions);
+      document.getElementById("remove-player-btn").addEventListener("click", () => {
+        const select = document.getElementById("remove-player-select");
+        const campId = Number(select.value);
+        const player = campPlayers[campId];
+        if (!player) {
+          refreshPlayerRemovalOptions();
+          return;
+        }
+        if (!window.confirm(`Éliminer ${player.nickname} (@${player.username}) de la partie en cours ?`)) return;
+        eliminatePlayer(campId);
+      });
       window.addEventListener("keydown", (e) => {
         if (e.key.toLowerCase() === "h" && document.activeElement.tagName !== "INPUT") {
           panel.classList.toggle("open");
         }
+      });
+
+      let queueDrag = null;
+      queueWidgetHeader.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("button")) return;
+        const widgetRect = queueWidget.getBoundingClientRect();
+        queueDrag = {
+          pointerId: e.pointerId,
+          x: e.clientX - widgetRect.left,
+          y: e.clientY - widgetRect.top
+        };
+        queueWidgetHeader.setPointerCapture(e.pointerId);
+      });
+      queueWidgetHeader.addEventListener("pointermove", (e) => {
+        if (!queueDrag || queueDrag.pointerId !== e.pointerId) return;
+        const stageRect = stageWrap.getBoundingClientRect();
+        const maxLeft = Math.max(8, stageRect.width - queueWidget.offsetWidth - 8);
+        const maxTop = Math.max(8, stageRect.height - queueWidget.offsetHeight - 8);
+        queueWidget.style.left = `${Math.max(8, Math.min(maxLeft, e.clientX - stageRect.left - queueDrag.x))}px`;
+        queueWidget.style.top = `${Math.max(8, Math.min(maxTop, e.clientY - stageRect.top - queueDrag.y))}px`;
+      });
+      queueWidgetHeader.addEventListener("pointerup", (e) => {
+        if (!queueDrag || queueDrag.pointerId !== e.pointerId) return;
+        queueDrag = null;
+        saveQueueWidgetLayout();
+      });
+      queueWidgetHeader.addEventListener("pointercancel", () => {
+        queueDrag = null;
+      });
+
+      let queueResize = null;
+      queueResizeHandle.addEventListener("pointerdown", (e) => {
+        const stageRect = stageWrap.getBoundingClientRect();
+        queueResize = {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          width: queueWidget.offsetWidth,
+          height: queueWidget.offsetHeight,
+          left: Number.parseFloat(queueWidget.style.left) || 14,
+          top: Number.parseFloat(queueWidget.style.top) || 170,
+          stageWidth: stageRect.width,
+          stageHeight: stageRect.height
+        };
+        queueResizeHandle.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      queueResizeHandle.addEventListener("pointermove", (e) => {
+        if (!queueResize || queueResize.pointerId !== e.pointerId) return;
+        const maxWidth = Math.max(1, queueResize.stageWidth - queueResize.left - 8);
+        const maxHeight = Math.max(1, queueResize.stageHeight - queueResize.top - 8);
+        const minWidth = Math.min(180, maxWidth);
+        const minHeight = Math.min(132, maxHeight);
+        queueWidget.style.width = `${Math.max(minWidth, Math.min(maxWidth, queueResize.width + e.clientX - queueResize.x))}px`;
+        queueWidget.style.height = `${Math.max(minHeight, Math.min(maxHeight, queueResize.height + e.clientY - queueResize.y))}px`;
+      });
+      queueResizeHandle.addEventListener("pointerup", (e) => {
+        if (!queueResize || queueResize.pointerId !== e.pointerId) return;
+        queueResize = null;
+        saveQueueWidgetLayout();
+      });
+      queueResizeHandle.addEventListener("pointercancel", () => {
+        queueResize = null;
+      });
+      window.addEventListener("resize", () => {
+        if (queueWidget.hidden) return;
+        clampQueueWidgetLayout();
+        saveQueueWidgetLayout();
+      });
+
+      const maxJackpotStars = Math.floor(Number.MAX_SAFE_INTEGER / 5);
+      jackpotStarsInput.max = String(maxJackpotStars);
+      document.getElementById("add-jackpot-stars").addEventListener("click", () => {
+        const amount = readJackpotStarsInput();
+        if (amount === null) return;
+        const total = state.recompenseEtoiles + amount;
+        if (!Number.isSafeInteger(total) || !Number.isSafeInteger(total * 5)) {
+          jackpotControlStatus.textContent = "Le montant ajouté dépasse la limite autorisée.";
+          return;
+        }
+        setJackpotStars(total, "augmentée");
+      });
+      document.getElementById("set-jackpot-stars").addEventListener("click", () => {
+        const amount = readJackpotStarsInput();
+        if (amount === null) return;
+        setJackpotStars(amount, "fixée");
       });
 
       // Drag dock inside 9:16 stage
