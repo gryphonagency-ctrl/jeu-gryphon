@@ -3482,6 +3482,7 @@ const server = http.createServer((req, res) => {
         ['/petits-chevaux.html', [petitsChevauxFile, 'text/html; charset=utf-8']],
         ['/images-vitrine/petits-chevaux.png', [path.join(__dirname, 'images-vitrine', 'petits-chevaux.png'), 'image/png']],
         ['/lunar-interstellar.html', [lunarInterstellarFile, 'text/html; charset=utf-8']],
+        ['/images-vitrine/lunar-interstellar.png', [path.join(__dirname, 'images-vitrine', 'lunar-interstellar.png'), 'image/png']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
         ['/bataille-planetes-centre-frames.webp', [path.join(__dirname, 'bataille-planetes-centre-frames.webp'), 'image/webp']],
