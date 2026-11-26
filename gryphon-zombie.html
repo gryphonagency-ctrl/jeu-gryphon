@@ -10720,5 +10720,271 @@ three/build/three.module.js:
   install();
 })();
 </script>
+<script>
+(() => {
+  const assetBase = "/gryphon-zombie-assets/juggernog";
+  let attempts = 0;
+
+  function waitForGame() {
+    const game = window.__G;
+    const diner = game?.level?.groups?.diner;
+    const oldMesh = diner?.getObjectByName("obj:diner");
+    let sample = null;
+    if (game?.level?.groups) {
+      for (const group of Object.values(game.level.groups)) {
+        group?.traverse?.(object => {
+          if (
+            !sample &&
+            object.isMesh &&
+            object.material?.isMeshStandardMaterial &&
+            object.material.map?.image
+          ) {
+            sample = object;
+          }
+        });
+      }
+    }
+
+    if (!game?.level?.machineSpots || !diner || !oldMesh || !sample) {
+      if (++attempts < 1200) {
+        window.setTimeout(waitForGame, 50);
+      } else {
+        console.error("[Gryphon Zombie] Juggernog replacement could not find the diner model.");
+      }
+      return;
+    }
+    if (game.__juggernogReplacementStarted) return;
+    game.__juggernogReplacementStarted = true;
+    replaceMachine(game, diner, oldMesh, sample).catch(error => {
+      console.error("[Gryphon Zombie] Juggernog replacement failed; the original machine remains.", error);
+    });
+  }
+
+  async function replaceMachine(game, diner, oldMesh, sample) {
+    const spot = game.level.machineSpots.find(machine => machine.id === "secondHelping");
+    if (!spot) throw new Error("Machine spot 'secondHelping' was not found.");
+
+    const gltfResponse = await fetch(`${assetBase}/scene.gltf`);
+    if (!gltfResponse.ok) throw new Error(`GLTF request failed (${gltfResponse.status}).`);
+    const gltf = await gltfResponse.json();
+    const binaryResponse = await fetch(`${assetBase}/scene.bin`);
+    if (!binaryResponse.ok) throw new Error(`GLTF buffer request failed (${binaryResponse.status}).`);
+    const binary = await binaryResponse.arrayBuffer();
+    const componentInfo = {
+      5121: { ArrayType: Uint8Array, read: (view, offset) => view.getUint8(offset) },
+      5123: { ArrayType: Uint16Array, read: (view, offset) => view.getUint16(offset, true) },
+      5125: { ArrayType: Uint32Array, read: (view, offset) => view.getUint32(offset, true) },
+      5126: { ArrayType: Float32Array, read: (view, offset) => view.getFloat32(offset, true) }
+    };
+    const accessorComponents = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+    const decodeAccessor = index => {
+      const accessor = gltf.accessors[index];
+      const bufferView = gltf.bufferViews[accessor.bufferView];
+      const component = componentInfo[accessor.componentType];
+      const components = accessorComponents[accessor.type];
+      if (!component || !components || bufferView.buffer !== 0) {
+        throw new Error(`Unsupported GLTF accessor ${index}.`);
+      }
+      const bytesPerComponent = component.ArrayType.BYTES_PER_ELEMENT;
+      const stride = bufferView.byteStride || components * bytesPerComponent;
+      const start = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
+      const dataView = new DataView(binary);
+      const values = new component.ArrayType(accessor.count * components);
+      for (let item = 0; item < accessor.count; item++) {
+        for (let part = 0; part < components; part++) {
+          values[item * components + part] = component.read(
+            dataView,
+            start + item * stride + part * bytesPerComponent
+          );
+        }
+      }
+      return { values, components, normalized: accessor.normalized === true };
+    };
+
+    const materialDefinition = gltf.materials?.[0] || {};
+    const pbr = materialDefinition.pbrMetallicRoughness || {};
+    const specGloss = materialDefinition.extensions?.KHR_materials_pbrSpecularGlossiness || {};
+    const colorFactor = pbr.baseColorFactor || specGloss.diffuseFactor || [1, 1, 1, 1];
+    const material = new sample.material.constructor({
+      color: 0xffffff,
+      metalness: 0,
+      roughness: 1
+    });
+    material.color.setRGB(colorFactor[0], colorFactor[1], colorFactor[2]);
+    material.opacity = colorFactor[3];
+    material.transparent = materialDefinition.alphaMode === "BLEND" || colorFactor[3] < 1;
+    if (materialDefinition.doubleSided) material.side = sample.material.side;
+
+    const textureInfo = pbr.baseColorTexture || specGloss.diffuseTexture;
+    if (textureInfo) {
+      const textureDefinition = gltf.textures[textureInfo.index];
+      const imageDefinition = gltf.images[textureDefinition.source];
+      if (!imageDefinition?.uri) throw new Error("The Juggernog texture URI is missing.");
+      const image = new Image();
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error("The Juggernog texture could not be loaded."));
+        image.src = `${assetBase}/${imageDefinition.uri}`;
+      });
+      const texture = new sample.material.map.constructor(image);
+      texture.colorSpace = "srgb";
+      texture.flipY = false;
+      texture.wrapS = sample.material.map.wrapS;
+      texture.wrapT = sample.material.map.wrapT;
+      texture.needsUpdate = true;
+      material.map = texture;
+    }
+    material.needsUpdate = true;
+
+    const group = new diner.constructor();
+    group.name = "juggernog-replacement";
+    const meshConstructor = sample.constructor;
+    const geometryConstructor = sample.geometry.constructor;
+    const attributeConstructor = sample.geometry.attributes.position.constructor;
+    const materials = [material];
+
+    function buildNode(index) {
+      const definition = gltf.nodes[index];
+      const node = new diner.constructor();
+      if (definition.matrix) {
+        node.matrix.fromArray(definition.matrix);
+        node.matrix.decompose(node.position, node.quaternion, node.scale);
+      } else {
+        if (definition.translation) node.position.fromArray(definition.translation);
+        if (definition.rotation) node.quaternion.fromArray(definition.rotation);
+        if (definition.scale) node.scale.fromArray(definition.scale);
+      }
+      if (definition.mesh !== undefined) {
+        const meshDefinition = gltf.meshes[definition.mesh];
+        for (const primitive of meshDefinition.primitives) {
+          if (primitive.mode !== undefined && primitive.mode !== 4) {
+            throw new Error("The Juggernog model contains unsupported geometry.");
+          }
+          const geometry = new geometryConstructor();
+          const attributeNames = { POSITION: "position", NORMAL: "normal", TEXCOORD_0: "uv" };
+          for (const [semantic, accessorIndex] of Object.entries(primitive.attributes)) {
+            const name = attributeNames[semantic];
+            if (!name) continue;
+            const accessor = decodeAccessor(accessorIndex);
+            geometry.setAttribute(name, new attributeConstructor(
+              accessor.values,
+              accessor.components,
+              accessor.normalized
+            ));
+          }
+          if (primitive.indices !== undefined) {
+            geometry.setIndex(decodeAccessor(primitive.indices).values);
+          }
+          if (!geometry.attributes.normal) geometry.computeVertexNormals();
+          const mesh = new meshConstructor(geometry, materials[primitive.material || 0]);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          node.add(mesh);
+        }
+      }
+      for (const child of definition.children || []) node.add(buildNode(child));
+      return node;
+    }
+
+    const sceneDefinition = gltf.scenes[gltf.scene || 0];
+    for (const node of sceneDefinition.nodes) group.add(buildNode(node));
+    group.rotation.y = spot.yaw;
+
+    const Vector3 = group.position.constructor;
+    const measureBounds = () => {
+      const bounds = {
+        min: [Infinity, Infinity, Infinity],
+        max: [-Infinity, -Infinity, -Infinity]
+      };
+      group.traverse(object => {
+        if (!object.isMesh) return;
+        const positions = object.geometry.attributes.position;
+        for (let index = 0; index < positions.count; index++) {
+          const point = new Vector3(
+            positions.getX(index),
+            positions.getY(index),
+            positions.getZ(index)
+          ).applyMatrix4(object.matrixWorld);
+          const coordinates = [point.x, point.y, point.z];
+          for (let axis = 0; axis < 3; axis++) {
+            bounds.min[axis] = Math.min(bounds.min[axis], coordinates[axis]);
+            bounds.max[axis] = Math.max(bounds.max[axis], coordinates[axis]);
+          }
+        }
+      });
+      return bounds;
+    };
+    group.updateMatrixWorld(true);
+    const initialBounds = measureBounds();
+    const modelHeight = initialBounds.max[1] - initialBounds.min[1];
+    if (!Number.isFinite(modelHeight) || modelHeight <= 0) {
+      throw new Error("The Juggernog model has invalid dimensions.");
+    }
+    group.scale.setScalar(2.8 / modelHeight);
+    group.updateMatrixWorld(true);
+    const fittedBounds = measureBounds();
+    group.position.set(
+      spot.pos[0] - (fittedBounds.min[0] + fittedBounds.max[0]) / 2,
+      spot.pos[1] - fittedBounds.min[1],
+      spot.pos[2] - (fittedBounds.min[2] + fittedBounds.max[2]) / 2
+    );
+
+    const sourceGeometry = oldMesh.geometry;
+    const sourcePosition = sourceGeometry.attributes.position;
+    const sourceIndices = sourceGeometry.index?.array;
+    if (!sourceIndices) throw new Error("The original diner geometry is not indexed.");
+    const retainedAttributes = Object.keys(sourceGeometry.attributes).reduce((result, name) => {
+      result[name] = [];
+      return result;
+    }, {});
+    let removedTriangles = 0;
+    for (let offset = 0; offset < sourceIndices.length; offset += 3) {
+      const triangle = [sourceIndices[offset], sourceIndices[offset + 1], sourceIndices[offset + 2]];
+      const belongsToOldMachine = triangle.every(vertex => {
+        const x = sourcePosition.getX(vertex);
+        const y = sourcePosition.getY(vertex);
+        const z = sourcePosition.getZ(vertex);
+        return Math.abs(x - spot.pos[0]) <= 0.5 &&
+          y >= spot.pos[1] - 0.01 && y <= spot.pos[1] + 2.81 &&
+          Math.abs(z - spot.pos[2]) <= 0.5;
+      });
+      if (belongsToOldMachine) {
+        removedTriangles++;
+        continue;
+      }
+      for (const vertex of triangle) {
+        for (const [name, values] of Object.entries(retainedAttributes)) {
+          const attribute = sourceGeometry.attributes[name];
+          const start = vertex * attribute.itemSize;
+          for (let component = 0; component < attribute.itemSize; component++) {
+            values.push(attribute.array[start + component]);
+          }
+        }
+      }
+    }
+    if (removedTriangles < 100) {
+      throw new Error(`Expected old-machine geometry was not found (${removedTriangles} triangles).`);
+    }
+
+    const replacementGeometry = new geometryConstructor();
+    for (const [name, values] of Object.entries(retainedAttributes)) {
+      const sourceAttribute = sourceGeometry.attributes[name];
+      replacementGeometry.setAttribute(name, new sourceAttribute.constructor(
+        new sourceAttribute.array.constructor(values),
+        sourceAttribute.itemSize,
+        sourceAttribute.normalized
+      ));
+    }
+    replacementGeometry.computeBoundingSphere();
+
+    diner.add(group);
+    oldMesh.geometry = replacementGeometry;
+    game.__juggernogReplacementInstalled = true;
+    console.info(`[Gryphon Zombie] Juggernog model installed; replaced ${removedTriangles} legacy triangles.`);
+  }
+
+  waitForGame();
+})();
+</script>
 </body>
 </html>
