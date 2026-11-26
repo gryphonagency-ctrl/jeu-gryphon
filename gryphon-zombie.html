@@ -10565,5 +10565,102 @@ three/build/three.module.js:
   initialize();
 })();
 </script>
+<script>
+(() => {
+  let attempts = 0;
+
+  function install() {
+    const game = window.__G;
+    if (!game?.events || !game.zombies || typeof game.receiveTikTokGift !== "function") {
+      if (++attempts < 1200) {
+        window.setTimeout(install, 50);
+      } else {
+        console.error("[TikTok gifts] Game systems were not ready; instant spawns were not installed.");
+      }
+      return;
+    }
+    if (game.__instantGiftSpawnsInstalled) return;
+
+    let pending = 0;
+    let runIndex = game.runIndex;
+    const syncRun = () => {
+      if (game.runIndex !== runIndex) {
+        pending = 0;
+        runIndex = game.runIndex;
+      }
+    };
+    const spawnPending = () => {
+      syncRun();
+      if (game.state !== "playing" || game.director?.phase !== "active" || pending < 1) return;
+
+      const points = game.level && (
+        typeof game.level.activeSpawnPoints === "function"
+          ? game.level.activeSpawnPoints()
+          : game.level.spawnPoints
+      );
+      if (!Array.isArray(points) || points.length === 0) return;
+
+      while (pending > 0) {
+        const point = points[Math.floor(Math.random() * points.length)];
+        let zombieId;
+        try {
+          zombieId = game.zombies.spawn(point, {
+            round: game.round,
+            type: "walker"
+          });
+        } catch (error) {
+          console.error("[TikTok gifts] Immediate zombie spawn failed.", error);
+          return;
+        }
+        if (zombieId == null) return;
+        pending -= 1;
+      }
+    };
+
+    const receiveTikTokGift = game.receiveTikTokGift;
+    game.receiveTikTokGift = function (gift) {
+      const result = receiveTikTokGift.call(this, gift);
+      const coinCount = Number(gift && gift.coinCount);
+      if (
+        this.state !== "playing" ||
+        this.director?.phase !== "active" ||
+        !Number.isSafeInteger(coinCount) ||
+        coinCount < 1
+      ) {
+        return result;
+      }
+      syncRun();
+      if (coinCount > Number.MAX_SAFE_INTEGER - pending) {
+        console.error("[TikTok gifts] Instant zombie request exceeded the safe queue limit.");
+        return result;
+      }
+      pending += coinCount;
+      spawnPending();
+      window.setTimeout(() => {
+        const activity = document.querySelector(".gs-live-activity");
+        if (activity) {
+          activity.textContent =
+            `Apparition cadeau : ${coinCount} zombie${coinCount === 1 ? "" : "s"} demandé${coinCount === 1 ? "" : "s"} immédiatement. ` +
+            `${pending} en attente du plafond de 24 vivants.`;
+        }
+      }, 0);
+      return result;
+    };
+
+    game.events.on("zombie:remove", spawnPending);
+    game.events.on("round:start", spawnPending);
+    game.events.on("game:state", event => {
+      if (event?.state === "playing") {
+        spawnPending();
+      } else if (event?.state !== "paused") {
+        pending = 0;
+      }
+    });
+    game.__instantGiftSpawnsInstalled = true;
+  }
+
+  install();
+})();
+</script>
 </body>
 </html>
