@@ -215,6 +215,7 @@ const protectedRoutes = new Set([
     '/petits-chevaux-tiktok.html',
     '/petits-chevaux.html',
     '/lunar-interstellar.html',
+    '/monopoly-royal-tiktok-live.html',
     '/wish-lab.html',
     '/bataille-des-planetes.html',
     '/maya-island.html',
@@ -280,6 +281,7 @@ const freeTrialRoutes = new Set([
     '/petits-chevaux-tiktok.html',
     '/petits-chevaux.html',
     '/lunar-interstellar.html',
+    '/monopoly-royal-tiktok-live.html',
     '/jeu-foot-tiktok.html',
     '/ambiance-stade-maximale.html',
     '/super-mario-live.html',
@@ -376,6 +378,7 @@ store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.htm
 store.grantGameAccessToExistingCreators('/gryphon-zombie.html');
 store.grantGameAccessToExistingCreators('/petits-chevaux.html');
 store.grantGameAccessToExistingCreators('/lunar-interstellar.html');
+store.grantGameAccessToExistingCreators('/monopoly-royal-tiktok-live.html');
 const staticGameTitles = {
     '/combat-goku-luffy.html': 'Luffy contre Goku',
     '/showdown-tiktok.html': 'Showdown A vs B',
@@ -412,6 +415,7 @@ const staticGameTitles = {
     '/petits-chevaux-tiktok.html': 'Petit Trot',
     '/petits-chevaux.html': 'Petits chevaux',
     '/lunar-interstellar.html': 'Lunar Interstellar',
+    '/monopoly-royal-tiktok-live.html': 'Monopoly Royal · TikTok Live',
     '/wish-lab.html': 'Wish Lab',
     '/bataille-des-planetes.html': 'Bataille des planètes',
     '/maya-island.html': 'Maya Island',
@@ -495,6 +499,7 @@ const gameRouteIds = new Map([
     ['/petits-chevaux-tiktok.html', '/petits-chevaux-tiktok.html'],
     ['/petits-chevaux.html', '/petits-chevaux.html'],
     ['/lunar-interstellar.html', '/lunar-interstellar.html'],
+    ['/monopoly-royal-tiktok-live.html', '/monopoly-royal-tiktok-live.html'],
     ['/bataille-des-planetes.html', '/bataille-des-planetes.html'],
     ['/maya-island.html', '/maya-island.html'],
     ['/monde-du-ballon.html', '/monde-du-ballon.html'],
@@ -3518,6 +3523,8 @@ const server = http.createServer((req, res) => {
         ['/petits-chevaux.html', [petitsChevauxFile, 'text/html; charset=utf-8']],
         ['/images-vitrine/petits-chevaux.png', [path.join(__dirname, 'images-vitrine', 'petits-chevaux.png'), 'image/png']],
         ['/lunar-interstellar.html', [lunarInterstellarFile, 'text/html; charset=utf-8']],
+        ['/monopoly-royal-tiktok-live.html', [path.join(__dirname, 'monopoly-royal-tiktok-live.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/monopoly-royal-tiktok-live.png', [path.join(__dirname, 'images-vitrine', 'monopoly-royal-tiktok-live.png'), 'image/png']],
         ['/images-vitrine/lunar-interstellar.png', [path.join(__dirname, 'images-vitrine', 'lunar-interstellar.png'), 'image/png']],
         ['/wish-lab.html', [wishLabFile, 'text/html; charset=utf-8']],
         ['/bataille-des-planetes.html', [path.join(__dirname, 'bataille-des-planetes.html'), 'text/html; charset=utf-8']],
@@ -3951,6 +3958,11 @@ const publicPachinkoSockets = new WeakSet();
 const publicPachinkoConnectedSockets = new WeakSet();
 const publicPachinkoAdmissions = new WeakMap();
 const publicPachinkoConnectTimeouts = new WeakMap();
+const freeGameRelaySockets = new WeakSet();
+const freeGameRelayConnectedSockets = new WeakSet();
+const freeGameRelayGameIds = new WeakMap();
+const freeGameRelayUsernames = new WeakMap();
+const freeGameRelayConnectTimeouts = new WeakMap();
 const MAX_PUBLIC_PACHINKO_SESSIONS = 3;
 const liveTtsClientUsernames = new WeakMap();
 const liveTtsClientOwners = new WeakMap();
@@ -4184,6 +4196,34 @@ function sendTreasureLiveState(session, socket) {
 
 server.on('upgrade', (req, socket, head) => {
     const requestUrl = new URL(req.url, 'http://localhost');
+    const isFreeGameRelay = requestUrl.pathname === '/free-game-live-relay';
+    const freeGameRelayGameId = isFreeGameRelay ? requestUrl.searchParams.get('gameId') || '' : '';
+    const freeGameRelayIdentity = isFreeGameRelay ? tiktokFreeGames.getIdentity(req) : null;
+    const freeGameRelayStatus = freeGameRelayIdentity
+        ? tiktokFreeGames.getPlayerStatus(req, store, getApplicationDate())
+        : null;
+    const freeGameRelayCreatorAccess = Boolean(
+        isFreeGameRelay &&
+        access.isAuthenticated(req) &&
+        access.canAccessGames(req) &&
+        access.canAccessGames(req, freeGameRelayGameId)
+    );
+    const freeGameRelayPlayerAccess = Boolean(
+        freeGameRelayIdentity &&
+        freeGameRelayStatus?.allowed &&
+        !freeGameRelayStatus.banned &&
+        freeGameRelayGameId
+    );
+    const canUseFreeGameRelay = Boolean(
+        isFreeGameRelay &&
+        tiktokFreeGames.FREE_GAME_IDS.includes(freeGameRelayGameId) &&
+        (freeGameRelayCreatorAccess || freeGameRelayPlayerAccess)
+    );
+    if (isFreeGameRelay && !canUseFreeGameRelay) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+    }
     const publicPachinkoAdmission = requestUrl.pathname === PUBLIC_PACHINKO_RELAY_PATH
         ? publicPachinkoRelayGate.acquire(req, requestUrl)
         : null;
@@ -4242,7 +4282,7 @@ server.on('upgrade', (req, socket, head) => {
         (isTreasureOverlayRequest && !canUseTreasureOverlay) ||
         ((!authenticated || !access.canAccessGames(req)) &&
             !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay &&
-            !canUseVoiceMask && !publicPachinkoAdmission)) {
+            !canUseVoiceMask && !publicPachinkoAdmission && !canUseFreeGameRelay)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -4252,6 +4292,13 @@ server.on('upgrade', (req, socket, head) => {
             publicPachinkoSockets.add(webSocket);
             publicPachinkoAdmissions.set(webSocket, publicPachinkoAdmission);
             webSocket.once('close', publicPachinkoAdmission.release);
+        }
+        if (canUseFreeGameRelay) {
+            freeGameRelaySockets.add(webSocket);
+            freeGameRelayGameIds.set(webSocket, freeGameRelayGameId);
+            if (freeGameRelayPlayerAccess) {
+                freeGameRelayUsernames.set(webSocket, freeGameRelayStatus.username.toLocaleLowerCase());
+            }
         }
         if (canUseVoiceMask) {
             const connection = {
@@ -4552,7 +4599,9 @@ function detachClient(socket) {
     removeBalloonGameClient(session, socket);
     session.clients.delete(socket);
     session.walletCommandsEnabled = [...session.clients].some(client =>
-        !treasureOverlaySocketOwners.has(client) && !publicPachinkoSockets.has(client));
+        !treasureOverlaySocketOwners.has(client) &&
+        !publicPachinkoSockets.has(client) &&
+        !freeGameRelaySockets.has(client));
     if (!session.clients.size && sessionKey !== centralTikTokSessionKey) {
         sessions.delete(sessionKey);
         void session.disconnect();
@@ -4740,12 +4789,20 @@ function startCentralTikTokListener() {
 
 wss.on('connection', (socket, req) => {
     const isPublicPachinkoSocket = publicPachinkoSockets.has(socket);
+    const isFreeGameRelaySocket = freeGameRelaySockets.has(socket);
     if (isPublicPachinkoSocket) {
         const connectTimeout = setTimeout(() => {
             if (!publicPachinkoConnectedSockets.has(socket)) socket.terminate();
         }, 15_000);
         connectTimeout.unref();
         publicPachinkoConnectTimeouts.set(socket, connectTimeout);
+    }
+    if (isFreeGameRelaySocket) {
+        const connectTimeout = setTimeout(() => {
+            if (!freeGameRelayConnectedSockets.has(socket)) socket.terminate();
+        }, 15_000);
+        connectTimeout.unref();
+        freeGameRelayConnectTimeouts.set(socket, connectTimeout);
     }
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
     const treasureOverlayOwner = treasureOverlaySocketOwners.get(socket) || '';
@@ -4805,18 +4862,25 @@ wss.on('connection', (socket, req) => {
             request = JSON.parse(message.toString());
         } catch (error) {
             console.warn('Message reçu du jeu invalide :', error.message);
-            if (isPublicPachinkoSocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
+            if (isPublicPachinkoSocket || isFreeGameRelaySocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
             return;
         }
         if (!request || typeof request !== 'object' || Array.isArray(request)) {
             console.warn('Message reçu du jeu invalide : un objet JSON est requis.');
-            if (isPublicPachinkoSocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
+            if (isPublicPachinkoSocket || isFreeGameRelaySocket || voiceMaskSockets.has(socket)) socket.close(1008, 'Message invalide');
             return;
         }
         if (isPublicPachinkoSocket &&
             (request.action !== 'CONNECT_TIKTOK' ||
                 request.gameId !== PUBLIC_PACHINKO_GAME_ID ||
                 publicPachinkoConnectedSockets.has(socket))) {
+            socket.close(1008, 'Action non autorisée');
+            return;
+        }
+        if (isFreeGameRelaySocket &&
+            (request.action !== 'CONNECT_TIKTOK' ||
+                request.gameId !== freeGameRelayGameIds.get(socket) ||
+                freeGameRelayConnectedSockets.has(socket))) {
             socket.close(1008, 'Action non autorisée');
             return;
         }
@@ -4930,13 +4994,28 @@ wss.on('connection', (socket, req) => {
             if (isPublicPachinkoSocket) socket.close(1008, 'Pseudo invalide');
             return;
         }
+        const freeGameRelayUsername = freeGameRelayUsernames.get(socket);
+        if (freeGameRelayUsername && username.toLocaleLowerCase() !== freeGameRelayUsername) {
+            socket.send(JSON.stringify({
+                type: 'STATUS',
+                message: 'Le pseudo doit correspondre au compte TikTok authentifié pour les jeux gratuits.'
+            }));
+            socket.close(1008, 'Pseudo non autorisé');
+            return;
+        }
         if (isPublicPachinkoSocket) {
             publicPachinkoConnectedSockets.add(socket);
             clearTimeout(publicPachinkoConnectTimeouts.get(socket));
         }
+        if (isFreeGameRelaySocket) {
+            freeGameRelayConnectedSockets.add(socket);
+            clearTimeout(freeGameRelayConnectTimeouts.get(socket));
+        }
 
         const sessionKey = username.toLocaleLowerCase();
-        const wantsBalloonGame = !isPublicPachinkoSocket && request.gameMode === 'balloon';
+        const wantsBalloonGame = !isPublicPachinkoSocket &&
+            !isFreeGameRelaySocket &&
+            request.gameMode === 'balloon';
         const currentSessionKey = clientSessions.get(socket);
         if (isPublicPachinkoSocket &&
             !sessions.has(sessionKey) &&
@@ -4950,7 +5029,7 @@ wss.on('connection', (socket, req) => {
         }
         if (currentSessionKey === sessionKey) {
             const currentSession = sessions.get(sessionKey);
-            if (!treasureOverlayOwner && !isPublicPachinkoSocket) {
+            if (!treasureOverlayOwner && !isPublicPachinkoSocket && !isFreeGameRelaySocket) {
                 currentSession.walletCommandsEnabled = true;
             }
             if (wantsBalloonGame && !currentSession.balloonClients.has(socket)) {
@@ -5017,7 +5096,7 @@ wss.on('connection', (socket, req) => {
             sessions.set(sessionKey, session);
             startTikTokSession(session);
         }
-        if (!treasureOverlayOwner && !isPublicPachinkoSocket) {
+        if (!treasureOverlayOwner && !isPublicPachinkoSocket && !isFreeGameRelaySocket) {
             session.walletCommandsEnabled = true;
         }
         if (wantsBalloonGame && !session.balloonClients.has(socket) &&
@@ -5050,6 +5129,7 @@ wss.on('connection', (socket, req) => {
     });
     socket.on('close', () => {
         clearTimeout(publicPachinkoConnectTimeouts.get(socket));
+        clearTimeout(freeGameRelayConnectTimeouts.get(socket));
         publicPachinkoAdmissions.get(socket)?.release();
         liveTtsSockets.delete(socket);
         removeVoiceMaskSocket(socket);

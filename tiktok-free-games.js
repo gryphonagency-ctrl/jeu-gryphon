@@ -21,7 +21,9 @@ const FREE_GAME_IDS = Object.freeze([
     '/telepusher.html',
     '/grand-prix-pokemon.html',
     '/pachinko-live.html',
-    '/live-photo-printer-studio.html'
+    '/live-photo-printer-studio.html',
+    '/lunar-interstellar.html',
+    '/monopoly-royal-tiktok-live.html'
 ]);
 
 const FREE_GAME_PATHS = new Map(FREE_GAME_IDS.map(gameId => [gameId, gameId]));
