@@ -11,6 +11,11 @@ test('only the games listed as free on the homepage are time-limited', () => {
     const homepage = fs.readFileSync(path.join(__dirname, '..', 'accueil.html'), 'utf8');
     const trialList = homepage.match(/const FREE_TRIAL_GAMES = new Set\((\[[^\]]+\])\);/);
     assert(trialList, 'the homepage free-game catalog is present');
+    const monopolyCard = homepage.match(/<a class="game-card" data-game-id="\/monopoly-royal-tiktok-live\.html"[\s\S]*?<\/a>/);
+    assert(monopolyCard, 'Monopoly Royal has a card in the homepage game grid');
+    assert.match(monopolyCard[0], /href="\/monopoly-royal-tiktok-live\.html"/);
+    assert.match(monopolyCard[0], /<h3>Monopoly Royal · TikTok Live<\/h3>/);
+    assert.match(homepage, /23 jeux à essayer gratuitement[\s\S]*?Monopoly Royal · TikTok Live/);
     const homepageGameIds = [...trialList[1].matchAll(/'([^']+)'/g)]
         .map(match => match[1])
         .sort();
