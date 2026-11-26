@@ -10308,16 +10308,74 @@ three/build/three.module.js:
 
   function configureRayGunSupportHand(game) {
     const view = game.weapon.view;
-    if (!view?.arms?.left?.group || typeof view.update !== "function") {
-      console.error("[Ray Gun] Hand rig was not ready; support-hand visibility was not configured.");
+    const rightHand = view?.arms?.right;
+    const middleFingerBones = rightHand?.digits?.[2]?.bones;
+    if (
+      !view?.arms?.left?.group ||
+      !rightHand?.setPose ||
+      typeof view.arms.solveFor !== "function" ||
+      typeof view.regrip !== "function" ||
+      !middleFingerBones ||
+      middleFingerBones.length < 2 ||
+      typeof view.update !== "function"
+    ) {
+      console.error("[Ray Gun] Hand rig was not ready; laser grip was not configured.");
       return;
     }
 
+    const middleFingerScales = middleFingerBones.slice(0, 2).map(bone => bone.scale.clone());
+    const tightenGrip = poses => {
+      for (const pose of [poses.rGrip, poses.rFire]) {
+        if (!pose || pose.length < 22) continue;
+        // Pose slots follow thumb, index, middle, ring, pinky, then palm cup.
+        pose[9] = Math.max(pose[9], 0.48);
+        pose[11] = Math.max(pose[11], 0.62);
+        pose[12] = Math.max(pose[12], 0.38);
+        pose[13] = Math.max(pose[13], 0.42);
+        pose[15] = Math.max(pose[15], 0.56);
+        pose[16] = Math.max(pose[16], 0.34);
+        pose[17] = Math.max(pose[17], 0.42);
+        pose[19] = Math.max(pose[19], 0.5);
+        pose[20] = Math.max(pose[20], 0.32);
+        pose[21] = Math.max(pose[21], 0.2);
+      }
+    };
+    const solveFor = view.arms.solveFor.bind(view.arms);
+    view.arms.solveFor = function (model, hold) {
+      const poses = solveFor(model, hold);
+      if (game.weapon.id === "laserPistol" && model === view.model) {
+        tightenGrip(poses);
+      }
+      return poses;
+    };
+    const setMiddleFingerLength = shortened => {
+      middleFingerBones.slice(0, 2).forEach((bone, index) => {
+        bone.scale.copy(middleFingerScales[index]);
+        if (shortened) bone.scale.z *= 0.9;
+      });
+    };
+    const regripLaser = () => {
+      if (view.model?.hold && typeof view.regrip === "function") {
+        view.regrip(view.model.hold);
+      }
+    };
     const updateView = view.update.bind(view);
+    let wasLaserEquipped = false;
     view.update = function (delta) {
+      const laserEquipped = game.weapon.id === "laserPistol";
+      if (laserEquipped && !wasLaserEquipped) regripLaser();
+      setMiddleFingerLength(laserEquipped);
       const result = updateView(delta);
+      const currentLaserEquipped = game.weapon.id === "laserPistol";
+      if (currentLaserEquipped !== laserEquipped) {
+        if (currentLaserEquipped) {
+          regripLaser();
+        }
+        setMiddleFingerLength(currentLaserEquipped);
+      }
       view.arms.left.group.visible =
-        game.weapon.id !== "laserPistol" || view.ads > 0.02;
+        !currentLaserEquipped || view.ads > 0.02;
+      wasLaserEquipped = currentLaserEquipped;
       return result;
     };
     view.arms.left.group.visible =
