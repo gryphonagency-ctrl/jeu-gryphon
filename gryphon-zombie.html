@@ -10304,6 +10304,67 @@ three/build/three.module.js:
     model.rotation.y = -Math.PI / 2;
     model.position.set(-0.006, -0.103, -0.052);
     model.updateMatrixWorld(true);
+
+    if (!game.__rayGunShadersPrecompiled) {
+      const renderer = game.renderer;
+      const viewModel = game.weapon.view.entry("laserPistol")?.model?.root;
+      if (
+        viewModel &&
+        renderer?.extensions?.has?.("KHR_parallel_shader_compile") &&
+        typeof renderer.compileAsync === "function"
+      ) {
+        game.__rayGunShadersPrecompiled = true;
+        try {
+          renderer.compileAsync(viewModel, game.camera, game.scene).catch(error => {
+            console.error("[Ray Gun] Shader precompilation failed.", error);
+          });
+        } catch (error) {
+          console.error("[Ray Gun] Shader precompilation could not start.", error);
+        }
+      }
+    }
+  }
+
+  function prewarmWeaponViewmodels(game) {
+    const view = game.weapon.view;
+    const renderer = game.renderer;
+    if (!view?.root || typeof view.entry !== "function") return;
+
+    const ids = [
+      "pistol", "laserPistol", "revolver", "pump", "smg", "autoShotgun",
+      "rifle", "battleRifle", "lmg", "jumper", "flare"
+    ];
+    const roots = [];
+    for (const id of ids) {
+      try {
+        const root = view.entry(id)?.model?.root;
+        if (root) roots.push({ root, visible: root.visible });
+      } catch (error) {
+        console.error(`[Gryphon Zombie] Could not prepare the ${id} viewmodel.`, error);
+      }
+    }
+
+    if (
+      !roots.length ||
+      !renderer?.extensions?.has?.("KHR_parallel_shader_compile") ||
+      typeof renderer.compileAsync !== "function"
+    ) return;
+
+    const rootVisible = view.root.visible;
+    let compilation;
+    try {
+      view.root.visible = true;
+      for (const item of roots) item.root.visible = true;
+      compilation = renderer.compileAsync(view.root, game.camera, game.scene);
+    } catch (error) {
+      console.error("[Gryphon Zombie] Weapon shader precompilation could not start.", error);
+    } finally {
+      for (const item of roots) item.root.visible = item.visible;
+      view.root.visible = rootVisible;
+    }
+    compilation?.catch(error => {
+      console.error("[Gryphon Zombie] Weapon shader precompilation failed.", error);
+    });
   }
 
   function configureRayGunSupportHand(game) {
@@ -10432,6 +10493,7 @@ three/build/three.module.js:
       return;
     }
 
+    prewarmWeaponViewmodels(game);
     fitRayGunViewmodel(game);
     configureRayGunSupportHand(game);
 
@@ -10890,6 +10952,7 @@ three/build/three.module.js:
   function fitModel(group, spot, yaw, targetHeight) {
     group.rotation.y = yaw;
     const Vector3 = group.position.constructor;
+    const point = new Vector3();
     const measureBounds = () => {
       const bounds = {
         min: [Infinity, Infinity, Infinity],
@@ -10897,18 +10960,22 @@ three/build/three.module.js:
       };
       group.traverse(object => {
         if (!object.isMesh) return;
-        const positions = object.geometry.attributes.position;
-        for (let index = 0; index < positions.count; index++) {
-          const point = new Vector3(
-            positions.getX(index),
-            positions.getY(index),
-            positions.getZ(index)
+        const geometry = object.geometry;
+        if (!geometry.boundingBox) geometry.computeBoundingBox();
+        const box = geometry.boundingBox;
+        if (!box) return;
+        for (let corner = 0; corner < 8; corner++) {
+          point.set(
+            corner & 1 ? box.max.x : box.min.x,
+            corner & 2 ? box.max.y : box.min.y,
+            corner & 4 ? box.max.z : box.min.z
           ).applyMatrix4(object.matrixWorld);
-          const coordinates = [point.x, point.y, point.z];
-          for (let axis = 0; axis < 3; axis++) {
-            bounds.min[axis] = Math.min(bounds.min[axis], coordinates[axis]);
-            bounds.max[axis] = Math.max(bounds.max[axis], coordinates[axis]);
-          }
+          bounds.min[0] = Math.min(bounds.min[0], point.x);
+          bounds.min[1] = Math.min(bounds.min[1], point.y);
+          bounds.min[2] = Math.min(bounds.min[2], point.z);
+          bounds.max[0] = Math.max(bounds.max[0], point.x);
+          bounds.max[1] = Math.max(bounds.max[1], point.y);
+          bounds.max[2] = Math.max(bounds.max[2], point.z);
         }
       });
       return bounds;
@@ -10927,6 +10994,48 @@ three/build/three.module.js:
       spot.pos[0] - (fittedBounds.min[0] + fittedBounds.max[0]) / 2,
       spot.pos[1] - fittedBounds.min[1],
       spot.pos[2] - (fittedBounds.min[2] + fittedBounds.max[2]) / 2
+    );
+  }
+
+  function precompileModel(game, group, label) {
+    const renderer = game.renderer;
+    if (
+      !renderer?.extensions?.has?.("KHR_parallel_shader_compile") ||
+      typeof renderer.compileAsync !== "function"
+    ) return;
+    try {
+      renderer.compileAsync(group, game.camera, game.scene).catch(error => {
+        console.error(`[Gryphon Zombie] ${label} shader precompilation failed.`, error);
+      });
+    } catch (error) {
+      console.error(`[Gryphon Zombie] ${label} shader precompilation could not start.`, error);
+    }
+  }
+
+  function precompileLevelZones(game) {
+    const renderer = game.renderer;
+    const groups = Object.values(game.level.groups || {});
+    if (
+      !game.level.root ||
+      !renderer?.extensions?.has?.("KHR_parallel_shader_compile") ||
+      typeof renderer.compileAsync !== "function"
+    ) return;
+
+    const visibility = groups.map(group => group.visible);
+    let compilation;
+    try {
+      for (const group of groups) group.visible = true;
+      compilation = renderer.compileAsync(game.level.root, game.camera, game.scene);
+    } catch (error) {
+      console.error("[Gryphon Zombie] Zone shader precompilation could not start.", error);
+    } finally {
+      groups.forEach((group, index) => {
+        group.visible = visibility[index];
+      });
+    }
+    compilation?.then(
+      () => { game.__levelZoneShadersPrecompiled = true; },
+      error => console.error("[Gryphon Zombie] Zone shader precompilation failed.", error)
     );
   }
 
@@ -10975,7 +11084,9 @@ three/build/three.module.js:
     return { geometry: replacementGeometry, removedTriangles };
   }
 
-  window.__GryphonZombieModelTools = { loadGLTF, fitModel, removeTriangles };
+  window.__GryphonZombieModelTools = {
+    loadGLTF, fitModel, precompileModel, precompileLevelZones, removeTriangles
+  };
 
   function waitForGame() {
     const game = window.__G;
@@ -11007,6 +11118,7 @@ three/build/three.module.js:
     }
     if (game.__juggernogReplacementStarted) return;
     game.__juggernogReplacementStarted = true;
+    precompileLevelZones(game);
     replaceMachine(game, diner, oldMesh, sample).catch(error => {
       console.error("[Gryphon Zombie] Juggernog replacement failed; the original machine remains.", error);
     });
@@ -11028,6 +11140,7 @@ three/build/three.module.js:
 
     diner.add(group);
     oldMesh.geometry = filtered.geometry;
+    precompileModel(game, group, "Juggernog");
     game.__juggernogReplacementInstalled = true;
     console.info(
       `[Gryphon Zombie] Juggernog model installed; replaced ${filtered.removedTriangles} legacy triangles.`
@@ -11097,6 +11210,7 @@ three/build/three.module.js:
     garage.add(group);
     oldMesh.geometry = filteredMesh.geometry;
     oldShadow.geometry = filteredShadow.geometry;
+    tools.precompileModel(game, group, "Pack-a-Punch");
     game.__packAPunchReplacementInstalled = true;
     console.info(
       `[Gryphon Zombie] Pack-a-Punch model installed; replaced ${filteredMesh.removedTriangles} legacy triangles.`
