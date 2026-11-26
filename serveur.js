@@ -3440,6 +3440,14 @@ const server = http.createServer((req, res) => {
         ['/voice-mask-assets/deadpool/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'scene.bin'), 'application/octet-stream']],
         ['/voice-mask-assets/deadpool/license.txt', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'license.txt'), 'text/plain; charset=utf-8']],
         ['/voice-mask-assets/deadpool/textures/Material_0_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'textures', 'Material_0_baseColor.jpeg'), 'image/jpeg']],
+        ['/voice-mask-assets/deadpool-full-body/scene.gltf', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
+        ['/voice-mask-assets/deadpool-full-body/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'scene.bin'), 'application/octet-stream']],
+        ['/voice-mask-assets/deadpool-full-body/license.txt', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'license.txt'), 'text/plain; charset=utf-8']],
+        ['/voice-mask-assets/deadpool-full-body/textures/Material_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'Material_baseColor.jpeg'), 'image/jpeg']],
+        ['/voice-mask-assets/deadpool-full-body/textures/Material_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'Material_metallicRoughness.png'), 'image/png']],
+        ['/voice-mask-assets/deadpool-full-body/textures/material_0_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_baseColor.jpeg'), 'image/jpeg']],
+        ['/voice-mask-assets/deadpool-full-body/textures/material_0_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_metallicRoughness.png'), 'image/png']],
+        ['/voice-mask-assets/deadpool-full-body/textures/material_0_specularf0.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_specularf0.png'), 'image/png']],
         ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
         ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
@@ -3987,15 +3995,35 @@ const voiceMaskStates = new Map();
 const voiceMaskLastLevelAt = new WeakMap();
 const voiceMaskLastJawAt = new WeakMap();
 const voiceMaskLastFaceAt = new WeakMap();
+const voiceMaskLastPoseAt = new WeakMap();
+const voiceMaskPoseJointNames = [
+    'leftShoulder',
+    'rightShoulder',
+    'leftElbow',
+    'rightElbow',
+    'leftWrist',
+    'rightWrist',
+    'leftHip',
+    'rightHip'
+];
 const authenticatedClientUsernames = new Map();
 const authenticatedTtsClientUsernames = new Map();
+
+function createDefaultVoiceMaskPose() {
+    const point = () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0 });
+    return {
+        active: false,
+        joints: Object.fromEntries(voiceMaskPoseJointNames.map(name => [name, point()]))
+    };
+}
 
 function createDefaultVoiceMaskState() {
     return {
         maskId: 'iron-man',
         level: 0,
         mouthOpen: 0,
-        face: { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, scale: 1, blinkLeft: 0, blinkRight: 0, active: false }
+        face: { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, scale: 1, blinkLeft: 0, blinkRight: 0, gazeX: 0, gazeY: 0, active: false },
+        pose: createDefaultVoiceMaskPose()
     };
 }
 
@@ -4041,9 +4069,11 @@ function removeVoiceMaskSocket(socket) {
         const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         state.mouthOpen = 0;
         state.face = createDefaultVoiceMaskState().face;
+        state.pose = createDefaultVoiceMaskPose();
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_JAW', mouthOpen: 0 });
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_FACE', face: state.face });
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_POSE', pose: state.pose });
     }
 }
 
@@ -4073,7 +4103,8 @@ function handleVoiceMaskMessage(socket, connection, request) {
             maskId: state.maskId,
             level: state.level,
             mouthOpen: state.mouthOpen || 0,
-            face: state.face
+            face: state.face,
+            pose: state.pose
         });
         return;
     }
@@ -4121,8 +4152,11 @@ function handleVoiceMaskMessage(socket, connection, request) {
     if (request.type === 'VOICE_MASK_FACE') {
         const face = request.face;
         const keys = ['yaw', 'pitch', 'roll', 'x', 'y', 'scale', 'blinkLeft', 'blinkRight'];
+        const gazeKeys = ['gazeX', 'gazeY'];
         if (!face || typeof face.active !== 'boolean' ||
-            keys.some(key => typeof face[key] !== 'number' || !Number.isFinite(face[key]))) {
+            keys.some(key => typeof face[key] !== 'number' || !Number.isFinite(face[key])) ||
+            gazeKeys.some(key => face[key] !== undefined &&
+                (typeof face[key] !== 'number' || !Number.isFinite(face[key])))) {
             socket.send(JSON.stringify({
                 type: 'VOICE_MASK_ERROR',
                 message: 'Données de suivi facial invalides.'
@@ -4143,12 +4177,51 @@ function handleVoiceMaskMessage(socket, connection, request) {
             scale: Math.min(1.35, Math.max(0.72, face.scale)),
             blinkLeft: Math.min(1, Math.max(0, face.blinkLeft)),
             blinkRight: Math.min(1, Math.max(0, face.blinkRight)),
+            gazeX: Math.min(1, Math.max(-1, face.gazeX ?? 0)),
+            gazeY: Math.min(1, Math.max(-1, face.gazeY ?? 0)),
             active: face.active
         };
         const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
         state.face = faceState;
         voiceMaskStates.set(connection.owner, state);
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_FACE', face: faceState });
+        return;
+    }
+    if (request.type === 'VOICE_MASK_POSE') {
+        const pose = request.pose;
+        const sourceJoints = pose?.joints;
+        const isInvalidPoint = name => {
+            const point = sourceJoints?.[name];
+            return !point || ['x', 'y', 'z', 'visibility'].some(key =>
+                typeof point[key] !== 'number' || !Number.isFinite(point[key])
+            );
+        };
+        if (!pose || typeof pose.active !== 'boolean' || voiceMaskPoseJointNames.some(isInvalidPoint)) {
+            socket.send(JSON.stringify({
+                type: 'VOICE_MASK_ERROR',
+                message: 'Données de suivi du haut du corps invalides.'
+            }));
+            socket.close(1008, 'Données de pose invalides');
+            return;
+        }
+        const now = Date.now();
+        const lastSentAt = voiceMaskLastPoseAt.get(socket) || 0;
+        if (now - lastSentAt < 30) return;
+        voiceMaskLastPoseAt.set(socket, now);
+        const joints = Object.fromEntries(voiceMaskPoseJointNames.map(name => {
+            const point = sourceJoints[name];
+            return [name, {
+                x: Math.min(1, Math.max(0, point.x)),
+                y: Math.min(1, Math.max(0, point.y)),
+                z: Math.min(2, Math.max(-2, point.z)),
+                visibility: Math.min(1, Math.max(0, point.visibility))
+            }];
+        }));
+        const poseState = { active: pose.active, joints };
+        const state = voiceMaskStates.get(connection.owner) || createDefaultVoiceMaskState();
+        state.pose = poseState;
+        voiceMaskStates.set(connection.owner, state);
+        sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_POSE', pose: poseState });
         return;
     }
     socket.close(1008, 'Action non autorisée');
@@ -4830,7 +4903,8 @@ wss.on('connection', (socket, req) => {
             maskId: state.maskId,
             level: state.level,
             mouthOpen: state.mouthOpen || 0,
-            face: state.face
+            face: state.face,
+            pose: state.pose
         }));
         sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
     } else if (voiceMaskConnection?.role === 'control') {
