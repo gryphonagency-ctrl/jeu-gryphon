@@ -3607,7 +3607,7 @@ const server = http.createServer((req, res) => {
         ['/gryphon-zombie-assets/laser-pistol-80/scene.gltf', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
         ['/gryphon-zombie-assets/laser-pistol-80/scene.bin', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.bin'), 'application/octet-stream']],
         ['/gryphon-zombie-assets/laser-pistol-80/textures/Scene_-_Root_baseColor.png', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'textures', 'Scene_-_Root_baseColor.png'), 'image/png']],
-        ['/gryphon-zombie-assets/laser-pistol-80/textures/Scene_-_Root_normal.png', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'textures', 'Scene_-_Root_normal.png'), 'image/png']]
+        ['/gryphon-zombie-assets/laser-pistol-80/textures/Scene_-_Root_normal.png', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'textures', 'Scene_-_Root_normal.png'), 'image/png']],
         ['/griffon-gauche.jpg', [gryphonImage, 'image/jpeg']],
         ['/donut.jpg', [path.join(__dirname, 'donut.jpg'), 'image/jpeg']],
         ['/epee-fanfan-detouree.png', [gryphonSwordImage, 'image/png']],
