@@ -17,6 +17,7 @@ const store = require('./account-store');
 const dbSync = require('./db-sync');
 const { createMediaAdmin } = require('./media-admin');
 const faceAvatarRig = require('./avatar-face-tracker/face-avatar-rig');
+const faceAvatarRelay = require('./face-avatar-relay');
 
 // Filet de sécurité : evite le plantage au demarrage si account-store.js / db-sync.js sont en retard sur ce fichier.
 // Ces valeurs ne servent que lorsque la vraie fonction est absente.
@@ -1796,6 +1797,9 @@ const server = http.createServer((req, res) => {
                     return;
                 }
                 store.setCreatorAvatarOverlaySettings(username, settings);
+                if (settings.token !== current.token || settings.enabled !== current.enabled) {
+                    closeFaceAvatarSockets(username.toLowerCase());
+                }
                 sendFaceAvatarOverlayJson(res, 200, { success: true });
             } catch (error) {
                 console.error('Échec de mise à jour de l’overlay d’avatar :', error.message);
@@ -4338,6 +4342,11 @@ const voiceMaskLastLevelAt = new WeakMap();
 const voiceMaskLastJawAt = new WeakMap();
 const voiceMaskLastFaceAt = new WeakMap();
 const voiceMaskLastPoseAt = new WeakMap();
+const faceAvatarSockets = new Map();
+const faceAvatarOverlaySocketsByToken = new Map();
+const faceAvatarControlSocketsByToken = new Map();
+const faceAvatarTrackingStates = new Map();
+const faceAvatarLastTrackingAt = new WeakMap();
 const voiceMaskPoseJointNames = [
     'leftShoulder',
     'rightShoulder',
@@ -4417,6 +4426,86 @@ function removeVoiceMaskSocket(socket) {
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_FACE', face: state.face });
         sendVoiceMaskOverlayMessage(connection.owner, { type: 'VOICE_MASK_POSE', pose: state.pose });
     }
+}
+
+function getFaceAvatarSocketSet(socketMap, token) {
+    let sockets = socketMap.get(token);
+    if (!sockets) {
+        sockets = new Set();
+        socketMap.set(token, sockets);
+    }
+    return sockets;
+}
+
+function sendFaceAvatarOverlayState(token, state) {
+    const encoded = JSON.stringify(state);
+    for (const socket of faceAvatarOverlaySocketsByToken.get(token) || []) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(encoded);
+    }
+}
+
+function sendFaceAvatarControllerStatus(token) {
+    const encoded = JSON.stringify({
+        type: 'FACE_AVATAR_STATUS',
+        overlayCount: faceAvatarOverlaySocketsByToken.get(token)?.size || 0
+    });
+    for (const socket of faceAvatarControlSocketsByToken.get(token) || []) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(encoded);
+    }
+}
+
+function removeFaceAvatarSocket(socket) {
+    const connection = faceAvatarSockets.get(socket);
+    if (!connection) return;
+    faceAvatarSockets.delete(socket);
+    const socketMap = connection.role === 'overlay'
+        ? faceAvatarOverlaySocketsByToken
+        : faceAvatarControlSocketsByToken;
+    const sockets = socketMap.get(connection.token);
+    sockets?.delete(socket);
+    if (sockets && !sockets.size) socketMap.delete(connection.token);
+
+    if (connection.role === 'control' && !sockets?.size) {
+        const state = faceAvatarRelay.createDefaultFaceAvatarTracking();
+        faceAvatarTrackingStates.set(connection.token, state);
+        sendFaceAvatarOverlayState(connection.token, state);
+    }
+    sendFaceAvatarControllerStatus(connection.token);
+    if (!faceAvatarOverlaySocketsByToken.has(connection.token) &&
+        !faceAvatarControlSocketsByToken.has(connection.token)) {
+        faceAvatarTrackingStates.delete(connection.token);
+    }
+}
+
+function closeFaceAvatarSockets(owner) {
+    for (const [socket, connection] of faceAvatarSockets) {
+        if (connection.owner === owner) socket.close(1008, 'Lien d’avatar révoqué');
+    }
+}
+
+function handleFaceAvatarMessage(socket, connection, request) {
+    if (request.type === 'PING') {
+        socket.send(JSON.stringify({ type: 'PONG' }));
+        return;
+    }
+    if (connection.role !== 'control' || request.type !== 'FACE_AVATAR_TRACKING') {
+        socket.close(1008, 'Action non autorisée');
+        return;
+    }
+    const state = faceAvatarRelay.normalizeFaceAvatarTracking(request);
+    if (!state) {
+        socket.send(JSON.stringify({
+            type: 'FACE_AVATAR_ERROR',
+            message: 'Données de suivi facial invalides.'
+        }));
+        socket.close(1008, 'Données faciales invalides');
+        return;
+    }
+    const now = Date.now();
+    if (now - (faceAvatarLastTrackingAt.get(socket) || 0) < 25) return;
+    faceAvatarLastTrackingAt.set(socket, now);
+    faceAvatarTrackingStates.set(connection.token, state);
+    sendFaceAvatarOverlayState(connection.token, state);
 }
 
 function handleVoiceMaskMessage(socket, connection, request) {
@@ -4677,6 +4766,29 @@ server.on('upgrade', (req, socket, head) => {
         canUseCreatorTts(voiceMaskOwner) &&
         (voiceMaskRole === 'control' || voiceMaskRole === 'overlay')
     );
+    const isFaceAvatarRequest = requestUrl.pathname === '/face-avatar-relay';
+    const faceAvatarRole = requestUrl.searchParams.get('role');
+    const faceAvatarToken = requestUrl.searchParams.get('token') || '';
+    const faceAvatarOwner = isFaceAvatarRequest
+        ? store.getCreatorAvatarOverlayOwner(faceAvatarToken).toLowerCase()
+        : '';
+    const faceAvatarSettings = faceAvatarOwner
+        ? store.getCreatorAvatarOverlaySettings(faceAvatarOwner)
+        : null;
+    const canUseFaceAvatar = Boolean(
+        faceAvatarOwner &&
+        canUseCreatorTts(faceAvatarOwner) &&
+        faceAvatarSettings?.enabled === true &&
+        faceAvatarSettings.token === faceAvatarToken &&
+        faceAvatarSettings.modelId &&
+        faceAvatarSettings.modelFormat &&
+        fs.existsSync(getFaceAvatarOverlayModelPath(
+            faceAvatarOwner,
+            faceAvatarSettings.modelId,
+            faceAvatarSettings.modelFormat
+        )) &&
+        (faceAvatarRole === 'control' || faceAvatarRole === 'overlay')
+    );
     const treasureSettings = treasureOverlayOwner
         ? store.getCreatorSettings(treasureOverlayOwner)
         : null;
@@ -4702,11 +4814,16 @@ server.on('upgrade', (req, socket, head) => {
         socket.destroy();
         return;
     }
+    if (isFaceAvatarRequest && !canUseFaceAvatar) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+    }
     if ((isTtsControlRequest && !canControlTts) ||
         (isTreasureOverlayRequest && !canUseTreasureOverlay) ||
         ((!authenticated || !access.canAccessGames(req)) &&
             !canControlTts && !ttsSource && !overlayOwner && !canUseTreasureOverlay &&
-            !canUseVoiceMask && !publicPachinkoAdmission && !canUseFreeGameRelay)) {
+            !canUseVoiceMask && !canUseFaceAvatar && !publicPachinkoAdmission && !canUseFreeGameRelay)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -4736,6 +4853,20 @@ server.on('upgrade', (req, socket, head) => {
                     ? voiceMaskOverlaySocketsByOwner
                     : voiceMaskControlSocketsByOwner,
                 voiceMaskOwner
+            ).add(webSocket);
+        }
+        if (canUseFaceAvatar) {
+            const connection = {
+                owner: faceAvatarOwner,
+                role: faceAvatarRole,
+                token: faceAvatarToken
+            };
+            faceAvatarSockets.set(webSocket, connection);
+            getFaceAvatarSocketSet(
+                faceAvatarRole === 'overlay'
+                    ? faceAvatarOverlaySocketsByToken
+                    : faceAvatarControlSocketsByToken,
+                faceAvatarToken
             ).add(webSocket);
         }
         if (ttsSource) {
@@ -5231,6 +5362,7 @@ wss.on('connection', (socket, req) => {
     const liveTtsUsername = liveTtsClientUsernames.get(socket);
     const treasureOverlayOwner = treasureOverlaySocketOwners.get(socket) || '';
     const voiceMaskConnection = voiceMaskSockets.get(socket);
+    const faceAvatarConnection = faceAvatarSockets.get(socket);
     const ttsControlAccount = new URL(req.url, 'http://localhost').pathname === '/live-tts-control'
         ? access.usernameForRequest(req)
         : '';
@@ -5251,6 +5383,14 @@ wss.on('connection', (socket, req) => {
         sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
     } else if (voiceMaskConnection?.role === 'control') {
         sendVoiceMaskControllerStatus(voiceMaskConnection.owner);
+    } else if (faceAvatarConnection?.role === 'overlay') {
+        socket.send(JSON.stringify(
+            faceAvatarTrackingStates.get(faceAvatarConnection.token) ||
+            faceAvatarRelay.createDefaultFaceAvatarTracking()
+        ));
+        sendFaceAvatarControllerStatus(faceAvatarConnection.token);
+    } else if (faceAvatarConnection?.role === 'control') {
+        sendFaceAvatarControllerStatus(faceAvatarConnection.token);
     } else if (liveTtsUsername) {
         socket.send(JSON.stringify({ type: 'TTS_CONFIG', username: liveTtsUsername }));
     } else if (treasureOverlayOwner) {
@@ -5312,6 +5452,11 @@ wss.on('connection', (socket, req) => {
         const voiceMaskConnection = voiceMaskSockets.get(socket);
         if (voiceMaskConnection) {
             handleVoiceMaskMessage(socket, voiceMaskConnection, request);
+            return;
+        }
+        const faceAvatarConnection = faceAvatarSockets.get(socket);
+        if (faceAvatarConnection) {
+            handleFaceAvatarMessage(socket, faceAvatarConnection, request);
             return;
         }
         if (request.action === 'PING' && liveTtsUsername) {
@@ -5558,6 +5703,7 @@ wss.on('connection', (socket, req) => {
         publicPachinkoAdmissions.get(socket)?.release();
         liveTtsSockets.delete(socket);
         removeVoiceMaskSocket(socket);
+        removeFaceAvatarSocket(socket);
         overlaySockets.delete(socket);
         treasureOverlaySocketOwners.delete(socket);
         treasureOverlaySocketTikTokUsernames.delete(socket);

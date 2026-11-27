@@ -23,6 +23,7 @@ const query = new URLSearchParams(location.search);
 const overlayToken = query.get("token");
 const isOverlayMode = overlayToken !== null;
 const isStudioMode = !isOverlayMode || query.get("studio") === "1";
+const isFaceAvatarControl = isOverlayMode && isStudioMode;
 
 document.documentElement.classList.toggle("overlay-mode", isOverlayMode);
 document.documentElement.classList.toggle("studio-mode", isStudioMode);
@@ -104,6 +105,10 @@ let lastVideoTime = -1;
 let cameraStream;
 let objectUrl;
 let transparentBackground = isOverlayMode && !isStudioMode;
+let faceAvatarSocket;
+let faceAvatarReconnectTimer;
+let shouldReconnectFaceAvatarRelay = true;
+let lastTrackingSentAt = 0;
 
 function setStatus(message, kind = "info") {
   status.textContent = message;
@@ -122,6 +127,70 @@ function setRelayStatus(message, kind = "info") {
   relayStatus.textContent = message;
   relayStatus.classList.toggle("error", kind === "error");
   relayStatus.classList.toggle("good", kind === "good");
+}
+
+function connectFaceAvatarRelay() {
+  const socketUrl = new URL("/face-avatar-relay", location.href);
+  socketUrl.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  socketUrl.searchParams.set("token", overlayToken);
+  socketUrl.searchParams.set("role", isFaceAvatarControl ? "control" : "overlay");
+  faceAvatarSocket = new WebSocket(socketUrl);
+
+  faceAvatarSocket.addEventListener("open", () => {
+    if (isFaceAvatarControl) {
+      setRelayStatus("Studio de suivi connecté. Active la webcam ici, puis laisse cette fenêtre ouverte.", "good");
+    }
+  });
+  faceAvatarSocket.addEventListener("message", event => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      console.error("Message de suivi facial invalide :", error);
+      return;
+    }
+    if (message.type === "FACE_AVATAR_STATE" && !isFaceAvatarControl) {
+      for (const name of blendshapeNames) {
+        scores[name] = message.scores[name];
+      }
+      targetRotation.set(
+        message.rotation.x,
+        message.rotation.y,
+        message.rotation.z
+      );
+    } else if (message.type === "FACE_AVATAR_STATUS" && isFaceAvatarControl) {
+      setRelayStatus(
+        message.overlayCount
+          ? "Source TikTok LIVE Studio connectée · suivi actif dans cette fenêtre."
+          : "Relais prêt. Ajoute aussi le lien copié comme source navigateur dans TikTok LIVE Studio.",
+        message.overlayCount ? "good" : "info"
+      );
+    } else if (message.type === "FACE_AVATAR_ERROR" && isFaceAvatarControl) {
+      setRelayStatus(message.message || "Le relais facial a refusé la commande.", "error");
+    }
+  });
+  faceAvatarSocket.addEventListener("close", () => {
+    if (!shouldReconnectFaceAvatarRelay) return;
+    if (isFaceAvatarControl) setRelayStatus("Connexion au relais perdue · reconnexion…", "error");
+    faceAvatarReconnectTimer = window.setTimeout(connectFaceAvatarRelay, 2500);
+  });
+  faceAvatarSocket.addEventListener("error", () => {
+    if (isFaceAvatarControl) setRelayStatus("Connexion au relais facial impossible.", "error");
+  });
+}
+
+function sendFaceAvatarTracking(active, force = false) {
+  if (!isFaceAvatarControl || !faceAvatarSocket ||
+      faceAvatarSocket.readyState !== WebSocket.OPEN) return;
+  const now = performance.now();
+  if (!force && now - lastTrackingSentAt < 30) return;
+  faceAvatarSocket.send(JSON.stringify({
+    type: "FACE_AVATAR_TRACKING",
+    active,
+    scores,
+    rotation: { x: targetRotation.x, y: targetRotation.y, z: targetRotation.z }
+  }));
+  lastTrackingSentAt = now;
 }
 
 function updateSourceLink() {
@@ -396,7 +465,7 @@ async function setTrackerMode(mode) {
 }
 
 async function loadAvatar(source, label) {
-  if (!landmarker) throw new Error("Le suivi facial n’est pas encore prêt.");
+  if (!landmarker && !isOverlayMode) throw new Error("Le suivi facial n’est pas encore prêt.");
 
   const resumeVideo = Boolean(cameraStream && trackerMode === "VIDEO");
   let loadedModel;
@@ -514,34 +583,34 @@ async function uploadAccountModel(model, modelFormat) {
 
 async function initializeTracker() {
   setStatus("Chargement du suivi facial…");
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
-  );
-  landmarker = await FaceLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-      delegate: "GPU"
-    },
-    outputFaceBlendshapes: true,
-    outputFacialTransformationMatrixes: true,
-    runningMode: "IMAGE",
-    numFaces: 1
-  });
+  if (!isOverlayMode || isStudioMode) {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+    );
+    landmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true,
+      runningMode: "IMAGE",
+      numFaces: 1
+    });
+  }
   modelSelect.disabled = false;
   chooseButton.disabled = false;
   updateSourceLink();
 
   if (isOverlayMode) {
     await loadAccountModel();
+    connectFaceAvatarRelay();
     if (isStudioMode) {
-      setStatus("Modèle du compte chargé. Choisis Luffy ou ajoute un autre modèle quand tu veux.");
+      setStatus("Modèle chargé. Active le suivi webcam dans cette fenêtre et laisse-la ouverte pendant le live.");
+      setCameraStatus("La webcam est utilisée par le studio de suivi, pas par la source TikTok.");
     } else {
-      try {
-        await startCamera();
-      } catch (error) {
-        startButton.disabled = false;
-        setCameraStatus(`Caméra non démarrée : ${error.message}`, "error");
-      }
+      setStatus("Overlay prêt. Ouvre le studio de suivi dans ton navigateur et active la webcam.");
+      setCameraStatus("En attente des mouvements transmis par le studio de suivi.");
     }
     return;
   }
@@ -593,6 +662,10 @@ async function stopCamera() {
   lastVideoTime = -1;
   stopButton.disabled = true;
   await setTrackerMode("IMAGE");
+  for (const name of blendshapeNames) scores[name] = 0;
+  targetRotation.set(0, 0, 0);
+  rotation.set(0, 0, 0);
+  sendFaceAvatarTracking(false, true);
   startButton.disabled = !avatarModel;
   setCameraStatus("Caméra arrêtée.");
 }
@@ -639,11 +712,27 @@ function updateFaceTracking() {
   } else {
     avatarRoot.rotation.copy(rotation);
   }
+  sendFaceAvatarTracking(Boolean(result.faceBlendshapes?.length));
   applyFaceExpressions();
 }
 
 function animate() {
   updateFaceTracking();
+  if (isOverlayMode && !isStudioMode) {
+    rotation.x = THREE.MathUtils.lerp(rotation.x, targetRotation.x, 0.35);
+    rotation.y = THREE.MathUtils.lerp(rotation.y, targetRotation.y, 0.35);
+    rotation.z = THREE.MathUtils.lerp(rotation.z, targetRotation.z, 0.35);
+    if (avatarHead && avatarHeadBaseRotation) {
+      avatarHead.rotation.set(
+        avatarHeadBaseRotation.x + rotation.x,
+        avatarHeadBaseRotation.y + rotation.y,
+        avatarHeadBaseRotation.z + rotation.z,
+        "YXZ"
+      );
+    } else {
+      avatarRoot.rotation.copy(rotation);
+    }
+  }
   avatarVrm?.update(clock.getDelta());
   applyArmsRestPose();
   applyFacialBoneExpressions();
@@ -765,6 +854,10 @@ window.addEventListener("resize", resizeRenderer);
 resizeRenderer();
 
 window.addEventListener("beforeunload", () => {
+  shouldReconnectFaceAvatarRelay = false;
+  window.clearTimeout(faceAvatarReconnectTimer);
+  sendFaceAvatarTracking(false, true);
+  faceAvatarSocket?.close();
   cameraStream?.getTracks().forEach(track => track.stop());
   video.srcObject = null;
   if (objectUrl) URL.revokeObjectURL(objectUrl);
