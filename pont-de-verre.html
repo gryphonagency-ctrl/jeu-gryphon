@@ -18,6 +18,14 @@ svg{position:relative;z-index:1;width:100%;height:100%;display:block}
 #background-video{width:100%;height:100%;object-fit:cover;opacity:.42;pointer-events:none;display:none}
 #background-video.is-active{display:block}
 #banner{position:absolute;z-index:3;top:14px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:8px 20px;border-radius:12px;background:rgba(0,0,0,.9);border:1px solid var(--pink);font-weight:700;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
+#winner-banner{position:fixed;z-index:120;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;width:min(440px,calc(100vw - 28px));padding:18px;color:#fff;background:linear-gradient(135deg,rgba(24,12,34,.98),rgba(7,18,31,.98));border:2px solid #facc15;border-radius:18px;box-shadow:0 0 42px rgba(250,204,21,.45);animation:winner-enter .45s cubic-bezier(.18,.8,.25,1.2);pointer-events:none}
+#winner-banner[hidden]{display:none}
+#winner-avatar,#winner-avatar-placeholder{flex:0 0 64px;width:64px;height:64px;border:2px solid #facc15;border-radius:50%;object-fit:cover}
+#winner-avatar-placeholder{display:grid;place-items:center;background:linear-gradient(135deg,#ec4899,#7c3aed);font-size:28px;font-weight:900}
+#winner-copy{display:grid;gap:6px;min-width:0}
+#winner-name{font-size:clamp(16px,4vw,22px);font-weight:900;overflow-wrap:anywhere}
+#winner-reward{color:#fde68a;font-size:clamp(14px,3.5vw,18px);font-weight:800}
+@keyframes winner-enter{from{opacity:0;transform:translate(-50%,-42%) scale(.82)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 .bar{width:100%;max-width:900px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .bar button{min-height:36px;padding:6px 12px;border:1px solid #554455;border-radius:8px;color:#fff;background:#211722;font-size:11px;font-weight:800;cursor:pointer}
 .bar button:hover{border-color:var(--pink)}
@@ -62,15 +70,11 @@ body.is-fullscreen .bar{position:fixed;bottom:10px;left:50%;transform:translateX
   <input id="tiktok-username" type="text" maxlength="24" autocomplete="off" placeholder="Pseudo TikTok (sans @)" aria-label="Pseudo TikTok">
   <button id="connect-live" type="button">CONNECTER LIVE</button>
   <span id="live-status" role="status">Hors ligne</span>
-  <p id="live-help">Commente le numéro à trois chiffres du joueur, puis « gauche » ou « droite ». Le personnage avance automatiquement, sans cadeau.</p>
+  <p id="live-help">Envoie un cadeau, puis écris « gauche » ou « droite ». Un personnage te sera attribué automatiquement et chaque déplacement demande un cadeau.</p>
   <button id="toggle-roster" type="button">FILE JOUEURS</button>
   <button id="toggle-ranking" type="button">CLASSEMENT</button>
   <label for="gift-speed">Vitesse <input id="gift-speed" type="range" min="0.5" max="3" step="0.5" value="1"><span id="gift-speed-value">1×</span></label>
   <label for="sim-username">Pseudo test <input id="sim-username" type="text" maxlength="24" value="spectateur_test"></label>
-  <select id="sim-player" aria-label="Personnage à simuler">
-    <option>014</option><option>027</option><option>063</option><option>067</option><option>101</option>
-    <option>199</option><option>218</option><option>240</option><option>276</option><option>322</option><option>456</option>
-  </select>
   <select id="sim-side" aria-label="Vitre à simuler"><option value="left">Gauche</option><option value="right">Droite</option></select>
   <button id="sim-big-gift" type="button">SIMULER UN GROS CADEAU</button>
   <button id="sim-share" type="button">SIMULER UN PARTAGE</button>
@@ -353,6 +357,11 @@ body.is-fullscreen .bar{position:fixed;bottom:10px;left:50%;transform:translateX
 </svg>
 <div id="banner"></div>
 </main>
+<aside id="winner-banner" role="status" aria-live="assertive" hidden>
+  <img id="winner-avatar" alt="" referrerpolicy="no-referrer" hidden>
+  <span id="winner-avatar-placeholder" aria-hidden="true" hidden></span>
+  <div id="winner-copy"><strong id="winner-name"></strong><span id="winner-reward"></span></div>
+</aside>
 
 <div class="bar">
   <button id="voice-toggle" type="button" aria-pressed="false">🔊 VOIX : NON</button>
@@ -361,7 +370,7 @@ body.is-fullscreen .bar{position:fixed;bottom:10px;left:50%;transform:translateX
   <span id="pick-buttons" style="display:contents"></span>
   <button id="g-left">CADEAU GAUCHE</button>
   <button id="g-right">CADEAU DROITE</button>
-  <span id="status" role="status">Mode démo · choisis un personnage, puis teste gauche ou droite.</span>
+  <span id="status" role="status">Mode démo · teste gauche ou droite. En LIVE, chaque déplacement demande un cadeau.</span>
 </div>
 
 <script>
@@ -378,12 +387,22 @@ const $ = id => document.getElementById(id);
 let animationSpeed = 1;
 const livePlayerChoices = new Map();
 const livePlayerNames = new Map();
+const livePlayerAvatars = new Map();
 const liveSteps = new Map();
 const liveControllerByPlayer = new Map();
 const liveMoves = [];
+const pendingGiftChoices = new Map();
 const seenLiveGiftIds = new Set();
+const awardedLivePlayers = new Set();
 let liveMoveTimer = null;
 let liveSocket = null;
+let winnerBannerTimer = null;
+function createRoundId(){
+  return window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+let roundId = createRoundId();
 const liveStatus = $("live-status");
 
 function el(tag, attrs, parent){
@@ -561,16 +580,20 @@ function choose(side){
     row++; progress.set(player, row); updateUI();
     const controller = liveControllerByPlayer.get(player);
     if (controller){
-      liveSteps.set(controller, (liveSteps.get(controller) || 0) + 1);
-      liveControllerByPlayer.delete(player);
+      liveSteps.set(controller.key, (liveSteps.get(controller.key) || 0) + 1);
       renderLivePanels();
     }
     if (row >= totalRows){
       tween(1000, k => drawAt(tx + (500-tx)*k, ty + (336-ty)*k, 0, 1, k * Math.PI * 4), () => {
         feet.set(player, [500, 336]); setStatus("Victoire", "#22d3ee");
-        banner(`🏆 Joueur ${player} a traversé le pont !`, "#67e8f9"); setTimeout(() => finishPlayer(player), 2200);
+        banner(`🏆 Joueur ${player} a traversé le pont !`, "#67e8f9");
+        setTimeout(() => finishPlayer(player, controller, roundId), 2200);
       });
-    } else { active = true; banner("✨ Bon choix ! Continuez…", "#34d399"); }
+    } else {
+      liveControllerByPlayer.delete(player);
+      active = true;
+      banner("✨ Bon choix ! Envoie un cadeau pour choisir la prochaine vitre.", "#34d399");
+    }
   });
 }
 
@@ -621,24 +644,24 @@ function announce(t){
   if (/se fissure/.test(t)) speak(`Crac ! La vitre cède sous les pieds du joueur ${n}.`);
   else if (/déjà brisée/.test(t)) speak("Cette vitre est déjà brisée. Choisis l'autre.");
   else if (/a traversé/.test(t)) speak(`Bravo ! Le joueur ${n} a traversé le pont.`);
-  else if (/Bon choix/.test(t)) speak("Bon choix ! Pour l'étape suivante, écris gauche ou droite dans le chat.");
+  else if (/Bon choix/.test(t)) speak("Bon choix ! Envoie un cadeau puis écris gauche ou droite pour avancer encore.");
   else if (/éliminé/.test(t)){
     voiceTargetPlayer = null;
-    speak(`Le joueur ${n} est éliminé. Joueur ${next}, choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.`);
+    speak(`Le joueur ${n} est éliminé. Envoie un cadeau pour recevoir automatiquement un nouveau personnage, puis écris gauche ou droite.`);
   }
   else if (/Tour du Joueur/.test(t)){
     voiceTargetPlayer = null;
-    speak(`Joueur ${next || n}, choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.`);
+    speak(`Joueur ${next || n}, envoie un cadeau puis écris gauche ou droite pour avancer.`);
   }
   else if (/nouvelle manche/.test(t)){
     voiceTargetPlayer = null;
-    speak("Tous sont passés. Nouvelle manche, nouvelles vitres ! Choisis un numéro de joueur et écris-le dans le chat.");
+    speak("Nouvelle manche, nouvelles vitres ! Envoie un cadeau puis écris gauche ou droite pour avancer.");
   }
 }
 function toggleVoice(){
   voiceOn = !voiceOn;
   const b = $("voice-toggle"); b.textContent = voiceOn ? "🔊 VOIX : OUI" : "🔊 VOIX : NON"; b.setAttribute("aria-pressed", String(voiceOn));
-  if (voiceOn){ pickVoice(); voiceTargetPlayer = null; speak("Choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.");
+  if (voiceOn){ pickVoice(); voiceTargetPlayer = null; speak("Envoie un cadeau pour recevoir automatiquement un personnage. Chaque déplacement demande un cadeau; écris ensuite gauche ou droite.");
   }
   else if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
@@ -647,9 +670,9 @@ $("voice-toggle").onclick = toggleVoice;
 setInterval(() => {
   if (voiceOn && "speechSynthesis" in window && active && alive.length && Date.now() - lastSpoken > 12000 && !speechSynthesis.speaking){
     if (voiceTargetPlayer && alive.includes(voiceTargetPlayer))
-      speak(`Joueur ${voiceTargetPlayer}, écris gauche ou droite dans le chat pour choisir la prochaine vitre.`);
+      speak(`Joueur ${voiceTargetPlayer} attribué. Écris gauche ou droite pour utiliser ton cadeau.`);
     else
-      speak("Choisis le numéro à trois chiffres du joueur que tu veux faire avancer et écris-le dans le chat.");
+      speak("Envoie un cadeau pour recevoir automatiquement un personnage, puis écris gauche ou droite.");
   }
 }, 3000);
 
@@ -704,14 +727,25 @@ function switchTo(p){
 }
 function reset(full){
   active = true;
-  if (full){ alive = [...all]; arrived.length = 0; idx = 0; liveControllerByPlayer.clear(); all.forEach(p => { progress.set(p, 0); feet.set(p, [500, 520]); }); $("fx").innerHTML = ""; patterns.clear(); bridgeOwner = null; }
+  if (full){
+    alive = [...all]; arrived.length = 0; idx = 0; roundId = createRoundId();
+    livePlayerChoices.clear(); livePlayerNames.clear(); livePlayerAvatars.clear();
+    liveSteps.clear(); liveControllerByPlayer.clear(); pendingGiftChoices.clear();
+    liveMoves.length = 0; awardedLivePlayers.clear();
+    if (liveMoveTimer){ clearTimeout(liveMoveTimer); liveMoveTimer = null; }
+    all.forEach(p => { progress.set(p, 0); feet.set(p, [500, 520]); });
+    $("fx").innerHTML = ""; patterns.clear(); bridgeOwner = null;
+    renderLivePanels();
+  }
   row = progress.get(alive[idx]) || 0;
   setStatus("En cours", "#34d399"); place(); updateUI();
 }
-function finishPlayer(p){
+function finishPlayer(p, winnerMove = null, payoutRoundId = roundId){
   const i = alive.indexOf(p);
   if (i >= 0) alive.splice(i, 1);
   progress.delete(p); arrived.push(p); $("active").innerHTML = "";
+  releaseLivePlayer(p);
+  if (winnerMove) void awardLiveWinner(winnerMove, payoutRoundId);
   if (!alive.length){
     updateUI(); setStatus("Manche terminée", "#22d3ee");
     banner("🔁 Tous ont traversé : nouvelle manche !", "#f0abfc");
@@ -725,6 +759,7 @@ function finishPlayer(p){
 }
 function nextTurn(){
   const dead = alive.splice(idx, 1)[0]; progress.delete(dead); liveControllerByPlayer.delete(dead);
+  releaseLivePlayer(dead);
   if (!alive.length){
     setStatus("Fin de partie", "#f43f5e");
     banner("🔁 Tous sont passés : nouvelle manche !", "#f0abfc");
@@ -753,7 +788,112 @@ function gift(side, player = chosen || alive[idx]){
 function normalizeLiveName(value){
   return String(value || "").trim().replace(/^@/, "");
 }
+function assignAutomaticPlayer(key, alivePlayers, assignments){
+  const currentPlayer = assignments.get(key);
+  if (currentPlayer && alivePlayers.includes(currentPlayer)) return currentPlayer;
+  assignments.delete(key);
+  const assignedPlayers = new Set(assignments.values());
+  const player = alivePlayers.find(candidate => !assignedPlayers.has(candidate)) || null;
+  if (player) assignments.set(key, player);
+  return player;
+}
+function takeGiftTicket(ticketsByPlayer, key){
+  const tickets = ticketsByPlayer.get(key);
+  if (!tickets || !tickets.length) return null;
+  const ticket = tickets.shift();
+  if (!tickets.length) ticketsByPlayer.delete(key);
+  return ticket;
+}
+function safeLiveAvatar(value){
+  if (typeof value !== "string" || value.length > 700000) return "";
+  if (/^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i.test(value)) return value;
+  try{
+    const url = new URL(value, window.location.href);
+    return url.protocol === "https:" || url.origin === window.location.origin ? url.href : "";
+  } catch (error){
+    console.warn("URL d’avatar TikTok ignorée :", error);
+    return "";
+  }
+}
+function resolveLiveAvatar(profile){
+  if (!profile || typeof profile !== "object") return "";
+  const urls = Array.isArray(profile.avatarUrls) ? profile.avatarUrls : [];
+  for (const value of [profile.avatarDataUri, profile.avatarUrl, profile.profilePictureUrl, ...urls]){
+    const avatar = safeLiveAvatar(value);
+    if (avatar) return avatar;
+  }
+  return "";
+}
+function releaseLivePlayer(player){
+  liveControllerByPlayer.delete(player);
+  for (const [key, assignedPlayer] of [...livePlayerChoices]){
+    if (assignedPlayer !== player) continue;
+    livePlayerChoices.delete(key);
+    pendingGiftChoices.delete(key);
+    for (let index = liveMoves.length - 1; index >= 0; index--){
+      if (liveMoves[index].player === player) liveMoves.splice(index, 1);
+    }
+    if (voiceTargetPlayer === player) voiceTargetPlayer = null;
+  }
+  renderLivePanels();
+}
 function setLiveStatus(message){ liveStatus.textContent = message; }
+function showWinnerBanner(move, credited, simulation = false, awardedPlayer = null){
+  const banner = $("winner-banner");
+  const image = $("winner-avatar");
+  const placeholder = $("winner-avatar-placeholder");
+  const username = normalizeLiveName(move.username) || "Joueur";
+  const avatar = safeLiveAvatar(move.avatarUrl) ||
+    safeLiveAvatar(livePlayerAvatars.get(move.key)) ||
+    safeLiveAvatar(awardedPlayer && awardedPlayer.avatarUrl);
+  $("winner-name").textContent = `🏆 @${username} a traversé le pont !`;
+  $("winner-reward").textContent = credited
+    ? "50 étoiles gagnées !"
+    : simulation ? "Simulation · 50 étoiles non créditées" : "Récompense non confirmée · 50 étoiles non créditées";
+  placeholder.textContent = username.charAt(0).toLocaleUpperCase("fr-FR") || "?";
+  placeholder.hidden = Boolean(avatar);
+  image.alt = `Photo de profil de ${username}`;
+  image.hidden = !avatar;
+  image.onerror = () => {
+    image.hidden = true;
+    placeholder.hidden = false;
+  };
+  if (avatar) image.src = avatar;
+  else image.removeAttribute("src");
+  banner.hidden = false;
+  if (winnerBannerTimer) clearTimeout(winnerBannerTimer);
+  winnerBannerTimer = window.setTimeout(() => { banner.hidden = true; }, 9000);
+}
+async function awardLiveWinner(move, payoutRoundId){
+  if (!move) return;
+  if (move.simulated){
+    showWinnerBanner(move, false, true);
+    return;
+  }
+  const username = normalizeLiveName(move.username);
+  const transactionId = `pont-de-verre:${payoutRoundId}:${move.player}`;
+  if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)){
+    const error = new Error("Le pseudo du gagnant n'est pas valide pour le portefeuille.");
+    console.error(error);
+    showWinnerBanner(move, false);
+    setLiveStatus("Récompense non confirmée : pseudo du gagnant invalide.");
+    return;
+  }
+  if (awardedLivePlayers.has(transactionId)) return;
+  awardedLivePlayers.add(transactionId);
+  try{
+    if (!window.ArcadeStars || typeof window.ArcadeStars.award !== "function"){
+      throw new Error("Le portefeuille global Griffon Arcade est indisponible.");
+    }
+    const awardedPlayer = await window.ArcadeStars.award({ username, amount: 50, transactionId });
+    showWinnerBanner(move, true, false, awardedPlayer);
+    setLiveStatus(`@${username} a traversé le pont et a gagné 50 étoiles.`);
+  } catch (error){
+    console.error(`Impossible de créditer les 50 étoiles du gagnant @${username}.`, error);
+    showWinnerBanner(move, false);
+    setLiveStatus(`Récompense de @${username} non confirmée : 50 étoiles non créditées.`);
+  }
+}
 function renderLivePanels(){
   const roster = $("live-roster-list");
   roster.replaceChildren();
@@ -801,57 +941,44 @@ function handleLiveComment(commentData){
   const key = username.toLocaleLowerCase("fr-FR");
   const text = String(commentData.comment || commentData.text || commentData.message || "")
     .trim().toLocaleLowerCase("fr-FR").replace(/^!\s*/, "").replace(/\s+/g, " ");
-  const playerMatch = text.match(/^(?:joueur|personnage)?\s*(\d{3})$/);
-  if (playerMatch && all.includes(playerMatch[1])){
-    if (!alive.includes(playerMatch[1])){
-      setLiveStatus(`@${username}, le personnage ${playerMatch[1]} est éliminé. Choisis un autre numéro.`);
-      if (voiceOn) { voiceTargetPlayer = null; speak(`Le joueur ${playerMatch[1]} est éliminé. Choisis un autre numéro à trois chiffres dans le chat.`); }
-      return;
-    }
-    if (!livePlayerChoices.has(key) && livePlayerChoices.size >= 100){
-      const oldest = livePlayerChoices.keys().next().value;
-      livePlayerChoices.delete(oldest);
-      livePlayerNames.delete(oldest);
-      liveSteps.delete(oldest);
-    }
-    livePlayerChoices.set(key, playerMatch[1]);
-    livePlayerNames.set(key, username);
-    setLiveStatus(`@${username} a choisi le personnage ${playerMatch[1]}.`);
-    renderLivePanels();
-    if (voiceOn){
-      voiceTargetPlayer = playerMatch[1];
-      speak(`Joueur ${playerMatch[1]} choisi. Choisis maintenant la vitre de gauche ou de droite et écris gauche ou droite dans le chat.`);
-    }
-    return;
-  }
   let side;
-  if (/^(?:gauche|vitre gauche|left|1)$/.test(text)){
+  if (text === "gauche"){
     side = "left";
-  } else if (/^(?:droite|vitre droite|right|2)$/.test(text)){
+  } else if (text === "droite"){
     side = "right";
   } else {
     return;
   }
-  const player = livePlayerChoices.get(key);
-  if (!player){
-    setLiveStatus(`@${username}, commente d'abord le numéro du personnage.`);
-    if (voiceOn) { voiceTargetPlayer = null; speak("Choisis d'abord le numéro à trois chiffres du joueur et écris-le dans le chat."); }
+  livePlayerNames.set(key, username);
+  const avatar = resolveLiveAvatar(commentData);
+  if (avatar) livePlayerAvatars.set(key, avatar);
+  const ticket = takeGiftTicket(pendingGiftChoices, key);
+  if (!ticket){
+    setLiveStatus(`@${username}, envoie un cadeau avant d'écrire gauche ou droite.`);
+    if (voiceOn) { voiceTargetPlayer = null; speak("Envoie un cadeau avant de choisir gauche ou droite."); }
     return;
   }
-  if (!alive.includes(player)){
-    setLiveStatus(`Le personnage ${player} est éliminé. @${username}, choisis un autre numéro.`);
-    livePlayerChoices.delete(key);
-    livePlayerNames.delete(key);
+  const player = assignAutomaticPlayer(key, alive, livePlayerChoices);
+  if (!player){
+    pendingGiftChoices.delete(key);
+    setLiveStatus(`@${username}, tous les personnages sont déjà attribués. Réessaie après la fin d'un parcours.`);
     renderLivePanels();
-    if (voiceOn) { voiceTargetPlayer = null; speak(`Le joueur ${player} est éliminé. Choisis un autre numéro à trois chiffres dans le chat.`); }
     return;
   }
   if (liveMoves.length >= 100){
+    const tickets = pendingGiftChoices.get(key) || [];
+    tickets.unshift(ticket);
+    pendingGiftChoices.set(key, tickets);
     setLiveStatus("La file d'actions est pleine. Attends un instant avant de réessayer.");
     return;
   }
-  liveMoves.push({ username, key, player, side });
-  setLiveStatus(`@${username} a choisi la vitre ${side === "left" ? "de gauche" : "de droite"} pour le joueur ${player}.`);
+  const move = {
+    username, key, player, side, simulated: Boolean(commentData.simulated || ticket.simulated),
+    avatarUrl: avatar || ticket.avatarUrl || livePlayerAvatars.get(key) || ""
+  };
+  liveMoves.push(move);
+  renderLivePanels();
+  setLiveStatus(`@${username} a choisi ${side === "left" ? "gauche" : "droite"} pour son personnage ${player}.`);
   if (voiceOn){
     voiceTargetPlayer = player;
     speak(`Le joueur ${player} avance vers la vitre ${side === "left" ? "de gauche" : "de droite"}.`);
@@ -866,12 +993,13 @@ function processLiveMoves(){
     if (!active){ processLiveMoves(); return; }
     const move = liveMoves.shift();
     if (!alive.includes(move.player)){
-      setLiveStatus(`Le personnage ${move.player} est éliminé. @${move.username}, choisis un autre numéro.`);
+      releaseLivePlayer(move.player);
+      setLiveStatus(`Le personnage ${move.player} n'est plus disponible. @${move.username}, envoie un nouveau cadeau.`);
       processLiveMoves();
       return;
     }
     if (switchTo(move.player)){
-      liveControllerByPlayer.set(move.player, move.key);
+      liveControllerByPlayer.set(move.player, move);
       chosen = move.player;
       choose(move.side);
     }
@@ -879,17 +1007,9 @@ function processLiveMoves(){
   }, 350 / animationSpeed);
 }
 function handleLiveGift(giftData){
-  const username = normalizeLiveName(giftData.uniqueId || giftData.username || giftData.nickname || giftData.user) || "visiteur";
+  const username = normalizeLiveName(giftData.uniqueId || giftData.username || giftData.nickname || giftData.user);
+  if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) return;
   const key = username.toLocaleLowerCase("fr-FR");
-  const player = livePlayerChoices.get(key);
-  if (!player){
-    setLiveStatus(`@${username}, commente le numéro d'un joueur puis gauche ou droite pour le faire avancer. Aucun cadeau n'est nécessaire.`);
-    return;
-  }
-  if (!alive.includes(player)){
-    setLiveStatus(`Le personnage ${player} est éliminé. @${username}, choisis un autre numéro.`);
-    return;
-  }
   if (giftData.repeatEnd !== undefined && ![true, 1, "1"].includes(giftData.repeatEnd)) return;
   const messageId = String(giftData.messageId || giftData.msgId || "");
   if (messageId){
@@ -897,7 +1017,31 @@ function handleLiveGift(giftData){
     seenLiveGiftIds.add(messageId);
     if (seenLiveGiftIds.size > 1200) seenLiveGiftIds.delete(seenLiveGiftIds.values().next().value);
   }
-  setLiveStatus(`@${username}, écris gauche ou droite dans le chat pour faire avancer le joueur ${player}. Aucun cadeau n'est nécessaire.`);
+  const player = assignAutomaticPlayer(key, alive, livePlayerChoices);
+  if (!player){
+    setLiveStatus(`@${username}, aucun personnage n'est disponible pour l'instant. Réessaie après la fin d'un parcours.`);
+    return;
+  }
+  livePlayerNames.set(key, username);
+  const avatar = resolveLiveAvatar(giftData);
+  if (avatar) livePlayerAvatars.set(key, avatar);
+  const tickets = pendingGiftChoices.get(key) || [];
+  if (tickets.length >= 20){
+    setLiveStatus(`@${username}, tu as déjà 20 cadeaux en attente. Écris gauche ou droite avant d'en envoyer un autre.`);
+    return;
+  }
+  tickets.push({
+    giftId: messageId || `gift-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    simulated: Boolean(giftData.simulated),
+    avatarUrl: avatar
+  });
+  pendingGiftChoices.set(key, tickets);
+  renderLivePanels();
+  setLiveStatus(`Cadeau reçu : @${username} contrôle automatiquement le personnage ${player}. Écris gauche ou droite.`);
+  if (voiceOn){
+    voiceTargetPlayer = player;
+    speak(`Cadeau reçu. Tu contrôles le joueur ${player}. Écris gauche ou droite.`);
+  }
 }
 function handleLiveMessage(message){
   if (!message || typeof message !== "object") return;
@@ -996,10 +1140,14 @@ function simulateBigGift(){
     return;
   }
   const username = normalizeLiveName($("sim-username").value) || "spectateur_test";
-  const player = $("sim-player").value;
-  const side = $("sim-side").value;
-  handleLiveComment({ uniqueId: username, comment: player });
-  handleLiveComment({ uniqueId: username, comment: side });
+  if (!/^[a-zA-Z0-9._]{1,24}$/.test(username)){
+    setLiveStatus("Saisis un pseudo de test valide (1 à 24 caractères).");
+    return;
+  }
+  const simulatedUsername = `${username.slice(0, 20)}_sim`;
+  const side = $("sim-side").value === "left" ? "gauche" : "droite";
+  handleLiveGift({ uniqueId: simulatedUsername, repeatEnd: true, simulated: true });
+  handleLiveComment({ uniqueId: simulatedUsername, comment: side, simulated: true });
   effects.simulateBigGift(username, 100);
 }
 
