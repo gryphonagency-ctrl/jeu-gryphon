@@ -168,7 +168,10 @@
         );
       case "upperEyelid":
       case "lowerEyelid":
-        return value(action.side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight");
+        return Math.min(
+          1,
+          1.25 * value(action.side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight")
+        );
       case "brow":
         return Math.max(value("browInnerUp"), value(`browOuterUp${action.side === "left" ? "Left" : "Right"}`)) -
           value(action.side === "left" ? "browDownLeft" : "browDownRight");

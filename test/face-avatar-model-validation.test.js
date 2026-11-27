@@ -171,8 +171,12 @@ test('facial bones map eyelids, jaw, brows and lip corners to tracked expression
         faceAvatarRig.facialBoneValue({ jawOpen: 0.8, mouthClose: 0 }, jaw) - 0.72
     ) < 1e-9);
     assert.equal(
+        faceAvatarRig.facialBoneValue({ eyeBlinkLeft: 0.4 }, eyelid),
+        0.5
+    );
+    assert.equal(
         faceAvatarRig.facialBoneValue({ eyeBlinkLeft: 0.8 }, eyelid),
-        0.8
+        1
     );
     assert.equal(
         faceAvatarRig.facialBoneValue({

@@ -186,13 +186,13 @@ function applyFacialBoneExpressions() {
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "upperEyelid":
-        bone.position.y -= 0.01 * value;
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.3 * value);
+        bone.position.y -= 0.03 * value;
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.55 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "lowerEyelid":
-        bone.position.y += 0.006 * value;
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.2 * value);
+        bone.position.y += 0.022 * value;
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.38 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "brow":
