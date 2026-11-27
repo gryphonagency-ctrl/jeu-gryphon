@@ -10571,11 +10571,17 @@ three/build/three.module.js:
 
   function install() {
     const game = window.__G;
-    if (!game?.events || !game.zombies || typeof game.receiveTikTokGift !== "function") {
+    if (
+      !game?.events ||
+      !game.zombies ||
+      !game.director ||
+      !game.level ||
+      typeof game.receiveTikTokGift !== "function"
+    ) {
       if (++attempts < 1200) {
         window.setTimeout(install, 50);
       } else {
-        console.error("[TikTok gifts] Game systems were not ready; instant spawns were not installed.");
+        console.error("[TikTok gifts] Game systems were not ready; gift mode was not installed.");
       }
       return;
     }
@@ -10589,9 +10595,50 @@ three/build/three.module.js:
         runIndex = game.runIndex;
       }
     };
+    const openAllDoors = () => {
+      if (!Array.isArray(game.level.doors) || typeof game.level.openDoor !== "function") {
+        console.error("[TikTok gifts] Door controls were not ready; gift mode cannot open every door.");
+        return;
+      }
+      for (const door of game.level.doors) {
+        if (door.open) continue;
+        try {
+          if (!game.level.openDoor(door.id) && !door.open) {
+            console.error(`[TikTok gifts] Door ${door.id} could not be opened.`);
+          }
+        } catch (error) {
+          console.error(`[TikTok gifts] Door ${door.id} could not be opened.`, error);
+        }
+      }
+    };
+    const enterGiftPhase = () => {
+      if (game.spawnMode !== "gifts") return;
+      openAllDoors();
+      game.director.n = 1;
+      game.director.total = 0;
+      game.director.spawned = 0;
+      game.director.boss = false;
+      game.director.timer = 0;
+      game.director.phase = "gifts";
+    };
+
+    const directorStart = game.director.start;
+    game.director.start = function (round) {
+      if (game.spawnMode === "gifts") {
+        enterGiftPhase();
+        return;
+      }
+      return directorStart.call(this, round);
+    };
+
     const spawnPending = () => {
       syncRun();
-      if (game.state !== "playing" || game.director?.phase !== "active" || pending < 1) return;
+      if (
+        game.state !== "playing" ||
+        game.spawnMode !== "gifts" ||
+        game.director.phase !== "gifts" ||
+        pending < 1
+      ) return;
 
       const points = game.level && (
         typeof game.level.activeSpawnPoints === "function"
@@ -10599,13 +10646,21 @@ three/build/three.module.js:
           : game.level.spawnPoints
       );
       if (!Array.isArray(points) || points.length === 0) return;
+      if (!Array.isArray(game.zombies.list)) {
+        console.error("[TikTok gifts] Zombie list was unavailable; gift spawns were paused.");
+        return;
+      }
 
-      while (pending > 0) {
+      const livingZombies = () => game.zombies.list.filter(zombie =>
+        zombie && zombie.alive !== false && zombie.state !== "dead"
+      ).length;
+      let living = livingZombies();
+      while (pending > 0 && living < 24) {
         const point = points[Math.floor(Math.random() * points.length)];
         let zombieId;
         try {
           zombieId = game.zombies.spawn(point, {
-            round: game.round,
+            round: 1,
             type: "walker"
           });
         } catch (error) {
@@ -10614,25 +10669,25 @@ three/build/three.module.js:
         }
         if (zombieId == null) return;
         pending -= 1;
+        living += 1;
       }
     };
 
     const receiveTikTokGift = game.receiveTikTokGift;
     game.receiveTikTokGift = function (gift) {
-      const result = receiveTikTokGift.call(this, gift);
+      if (this.spawnMode !== "gifts") return receiveTikTokGift.call(this, gift);
       const coinCount = Number(gift && gift.coinCount);
       if (
         this.state !== "playing" ||
-        this.director?.phase !== "active" ||
         !Number.isSafeInteger(coinCount) ||
         coinCount < 1
       ) {
-        return result;
+        return 0;
       }
       syncRun();
       if (coinCount > Number.MAX_SAFE_INTEGER - pending) {
         console.error("[TikTok gifts] Instant zombie request exceeded the safe queue limit.");
-        return result;
+        return 0;
       }
       pending += coinCount;
       spawnPending();
@@ -10640,17 +10695,30 @@ three/build/three.module.js:
         const activity = document.querySelector(".gs-live-activity");
         if (activity) {
           activity.textContent =
-            `Apparition cadeau : ${coinCount} zombie${coinCount === 1 ? "" : "s"} demandé${coinCount === 1 ? "" : "s"} immédiatement. ` +
+            `Apparition cadeau : ${coinCount} zombie${coinCount === 1 ? "" : "s"} ajouté${coinCount === 1 ? "" : "s"}. ` +
             `${pending} en attente du plafond de 24 vivants.`;
         }
       }, 0);
-      return result;
+      return coinCount;
     };
 
     game.events.on("zombie:remove", spawnPending);
-    game.events.on("round:start", spawnPending);
+    game.events.on("round:start", () => {
+      if (game.spawnMode === "gifts") enterGiftPhase();
+      spawnPending();
+    });
+    game.events.on("game:spawn-mode", event => {
+      if (event?.mode === "gifts" && game.state === "playing") {
+        enterGiftPhase();
+        spawnPending();
+      } else if (event?.mode === "waves" && game.state === "playing" && game.director.phase === "gifts") {
+        pending = 0;
+        directorStart.call(game.director, game.round || 1);
+      }
+    });
     game.events.on("game:state", event => {
       if (event?.state === "playing") {
+        if (game.spawnMode === "gifts") enterGiftPhase();
         spawnPending();
       } else if (event?.state !== "paused") {
         pending = 0;
