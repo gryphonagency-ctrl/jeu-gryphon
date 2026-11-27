@@ -182,7 +182,7 @@ function applyFacialBoneExpressions() {
     bone.quaternion.copy(baseQuaternion);
     switch (action.type) {
       case "jaw":
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.28 - 0.85 * value);
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.24 - 0.85 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "upperEyelid":
