@@ -3745,6 +3745,7 @@ const server = http.createServer((req, res) => {
         ['/arcade-treasure-overlay.html', [path.join(__dirname, 'arcade-treasure-overlay.html'), 'text/html; charset=utf-8']],
         ['/avatar-face-tracker/app.js', [path.join(__dirname, 'avatar-face-tracker', 'app.js'), 'text/javascript; charset=utf-8']],
         ['/avatar-face-tracker/face-avatar-rig.js', [path.join(__dirname, 'avatar-face-tracker', 'face-avatar-rig.js'), 'text/javascript; charset=utf-8']],
+        ['/avatar-face-tracker/body-avatar-rig.js', [path.join(__dirname, 'avatar-face-tracker', 'body-avatar-rig.js'), 'text/javascript; charset=utf-8']],
         ['/avatar-face-tracker/style.css', [path.join(__dirname, 'avatar-face-tracker', 'style.css'), 'text/css; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],

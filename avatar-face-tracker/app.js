@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import {
+  FaceLandmarker,
+  FilesetResolver
+} from "@mediapipe/tasks-vision";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 
 const canvas = document.getElementById("scene");
@@ -28,6 +31,7 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.localClippingEnabled = true;
 renderer.setClearColor(0x00ff00, isOverlayMode ? 0 : 1);
 
 const scene = new THREE.Scene();
@@ -78,6 +82,7 @@ const targetRotation = new THREE.Euler(0, 0, 0, "YXZ");
 const clock = new THREE.Clock();
 const facialBoneAxis = new THREE.Vector3(1, 0, 0);
 const facialBoneOffset = new THREE.Quaternion();
+const armsDownDirection = new THREE.Vector3(0, -1, 0);
 let landmarker;
 let trackerMode = "IMAGE";
 let trackerSwitching = false;
@@ -88,6 +93,9 @@ let avatarVrm;
 let avatarMorphBindings = [];
 let avatarVrmExpressions = [];
 let avatarFacialBones = [];
+let avatarBodyBones = new Map();
+let avatarBodyBaseQuaternions = new Map();
+let avatarPortraitFrame;
 let lastVideoTime = -1;
 let cameraStream;
 let objectUrl;
@@ -123,6 +131,122 @@ function findAvatarHead(model, vrm) {
     if (!head && node.isBone && (name === "head" || name.endsWith("head"))) head = node;
   });
   return head;
+}
+
+function bodyBoneKey(action) {
+  if (action.type === "hips") return "hips";
+  if (action.type === "finger") {
+    return `${action.side}:finger:${action.finger}:${action.joint}`;
+  }
+  return `${action.side}:${action.type}`;
+}
+
+function collectBodyBones(model) {
+  const bones = new Map();
+  model.traverse(node => {
+    if (!node.isBone) return;
+    const action = BodyAvatarRig.bodyBoneAction(node.name);
+    if (action) bones.set(bodyBoneKey(action), node);
+  });
+  return bones;
+}
+
+function applyBoneDirection(key, childKey, targetDirection) {
+  const bone = avatarBodyBones.get(key);
+  const child = avatarBodyBones.get(childKey);
+  const base = avatarBodyBaseQuaternions.get(key);
+  if (!bone || !child || !base || !targetDirection || !bone.parent) return false;
+
+  bone.parent.updateWorldMatrix(true, false);
+  const parentRotation = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const targetInParent = targetDirection.clone().applyQuaternion(parentRotation).normalize();
+  const restDirection = child.position.clone().applyQuaternion(base).normalize();
+  const correction = new THREE.Quaternion().setFromUnitVectors(restDirection, targetInParent);
+  bone.quaternion.slerp(correction.multiply(base.clone()), 0.35);
+  return true;
+}
+
+function applyArmsRestPose() {
+  if (!avatarBodyBones.size) return;
+
+  for (const side of ["left", "right"]) {
+    const upperArmKey = `${side}:upperArm`;
+    const forearmKey = `${side}:forearm`;
+    applyBoneDirection(upperArmKey, forearmKey, armsDownDirection);
+    avatarModel.updateMatrixWorld(true);
+    applyBoneDirection(forearmKey, `${side}:hand`, armsDownDirection);
+    avatarModel.updateMatrixWorld(true);
+  }
+}
+
+function updateAvatarPortraitFrame() {
+  if (!avatarPortraitFrame) return;
+  const {
+    root,
+    planes,
+    center,
+    centerY,
+    cutY,
+    height,
+    shoulderHalfWidth
+  } = avatarPortraitFrame;
+  const visibleHeight = 2 * camera.position.z *
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const scale = Math.min(
+    visibleHeight * 0.72 / height,
+    visibleHeight * camera.aspect * 0.82 / (shoulderHalfWidth * 2)
+  );
+  root.scale.setScalar(scale);
+  root.position.set(
+    -center.x * scale,
+    -centerY * scale,
+    -center.z * scale
+  );
+  planes[0].constant = -(cutY - centerY) * scale;
+  planes[1].constant = shoulderHalfWidth * scale;
+  planes[2].constant = shoulderHalfWidth * scale;
+}
+
+function cropToHeadAndShoulders(model, size, bounds, center, bodyBones, root) {
+  const cutY = bounds.max.y - size.y * 0.2;
+  const portraitHeight = bounds.max.y - cutY;
+  const leftShoulder = bodyBones.get("left:upperArm");
+  const rightShoulder = bodyBones.get("right:upperArm");
+  const shoulderDistance = leftShoulder && rightShoulder
+    ? Math.abs(
+      rightShoulder.getWorldPosition(new THREE.Vector3()).x -
+      leftShoulder.getWorldPosition(new THREE.Vector3()).x
+    )
+    : 0;
+  const shoulderHalfWidth = Math.max(
+    shoulderDistance ? shoulderDistance * 0.4 : 0,
+    size.x * 0.15
+  );
+  const centerY = (cutY + bounds.max.y) / 2;
+  const planes = [
+    new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+    new THREE.Plane(new THREE.Vector3(1, 0, 0), 0),
+    new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)
+  ];
+
+  model.traverse(node => {
+    if (!node.isMesh || !node.material) return;
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      material.clippingPlanes = planes;
+      material.needsUpdate = true;
+    }
+  });
+
+  return {
+    root,
+    planes,
+    center,
+    centerY,
+    cutY,
+    height: portraitHeight,
+    shoulderHalfWidth
+  };
 }
 
 function createFaceBindings(model, vrm) {
@@ -246,6 +370,10 @@ async function loadAvatar(source, label) {
     if (!loadedModel) throw new Error("Le fichier ne contient pas de scène 3D.");
 
     const faceBindings = createFaceBindings(loadedModel, vrm);
+    const bodyBones = collectBodyBones(loadedModel);
+    const bodyBaseQuaternions = new Map(
+      [...bodyBones].map(([key, bone]) => [key, bone.quaternion.clone()])
+    );
     loadedModel.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(loadedModel);
     const size = bounds.getSize(new THREE.Vector3());
@@ -256,14 +384,24 @@ async function loadAvatar(source, label) {
     }
 
     const nextAvatarRoot = new THREE.Group();
-    nextAvatarRoot.position.copy(center).multiplyScalar(-1);
-    nextAvatarRoot.scale.setScalar(1.75 / maxDimension);
     nextAvatarRoot.add(loadedModel);
+    const portraitFrame = cropToHeadAndShoulders(
+      loadedModel,
+      size,
+      bounds,
+      center,
+      bodyBones,
+      nextAvatarRoot
+    );
     const nextHead = findAvatarHead(loadedModel, vrm);
 
-    if (avatarModel) disposeModel(avatarModel);
+    if (avatarModel) {
+      disposeModel(avatarModel);
+    }
     avatarRoot.clear();
     avatarRoot.add(nextAvatarRoot);
+    avatarPortraitFrame = portraitFrame;
+    updateAvatarPortraitFrame();
     avatarModel = loadedModel;
     avatarHead = nextHead;
     avatarHeadBaseRotation = avatarHead?.rotation.clone() || null;
@@ -271,6 +409,8 @@ async function loadAvatar(source, label) {
     avatarMorphBindings = faceBindings.morphBindings;
     avatarVrmExpressions = faceBindings.expressions;
     avatarFacialBones = faceBindings.facialBones;
+    avatarBodyBones = bodyBones;
+    avatarBodyBaseQuaternions = bodyBaseQuaternions;
     avatarRoot.rotation.set(0, 0, 0);
     setStatus(`Modèle 3D chargé : ${label}`);
     startButton.disabled = false;
@@ -339,7 +479,7 @@ async function startCamera() {
     video.srcObject = stream;
     await video.play();
     await setTrackerMode("VIDEO");
-    setStatus("Suivi actif · tourne la tête, cligne des yeux et parle.");
+    setStatus("Suivi actif · visage.");
     if (isOverlayMode) document.body.classList.add("overlay-live");
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
@@ -374,7 +514,7 @@ function updateFaceTracking() {
   if (pose?.data) {
     const matrix = new THREE.Matrix4().fromArray(pose.data);
     const euler = new THREE.Euler().setFromRotationMatrix(matrix, "YXZ");
-    targetRotation.set(euler.x, euler.y, euler.z);
+    targetRotation.set(-euler.x, -euler.y, -euler.z);
   } else {
     targetRotation.set(0, 0, 0);
   }
@@ -397,6 +537,7 @@ function updateFaceTracking() {
 function animate() {
   updateFaceTracking();
   avatarVrm?.update(clock.getDelta());
+  applyArmsRestPose();
   applyFacialBoneExpressions();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
@@ -447,6 +588,7 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateAvatarPortraitFrame();
 });
 
 window.addEventListener("beforeunload", () => {
