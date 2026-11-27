@@ -169,17 +169,17 @@
     </div>
 
     <div class="drawer-scroll">
-      <!-- Connexion WebSocket TikFinity / IndoFinity -->
+      <!-- Connexion au live TikTok via le relais du site -->
       <div class="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-bold uppercase tracking-wider text-amber-400">🔌 TikFinity / WebSocket</span>
-          <span id="ws-status-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold">Déconnecté</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Connexion TikTok</span>
+          <span id="tiktok-status-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold">Déconnecté</span>
         </div>
         <div class="flex gap-1.5">
-          <input id="ws-url-input" type="text" value="ws://localhost:21213/" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400" />
-          <button id="ws-connect-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0 transition">Connecter</button>
+          <input id="tiktok-username-input" type="text" placeholder="@pseudo TikTok" autocomplete="off" aria-label="Pseudo du compte TikTok" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400" />
+          <button id="tiktok-connect-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0 transition">Se connecter</button>
         </div>
-        <p class="text-[10px] text-slate-400 mt-1.5 leading-tight">Compatible TikFinity, IndoFinity & StreamToEarn (événements <code class="text-amber-300">gift</code> & <code class="text-amber-300">chat</code>).</p>
+        <p class="text-[10px] text-slate-400 mt-1.5 leading-tight">Saisis le pseudo du compte qui diffuse le live. La connexion est configurée automatiquement.</p>
       </div>
 
       <!-- Simulateur de Cadeaux TikTok -->
@@ -279,7 +279,7 @@
  * 2. Moteur de rendu Canvas 2D haute qualité (décor fête foraine nocturne, fanions,
  *    guirlandes lumineuses, chapiteau rouge & or, eau turquoise animée, canards déjantés)
  * 3. Tourelle automatique & file de tirs intelligents avec verrouillage de cibles
- * 4. Intégration WebSocket TikFinity / IndoFinity + Simulateur de cadeaux
+ * 4. Connexion au live TikTok via le relais du site + simulateur de cadeaux
  * 5. Panneau de régie déplaçable masqué par défaut (bouton œil discret)
  */
 
@@ -2636,12 +2636,23 @@
   }
 
   // --------------------------------------------------------------------------
-  // 10. CONNEXION WEBSOCKET TIKFINITY / INDOFINITY
+  // 10. CONNEXION AU LIVE TIKTOK
   // --------------------------------------------------------------------------
   let ws = null;
-  const wsBadge = document.getElementById('ws-status-badge');
-  const wsUrlInput = document.getElementById('ws-url-input');
-  const wsConnectBtn = document.getElementById('ws-connect-btn');
+  const wsBadge = document.getElementById('tiktok-status-badge');
+  const tiktokUsernameInput = document.getElementById('tiktok-username-input');
+  const tiktokConnectBtn = document.getElementById('tiktok-connect-btn');
+
+  function setTikTokStatus(message, state = 'disconnected') {
+    const colors = {
+      connected: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      connecting: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      disconnected: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      error: 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+    };
+    wsBadge.textContent = message;
+    wsBadge.className = `text-[11px] px-2 py-0.5 rounded-full border font-semibold ${colors[state] || colors.disconnected}`;
+  }
 
   function mapTikTokGiftName(rawName = '', diamonds = 1) {
     const lower = rawName.toLowerCase();
@@ -2652,65 +2663,84 @@
     return 'rose';
   }
 
-  function connectWebSocket() {
-    if (ws) {
-      ws.close();
-      ws = null;
+  function connectTikTokLive() {
+    const username = tiktokUsernameInput.value.trim().replace(/^@/, '');
+    if (!/^[a-zA-Z0-9._]{1,32}$/.test(username)) {
+      setTikTokStatus('Pseudo TikTok invalide', 'error');
+      tiktokUsernameInput.focus();
+      return;
     }
-    const url = wsUrlInput.value.trim();
-    if (!url) return;
+    if (!location.host || !/^https?:$/.test(location.protocol)) {
+      setTikTokStatus('Ouvre le jeu depuis Griffon Arcade', 'error');
+      return;
+    }
 
-    wsBadge.textContent = 'Connexion...';
-    wsBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold';
+    if (ws) ws.close();
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const relay = `${protocol}//${location.host}`;
+    setTikTokStatus(`Connexion à @${username}…`, 'connecting');
 
     try {
-      ws = new WebSocket(url);
+      const socket = new WebSocket(relay);
+      ws = socket;
+      tiktokConnectBtn.textContent = 'Déconnecter';
 
-      ws.onopen = () => {
-        wsBadge.textContent = 'Connecté 🟢';
-        wsBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold';
-        wsConnectBtn.textContent = 'Déconnecter';
-      };
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify({ action: 'CONNECT_TIKTOK', username }));
+        setTikTokStatus(`Recherche du live de @${username}…`, 'connecting');
+      });
 
-      ws.onmessage = (event) => {
+      socket.addEventListener('message', (event) => {
+        let payload;
         try {
-          const payload = JSON.parse(event.data);
-          // Format standard TikFinity / IndoFinity
-          if (payload.event === 'gift' && payload.data) {
-            const d = payload.data;
-            // Évite les doublons sur les cadeaux en série (repeatEnd)
-            if (d.giftType === 1 && !d.repeatEnd) return;
-            const user = d.nickname || d.uniqueId || 'Viewer';
-            const walletUsername = d.uniqueId || d.username || '';
-            const giftKey = mapTikTokGiftName(d.giftName || '', d.diamondCount || 1);
-            const repeatCount = d.repeatCount || 1;
-            triggerGiftAction(user, giftKey, repeatCount, { walletUsername });
-          }
-        } catch (err) {
-          // Ignorer les messages non JSON
+          payload = JSON.parse(event.data);
+        } catch (error) {
+          console.error('Message TikTok invalide :', error);
+          return;
         }
-      };
 
-      ws.onerror = () => {
-        wsBadge.textContent = 'Erreur';
-        wsBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold';
-      };
+        if (payload.type === 'STATUS') {
+          const message = String(payload.message || 'État du live inconnu');
+          const state = /erreur|interrompue|terminé|impossible|invalide/i.test(message)
+            ? 'error'
+            : /connecté/i.test(message) ? 'connected' : 'connecting';
+          setTikTokStatus(message, state);
+          return;
+        }
 
-      ws.onclose = () => {
-        wsBadge.textContent = 'Déconnecté';
-        wsBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold';
-        wsConnectBtn.textContent = 'Connecter';
-      };
-    } catch (e) {
-      wsBadge.textContent = 'URL Invalide';
+        const type = String(payload.type || payload.event || '').toLowerCase();
+        if (type !== 'gift' && type !== 'tiktok-gift') return;
+
+        const gift = payload.gift || payload.data || payload;
+        const user = gift.nickname || gift.uniqueId || 'Spectateur';
+        const walletUsername = gift.uniqueId || gift.username || '';
+        const giftKey = mapTikTokGiftName(gift.giftName || '', gift.coinCount || gift.diamondCount || 1);
+        triggerGiftAction(user, giftKey, gift.repeatCount || 1, { walletUsername });
+      });
+
+      socket.addEventListener('error', () => {
+        if (ws === socket) setTikTokStatus('Erreur de connexion au live TikTok', 'error');
+      });
+
+      socket.addEventListener('close', () => {
+        if (ws !== socket) return;
+        ws = null;
+        setTikTokStatus('Déconnecté');
+        tiktokConnectBtn.textContent = 'Se connecter';
+      });
+    } catch (error) {
+      ws = null;
+      setTikTokStatus('Connexion impossible au live TikTok', 'error');
+      tiktokConnectBtn.textContent = 'Se connecter';
+      console.error('Connexion au relais TikTok impossible :', error);
     }
   }
 
-  wsConnectBtn.addEventListener('click', () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+  tiktokConnectBtn.addEventListener('click', () => {
+    if (ws && ws.readyState < WebSocket.CLOSING) {
       ws.close();
     } else {
-      connectWebSocket();
+      connectTikTokLive();
     }
   });
 
