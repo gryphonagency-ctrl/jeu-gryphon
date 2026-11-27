@@ -9,12 +9,16 @@ import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 const canvas = document.getElementById("scene");
 const video = document.getElementById("webcam");
 const status = document.getElementById("status");
+const cameraStatus = document.getElementById("camera-status");
 const startButton = document.getElementById("start-camera");
+const stopButton = document.getElementById("stop-camera");
 const chooseButton = document.getElementById("choose-avatar");
-const loadLuffyButton = document.getElementById("load-luffy");
+const modelSelect = document.getElementById("avatar-model");
 const backgroundButton = document.getElementById("toggle-background");
-const controlsToggle = document.getElementById("toggle-controls");
 const fileInput = document.getElementById("avatar-file");
+const overlayUrlInput = document.getElementById("overlay-url");
+const copyUrlButton = document.getElementById("copy-url");
+const relayStatus = document.getElementById("studio-relay-status");
 const query = new URLSearchParams(location.search);
 const overlayToken = query.get("token");
 const isOverlayMode = overlayToken !== null;
@@ -22,13 +26,7 @@ const isStudioMode = !isOverlayMode || query.get("studio") === "1";
 
 document.documentElement.classList.toggle("overlay-mode", isOverlayMode);
 document.documentElement.classList.toggle("studio-mode", isStudioMode);
-controlsToggle.hidden = !isStudioMode;
-if (isOverlayMode && !isStudioMode) {
-  chooseButton.hidden = true;
-  loadLuffyButton.hidden = true;
-  backgroundButton.hidden = true;
-  fileInput.disabled = true;
-}
+fileInput.disabled = isOverlayMode && !isStudioMode;
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -36,7 +34,6 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.localClippingEnabled = true;
 renderer.setClearColor(0x00ff00, isOverlayMode && !isStudioMode ? 0 : 1);
@@ -111,6 +108,35 @@ let transparentBackground = isOverlayMode && !isStudioMode;
 function setStatus(message, kind = "info") {
   status.textContent = message;
   status.dataset.kind = kind;
+  status.classList.toggle("error", kind === "error");
+  status.classList.toggle("good", kind === "good");
+}
+
+function setCameraStatus(message, kind = "info") {
+  cameraStatus.textContent = message;
+  cameraStatus.classList.toggle("error", kind === "error");
+  cameraStatus.classList.toggle("good", kind === "good");
+}
+
+function setRelayStatus(message, kind = "info") {
+  relayStatus.textContent = message;
+  relayStatus.classList.toggle("error", kind === "error");
+  relayStatus.classList.toggle("good", kind === "good");
+}
+
+function updateSourceLink() {
+  if (!overlayToken || !/^[a-f0-9]{64}$/.test(overlayToken)) {
+    overlayUrlInput.value = "";
+    copyUrlButton.disabled = true;
+    setRelayStatus("Crée d’abord le lien indépendant depuis ton espace créateur.");
+    return;
+  }
+
+  const sourceUrl = new URL(location.href);
+  sourceUrl.searchParams.delete("studio");
+  overlayUrlInput.value = sourceUrl.href;
+  copyUrlButton.disabled = false;
+  setRelayStatus("Lien prêt pour OBS ou TikTok LIVE Studio.", "good");
 }
 
 function disposeModel(model) {
@@ -429,12 +455,60 @@ async function loadAvatar(source, label) {
     avatarBodyBaseQuaternions = bodyBaseQuaternions;
     avatarRoot.rotation.set(0, 0, 0);
     setStatus(`Modèle 3D chargé : ${label}`);
-    startButton.disabled = false;
+    startButton.disabled = Boolean(cameraStream);
+    stopButton.disabled = !cameraStream;
   } catch (error) {
     if (loadedModel && loadedModel !== avatarModel) disposeModel(loadedModel);
     throw error;
   } finally {
     if (resumeVideo) await setTrackerMode("VIDEO");
+  }
+}
+
+async function loadAccountModel() {
+  const modelPath = overlayToken
+    ? `/api/face-avatar-overlay-model?token=${encodeURIComponent(overlayToken)}`
+    : "/api/face-avatar-overlay-model";
+  const response = await fetch(modelPath, {
+    credentials: "same-origin",
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Connecte-toi à ton compte créateur autorisé pour charger son modèle.");
+    }
+    if (response.status === 404) {
+      throw new Error("Aucun modèle n’est enregistré pour ce lien ou ce compte.");
+    }
+    throw new Error(`Impossible de charger le modèle du compte (${response.status}).`);
+  }
+
+  const nextObjectUrl = URL.createObjectURL(await response.blob());
+  try {
+    await loadAvatar(nextObjectUrl, "Modèle du compte");
+  } catch (error) {
+    URL.revokeObjectURL(nextObjectUrl);
+    throw error;
+  }
+
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = nextObjectUrl;
+  modelSelect.value = "account";
+}
+
+async function uploadAccountModel(model, modelFormat) {
+  const response = await fetch("/api/face-avatar-overlay-model", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Avatar-Format": modelFormat
+    },
+    body: model
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.message || "Impossible d’enregistrer ce modèle pour le compte.");
   }
 }
 
@@ -453,33 +527,27 @@ async function initializeTracker() {
     runningMode: "IMAGE",
     numFaces: 1
   });
-  loadLuffyButton.disabled = false;
+  modelSelect.disabled = false;
+  chooseButton.disabled = false;
+  updateSourceLink();
 
   if (isOverlayMode) {
-    const response = await fetch(
-      `/api/face-avatar-overlay-model?token=${encodeURIComponent(overlayToken)}`,
-      { cache: "no-store" }
-    );
-    if (!response.ok) {
-      throw new Error("Lien d’avatar invalide, révoqué ou désactivé.");
-    }
-    objectUrl = URL.createObjectURL(await response.blob());
-    await loadAvatar(objectUrl, "modèle du compte");
+    await loadAccountModel();
     if (isStudioMode) {
-      setStatus("Modèle du compte chargé. Configure les options dans ce panneau.");
+      setStatus("Modèle du compte chargé. Choisis Luffy ou ajoute un autre modèle quand tu veux.");
     } else {
       try {
         await startCamera();
       } catch (error) {
         startButton.disabled = false;
-        setStatus(`Caméra non démarrée : ${error.message}`, "error");
+        setCameraStatus(`Caméra non démarrée : ${error.message}`, "error");
       }
     }
     return;
   }
 
   startButton.disabled = true;
-  setStatus("Choisis un GLB ou VRM avec expressions, morph targets ou armature faciale.", "warning");
+  setStatus("Choisis Luffy ou charge un modèle GLB ou VRM avec expressions faciales.", "warning");
 }
 
 async function startCamera() {
@@ -490,7 +558,8 @@ async function startCamera() {
   }
 
   startButton.disabled = true;
-  setStatus("Demande d’accès à la caméra…");
+  stopButton.disabled = true;
+  setCameraStatus("Demande d’accès à la caméra…");
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
     audio: false
@@ -498,26 +567,34 @@ async function startCamera() {
   cameraStream = stream;
   try {
     video.srcObject = stream;
+    video.hidden = !isStudioMode;
     await video.play();
     await setTrackerMode("VIDEO");
-    setStatus("Suivi actif · visage.");
-    if (isStudioMode) {
-      document.body.classList.add("camera-active");
-      setStudioControlsOpen(false);
-    }
-    if (isOverlayMode && !isStudioMode) document.body.classList.add("overlay-live");
+    setCameraStatus("Suivi actif · visage.", "good");
+    stopButton.disabled = false;
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
     cameraStream = undefined;
     video.srcObject = null;
+    video.hidden = true;
+    startButton.disabled = !avatarModel;
     throw error;
   }
 }
 
-function setStudioControlsOpen(open) {
-  document.documentElement.classList.toggle("studio-controls-open", open);
-  controlsToggle.setAttribute("aria-expanded", String(open));
-  controlsToggle.textContent = open ? "Fermer" : "Options";
+async function stopCamera() {
+  const stream = cameraStream;
+  if (!stream) return;
+
+  cameraStream = undefined;
+  stream.getTracks().forEach(track => track.stop());
+  video.srcObject = null;
+  video.hidden = true;
+  lastVideoTime = -1;
+  stopButton.disabled = true;
+  await setTrackerMode("IMAGE");
+  startButton.disabled = !avatarModel;
+  setCameraStatus("Caméra arrêtée.");
 }
 
 function updateFaceTracking() {
@@ -580,39 +657,76 @@ function updateBackground() {
   renderer.setClearColor(0x00ff00, transparentBackground ? 0 : 1);
   backgroundButton.textContent = transparentBackground ? "Fond vert" : "Fond transparent";
   backgroundButton.setAttribute("aria-pressed", String(transparentBackground));
-  document.documentElement.classList.toggle("transparent", transparentBackground);
 }
 
 chooseButton.addEventListener("click", () => fileInput.click());
-loadLuffyButton.addEventListener("click", async () => {
-  loadLuffyButton.disabled = true;
+modelSelect.addEventListener("change", async () => {
+  modelSelect.disabled = true;
+  chooseButton.disabled = true;
   try {
-    await loadAvatar("./assets/luffy.vrm", "Luffy");
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    objectUrl = undefined;
+    if (modelSelect.value === "account") {
+      await loadAccountModel();
+    } else if (modelSelect.value === "luffy") {
+      const response = await fetch("./assets/luffy.vrm", {
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error("Impossible de charger Luffy.");
+      const luffyModel = await response.blob();
+      const luffyUrl = URL.createObjectURL(luffyModel);
+      try {
+        await loadAvatar(luffyUrl, "Luffy");
+      } finally {
+        URL.revokeObjectURL(luffyUrl);
+      }
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = undefined;
+      try {
+        await uploadAccountModel(luffyModel, "vrm");
+        setStatus("Luffy est enregistré pour le lien et chargé dans l’aperçu.", "good");
+      } catch (error) {
+        setStatus(`Luffy est chargé dans l’aperçu, mais pas enregistré pour le lien : ${error.message}`, "error");
+      }
+    }
   } catch (error) {
     setStatus(`Modèle 3D impossible à charger : ${error.message}`, "error");
   } finally {
-    loadLuffyButton.disabled = false;
+    modelSelect.disabled = false;
+    chooseButton.disabled = false;
   }
 });
+
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files && fileInput.files[0];
   if (!file) return;
-  if (!/\.(glb|vrm)$/i.test(file.name)) {
+  const modelFormat = file.name.toLowerCase().endsWith(".vrm")
+    ? "vrm"
+    : file.name.toLowerCase().endsWith(".glb")
+      ? "glb"
+      : "";
+  if (!modelFormat) {
     setStatus("Choisis un fichier .glb ou .vrm.", "error");
     fileInput.value = "";
     return;
   }
-  const nextObjectUrl = URL.createObjectURL(file);
+  if (file.size > 25 * 1024 * 1024) {
+    setStatus("Le modèle 3D ne doit pas dépasser 25 Mo.", "error");
+    fileInput.value = "";
+    return;
+  }
+
+  modelSelect.disabled = true;
+  chooseButton.disabled = true;
+  setStatus("Validation et envoi du modèle 3D…");
   try {
-    await loadAvatar(nextObjectUrl, file.name);
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    objectUrl = nextObjectUrl;
+    await uploadAccountModel(file, modelFormat);
+    await loadAccountModel();
+    setStatus(`Modèle ${file.name} enregistré pour le compte et chargé.`);
   } catch (error) {
-    URL.revokeObjectURL(nextObjectUrl);
-    setStatus(`Modèle 3D impossible à charger : ${error.message}`, "error");
+    setStatus(error.message || "Impossible d’ajouter ce modèle 3D.", "error");
   } finally {
+    modelSelect.disabled = false;
+    chooseButton.disabled = false;
     fileInput.value = "";
   }
 });
@@ -621,19 +735,38 @@ startButton.addEventListener("click", async () => {
   try {
     await startCamera();
   } catch (error) {
-    startButton.disabled = false;
-    setStatus(`Caméra non démarrée : ${error.message}`, "error");
+    startButton.disabled = !avatarModel;
+    setCameraStatus(`Caméra non démarrée : ${error.message}`, "error");
+  }
+});
+
+stopButton.addEventListener("click", async () => {
+  stopButton.disabled = true;
+  try {
+    await stopCamera();
+  } catch (error) {
+    startButton.disabled = !avatarModel;
+    setCameraStatus(`Impossible d’arrêter le suivi : ${error.message}`, "error");
+  }
+});
+
+copyUrlButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(overlayUrlInput.value);
+    setRelayStatus("Lien copié.", "good");
+  } catch {
+    overlayUrlInput.select();
+    setRelayStatus("Copie le lien sélectionné avec Ctrl+C.", "error");
   }
 });
 
 backgroundButton.addEventListener("click", updateBackground);
-controlsToggle.addEventListener("click", () => {
-  setStudioControlsOpen(!document.documentElement.classList.contains("studio-controls-open"));
-});
 window.addEventListener("resize", resizeRenderer);
+resizeRenderer();
 
 window.addEventListener("beforeunload", () => {
   cameraStream?.getTracks().forEach(track => track.stop());
+  video.srcObject = null;
   if (objectUrl) URL.revokeObjectURL(objectUrl);
 });
 
