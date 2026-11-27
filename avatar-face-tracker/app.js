@@ -13,12 +13,17 @@ const startButton = document.getElementById("start-camera");
 const chooseButton = document.getElementById("choose-avatar");
 const loadLuffyButton = document.getElementById("load-luffy");
 const backgroundButton = document.getElementById("toggle-background");
+const controlsToggle = document.getElementById("toggle-controls");
 const fileInput = document.getElementById("avatar-file");
-const overlayToken = new URLSearchParams(location.search).get("token");
+const query = new URLSearchParams(location.search);
+const overlayToken = query.get("token");
 const isOverlayMode = overlayToken !== null;
+const isStudioMode = !isOverlayMode || query.get("studio") === "1";
 
 document.documentElement.classList.toggle("overlay-mode", isOverlayMode);
-if (isOverlayMode) {
+document.documentElement.classList.toggle("studio-mode", isStudioMode);
+controlsToggle.hidden = !isStudioMode;
+if (isOverlayMode && !isStudioMode) {
   chooseButton.hidden = true;
   loadLuffyButton.hidden = true;
   backgroundButton.hidden = true;
@@ -34,10 +39,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.localClippingEnabled = true;
-renderer.setClearColor(0x00ff00, isOverlayMode ? 0 : 1);
+renderer.setClearColor(0x00ff00, isOverlayMode && !isStudioMode ? 0 : 1);
 
 const scene = new THREE.Scene();
-scene.background = isOverlayMode ? null : new THREE.Color(0x00ff00);
+scene.background = isOverlayMode && !isStudioMode ? null : new THREE.Color(0x00ff00);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x38435b, 2.2));
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
@@ -101,7 +106,7 @@ let avatarPortraitFrame;
 let lastVideoTime = -1;
 let cameraStream;
 let objectUrl;
-let transparentBackground = isOverlayMode;
+let transparentBackground = isOverlayMode && !isStudioMode;
 
 function setStatus(message, kind = "info") {
   status.textContent = message;
@@ -207,6 +212,15 @@ function updateAvatarPortraitFrame() {
   planes[0].constant = -(cutY - centerY) * scale;
   planes[1].constant = shoulderHalfWidth * scale;
   planes[2].constant = shoulderHalfWidth * scale;
+}
+
+function resizeRenderer() {
+  const width = Math.max(1, canvas.clientWidth || window.innerWidth);
+  const height = Math.max(1, canvas.clientHeight || window.innerHeight);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height, false);
+  updateAvatarPortraitFrame();
 }
 
 function cropToHeadAndShoulders(model, size, bounds, center, bodyBones, root) {
@@ -451,11 +465,15 @@ async function initializeTracker() {
     }
     objectUrl = URL.createObjectURL(await response.blob());
     await loadAvatar(objectUrl, "modèle du compte");
-    try {
-      await startCamera();
-    } catch (error) {
-      startButton.disabled = false;
-      setStatus(`Caméra non démarrée : ${error.message}`, "error");
+    if (isStudioMode) {
+      setStatus("Modèle du compte chargé. Configure les options dans ce panneau.");
+    } else {
+      try {
+        await startCamera();
+      } catch (error) {
+        startButton.disabled = false;
+        setStatus(`Caméra non démarrée : ${error.message}`, "error");
+      }
     }
     return;
   }
@@ -483,7 +501,7 @@ async function startCamera() {
     await video.play();
     await setTrackerMode("VIDEO");
     setStatus("Suivi actif · visage.");
-    if (isOverlayMode) document.body.classList.add("overlay-live");
+    if (isOverlayMode && !isStudioMode) document.body.classList.add("overlay-live");
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
     cameraStream = undefined;
@@ -599,18 +617,19 @@ startButton.addEventListener("click", async () => {
 });
 
 backgroundButton.addEventListener("click", updateBackground);
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  updateAvatarPortraitFrame();
+controlsToggle.addEventListener("click", () => {
+  const open = document.documentElement.classList.toggle("studio-controls-open");
+  controlsToggle.setAttribute("aria-expanded", String(open));
+  controlsToggle.textContent = open ? "Fermer" : "Options";
 });
+window.addEventListener("resize", resizeRenderer);
 
 window.addEventListener("beforeunload", () => {
   cameraStream?.getTracks().forEach(track => track.stop());
   if (objectUrl) URL.revokeObjectURL(objectUrl);
 });
 
+resizeRenderer();
 renderer.render(scene, camera);
 animate();
 initializeTracker().catch(error => {

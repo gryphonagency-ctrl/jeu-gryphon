@@ -915,9 +915,10 @@
                         </section>
                         <section class="creator-overlay-progress creator-face-avatar-overlay" aria-labelledby="creator-face-avatar-heading">
                             <strong id="creator-face-avatar-heading">🪄 Avatar animé par ton visage</strong>
-                            <p>Choisis ton modèle 3D personnel au format GLB ou VRM pour créer une source navigateur indépendante. Le modèle doit contenir des expressions VRM, des morph targets faciaux ou une armature faciale reconnue; ses ressources doivent être intégrées au fichier (modèle monofichier). Cet avatar ne change pas tes autres overlays.</p>
+                            <p>Choisis ton modèle 3D personnel au format GLB ou VRM, ou ajoute le modèle Luffy intégré, pour créer une source navigateur indépendante. Le modèle doit contenir des expressions VRM, des morph targets faciaux ou une armature faciale reconnue; ses ressources doivent être intégrées au fichier (modèle monofichier). Cet avatar ne change pas tes autres overlays.</p>
                             <label class="creator-face-avatar-file-label" for="creator-face-avatar-file">Modèle 3D (GLB ou VRM, 25 Mo maximum)</label>
                             <input id="creator-face-avatar-file" type="file" accept=".glb,.vrm,model/gltf-binary,model/vrm">
+                            <button id="creator-face-avatar-use-luffy" class="button button-secondary" type="button" disabled>Ajouter Luffy à cet overlay</button>
                             <p id="creator-face-avatar-preview" class="creator-face-avatar-preview" role="status" hidden></p>
                             <div class="creator-overlay-options">
                                 <label><input id="creator-face-avatar-enabled" type="checkbox"> Activer l’avatar suivi</label>
@@ -925,6 +926,8 @@
                             </div>
                             <p id="creator-face-avatar-status" class="checkout-status" role="status" aria-live="polite"></p>
                             <button id="creator-face-avatar-link-create" class="button button-secondary" type="button">Créer le lien indépendant</button>
+                            <button id="creator-face-avatar-open-studio" class="button button-secondary" type="button" disabled>Ouvrir le studio de l’avatar</button>
+                            <p>La création du lien active automatiquement cet avatar; tu peux le désactiver ensuite avec la case ci-dessus.</p>
                             <div class="creator-url-panel">
                                 <input id="creator-face-avatar-url" type="url" readonly aria-label="Lien de l’avatar animé" placeholder="Charge un modèle 3D puis crée ton lien">
                                 <button id="creator-face-avatar-copy" class="button button-secondary" type="button" hidden>Copier</button>
@@ -2667,10 +2670,12 @@
             progressStatus: document.getElementById('creator-progress-status'),
             faceAvatarEnabled: document.getElementById('creator-face-avatar-enabled'),
             faceAvatarFile: document.getElementById('creator-face-avatar-file'),
+            faceAvatarUseLuffy: document.getElementById('creator-face-avatar-use-luffy'),
             faceAvatarPreview: document.getElementById('creator-face-avatar-preview'),
             faceAvatarSave: document.getElementById('creator-face-avatar-save'),
             faceAvatarStatus: document.getElementById('creator-face-avatar-status'),
             faceAvatarLinkCreate: document.getElementById('creator-face-avatar-link-create'),
+            faceAvatarStudioOpen: document.getElementById('creator-face-avatar-open-studio'),
             faceAvatarUrl: document.getElementById('creator-face-avatar-url'),
             faceAvatarCopy: document.getElementById('creator-face-avatar-copy'),
             faceAvatarRevoke: document.getElementById('creator-face-avatar-revoke'),
@@ -2789,6 +2794,7 @@
                 : 'Créer le lien indépendant';
             overlayCard.faceAvatarHasModel = settings.hasModel === true;
             overlayCard.faceAvatarLinkCreate.disabled = !overlayCard.faceAvatarHasModel;
+            overlayCard.faceAvatarStudioOpen.disabled = !settings.link || !overlayCard.faceAvatarHasModel;
             overlayCard.faceAvatarPreview.hidden = false;
             overlayCard.faceAvatarPreview.textContent = overlayCard.faceAvatarHasModel
                 ? `Modèle ${String(settings.modelFormat || '').toUpperCase()} chargé pour ce compte.`
@@ -2805,6 +2811,8 @@
             if (!session) {
                 overlayCard.owner = null;
                 overlayCard.account = null;
+                overlayCard.faceAvatarUseLuffy.disabled = true;
+                overlayCard.faceAvatarStudioOpen.disabled = true;
                 overlayCard.treasureEditing = false;
                 overlayCard.path = null;
                 overlayCard.progressSettings = null;
@@ -2835,6 +2843,7 @@
                 overlayCard.faceAvatarCopy.hidden = true;
                 overlayCard.faceAvatarRevoke.hidden = true;
                 overlayCard.faceAvatarLinkCreate.disabled = true;
+                overlayCard.faceAvatarStudioOpen.disabled = true;
                 setFaceAvatarOverlayStatus('');
                 renderOverlayUrl();
                 renderProgressOverlayLink();
@@ -2842,6 +2851,7 @@
                 return;
             }
             overlayCard.username.textContent = session.username || '';
+            overlayCard.faceAvatarUseLuffy.disabled = !session.canUseTts;
             if (overlayCard.account !== (session.username || null)) {
                 overlayCard.faceAvatarEnabled.checked = false;
                 overlayCard.faceAvatarFile.value = '';
@@ -2910,6 +2920,45 @@
 
         overlayCard.fire.addEventListener('change', renderOverlayUrl);
         overlayCard.threshold.addEventListener('input', renderOverlayUrl);
+        async function uploadFaceAvatarOverlayModel(model, modelFormat) {
+            const response = await fetch('/api/face-avatar-overlay-model', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Avatar-Format': modelFormat
+                },
+                body: model
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.message || 'Impossible d’envoyer ce modèle.');
+            await loadFaceAvatarOverlaySettings();
+        }
+
+        overlayCard.faceAvatarUseLuffy.addEventListener('click', async () => {
+            overlayCard.faceAvatarUseLuffy.disabled = true;
+            overlayCard.faceAvatarFile.disabled = true;
+            setFaceAvatarOverlayStatus('Chargement du modèle Luffy…');
+            try {
+                const response = await fetch('/avatar-face-tracker/assets/luffy.vrm', {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error('Impossible de charger le modèle Luffy.');
+                const model = await response.blob();
+                if (model.size > 25 * 1024 * 1024) {
+                    throw new Error('Le modèle Luffy dépasse la limite de 25 Mo.');
+                }
+                await uploadFaceAvatarOverlayModel(model, 'vrm');
+                setFaceAvatarOverlayStatus('Luffy est ajouté à cet overlay. Tu peux maintenant créer le lien pour TikTok Studio.');
+            } catch (error) {
+                setFaceAvatarOverlayStatus(error.message || 'Impossible d’ajouter Luffy.', true);
+            } finally {
+                overlayCard.faceAvatarUseLuffy.disabled = false;
+                overlayCard.faceAvatarFile.disabled = false;
+            }
+        });
+
         overlayCard.faceAvatarFile.addEventListener('change', async () => {
             const file = overlayCard.faceAvatarFile.files && overlayCard.faceAvatarFile.files[0];
             if (!file) return;
@@ -2932,18 +2981,7 @@
             overlayCard.faceAvatarFile.disabled = true;
             setFaceAvatarOverlayStatus('Validation et envoi du modèle 3D…');
             try {
-                const response = await fetch('/api/face-avatar-overlay-model', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
-                        'X-Avatar-Format': modelFormat
-                    },
-                    body: file
-                });
-                const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.message || 'Impossible d’envoyer ce modèle.');
-                await loadFaceAvatarOverlaySettings();
+                await uploadFaceAvatarOverlayModel(file, modelFormat);
                 setFaceAvatarOverlayStatus('Modèle 3D enregistré pour ton compte uniquement.');
             } catch (error) {
                 setFaceAvatarOverlayStatus(error.message || 'Impossible d’envoyer ce modèle.', true);
@@ -2973,7 +3011,7 @@
             try {
                 await faceAvatarOverlayRequest({
                     action: 'create-link',
-                    enabled: overlayCard.faceAvatarEnabled.checked
+                    enabled: true
                 });
                 await loadFaceAvatarOverlaySettings();
                 setFaceAvatarOverlayStatus('Lien indépendant créé. La régénération invalidera le lien précédent.');
@@ -2982,6 +3020,18 @@
             } finally {
                 overlayCard.faceAvatarLinkCreate.disabled = !overlayCard.faceAvatarHasModel;
             }
+        });
+        overlayCard.faceAvatarStudioOpen.addEventListener('click', () => {
+            const studioUrl = new URL(overlayCard.faceAvatarUrl.value, location.origin);
+            const token = studioUrl.searchParams.get('token') || '';
+            if (studioUrl.origin !== location.origin ||
+                studioUrl.pathname !== '/avatar-face-tracker/index.html' ||
+                !/^[a-f0-9]{64}$/.test(token)) {
+                setFaceAvatarOverlayStatus('Crée d’abord le lien indépendant de l’avatar.', true);
+                return;
+            }
+            studioUrl.searchParams.set('studio', '1');
+            window.open(studioUrl.href, '_blank', 'noopener,noreferrer');
         });
         overlayCard.faceAvatarRevoke.addEventListener('click', async () => {
             overlayCard.faceAvatarRevoke.disabled = true;
