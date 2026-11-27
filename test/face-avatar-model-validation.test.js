@@ -142,6 +142,14 @@ test('malformed binary glTF data is rejected', () => {
     assert.equal(hasFaceAvatarOverlayRig(truncated), false);
 });
 
+test('bundled Luffy VRM has a facial rig accepted by the overlay', () => {
+    const model = fs.readFileSync(
+        path.join(__dirname, '..', 'avatar-face-tracker', 'assets', 'luffy.vrm')
+    );
+
+    assert.equal(hasFaceAvatarOverlayRig(model), true);
+});
+
 test('VRM expression names map MediaPipe eye and mouth scores', () => {
     assert.equal(faceAvatarRig.isRecognizedVrmExpression('blinkLeft'), true);
     assert.equal(faceAvatarRig.vrmExpressionValue({ eyeBlinkLeft: 0.8 }, 'blinkLeft'), 0.8);

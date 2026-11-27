@@ -11,6 +11,7 @@ const video = document.getElementById("webcam");
 const status = document.getElementById("status");
 const startButton = document.getElementById("start-camera");
 const chooseButton = document.getElementById("choose-avatar");
+const loadLuffyButton = document.getElementById("load-luffy");
 const backgroundButton = document.getElementById("toggle-background");
 const fileInput = document.getElementById("avatar-file");
 const overlayToken = new URLSearchParams(location.search).get("token");
@@ -19,6 +20,7 @@ const isOverlayMode = overlayToken !== null;
 document.documentElement.classList.toggle("overlay-mode", isOverlayMode);
 if (isOverlayMode) {
   chooseButton.hidden = true;
+  loadLuffyButton.hidden = true;
   backgroundButton.hidden = true;
   fileInput.disabled = true;
 }
@@ -437,6 +439,7 @@ async function initializeTracker() {
     runningMode: "IMAGE",
     numFaces: 1
   });
+  loadLuffyButton.disabled = false;
 
   if (isOverlayMode) {
     const response = await fetch(
@@ -553,6 +556,18 @@ function updateBackground() {
 }
 
 chooseButton.addEventListener("click", () => fileInput.click());
+loadLuffyButton.addEventListener("click", async () => {
+  loadLuffyButton.disabled = true;
+  try {
+    await loadAvatar("./assets/luffy.vrm", "Luffy");
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = undefined;
+  } catch (error) {
+    setStatus(`Modèle 3D impossible à charger : ${error.message}`, "error");
+  } finally {
+    loadLuffyButton.disabled = false;
+  }
+});
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files && fileInput.files[0];
   if (!file) return;
