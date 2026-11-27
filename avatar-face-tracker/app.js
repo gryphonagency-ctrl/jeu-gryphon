@@ -501,6 +501,10 @@ async function startCamera() {
     await video.play();
     await setTrackerMode("VIDEO");
     setStatus("Suivi actif · visage.");
+    if (isStudioMode) {
+      document.body.classList.add("camera-active");
+      setStudioControlsOpen(false);
+    }
     if (isOverlayMode && !isStudioMode) document.body.classList.add("overlay-live");
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
@@ -508,6 +512,12 @@ async function startCamera() {
     video.srcObject = null;
     throw error;
   }
+}
+
+function setStudioControlsOpen(open) {
+  document.documentElement.classList.toggle("studio-controls-open", open);
+  controlsToggle.setAttribute("aria-expanded", String(open));
+  controlsToggle.textContent = open ? "Fermer" : "Options";
 }
 
 function updateFaceTracking() {
@@ -618,9 +628,7 @@ startButton.addEventListener("click", async () => {
 
 backgroundButton.addEventListener("click", updateBackground);
 controlsToggle.addEventListener("click", () => {
-  const open = document.documentElement.classList.toggle("studio-controls-open");
-  controlsToggle.setAttribute("aria-expanded", String(open));
-  controlsToggle.textContent = open ? "Fermer" : "Options";
+  setStudioControlsOpen(!document.documentElement.classList.contains("studio-controls-open"));
 });
 window.addEventListener("resize", resizeRenderer);
 
