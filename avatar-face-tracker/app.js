@@ -1,0 +1,400 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+
+const canvas = document.getElementById("scene");
+const video = document.getElementById("webcam");
+const status = document.getElementById("status");
+const startButton = document.getElementById("start-camera");
+const chooseButton = document.getElementById("choose-avatar");
+const backgroundButton = document.getElementById("toggle-background");
+const fileInput = document.getElementById("avatar-file");
+const overlayToken = new URLSearchParams(location.search).get("token");
+const isOverlayMode = overlayToken !== null;
+
+document.documentElement.classList.toggle("overlay-mode", isOverlayMode);
+if (isOverlayMode) {
+  chooseButton.hidden = true;
+  backgroundButton.hidden = true;
+  fileInput.disabled = true;
+}
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  alpha: true,
+  antialias: true
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x00ff00, isOverlayMode ? 0 : 1);
+
+const scene = new THREE.Scene();
+scene.background = isOverlayMode ? null : new THREE.Color(0x00ff00);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x38435b, 2.2));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+keyLight.position.set(-2, 3, 4);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xc4d8ff, 1.1);
+fillLight.position.set(3, 1, -2);
+scene.add(fillLight);
+
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.z = 3;
+
+const avatarRoot = new THREE.Group();
+scene.add(avatarRoot);
+
+const blendshapeNames = [
+  "jawOpen",
+  "mouthClose",
+  "mouthFunnel",
+  "mouthPucker",
+  "mouthStretchLeft",
+  "mouthStretchRight",
+  "mouthSmileLeft",
+  "mouthSmileRight",
+  "mouthFrownLeft",
+  "mouthFrownRight",
+  "mouthUpperUpLeft",
+  "mouthUpperUpRight",
+  "mouthLowerDownLeft",
+  "mouthLowerDownRight",
+  "eyeBlinkLeft",
+  "eyeBlinkRight",
+  "browDownLeft",
+  "browDownRight",
+  "browInnerUp",
+  "browOuterUpLeft",
+  "browOuterUpRight"
+];
+
+const scores = Object.fromEntries(blendshapeNames.map(name => [name, 0]));
+const rotation = new THREE.Euler(0, 0, 0, "YXZ");
+const targetRotation = new THREE.Euler(0, 0, 0, "YXZ");
+const clock = new THREE.Clock();
+let landmarker;
+let trackerMode = "IMAGE";
+let trackerSwitching = false;
+let avatarModel;
+let avatarHead;
+let avatarHeadBaseRotation;
+let avatarVrm;
+let avatarMorphBindings = [];
+let avatarVrmExpressions = [];
+let lastVideoTime = -1;
+let cameraStream;
+let objectUrl;
+let transparentBackground = isOverlayMode;
+
+function setStatus(message, kind = "info") {
+  status.textContent = message;
+  status.dataset.kind = kind;
+}
+
+function disposeModel(model) {
+  const textures = new Set();
+  model.traverse(node => {
+    if (node.geometry) node.geometry.dispose();
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) textures.add(value);
+      }
+      material.dispose();
+    }
+  });
+  for (const texture of textures) texture.dispose();
+}
+
+function findAvatarHead(model, vrm) {
+  const normalizedHead = vrm?.humanoid?.getNormalizedBoneNode?.("head");
+  if (normalizedHead) return normalizedHead;
+  let head = null;
+  model.traverse(node => {
+    const name = String(node.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!head && node.isBone && (name === "head" || name.endsWith("head"))) head = node;
+  });
+  return head;
+}
+
+function createFaceBindings(model, vrm) {
+  const morphBindings = [];
+  model.traverse(node => {
+    if (!node.isMesh || !node.morphTargetDictionary || !node.morphTargetInfluences) return;
+    for (const [name, index] of Object.entries(node.morphTargetDictionary)) {
+      const key = FaceAvatarRig.trackingKeyForMorphTarget(name);
+      if (key) morphBindings.push({ mesh: node, index, key });
+    }
+  });
+
+  const expressionManager = vrm?.expressionManager;
+  const expressions = expressionManager
+    ? FaceAvatarRig.getVrmExpressionNames().filter(name => expressionManager.getExpression(name))
+    : [];
+  if (!morphBindings.length && !expressions.length) {
+    throw new Error(
+      "Aucune expression faciale reconnue. Le modèle doit contenir des expressions VRM ou des morph targets nommés (jawOpen, eyeBlinkLeft, mouthSmile…)."
+    );
+  }
+  return { morphBindings, expressions };
+}
+
+function applyFaceExpressions() {
+  for (const { mesh, index, key } of avatarMorphBindings) {
+    const current = mesh.morphTargetInfluences[index] || 0;
+    const target = FaceAvatarRig.trackedValue(scores, key);
+    mesh.morphTargetInfluences[index] = THREE.MathUtils.lerp(current, target, 0.48);
+  }
+  for (const name of avatarVrmExpressions) {
+    const target = FaceAvatarRig.vrmExpressionValue(scores, name);
+    avatarVrm.expressionManager.setValue(name, target);
+  }
+}
+
+async function setTrackerMode(mode) {
+  if (trackerMode === mode) return;
+
+  trackerSwitching = true;
+  try {
+    await landmarker.setOptions({ runningMode: mode });
+    trackerMode = mode;
+  } finally {
+    trackerSwitching = false;
+  }
+}
+
+async function loadAvatar(source, label) {
+  if (!landmarker) throw new Error("Le suivi facial n’est pas encore prêt.");
+
+  const resumeVideo = Boolean(cameraStream && trackerMode === "VIDEO");
+  let loadedModel;
+
+  try {
+    await setTrackerMode("IMAGE");
+    const loader = new GLTFLoader();
+    loader.register(parser => new VRMLoaderPlugin(parser));
+    const gltf = await loader.loadAsync(source);
+    const vrm = gltf.userData.vrm || null;
+    if (vrm?.meta?.metaVersion === "0") VRMUtils.rotateVRM0(vrm);
+    loadedModel = vrm?.scene || gltf.scene;
+    if (!loadedModel) throw new Error("Le fichier ne contient pas de scène 3D.");
+
+    const faceBindings = createFaceBindings(loadedModel, vrm);
+    loadedModel.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(loadedModel);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const maxDimension = Math.max(size.x, size.y, size.z);
+    if (!Number.isFinite(maxDimension) || maxDimension <= 0) {
+      throw new Error("Le modèle 3D ne contient aucune géométrie visible.");
+    }
+
+    const nextAvatarRoot = new THREE.Group();
+    nextAvatarRoot.position.copy(center).multiplyScalar(-1);
+    nextAvatarRoot.scale.setScalar(1.75 / maxDimension);
+    nextAvatarRoot.add(loadedModel);
+    const nextHead = findAvatarHead(loadedModel, vrm);
+
+    if (avatarModel) disposeModel(avatarModel);
+    avatarRoot.clear();
+    avatarRoot.add(nextAvatarRoot);
+    avatarModel = loadedModel;
+    avatarHead = nextHead;
+    avatarHeadBaseRotation = avatarHead?.rotation.clone() || null;
+    avatarVrm = vrm;
+    avatarMorphBindings = faceBindings.morphBindings;
+    avatarVrmExpressions = faceBindings.expressions;
+    avatarRoot.rotation.set(0, 0, 0);
+    setStatus(`Modèle 3D chargé : ${label}`);
+    startButton.disabled = false;
+  } catch (error) {
+    if (loadedModel && loadedModel !== avatarModel) disposeModel(loadedModel);
+    throw error;
+  } finally {
+    if (resumeVideo) await setTrackerMode("VIDEO");
+  }
+}
+
+async function initializeTracker() {
+  setStatus("Chargement du suivi facial…");
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+  );
+  landmarker = await FaceLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU"
+    },
+    outputFaceBlendshapes: true,
+    outputFacialTransformationMatrixes: true,
+    runningMode: "IMAGE",
+    numFaces: 1
+  });
+
+  if (isOverlayMode) {
+    const response = await fetch(
+      `/api/face-avatar-overlay-model?token=${encodeURIComponent(overlayToken)}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) {
+      throw new Error("Lien d’avatar invalide, révoqué ou désactivé.");
+    }
+    objectUrl = URL.createObjectURL(await response.blob());
+    await loadAvatar(objectUrl, "modèle du compte");
+    try {
+      await startCamera();
+    } catch (error) {
+      startButton.disabled = false;
+      setStatus(`Caméra non démarrée : ${error.message}`, "error");
+    }
+    return;
+  }
+
+  startButton.disabled = true;
+  setStatus("Choisis un modèle 3D GLB ou VRM avec expressions faciales.", "warning");
+}
+
+async function startCamera() {
+  if (!landmarker) throw new Error("Le suivi facial n’est pas encore prêt.");
+  if (!avatarModel) throw new Error("Choisis d’abord un modèle 3D GLB ou VRM.");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("La caméra exige un site sécurisé (localhost ou HTTPS).");
+  }
+
+  startButton.disabled = true;
+  setStatus("Demande d’accès à la caméra…");
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false
+  });
+  cameraStream = stream;
+  try {
+    video.srcObject = stream;
+    await video.play();
+    await setTrackerMode("VIDEO");
+    setStatus("Suivi actif · tourne la tête, cligne des yeux et parle.");
+    if (isOverlayMode) document.body.classList.add("overlay-live");
+  } catch (error) {
+    stream.getTracks().forEach(track => track.stop());
+    cameraStream = undefined;
+    video.srcObject = null;
+    throw error;
+  }
+}
+
+function updateFaceTracking() {
+  if (
+    !landmarker ||
+    !avatarModel ||
+    trackerMode !== "VIDEO" ||
+    trackerSwitching ||
+    video.readyState < 2 ||
+    video.currentTime === lastVideoTime
+  ) return;
+
+  lastVideoTime = video.currentTime;
+  const result = landmarker.detectForVideo(video, performance.now());
+  const categories = new Map(
+    (result.faceBlendshapes?.[0]?.categories || []).map(category => [
+      category.categoryName,
+      category.score
+    ])
+  );
+  for (const name of blendshapeNames) {
+    scores[name] = THREE.MathUtils.lerp(scores[name], categories.get(name) || 0, 0.42);
+  }
+  const pose = result.facialTransformationMatrixes?.[0];
+  if (pose?.data) {
+    const matrix = new THREE.Matrix4().fromArray(pose.data);
+    const euler = new THREE.Euler().setFromRotationMatrix(matrix, "YXZ");
+    targetRotation.set(euler.x, euler.y, euler.z);
+  } else {
+    targetRotation.set(0, 0, 0);
+  }
+  rotation.x = THREE.MathUtils.lerp(rotation.x, targetRotation.x, 0.35);
+  rotation.y = THREE.MathUtils.lerp(rotation.y, targetRotation.y, 0.35);
+  rotation.z = THREE.MathUtils.lerp(rotation.z, targetRotation.z, 0.35);
+  if (avatarHead && avatarHeadBaseRotation) {
+    avatarHead.rotation.set(
+      avatarHeadBaseRotation.x + rotation.x,
+      avatarHeadBaseRotation.y + rotation.y,
+      avatarHeadBaseRotation.z + rotation.z,
+      "YXZ"
+    );
+  } else {
+    avatarRoot.rotation.copy(rotation);
+  }
+  applyFaceExpressions();
+}
+
+function animate() {
+  updateFaceTracking();
+  avatarVrm?.update(clock.getDelta());
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+function updateBackground() {
+  transparentBackground = !transparentBackground;
+  scene.background = transparentBackground ? null : new THREE.Color(0x00ff00);
+  renderer.setClearColor(0x00ff00, transparentBackground ? 0 : 1);
+  backgroundButton.textContent = transparentBackground ? "Fond vert" : "Fond transparent";
+  backgroundButton.setAttribute("aria-pressed", String(transparentBackground));
+  document.documentElement.classList.toggle("transparent", transparentBackground);
+}
+
+chooseButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  if (!/\.(glb|vrm)$/i.test(file.name)) {
+    setStatus("Choisis un fichier .glb ou .vrm.", "error");
+    fileInput.value = "";
+    return;
+  }
+  const nextObjectUrl = URL.createObjectURL(file);
+  try {
+    await loadAvatar(nextObjectUrl, file.name);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = nextObjectUrl;
+  } catch (error) {
+    URL.revokeObjectURL(nextObjectUrl);
+    setStatus(`Modèle 3D impossible à charger : ${error.message}`, "error");
+  } finally {
+    fileInput.value = "";
+  }
+});
+
+startButton.addEventListener("click", async () => {
+  try {
+    await startCamera();
+  } catch (error) {
+    startButton.disabled = false;
+    setStatus(`Caméra non démarrée : ${error.message}`, "error");
+  }
+});
+
+backgroundButton.addEventListener("click", updateBackground);
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.addEventListener("beforeunload", () => {
+  cameraStream?.getTracks().forEach(track => track.stop());
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+});
+
+renderer.render(scene, camera);
+animate();
+initializeTracker().catch(error => {
+  console.error(error);
+  startButton.disabled = true;
+  setStatus(`Erreur d’initialisation : ${error.message}`, "error");
+});

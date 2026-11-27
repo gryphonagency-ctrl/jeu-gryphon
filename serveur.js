@@ -16,6 +16,7 @@ const paypal = require('./paypal');
 const store = require('./account-store');
 const dbSync = require('./db-sync');
 const { createMediaAdmin } = require('./media-admin');
+const faceAvatarRig = require('./avatar-face-tracker/face-avatar-rig');
 
 // Filet de sécurité : evite le plantage au demarrage si account-store.js / db-sync.js sont en retard sur ce fichier.
 // Ces valeurs ne servent que lorsque la vraie fonction est absente.
@@ -1389,6 +1390,8 @@ async function sendTikTokEventAlert(messageData) {
 }
 
 const mediaDirectory = process.env.MEDIA_DIR || path.join(store.getDataDirectory(), 'media');
+const faceAvatarOverlayDirectory = path.join(mediaDirectory, 'face-avatar-overlays');
+const FACE_AVATAR_OVERLAY_MAX_BYTES = 25 * 1024 * 1024;
 const mediaStoragePersistent = process.env.RENDER !== 'true' ||
     path.resolve(mediaDirectory).replace(/\\/g, '/').startsWith('/var/data/');
 if (!mediaStoragePersistent) {
@@ -1408,6 +1411,180 @@ const handleMedia = createMediaAdmin({
 
 function getOverlayTiktokUsername(owner) {
     return resolveCreatorTikTokUsername(owner, store.getAccountLiveTts(owner)?.username);
+}
+
+function getFaceAvatarOverlayModelPath(owner, modelId, modelFormat) {
+    return path.join(faceAvatarOverlayDirectory, owner, `avatar-${modelId}.${modelFormat}`);
+}
+
+function parseFaceAvatarOverlayGlb(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 20 ||
+        buffer.toString('ascii', 0, 4) !== 'glTF' ||
+        buffer.readUInt32LE(4) !== 2 ||
+        buffer.readUInt32LE(8) !== buffer.length) {
+        return null;
+    }
+
+    let offset = 12;
+    let gltfJson = null;
+    let jsonChunkSeen = false;
+    while (offset + 8 <= buffer.length) {
+        const isFirstChunk = offset === 12;
+        const chunkLength = buffer.readUInt32LE(offset);
+        const chunkType = buffer.readUInt32LE(offset + 4);
+        offset += 8;
+        if (chunkLength % 4 !== 0 || offset + chunkLength > buffer.length ||
+            (isFirstChunk && chunkType !== 0x4e4f534a)) return null;
+        if (chunkType === 0x4e4f534a) {
+            if (jsonChunkSeen) return null;
+            try {
+                gltfJson = JSON.parse(buffer.toString('utf8', offset, offset + chunkLength));
+                jsonChunkSeen = true;
+            } catch {
+                return null;
+            }
+        }
+        offset += chunkLength;
+    }
+    return offset === buffer.length && jsonChunkSeen && gltfJson &&
+        gltfJson.asset?.version === '2.0'
+        ? gltfJson
+        : null;
+}
+
+function hasFaceAvatarOverlayRig(buffer) {
+    const gltfJson = parseFaceAvatarOverlayGlb(buffer);
+    if (!gltfJson) return false;
+    const targetNames = [];
+    for (const mesh of gltfJson.meshes || []) {
+        const names = mesh?.extras?.targetNames;
+        const primitives = mesh?.primitives;
+        if (Array.isArray(names) && names.length > 0 &&
+            Array.isArray(primitives) && primitives.length > 0 &&
+            primitives.every(primitive =>
+                Array.isArray(primitive.targets) && primitive.targets.length === names.length
+            )) {
+            targetNames.push(...names);
+        }
+    }
+    if (faceAvatarRig.hasRecognizedMorphTarget(targetNames)) return true;
+
+    const extensions = gltfJson.extensions || {};
+    const vrmExpressions = extensions.VRMC_vrm?.expressions;
+    const expressionGroups = [
+        ...Object.entries(vrmExpressions?.preset || {}),
+        ...Object.entries(vrmExpressions?.custom || {})
+    ];
+    if (expressionGroups.some(([name, expression]) =>
+        faceAvatarRig.isRecognizedVrmExpression(name) &&
+        Array.isArray(expression?.morphTargetBinds) &&
+        expression.morphTargetBinds.length > 0
+    )) {
+        return true;
+    }
+
+    const vrm0Groups = extensions.VRM?.blendShapeMaster?.blendShapeGroups || [];
+    return vrm0Groups.some(group =>
+        faceAvatarRig.isRecognizedVrmExpression(group?.presetName || group?.name) &&
+        Array.isArray(group?.binds) &&
+        group.binds.length > 0
+    );
+}
+
+function sendFaceAvatarOverlayJson(res, status, payload) {
+    if (res.destroyed || res.writableEnded) return;
+    res.writeHead(status, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/json; charset=utf-8'
+    });
+    res.end(JSON.stringify(payload));
+}
+
+function receiveFaceAvatarOverlayModel(req, res, username) {
+    const modelFormat = req.headers['x-avatar-format'];
+    const declaredType = req.headers['content-type'];
+    if (!['glb', 'vrm'].includes(modelFormat) ||
+        !['application/octet-stream', 'model/gltf-binary'].includes(declaredType)) {
+        sendFaceAvatarOverlayJson(res, 415, { message: 'Choisis un modèle 3D au format GLB ou VRM.' });
+        req.resume();
+        return;
+    }
+
+    const chunks = [];
+    let receivedBytes = 0;
+    let settled = false;
+    const reject = (status, message) => {
+        if (settled) return;
+        settled = true;
+        chunks.length = 0;
+        req.resume();
+        sendFaceAvatarOverlayJson(res, status, { message });
+    };
+
+    req.on('data', chunk => {
+        if (settled) return;
+        receivedBytes += chunk.length;
+        if (receivedBytes > FACE_AVATAR_OVERLAY_MAX_BYTES) {
+            reject(413, 'Le modèle 3D ne doit pas dépasser 25 Mo.');
+            return;
+        }
+        chunks.push(chunk);
+    });
+    req.once('aborted', () => { settled = true; });
+    req.once('error', error => {
+        settled = true;
+        console.error('Échec de réception de l’avatar du suivi facial :', error.message);
+    });
+    req.once('end', () => {
+        if (settled) return;
+        const buffer = Buffer.concat(chunks, receivedBytes);
+        if (!parseFaceAvatarOverlayGlb(buffer)) {
+            reject(400, 'Le fichier GLB/VRM est invalide ou incomplet.');
+            return;
+        }
+        if (!hasFaceAvatarOverlayRig(buffer)) {
+            reject(400, 'Ce modèle ne contient pas d’expressions faciales reconnues. Utilise un VRM avec expressions ou un GLB avec des morph targets faciaux nommés.');
+            return;
+        }
+
+        const current = store.getCreatorAvatarOverlaySettings(username);
+        const modelId = crypto.randomBytes(16).toString('hex');
+        const modelPath = getFaceAvatarOverlayModelPath(username, modelId, modelFormat);
+        try {
+            fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+            fs.writeFileSync(modelPath, buffer, { flag: 'wx', mode: 0o600 });
+            store.setCreatorAvatarOverlaySettings(username, {
+                ...current,
+                modelId,
+                modelFormat
+            });
+        } catch (error) {
+            try { fs.unlinkSync(modelPath); } catch (cleanupError) {
+                if (cleanupError.code !== 'ENOENT') {
+                    console.error('Échec du nettoyage du modèle temporaire :', cleanupError.message);
+                }
+            }
+            console.error('Échec de sauvegarde du modèle du suivi facial :', error.message);
+            sendFaceAvatarOverlayJson(res, 500, { message: 'Impossible d’enregistrer ce modèle 3D.' });
+            return;
+        }
+
+        if (current.modelId && current.modelFormat) {
+            try { fs.unlinkSync(getFaceAvatarOverlayModelPath(username, current.modelId, current.modelFormat)); }
+            catch (error) {
+                if (error.code !== 'ENOENT') {
+                    console.error('Échec du nettoyage de l’ancien modèle :', error.message);
+                }
+            }
+        }
+        sendFaceAvatarOverlayJson(res, 200, { success: true });
+    });
+}
+
+function getFaceAvatarOverlayUser(req) {
+    if (!access.isAuthenticated(req)) return null;
+    const username = access.usernameForRequest(req);
+    return username && canUseCreatorTts(username) ? username : null;
 }
 
 const server = http.createServer((req, res) => {
@@ -1542,6 +1719,149 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (handleMedia(req, res, pathname, requestUrl.searchParams)) return;
+    if (pathname === '/api/face-avatar-overlay-settings') {
+        const username = getFaceAvatarOverlayUser(req);
+        if (!username) {
+            sendFaceAvatarOverlayJson(res, access.isAuthenticated(req) ? 403 : 401, {
+                message: 'Cette option est réservée aux créateurs autorisés.'
+            });
+            return;
+        }
+        if (req.method === 'GET') {
+            const settings = store.getCreatorAvatarOverlaySettings(username);
+            const hasModel = Boolean(settings.modelId && settings.modelFormat &&
+                fs.existsSync(getFaceAvatarOverlayModelPath(username, settings.modelId, settings.modelFormat)));
+            sendFaceAvatarOverlayJson(res, 200, {
+                enabled: settings.enabled,
+                hasModel,
+                modelFormat: hasModel ? settings.modelFormat : null,
+                link: settings.token
+                    ? `/avatar-face-tracker/index.html?token=${encodeURIComponent(settings.token)}`
+                    : ''
+            });
+            return;
+        }
+        if (req.method !== 'POST') {
+            sendFaceAvatarOverlayJson(res, 405, { message: 'Méthode non autorisée.' });
+            return;
+        }
+        readJsonBody(req, res, body => {
+            try {
+                const current = store.getCreatorAvatarOverlaySettings(username);
+                let settings;
+                if (body.action === 'set-enabled' && typeof body.enabled === 'boolean') {
+                    if (body.enabled && (!current.modelId || !current.modelFormat ||
+                        !fs.existsSync(getFaceAvatarOverlayModelPath(username, current.modelId, current.modelFormat)))) {
+                        sendFaceAvatarOverlayJson(res, 400, { message: 'Téléverse d’abord un modèle GLB ou VRM avec expressions faciales.' });
+                        return;
+                    }
+                    settings = { ...current, enabled: body.enabled };
+                } else if (body.action === 'create-link') {
+                    if (!current.modelId || !current.modelFormat ||
+                        !fs.existsSync(getFaceAvatarOverlayModelPath(username, current.modelId, current.modelFormat))) {
+                        sendFaceAvatarOverlayJson(res, 400, { message: 'Téléverse d’abord un modèle GLB ou VRM avec expressions faciales.' });
+                        return;
+                    }
+                    if (body.enabled !== true) {
+                        sendFaceAvatarOverlayJson(res, 400, { message: 'Active l’avatar avant de créer son lien.' });
+                        return;
+                    }
+                    settings = {
+                        ...current,
+                        enabled: true,
+                        token: crypto.randomBytes(32).toString('hex')
+                    };
+                } else if (body.action === 'revoke-link') {
+                    settings = { ...current, enabled: false, token: null };
+                } else {
+                    sendFaceAvatarOverlayJson(res, 400, { message: 'Réglage de l’avatar invalide.' });
+                    return;
+                }
+                store.setCreatorAvatarOverlaySettings(username, settings);
+                sendFaceAvatarOverlayJson(res, 200, { success: true });
+            } catch (error) {
+                console.error('Échec de mise à jour de l’overlay d’avatar :', error.message);
+                sendFaceAvatarOverlayJson(res, 500, { message: 'Impossible d’enregistrer ce réglage.' });
+            }
+        }, 2048);
+        return;
+    }
+    if (pathname === '/api/face-avatar-overlay-model' && req.method === 'POST') {
+        const username = getFaceAvatarOverlayUser(req);
+        if (!username) {
+            req.resume();
+            sendFaceAvatarOverlayJson(res, access.isAuthenticated(req) ? 403 : 401, {
+                message: 'Connecte-toi à un compte créateur autorisé pour téléverser un modèle.'
+            });
+            return;
+        }
+        receiveFaceAvatarOverlayModel(req, res, username);
+        return;
+    }
+    if (pathname === '/api/face-avatar-overlay-model' && req.method === 'GET') {
+        const token = requestUrl.searchParams.get('token');
+        const owner = token
+            ? store.getCreatorAvatarOverlayOwner(token)
+            : getFaceAvatarOverlayUser(req);
+        if (!owner || !canUseCreatorTts(owner)) {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end('Avatar introuvable.');
+            return;
+        }
+        const settings = store.getCreatorAvatarOverlaySettings(owner);
+        if ((token && (!settings.enabled || settings.token !== token)) ||
+            !settings.modelId || !settings.modelFormat) {
+            res.writeHead(404, { 'Cache-Control': 'no-store' });
+            res.end('Avatar introuvable.');
+            return;
+        }
+        const modelPath = getFaceAvatarOverlayModelPath(owner, settings.modelId, settings.modelFormat);
+        fs.readFile(modelPath, (error, model) => {
+            if (error) {
+                if (error.code !== 'ENOENT') console.error('Échec de lecture du modèle d’avatar :', error.message);
+                res.writeHead(error.code === 'ENOENT' ? 404 : 500, { 'Cache-Control': 'no-store' });
+                res.end(error.code === 'ENOENT' ? 'Avatar introuvable.' : 'Impossible de lire le modèle.');
+                return;
+            }
+            if (!parseFaceAvatarOverlayGlb(model) || !hasFaceAvatarOverlayRig(model)) {
+                console.error(`Le fichier de modèle d’avatar de ${owner} est invalide ou sans rig facial reconnu.`);
+                res.writeHead(500, { 'Cache-Control': 'no-store' });
+                res.end('Modèle d’avatar invalide.');
+                return;
+            }
+            res.writeHead(200, {
+                'Cache-Control': 'no-store',
+                'Content-Length': model.length,
+                'Content-Type': 'model/gltf-binary',
+                'Referrer-Policy': 'no-referrer',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            res.end(model);
+        });
+        return;
+    }
+    if (pathname === '/api/face-avatar-overlay-model') {
+        res.writeHead(405, { 'Cache-Control': 'no-store' });
+        res.end('Méthode non autorisée.');
+        return;
+    }
+    if (pathname === '/avatar-face-tracker/index.html' && req.method === 'GET') {
+        fs.readFile(path.join(__dirname, 'avatar-face-tracker', 'index.html'), (error, content) => {
+            if (error) {
+                res.writeHead(500, { 'Cache-Control': 'no-store' });
+                res.end('Page de suivi facial introuvable.');
+                return;
+            }
+            res.writeHead(200, {
+                'Cache-Control': 'no-store',
+                'Content-Type': 'text/html; charset=utf-8',
+                'Referrer-Policy': 'no-referrer',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            res.end(content);
+        });
+        return;
+    }
     if (pathname === '/api/progress-overlay-settings' && req.method === 'GET') {
         const owner = handleMedia.findOverlayOwner(requestUrl.searchParams.get('token'));
         if (!owner || !canUseCreatorTts(owner)) {
@@ -3405,6 +3725,9 @@ const server = http.createServer((req, res) => {
         ['/live-alerts.html', [path.join(__dirname, 'live-alerts.html'), 'text/html; charset=utf-8']],
         ['/live-alerts-sw.js', [path.join(__dirname, 'live-alerts-sw.js'), 'text/javascript; charset=utf-8']],
         ['/arcade-treasure-overlay.html', [path.join(__dirname, 'arcade-treasure-overlay.html'), 'text/html; charset=utf-8']],
+        ['/avatar-face-tracker/app.js', [path.join(__dirname, 'avatar-face-tracker', 'app.js'), 'text/javascript; charset=utf-8']],
+        ['/avatar-face-tracker/face-avatar-rig.js', [path.join(__dirname, 'avatar-face-tracker', 'face-avatar-rig.js'), 'text/javascript; charset=utf-8']],
+        ['/avatar-face-tracker/style.css', [path.join(__dirname, 'avatar-face-tracker', 'style.css'), 'text/css; charset=utf-8']],
         ['/arcade-presence.js', [presenceScriptFile, 'text/javascript; charset=utf-8']],
         ['/arcade-effects.js', [path.join(__dirname, 'arcade-effects.js'), 'text/javascript; charset=utf-8']],
         ['/free-game-session.js', [freeGameSessionScriptFile, 'text/javascript; charset=utf-8']],

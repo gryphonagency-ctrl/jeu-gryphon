@@ -782,6 +782,55 @@ function getCreatorSettings(username) {
     return readStore().creatorSettings[username.toLowerCase()] || {};
 }
 
+function getCreatorAvatarOverlaySettings(username) {
+    const saved = getCreatorSettings(username).faceAvatarOverlay || {};
+    const hasValidModel = /^[a-f0-9]{32}$/.test(saved.modelId || '') &&
+        ['glb', 'vrm'].includes(saved.modelFormat);
+    return {
+        enabled: saved.enabled === true,
+        token: /^[a-f0-9]{64}$/.test(saved.token || '') ? saved.token : null,
+        modelId: hasValidModel ? saved.modelId : null,
+        modelFormat: hasValidModel ? saved.modelFormat : null
+    };
+}
+
+function setCreatorAvatarOverlaySettings(username, settings) {
+    const validToken = settings?.token === null ||
+        (typeof settings?.token === 'string' && /^[a-f0-9]{64}$/.test(settings.token));
+    const validModel = settings?.modelId === null
+        ? settings.modelFormat === null
+        : typeof settings?.modelId === 'string' &&
+            /^[a-f0-9]{32}$/.test(settings.modelId) &&
+            ['glb', 'vrm'].includes(settings.modelFormat);
+    if (!settings || typeof settings.enabled !== 'boolean' || !validToken || !validModel) {
+        throw new TypeError('Face avatar overlay settings are invalid.');
+    }
+
+    updateStore(store => {
+        const key = username.toLowerCase();
+        const creatorSettings = store.creatorSettings[key] || {};
+        creatorSettings.faceAvatarOverlay = {
+            enabled: settings.enabled,
+            token: settings.token,
+            modelId: settings.modelId,
+            modelFormat: settings.modelFormat
+        };
+        store.creatorSettings[key] = creatorSettings;
+    });
+}
+
+function getCreatorAvatarOverlayOwner(token) {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return '';
+    const provided = crypto.createHash('sha256').update(token).digest();
+    for (const [owner, settings] of Object.entries(readStore().creatorSettings)) {
+        const candidate = crypto.createHash('sha256')
+            .update(String(settings?.faceAvatarOverlay?.token || ''))
+            .digest();
+        if (crypto.timingSafeEqual(candidate, provided)) return owner;
+    }
+    return '';
+}
+
 function isCreatorServiceEnabled(username, service) {
     const store = readStore();
     const key = username.toLowerCase();
@@ -1574,6 +1623,9 @@ module.exports = {
     setCreatorRoomRevoked,
     setCreatorTiktokUsername,
     setCreatorSettingsLocked,
+    getCreatorAvatarOverlaySettings,
+    setCreatorAvatarOverlaySettings,
+    getCreatorAvatarOverlayOwner,
     setCreatorArcadeBigGiftOverlayEnabled,
     setCreatorArcadeTreasureChestEnabled,
     setCreatorTreasureLayoutEditing,
