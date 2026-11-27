@@ -162,7 +162,10 @@
     const value = name => scores[name] || 0;
     switch (action?.type) {
       case "jaw":
-        return value("jawOpen");
+        return Math.max(
+          0,
+          Math.min(1, value("jawOpen") - 0.12 * value("mouthClose") - 0.08)
+        );
       case "upperEyelid":
       case "lowerEyelid":
         return value(action.side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight");

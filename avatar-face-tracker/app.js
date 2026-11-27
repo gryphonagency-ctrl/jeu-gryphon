@@ -173,21 +173,26 @@ function applyFaceExpressions() {
     const target = FaceAvatarRig.vrmExpressionValue(scores, name);
     avatarVrm.expressionManager.setValue(name, target);
   }
+}
+
+function applyFacialBoneExpressions() {
   for (const { bone, action, basePosition, baseQuaternion } of avatarFacialBones) {
     const value = FaceAvatarRig.facialBoneValue(scores, action);
     bone.position.copy(basePosition);
     bone.quaternion.copy(baseQuaternion);
     switch (action.type) {
       case "jaw":
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.36 * value);
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.28 - 0.85 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "upperEyelid":
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.2 * value);
+        bone.position.y -= 0.01 * value;
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.3 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "lowerEyelid":
-        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.12 * value);
+        bone.position.y += 0.006 * value;
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.2 * value);
         bone.quaternion.multiply(facialBoneOffset);
         break;
       case "brow":
@@ -202,6 +207,11 @@ function applyFaceExpressions() {
         break;
       case "lipCorner":
         bone.position.y += 0.006 * value;
+        bone.position.x += (action.side === "left" ? -1 : 1) *
+          (0.005 * Math.max(
+            scores[action.side === "left" ? "mouthStretchLeft" : "mouthStretchRight"],
+            0
+          ) - 0.006 * Math.max(scores.mouthPucker || 0, scores.mouthFunnel || 0));
         break;
     }
   }
@@ -387,6 +397,7 @@ function updateFaceTracking() {
 function animate() {
   updateFaceTracking();
   avatarVrm?.update(clock.getDelta());
+  applyFacialBoneExpressions();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
