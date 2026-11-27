@@ -135,6 +135,7 @@ const dealGameFile = path.join(__dirname, 'a-prendre-ou-a-laisser.html');
 const trueFalseGameFile = path.join(__dirname, 'vrai-ou-faux.html');
 const marbleRaceGameFile = path.join(__dirname, 'course-de-billes.html');
 const duckFishingGameFile = path.join(__dirname, 'peche-aux-canards.html');
+const duckShootingGameFile = path.join(__dirname, 'tir-aux-canards-fou.html');
 const circusWheelGameFile = path.join(__dirname, 'roue-du-cirque.html');
 const marbleRaceControlFile = path.join(__dirname, 'course-de-billes-controle.html');
 const mayaIslandDirectory = path.join(__dirname, 'maya-island');
@@ -246,6 +247,7 @@ const protectedRoutes = new Set([
     '/course-de-billes.html',
     '/billes-tour.html',
     '/peche-aux-canards.html',
+    '/tir-aux-canards-fou.html',
     '/roue-du-cirque.html',
     '/multirou.html',
     '/araignee.html',
@@ -348,6 +350,7 @@ store.grantGameAccessToExistingCreators('/vrai-ou-faux.html');
 store.grantGameAccessToExistingCreators('/course-de-billes.html');
 store.grantGameAccessToExistingCreators('/billes-tour.html');
 store.grantGameAccessToExistingCreators('/peche-aux-canards.html');
+store.grantGameAccessToExistingCreators('/tir-aux-canards-fou.html');
 store.grantGameAccessToExistingCreators('/roue-du-cirque.html');
 store.grantGameAccessToExistingCreators('/multirou.html');
 store.grantGameAccessToExistingCreators('/squid-storm.html');
@@ -445,6 +448,7 @@ const staticGameTitles = {
     '/course-de-billes.html': 'Course de Billes',
     '/billes-tour.html': 'Billes Tour',
     '/peche-aux-canards.html': 'Pêche aux Canards',
+    '/tir-aux-canards-fou.html': 'Tir aux Canards Fou',
     '/roue-du-cirque.html': 'La Roue du Cirque',
     '/multirou.html': 'Le Multirou',
     '/araignee.html': 'Araignée Cybernétique',
@@ -528,6 +532,7 @@ const gameRouteIds = new Map([
     ['/course-de-billes.html', '/course-de-billes.html'],
     ['/billes-tour.html', '/billes-tour.html'],
     ['/peche-aux-canards.html', '/peche-aux-canards.html'],
+    ['/tir-aux-canards-fou.html', '/tir-aux-canards-fou.html'],
     ['/squid-storm.html', '/squid-storm.html'],
     ['/tower-up.html', '/tower-up.html'],
     ['/tir-a-la-corde.html', '/tir-a-la-corde.html'],
@@ -3440,14 +3445,6 @@ const server = http.createServer((req, res) => {
         ['/voice-mask-assets/deadpool/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'scene.bin'), 'application/octet-stream']],
         ['/voice-mask-assets/deadpool/license.txt', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'license.txt'), 'text/plain; charset=utf-8']],
         ['/voice-mask-assets/deadpool/textures/Material_0_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool', 'textures', 'Material_0_baseColor.jpeg'), 'image/jpeg']],
-        ['/voice-mask-assets/deadpool-full-body/scene.gltf', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
-        ['/voice-mask-assets/deadpool-full-body/scene.bin', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'scene.bin'), 'application/octet-stream']],
-        ['/voice-mask-assets/deadpool-full-body/license.txt', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'license.txt'), 'text/plain; charset=utf-8']],
-        ['/voice-mask-assets/deadpool-full-body/textures/Material_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'Material_baseColor.jpeg'), 'image/jpeg']],
-        ['/voice-mask-assets/deadpool-full-body/textures/Material_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'Material_metallicRoughness.png'), 'image/png']],
-        ['/voice-mask-assets/deadpool-full-body/textures/material_0_baseColor.jpeg', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_baseColor.jpeg'), 'image/jpeg']],
-        ['/voice-mask-assets/deadpool-full-body/textures/material_0_metallicRoughness.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_metallicRoughness.png'), 'image/png']],
-        ['/voice-mask-assets/deadpool-full-body/textures/material_0_specularf0.png', [path.join(__dirname, 'voice-mask-assets', 'deadpool-full-body', 'textures', 'material_0_specularf0.png'), 'image/png']],
         ['/images-vitrine/overlay-coffre-tresor.png', [path.join(__dirname, 'images-vitrine', 'overlay-coffre-tresor.png'), 'image/png']],
         ['/arcade-mobile-controls.js', [path.join(__dirname, 'arcade-mobile-controls.js'), 'text/javascript; charset=utf-8']],
         ['/overlay-firework.js', [path.join(__dirname, 'overlay-firework.js'), 'text/javascript; charset=utf-8']],
@@ -3583,6 +3580,7 @@ const server = http.createServer((req, res) => {
         ['/billes-tour.html', [path.join(__dirname, 'billes-tour.html'), 'text/html; charset=utf-8']],
         ['/course-de-billes-controle.html', [marbleRaceControlFile, 'text/html; charset=utf-8']],
         ['/peche-aux-canards.html', [duckFishingGameFile, 'text/html; charset=utf-8']],
+        ['/tir-aux-canards-fou.html', [duckShootingGameFile, 'text/html; charset=utf-8']],
         ['/roue-du-cirque.html', [circusWheelGameFile, 'text/html; charset=utf-8']],
         ['/multirou.html', [path.join(__dirname, 'multirou.html'), 'text/html; charset=utf-8']],
         ['/araignee.html', [path.join(__dirname, 'araignee.html'), 'text/html; charset=utf-8']],
@@ -3682,6 +3680,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/billes-tour.png', [path.join(__dirname, 'images-vitrine', 'billes-tour.png'), 'image/png']],
         ['/images-vitrine/course-de-billes-apercu.webm', [path.join(__dirname, 'images-vitrine', 'course-de-billes-apercu.webm'), 'video/webm']],
         ['/images-vitrine/peche-aux-canards-apercu.png', [path.join(__dirname, 'images-vitrine', 'peche-aux-canards-apercu.png'), 'image/png']],
+        ['/images-vitrine/tir-aux-canards-fou.png', [path.join(__dirname, 'images-vitrine', 'tir-aux-canards-fou.png'), 'image/png']],
         ['/images-vitrine/roue-du-cirque-apercu.png', [path.join(__dirname, 'images-vitrine', 'roue-du-cirque-apercu.png'), 'image/png']],
         ['/images-vitrine/araignee.png', [path.join(__dirname, 'images-vitrine', 'araignee.png'), 'image/png']],
         ['/images-vitrine/rallye-neon.png', [path.join(__dirname, 'images-vitrine', 'rallye-neon.png'), 'image/png']],
