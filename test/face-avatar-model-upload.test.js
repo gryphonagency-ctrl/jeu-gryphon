@@ -13,14 +13,30 @@ const start = source.indexOf('function getFaceAvatarOverlayModelPath(owner, mode
 const end = source.indexOf('\nfunction getFaceAvatarOverlayUser', start);
 assert(start >= 0 && end > start, 'face avatar model upload handlers are present');
 
-function createGlb(targetNames) {
-    const json = Buffer.from(JSON.stringify({
+function createGlb(targetNames, includeFacialBoneRig = false) {
+    const document = {
         asset: { version: '2.0' },
         meshes: [{
-            primitives: [{ targets: targetNames.map(() => ({})) }],
+            primitives: [{
+                targets: targetNames.map(() => ({})),
+                ...(includeFacialBoneRig
+                    ? { attributes: { JOINTS_0: 0, WEIGHTS_0: 1 } }
+                    : {})
+            }],
             extras: { targetNames }
         }]
-    }));
+    };
+    if (includeFacialBoneRig) {
+        document.nodes = [
+            { name: 'Body', mesh: 0, skin: 0 },
+            { name: 'Jaw' },
+            { name: 'TL_Eyelid_A' },
+            { name: 'BR_Eyelid_A' }
+        ];
+        document.skins = [{ joints: [1, 2, 3] }];
+    }
+
+    const json = Buffer.from(JSON.stringify(document));
     const padding = (4 - (json.length % 4)) % 4;
     const jsonChunk = Buffer.concat([json, Buffer.alloc(padding, 0x20)]);
     const model = Buffer.alloc(20 + jsonChunk.length);
@@ -124,6 +140,25 @@ test('model upload replaces only its creator model and preserves link settings',
     assert.notEqual(saved.modelId, oldModelId);
     assert.equal(fs.existsSync(oldPath), false);
     assert.deepEqual(fs.readFileSync(newPath), createGlb(['jawOpen']));
+});
+
+test('model upload accepts a VRM with a facial bone rig', t => {
+    const initialSettings = {
+        enabled: false,
+        token: null,
+        modelId: null,
+        modelFormat: null
+    };
+    const harness = createUploadHarness(t, initialSettings);
+    const model = createGlb([], true);
+    const response = sendUpload(harness.receiveFaceAvatarOverlayModel, model, 'vrm');
+    const saved = harness.getSettings();
+    const modelPath = harness.getFaceAvatarOverlayModelPath('alice', saved.modelId, 'vrm');
+
+    assert.equal(response.status, 200);
+    assert.equal(JSON.parse(response.body).success, true);
+    assert.equal(saved.modelFormat, 'vrm');
+    assert.deepEqual(fs.readFileSync(modelPath), model);
 });
 
 test('model upload rejects a GLB without supported facial expressions', t => {

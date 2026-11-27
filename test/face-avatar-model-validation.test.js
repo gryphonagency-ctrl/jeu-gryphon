@@ -88,6 +88,51 @@ test('VRM expressions pass validation while models without facial rigs are rejec
     assert.equal(hasFaceAvatarOverlayRig(mismatchedNames), false);
 });
 
+test('VRM with facial bones in its skin joints passes validation', () => {
+    const facialRig = makeGlb({
+        asset: { version: '2.0' },
+        meshes: [{
+            primitives: [{
+                attributes: { JOINTS_0: 0, WEIGHTS_0: 1 }
+            }]
+        }],
+        nodes: [
+            { name: 'Body', mesh: 0, skin: 0 },
+            { name: 'Jaw' },
+            { name: 'TL_Eyelid_A' },
+            { name: 'BR_Eyelid_A' },
+            { name: 'Left_Brow_A' }
+        ],
+        skins: [{ joints: [1, 2, 3, 4] }]
+    });
+    const jawOnly = makeGlb({
+        asset: { version: '2.0' },
+        meshes: [{
+            primitives: [{
+                attributes: { JOINTS_0: 0, WEIGHTS_0: 1 }
+            }]
+        }],
+        nodes: [
+            { name: 'Body', mesh: 0, skin: 0 },
+            { name: 'Jaw' }
+        ],
+        skins: [{ joints: [1] }]
+    });
+    const unattachedRig = makeGlb({
+        asset: { version: '2.0' },
+        nodes: [
+            { name: 'Jaw' },
+            { name: 'TL_Eyelid_A' },
+            { name: 'BR_Eyelid_A' }
+        ],
+        skins: [{ joints: [0] }]
+    });
+
+    assert.equal(hasFaceAvatarOverlayRig(facialRig), true);
+    assert.equal(hasFaceAvatarOverlayRig(jawOnly), false);
+    assert.equal(hasFaceAvatarOverlayRig(unattachedRig), false);
+});
+
 test('malformed binary glTF data is rejected', () => {
     const invalid = makeGlb({ asset: { version: '2.0' }, meshes: [] });
     invalid.write('nope', 0, 'ascii');
@@ -103,4 +148,31 @@ test('VRM expression names map MediaPipe eye and mouth scores', () => {
     assert.equal(faceAvatarRig.vrmExpressionValue({ jawOpen: 0.6 }, 'aa'), 0.6);
     assert.equal(faceAvatarRig.trackingKeyForMorphTarget('eyeBlink_L'), 'eyeBlinkLeft');
     assert.equal(faceAvatarRig.trackingKeyForMorphTarget('mouthSmile_R'), 'mouthSmile');
+});
+
+test('facial bones map eyelids, jaw, brows and lip corners to tracked expressions', () => {
+    const jaw = faceAvatarRig.facialBoneAction('Jaw');
+    const eyelid = faceAvatarRig.facialBoneAction('TL_Eyelid_A');
+    const corner = faceAvatarRig.facialBoneAction('R_Lip_Corner');
+
+    assert.deepEqual(jaw, { type: 'jaw' });
+    assert.deepEqual(eyelid, { type: 'upperEyelid', side: 'left' });
+    assert.deepEqual(corner, { type: 'lipCorner', side: 'right' });
+    assert.equal(faceAvatarRig.hasRecognizedFacialBones([
+        'Jaw',
+        'TL_Eyelid_A',
+        'BR_Eyelid_A'
+    ]), true);
+    assert.equal(faceAvatarRig.facialBoneValue({ jawOpen: 0.7 }, jaw), 0.7);
+    assert.equal(
+        faceAvatarRig.facialBoneValue({ eyeBlinkLeft: 0.8 }, eyelid),
+        0.8
+    );
+    assert.equal(
+        faceAvatarRig.facialBoneValue({
+            mouthSmileRight: 0.75,
+            mouthFrownRight: 0.15
+        }, corner),
+        0.6
+    );
 });

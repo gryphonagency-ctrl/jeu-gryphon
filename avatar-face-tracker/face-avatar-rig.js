@@ -109,8 +109,78 @@
     ]))
   );
 
+  const facialBoneActions = Object.freeze({
+    jaw: Object.freeze({ type: "jaw" }),
+    jawbone: Object.freeze({ type: "jaw" }),
+    mandible: Object.freeze({ type: "jaw" }),
+    centerbrow: Object.freeze({ type: "centerBrow" }),
+    llipcorner: Object.freeze({ type: "lipCorner", side: "left" }),
+    leftlipcorner: Object.freeze({ type: "lipCorner", side: "left" }),
+    rlipcorner: Object.freeze({ type: "lipCorner", side: "right" }),
+    rightlipcorner: Object.freeze({ type: "lipCorner", side: "right" })
+  });
+
   function normalizeName(value) {
     return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function facialBoneAction(name) {
+    const normalized = normalizeName(name);
+    if (facialBoneActions[normalized]) return facialBoneActions[normalized];
+
+    const eyelid = normalized.match(/^(tl|tr|bl|br)eyelid/);
+    if (eyelid) {
+      return {
+        type: eyelid[1].startsWith("t") ? "upperEyelid" : "lowerEyelid",
+        side: eyelid[1].endsWith("l") ? "left" : "right"
+      };
+    }
+
+    const lip = normalized.match(/^(tl|tr|bl|br)lip/);
+    if (lip) {
+      return {
+        type: lip[1].startsWith("t") ? "upperLip" : "lowerLip",
+        side: lip[1].endsWith("l") ? "left" : "right"
+      };
+    }
+
+    const brow = normalized.match(/^(left|right)brow/);
+    if (brow) return { type: "brow", side: brow[1] };
+    return null;
+  }
+
+  function hasRecognizedFacialBones(names) {
+    if (!Array.isArray(names)) return false;
+    const types = new Set(names.map(name => facialBoneAction(name)?.type).filter(Boolean));
+    const hasMouth = types.has("jaw") || types.has("upperLip") ||
+      types.has("lowerLip") || types.has("lipCorner");
+    const hasEyes = types.has("upperEyelid") || types.has("lowerEyelid");
+    return hasMouth && (hasEyes || types.has("brow") || types.has("centerBrow"));
+  }
+
+  function facialBoneValue(scores, action) {
+    const value = name => scores[name] || 0;
+    switch (action?.type) {
+      case "jaw":
+        return value("jawOpen");
+      case "upperEyelid":
+      case "lowerEyelid":
+        return value(action.side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight");
+      case "brow":
+        return Math.max(value("browInnerUp"), value(`browOuterUp${action.side === "left" ? "Left" : "Right"}`)) -
+          value(action.side === "left" ? "browDownLeft" : "browDownRight");
+      case "centerBrow":
+        return value("browInnerUp") - Math.max(value("browDownLeft"), value("browDownRight"));
+      case "upperLip":
+        return value(`mouthUpperUp${action.side === "left" ? "Left" : "Right"}`);
+      case "lowerLip":
+        return value(`mouthLowerDown${action.side === "left" ? "Left" : "Right"}`);
+      case "lipCorner":
+        return value(action.side === "left" ? "mouthSmileLeft" : "mouthSmileRight") -
+          value(action.side === "left" ? "mouthFrownLeft" : "mouthFrownRight");
+      default:
+        return 0;
+    }
   }
 
   function trackingKeyForMorphTarget(name) {
@@ -167,6 +237,9 @@
     isRecognizedVrmExpression,
     getVrmExpressionNames,
     trackingKeyForMorphTarget,
+    facialBoneAction,
+    hasRecognizedFacialBones,
+    facialBoneValue,
     trackedValue,
     vrmExpressionValue
   };

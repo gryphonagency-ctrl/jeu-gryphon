@@ -1484,11 +1484,29 @@ function hasFaceAvatarOverlayRig(buffer) {
     }
 
     const vrm0Groups = extensions.VRM?.blendShapeMaster?.blendShapeGroups || [];
-    return vrm0Groups.some(group =>
+    if (vrm0Groups.some(group =>
         faceAvatarRig.isRecognizedVrmExpression(group?.presetName || group?.name) &&
         Array.isArray(group?.binds) &&
         group.binds.length > 0
-    );
+    )) {
+        return true;
+    }
+
+    const facialBoneNames = [];
+    for (const node of gltfJson.nodes || []) {
+        const skin = gltfJson.skins?.[node?.skin];
+        const primitives = gltfJson.meshes?.[node?.mesh]?.primitives || [];
+        const hasSkinWeights = primitives.some(primitive =>
+            Number.isInteger(primitive?.attributes?.JOINTS_0) &&
+            Number.isInteger(primitive?.attributes?.WEIGHTS_0)
+        );
+        if (!skin || !hasSkinWeights) continue;
+        for (const jointIndex of skin?.joints || []) {
+            const name = gltfJson.nodes?.[jointIndex]?.name;
+            if (typeof name === 'string') facialBoneNames.push(name);
+        }
+    }
+    return faceAvatarRig.hasRecognizedFacialBones(facialBoneNames);
 }
 
 function sendFaceAvatarOverlayJson(res, status, payload) {
@@ -1543,7 +1561,7 @@ function receiveFaceAvatarOverlayModel(req, res, username) {
             return;
         }
         if (!hasFaceAvatarOverlayRig(buffer)) {
-            reject(400, 'Ce modèle ne contient pas d’expressions faciales reconnues. Utilise un VRM avec expressions ou un GLB avec des morph targets faciaux nommés.');
+            reject(400, 'Ce modèle ne contient pas d’expressions faciales reconnues ni d’armature faciale reconnue. Utilise un VRM avec expressions, un GLB avec des morph targets faciaux nommés ou un rig avec mâchoire et paupières/sourcils.');
             return;
         }
 

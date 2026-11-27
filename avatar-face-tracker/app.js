@@ -76,6 +76,8 @@ const scores = Object.fromEntries(blendshapeNames.map(name => [name, 0]));
 const rotation = new THREE.Euler(0, 0, 0, "YXZ");
 const targetRotation = new THREE.Euler(0, 0, 0, "YXZ");
 const clock = new THREE.Clock();
+const facialBoneAxis = new THREE.Vector3(1, 0, 0);
+const facialBoneOffset = new THREE.Quaternion();
 let landmarker;
 let trackerMode = "IMAGE";
 let trackerSwitching = false;
@@ -85,6 +87,7 @@ let avatarHeadBaseRotation;
 let avatarVrm;
 let avatarMorphBindings = [];
 let avatarVrmExpressions = [];
+let avatarFacialBones = [];
 let lastVideoTime = -1;
 let cameraStream;
 let objectUrl;
@@ -124,11 +127,24 @@ function findAvatarHead(model, vrm) {
 
 function createFaceBindings(model, vrm) {
   const morphBindings = [];
+  const facialBones = [];
   model.traverse(node => {
-    if (!node.isMesh || !node.morphTargetDictionary || !node.morphTargetInfluences) return;
-    for (const [name, index] of Object.entries(node.morphTargetDictionary)) {
-      const key = FaceAvatarRig.trackingKeyForMorphTarget(name);
-      if (key) morphBindings.push({ mesh: node, index, key });
+    if (node.isBone) {
+      const action = FaceAvatarRig.facialBoneAction(node.name);
+      if (action) {
+        facialBones.push({
+          bone: node,
+          action,
+          basePosition: node.position.clone(),
+          baseQuaternion: node.quaternion.clone()
+        });
+      }
+    }
+    if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+      for (const [name, index] of Object.entries(node.morphTargetDictionary)) {
+        const key = FaceAvatarRig.trackingKeyForMorphTarget(name);
+        if (key) morphBindings.push({ mesh: node, index, key });
+      }
     }
   });
 
@@ -136,12 +152,15 @@ function createFaceBindings(model, vrm) {
   const expressions = expressionManager
     ? FaceAvatarRig.getVrmExpressionNames().filter(name => expressionManager.getExpression(name))
     : [];
-  if (!morphBindings.length && !expressions.length) {
+  const hasFacialBoneRig = FaceAvatarRig.hasRecognizedFacialBones(
+    facialBones.map(({ bone }) => bone.name)
+  );
+  if (!morphBindings.length && !expressions.length && !hasFacialBoneRig) {
     throw new Error(
-      "Aucune expression faciale reconnue. Le modèle doit contenir des expressions VRM ou des morph targets nommés (jawOpen, eyeBlinkLeft, mouthSmile…)."
+      "Aucune expression faciale reconnue. Le modèle doit contenir des expressions VRM, des morph targets faciaux nommés ou une armature avec mâchoire et paupières/sourcils."
     );
   }
-  return { morphBindings, expressions };
+  return { morphBindings, expressions, facialBones };
 }
 
 function applyFaceExpressions() {
@@ -153,6 +172,38 @@ function applyFaceExpressions() {
   for (const name of avatarVrmExpressions) {
     const target = FaceAvatarRig.vrmExpressionValue(scores, name);
     avatarVrm.expressionManager.setValue(name, target);
+  }
+  for (const { bone, action, basePosition, baseQuaternion } of avatarFacialBones) {
+    const value = FaceAvatarRig.facialBoneValue(scores, action);
+    bone.position.copy(basePosition);
+    bone.quaternion.copy(baseQuaternion);
+    switch (action.type) {
+      case "jaw":
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.36 * value);
+        bone.quaternion.multiply(facialBoneOffset);
+        break;
+      case "upperEyelid":
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, -0.2 * value);
+        bone.quaternion.multiply(facialBoneOffset);
+        break;
+      case "lowerEyelid":
+        facialBoneOffset.setFromAxisAngle(facialBoneAxis, 0.12 * value);
+        bone.quaternion.multiply(facialBoneOffset);
+        break;
+      case "brow":
+      case "centerBrow":
+        bone.position.y += 0.008 * value;
+        break;
+      case "upperLip":
+        bone.position.y += 0.004 * value;
+        break;
+      case "lowerLip":
+        bone.position.y -= 0.004 * value;
+        break;
+      case "lipCorner":
+        bone.position.y += 0.006 * value;
+        break;
+    }
   }
 }
 
@@ -209,6 +260,7 @@ async function loadAvatar(source, label) {
     avatarVrm = vrm;
     avatarMorphBindings = faceBindings.morphBindings;
     avatarVrmExpressions = faceBindings.expressions;
+    avatarFacialBones = faceBindings.facialBones;
     avatarRoot.rotation.set(0, 0, 0);
     setStatus(`Modèle 3D chargé : ${label}`);
     startButton.disabled = false;
@@ -256,7 +308,7 @@ async function initializeTracker() {
   }
 
   startButton.disabled = true;
-  setStatus("Choisis un modèle 3D GLB ou VRM avec expressions faciales.", "warning");
+  setStatus("Choisis un GLB ou VRM avec expressions, morph targets ou armature faciale.", "warning");
 }
 
 async function startCamera() {
