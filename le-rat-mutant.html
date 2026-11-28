@@ -142,6 +142,9 @@
         .drag-handle:active {
             cursor: grabbing;
         }
+        #walletBanner[hidden] {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -2460,21 +2463,69 @@
 
         // ---------- COUPS D'IMPACT & RÉACTION DE DOULEUR ----------
         const PAIN_STRENGTH = { like: 0.45, tap: 0.45, rose: 0.65, ice: 0.7, heart: 0.82, perfume: 0.95, galaxy: 1.1, universe: 1.25 };
-        const pain = { target: 0, value: 0, flash: 0, side: 1, mats: null };
+        const pain = { target: 0, value: 0, flash: 0, side: 1, marks: [], tex: null, mats: null };
 
-        // Un coup porte : flash rouge et corps qui se plie
+        function impactTexture() {
+            const c = document.createElement('canvas');
+            c.width = c.height = 128;
+            const g = c.getContext('2d');
+            g.translate(64, 64);
+            g.fillStyle = '#ffd35a';
+            g.beginPath();
+            for (let i = 0; i < 24; i++) {
+                const a = i / 24 * Math.PI * 2, rad = i % 2 ? 18 : 40 + Math.random() * 22;
+                g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+            }
+            g.fill();
+            const gr = g.createRadialGradient(0, 0, 0, 0, 0, 28);
+            gr.addColorStop(0, '#ffffff');
+            gr.addColorStop(1, 'rgba(255,240,180,0)');
+            g.fillStyle = gr;
+            g.beginPath(); g.arc(0, 0, 28, 0, Math.PI * 2); g.fill();
+            return new THREE.CanvasTexture(c);
+        }
+
+        // Un coup porte : éclat sur le corps, flash rouge et corps qui se plie
         function hitRat(type) {
             if (!ratGroup) return;
             const strength = PAIN_STRENGTH[type] || 0.32;
             pain.target = Math.max(pain.target, strength);
             pain.flash = Math.max(pain.flash, strength);
             pain.side = Math.random() < 0.5 ? -1 : 1;
+
+            if (!pain.tex) pain.tex = impactTexture();
+            if (pain.marks.length >= 8) {
+                const old = pain.marks.shift();
+                scene.remove(old.sprite);
+                old.sprite.material.dispose();
+            }
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: pain.tex, transparent: true, depthTest: false, depthWrite: false }));
+            const scale = ratGroup.scale.x;
+            sprite.position.set((Math.random() - 0.5) * 0.7 * scale, (1.45 + Math.random() * 0.95) * scale, 0.65 * scale);
+            sprite.material.rotation = Math.random() * Math.PI * 2;
+            sprite.scale.setScalar(0.1);
+            scene.add(sprite);
+            pain.marks.push({ sprite, age: 0, size: 0.35 + strength * 0.75 });
         }
 
         function updatePain(delta) {
             pain.value += (pain.target - pain.value) * Math.min(1, delta * 16); // pliage brusque
             pain.target = Math.max(0, pain.target - delta * 1.25);              // redressement lent
             pain.flash = Math.max(0, pain.flash - delta * 4.5);
+
+            for (let i = pain.marks.length - 1; i >= 0; i--) {
+                const m = pain.marks[i];
+                m.age += delta;
+                const k = m.age / 0.26;
+                if (k >= 1) {
+                    scene.remove(m.sprite);
+                    m.sprite.material.dispose();
+                    pain.marks.splice(i, 1);
+                    continue;
+                }
+                m.sprite.scale.setScalar(m.size * (0.45 + Math.sqrt(k) * 0.75));
+                m.sprite.material.opacity = 1 - k * k;
+            }
 
             if (!pain.mats) {
                 pain.mats = new Set();
