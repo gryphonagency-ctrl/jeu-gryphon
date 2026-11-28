@@ -361,6 +361,41 @@
         </div>
       </div>
 
+      <div class="bg-black/35 rounded-xl p-2.5 border border-amber-400/20 space-y-2">
+        <span class="text-[10px] uppercase tracking-wider font-bold text-amber-200 block">Récompenses des immeubles</span>
+        <label for="starBonusOne" class="grid grid-cols-[1fr_5rem] items-center gap-2 text-[10px] text-sky-200/85">
+          <span>Immeubles qui contiennent 1 étoile</span>
+          <span class="flex items-center gap-1 text-amber-200">+
+            <input id="starBonusOne" type="number" min="0" max="10000" step="1" value="0" class="w-full px-2 py-1 rounded-lg bg-black/50 border border-amber-300/30 text-amber-100 font-bold text-xs" />
+          </span>
+        </label>
+        <label for="starBonusTwo" class="grid grid-cols-[1fr_5rem] items-center gap-2 text-[10px] text-sky-200/85">
+          <span>Immeubles qui contiennent 2 étoiles</span>
+          <span class="flex items-center gap-1 text-amber-200">+
+            <input id="starBonusTwo" type="number" min="0" max="10000" step="1" value="0" class="w-full px-2 py-1 rounded-lg bg-black/50 border border-amber-300/30 text-amber-100 font-bold text-xs" />
+          </span>
+        </label>
+        <label for="starBonusMoreThanTwo" class="grid grid-cols-[1fr_5rem] items-center gap-2 text-[10px] text-sky-200/85">
+          <span>Immeubles qui contiennent plus de 2 étoiles</span>
+          <span class="flex items-center gap-1 text-amber-200">+
+            <input id="starBonusMoreThanTwo" type="number" min="0" max="10000" step="1" value="0" class="w-full px-2 py-1 rounded-lg bg-black/50 border border-amber-300/30 text-amber-100 font-bold text-xs" />
+          </span>
+        </label>
+        <button
+          id="btnApplyStarRewardBonus"
+          type="button"
+          class="w-full py-1.5 px-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 border border-amber-300/40 text-amber-100 font-bold text-[11px] cursor-pointer"
+        >
+          Appliquer le bonus
+        </button>
+        <p class="text-[10px] leading-snug text-sky-100/65">
+          Chaque bonus s'ajoute à la récompense initiale de sa catégorie, immédiatement et après reconstruction; la catégorie reste définie par le nombre d'étoiles de départ. Les immeubles à 0 étoile restent à 0.
+        </p>
+        <p id="starRewardBonusStatus" role="status" aria-live="polite" class="text-[10px] text-amber-200/90">
+          Bonus actuel : +0 / +0 / +0 étoile(s).
+        </p>
+      </div>
+
       <!-- Classement des donateurs -->
       <div class="bg-black/35 rounded-xl p-2.5 border border-sky-400/15">
         <div class="flex items-center justify-between mb-1.5">
@@ -1609,6 +1644,35 @@
       return topY;
     }
 
+    const BUILDING_STAR_REWARD_BONUSES_KEY = 'aegis_city_building_star_reward_bonuses';
+    const MAX_BUILDING_STAR_REWARD_BONUS = 10000;
+    function loadBuildingStarRewardBonuses() {
+      const saved = localStorage.getItem(BUILDING_STAR_REWARD_BONUSES_KEY);
+      if (saved === null) return { oneStar: 0, twoStars: 0, moreThanTwoStars: 0 };
+
+      let bonuses;
+      try {
+        bonuses = JSON.parse(saved);
+      } catch (error) {
+        console.warn('Réglages de récompenses illisibles; valeurs par défaut utilisées.', error);
+        return { oneStar: 0, twoStars: 0, moreThanTwoStars: 0 };
+      }
+
+      const values = bonuses && [bonuses.oneStar, bonuses.twoStars, bonuses.moreThanTwoStars];
+      if (!values || values.some(value =>
+        !Number.isSafeInteger(value) || value < 0 || value > MAX_BUILDING_STAR_REWARD_BONUS
+      )) {
+        console.warn('Réglages de récompenses invalides; valeurs par défaut utilisées.');
+        return { oneStar: 0, twoStars: 0, moreThanTwoStars: 0 };
+      }
+      return {
+        oneStar: bonuses.oneStar,
+        twoStars: bonuses.twoStars,
+        moreThanTwoStars: bonuses.moreThanTwoStars
+      };
+    }
+
+    let buildingStarRewardBonuses = loadBuildingStarRewardBonuses();
     const buildings = [];
     const flyingCars = [];
     const pedestrians = [];
@@ -1916,8 +1980,31 @@
       }
 
       buildings.forEach((building, index) => {
-        building.starReward = rewards[index];
+        building.baseStarReward = rewards[index];
+        building.starReward = building.baseStarReward + getBuildingStarRewardBonus(building.baseStarReward);
       });
+    }
+
+    function getBuildingStarRewardBonus(baseReward, bonuses = buildingStarRewardBonuses) {
+      if (baseReward === 1) return bonuses.oneStar;
+      if (baseReward === 2) return bonuses.twoStars;
+      if (baseReward > 2) return bonuses.moreThanTwoStars;
+      return 0;
+    }
+
+    function applyBuildingStarRewardBonuses(bonuses) {
+      buildingStarRewardBonuses = { ...bonuses };
+      buildings.forEach(building => {
+        building.starReward = building.baseStarReward + getBuildingStarRewardBonus(building.baseStarReward);
+      });
+
+      try {
+        localStorage.setItem(BUILDING_STAR_REWARD_BONUSES_KEY, JSON.stringify(buildingStarRewardBonuses));
+        return true;
+      } catch (error) {
+        console.error('Bonus appliqués, mais impossible de mémoriser les réglages.', error);
+        return false;
+      }
     }
 
     function buildFuturisticCity() {
@@ -2036,6 +2123,7 @@
           fireMap: FIRE_MAP,
           hp: 100,
           destroyed: false,
+          baseStarReward: 0,
           starReward: 0,
           fallVelX: 0,
           fallVelZ: 0,
@@ -3039,6 +3127,39 @@
     document.getElementById('btnTestRose').addEventListener('click', () => {
       sound.init();
       enqueueTikTokGift({ username: 'NeoCitizen', giftName: 'Rose', coinCount: 1, repeatCount: 1 });
+    });
+
+    const starRewardBonusInputs = [
+      { input: document.getElementById('starBonusOne'), key: 'oneStar', label: 'immeubles à 1 étoile' },
+      { input: document.getElementById('starBonusTwo'), key: 'twoStars', label: 'immeubles à 2 étoiles' },
+      { input: document.getElementById('starBonusMoreThanTwo'), key: 'moreThanTwoStars', label: 'immeubles à plus de 2 étoiles' }
+    ];
+    const starRewardBonusStatus = document.getElementById('starRewardBonusStatus');
+    starRewardBonusInputs.forEach(({ input, key }) => {
+      input.value = String(buildingStarRewardBonuses[key]);
+    });
+    function describeBuildingStarRewardBonuses(bonuses) {
+      return `1 étoile : +${bonuses.oneStar} · 2 étoiles : +${bonuses.twoStars} · plus de 2 : +${bonuses.moreThanTwoStars}`;
+    }
+    starRewardBonusStatus.textContent = `Bonus actuel : ${describeBuildingStarRewardBonuses(buildingStarRewardBonuses)}.`;
+
+    document.getElementById('btnApplyStarRewardBonus').addEventListener('click', () => {
+      const bonuses = {};
+      for (const { input, key, label } of starRewardBonusInputs) {
+        const rawBonus = input.value.trim();
+        const bonus = Number(rawBonus);
+        if (!rawBonus || !Number.isSafeInteger(bonus) || bonus < 0 || bonus > MAX_BUILDING_STAR_REWARD_BONUS) {
+          starRewardBonusStatus.textContent = `Saisis un bonus entier entre 0 et ${MAX_BUILDING_STAR_REWARD_BONUS} pour les ${label}.`;
+          input.focus();
+          return;
+        }
+        bonuses[key] = bonus;
+      }
+
+      const saved = applyBuildingStarRewardBonuses(bonuses);
+      starRewardBonusStatus.textContent = saved
+        ? `Bonus appliqués : ${describeBuildingStarRewardBonuses(bonuses)}.`
+        : `Bonus appliqués (${describeBuildingStarRewardBonuses(bonuses)}), mais non mémorisés.`;
     });
 
     document.getElementById('btnTestLion').addEventListener('click', () => {
