@@ -7,7 +7,7 @@ const test = require('node:test');
 const freeGames = require('../tiktok-free-games');
 
 test('only the games listed as free on the homepage are time-limited', () => {
-    assert.equal(freeGames.FREE_GAME_IDS.length, 23);
+    assert.equal(freeGames.FREE_GAME_IDS.length, 24);
     const homepage = fs.readFileSync(path.join(__dirname, '..', 'accueil.html'), 'utf8');
     const trialList = homepage.match(/const FREE_TRIAL_GAMES = new Set\((\[[^\]]+\])\);/);
     assert(trialList, 'the homepage free-game catalog is present');
@@ -15,10 +15,15 @@ test('only the games listed as free on the homepage are time-limited', () => {
     assert(monopolyCard, 'Monopoly Royal has a card in the homepage game grid');
     assert.match(monopolyCard[0], /href="\/monopoly-royal-tiktok-live\.html"/);
     assert.match(monopolyCard[0], /<h3>Monopoly Royal · TikTok Live<\/h3>/);
-    assert.match(homepage, /23 jeux à essayer gratuitement[\s\S]*?Monopoly Royal · TikTok Live/);
+    const aegisCard = homepage.match(/<a class="game-card" data-game-id="\/aegis-city-meteorites\.html"[\s\S]*?<\/a>/);
+    assert(aegisCard, 'Aegis City has a card in the homepage game grid');
+    assert.match(aegisCard[0], /href="\/aegis-city-meteorites\.html"/);
+    assert.match(aegisCard[0], /<h3>Aegis City — Pluie de Météorites<\/h3>/);
+    assert.match(homepage, /24 jeux à essayer gratuitement[\s\S]*?Aegis City — Pluie de Météorites/);
     const fixedImageIds = homepage.match(/const fixedGameImageIds = new Set\(\[([\s\S]*?)\]\);/);
     assert(fixedImageIds, 'the fixed game-cover catalog is present');
     assert.match(fixedImageIds[1], /'\/monopoly-royal-tiktok-live\.html'/);
+    assert.match(fixedImageIds[1], /'\/aegis-city-meteorites\.html'/);
     const homepageGameIds = [...trialList[1].matchAll(/'([^']+)'/g)]
         .map(match => match[1])
         .sort();
@@ -32,6 +37,7 @@ test('only the games listed as free on the homepage are time-limited', () => {
     assert.equal(freeGames.isFreeGamePath('/live-photo-printer-studio.html'), true);
     assert.equal(freeGames.isFreeGamePath('/lunar-interstellar.html'), true);
     assert.equal(freeGames.isFreeGamePath('/monopoly-royal-tiktok-live.html'), true);
+    assert.equal(freeGames.isFreeGamePath('/aegis-city-meteorites.html'), true);
     assert.equal(freeGames.isFreeGamePath('/live-photo-printer-studio-realiste.html'), false);
 });
 
@@ -44,6 +50,8 @@ test('Griffon Arcade members with game access do not need TikTok for free games'
     assert.equal(freeGames.requiresTikTokAccess('/petits-chevaux.html', true), false);
     assert.equal(freeGames.requiresTikTokAccess('/monopoly-royal-tiktok-live.html', false), true);
     assert.equal(freeGames.requiresTikTokAccess('/monopoly-royal-tiktok-live.html', true), false);
+    assert.equal(freeGames.requiresTikTokAccess('/aegis-city-meteorites.html', false), true);
+    assert.equal(freeGames.requiresTikTokAccess('/aegis-city-meteorites.html', true), false);
     assert.equal(freeGames.requiresTikTokAccess('/bingo-gryphon.html', true), false);
 });
 

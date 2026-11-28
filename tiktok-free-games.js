@@ -23,7 +23,8 @@ const FREE_GAME_IDS = Object.freeze([
     '/pachinko-live.html',
     '/live-photo-printer-studio.html',
     '/lunar-interstellar.html',
-    '/monopoly-royal-tiktok-live.html'
+    '/monopoly-royal-tiktok-live.html',
+    '/aegis-city-meteorites.html'
 ]);
 
 const FREE_GAME_PATHS = new Map(FREE_GAME_IDS.map(gameId => [gameId, gameId]));

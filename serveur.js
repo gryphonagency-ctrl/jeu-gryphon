@@ -266,6 +266,7 @@ const protectedRoutes = new Set([
     '/live-photo-printer-studio.html',
     '/live-photo-printer-studio-realiste.html',
     '/gryphon-zombie.html',
+    '/aegis-city-meteorites.html',
     '/griffon-gauche.jpg',
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
@@ -298,6 +299,7 @@ const freeTrialRoutes = new Set([
     '/grand-prix-pokemon.html',
     '/pachinko-live.html',
     '/live-photo-printer-studio.html',
+    '/aegis-city-meteorites.html',
     '/bouteilles-colorees.html',
     '/coin-pusher-tiktok.html',
     '/griffon-gauche.jpg'
@@ -311,7 +313,8 @@ const fixedGameImageIds = new Set([
     '/live-foot-interactif-stadium.html',
     '/petits-chevaux.html',
     '/gryphon-zombie.html',
-    '/lunar-interstellar.html'
+    '/lunar-interstellar.html',
+    '/aegis-city-meteorites.html'
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
@@ -381,6 +384,7 @@ store.grantGameAccessToExistingCreators('/pachinko-live.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.html');
 store.grantGameAccessToExistingCreators('/gryphon-zombie.html');
+store.grantGameAccessToExistingCreators('/aegis-city-meteorites.html');
 store.grantGameAccessToExistingCreators('/petits-chevaux.html');
 store.grantGameAccessToExistingCreators('/lunar-interstellar.html');
 store.grantGameAccessToExistingCreators('/monopoly-royal-tiktok-live.html');
@@ -401,6 +405,7 @@ const staticGameTitles = {
     '/live-photo-printer-studio.html': 'Live Photo Printer Studio',
     '/live-photo-printer-studio-realiste.html': 'Live Photo Printer Studio réaliste',
     '/gryphon-zombie.html': 'GRYPHON ZOMBIE',
+    '/aegis-city-meteorites.html': 'Aegis City — Pluie de Météorites',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Pousse les monstres',
@@ -486,6 +491,7 @@ const gameRouteIds = new Map([
     ['/live-photo-printer-studio.html', '/live-photo-printer-studio.html'],
     ['/live-photo-printer-studio-realiste.html', '/live-photo-printer-studio-realiste.html'],
     ['/gryphon-zombie.html', '/gryphon-zombie.html'],
+    ['/aegis-city-meteorites.html', '/aegis-city-meteorites.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
@@ -3957,6 +3963,7 @@ const server = http.createServer((req, res) => {
         ['/live-photo-printer-studio.html', [path.join(__dirname, 'live-photo-printer-studio.html'), 'text/html; charset=utf-8']],
         ['/live-photo-printer-studio-realiste.html', [path.join(__dirname, 'live-photo-printer-studio-realiste.html'), 'text/html; charset=utf-8']],
         ['/gryphon-zombie.html', [path.join(__dirname, 'gryphon-zombie.html'), 'text/html; charset=utf-8']],
+        ['/aegis-city-meteorites.html', [path.join(__dirname, 'aegis-city-meteorites.html'), 'text/html; charset=utf-8']],
         ['/gryphon-zombie-assets/laser-pistol-80/scene.gltf', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
         ['/gryphon-zombie-assets/laser-pistol-80/scene.bin', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.bin'), 'application/octet-stream']],
         ['/gryphon-zombie-assets/laser-pistol-80/textures/Scene_-_Root_baseColor.png', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'textures', 'Scene_-_Root_baseColor.png'), 'image/png']],
@@ -3982,6 +3989,7 @@ const server = http.createServer((req, res) => {
         ['/images-vitrine/pachinko-live.png', [path.join(__dirname, 'images-vitrine', 'pachinko-live.png'), 'image/png']],
         ['/images-vitrine/live-photo-printer-studio.png', [path.join(__dirname, 'images-vitrine', 'live-photo-printer-studio.png'), 'image/png']],
         ['/images-vitrine/gryphon-zombie.png', [path.join(__dirname, 'images-vitrine', 'gryphon-zombie.png'), 'image/png']],
+        ['/images-vitrine/aegis-city-meteorites.png', [path.join(__dirname, 'images-vitrine', 'aegis-city-meteorites.png'), 'image/png']],
         ['/images-vitrine/gryphon-tiktok-profile.png', [path.join(__dirname, 'images-vitrine', 'gryphon-tiktok-profile.png'), 'image/png']],
         ['/images-vitrine/aquarium-live.png', [path.join(__dirname, 'images-vitrine', 'aquarium-live.png'), 'image/png']],
         ['/images-vitrine/quartier-des-veilleurs.png', [path.join(__dirname, 'images-vitrine', 'quartier-des-veilleurs.png'), 'image/png']],

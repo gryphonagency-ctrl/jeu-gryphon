@@ -1,0 +1,3385 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Aegis City — Pluie de Météorites TikTok Live</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050814;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      color: #f0f9ff;
+    }
+    #gameCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+    }
+    .font-cyber {
+      font-family: 'Orbitron', system-ui, sans-serif;
+    }
+    .cyber-glass {
+      background: linear-gradient(155deg, rgba(10, 18, 38, 0.84), rgba(5, 9, 22, 0.92));
+      border: 1px solid rgba(56, 189, 248, 0.34);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(186, 230, 253, 0.14);
+      backdrop-filter: blur(10px);
+    }
+    .meteor-btn {
+      background: linear-gradient(135deg, #f97316 0%, #ef4444 55%, #991b1b 100%);
+      border: 1px solid rgba(254, 215, 170, 0.65);
+      box-shadow: 0 0 24px rgba(249, 115, 22, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.15s ease;
+    }
+    .meteor-btn:hover {
+      filter: brightness(1.12);
+      box-shadow: 0 0 34px rgba(251, 146, 60, 0.8);
+    }
+    .meteor-btn:active {
+      transform: scale(0.95);
+    }
+    #impactFlash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+      background: radial-gradient(circle at center, rgba(255, 237, 179, 0.75) 0%, rgba(249, 115, 22, 0.45) 45%, rgba(220, 38, 38, 0) 100%);
+      opacity: 0;
+      transition: opacity 0.38s ease-out;
+    }
+    @keyframes giftSlide {
+      0% { transform: translateY(-12px) scale(0.95); opacity: 0; }
+      15% { transform: translateY(0) scale(1.02); opacity: 1; }
+      85% { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(-10px) scale(0.96); opacity: 0; }
+    }
+    .gift-banner {
+      animation: giftSlide 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .wallet-banner {
+      position: fixed;
+      z-index: 40;
+      left: 50%;
+      top: 50%;
+      width: min(460px, calc(100vw - 28px));
+      min-height: 132px;
+      padding: 22px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      transform: translate(-50%, -50%);
+      border: 2px solid rgba(251, 191, 36, 0.8);
+      border-radius: 24px;
+      background: linear-gradient(145deg, rgba(20, 24, 48, 0.97), rgba(5, 9, 22, 0.98));
+      box-shadow: 0 0 65px rgba(251, 191, 36, 0.32), 0 18px 56px rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(14px);
+      color: #fff;
+    }
+    .wallet-banner[hidden] { display: none; }
+    .wallet-banner:not([hidden]) { animation: walletBannerIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .wallet-banner img,
+    .wallet-avatar-fallback {
+      width: 82px;
+      height: 82px;
+      flex: 0 0 82px;
+      border: 3px solid rgba(251, 191, 36, 0.8);
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 0 22px rgba(251, 191, 36, 0.3);
+    }
+    .wallet-avatar-fallback {
+      display: grid;
+      place-items: center;
+      background: rgba(56, 189, 248, 0.16);
+      color: #bae6fd;
+      font-size: 30px;
+      font-weight: 900;
+    }
+    .wallet-avatar-fallback[hidden] { display: none; }
+    @keyframes walletBannerIn {
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.84); }
+      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    @media (max-width: 480px) {
+      .wallet-banner { min-height: 110px; padding: 16px; gap: 13px; }
+      .wallet-banner img, .wallet-avatar-fallback { width: 66px; height: 66px; flex-basis: 66px; }
+    }
+    .widget-drag-handle { cursor: move; touch-action: none; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.25); }
+    ::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.45); border-radius: 999px; }
+  </style>
+</head>
+<body>
+  <!-- Canevas WebGL 3D -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Flash d'impact météoritique -->
+  <div id="impactFlash"></div>
+
+  <aside id="walletBanner" class="wallet-banner" aria-live="polite" hidden>
+    <img id="walletBannerAvatar" alt="" hidden />
+    <span id="walletBannerFallback" class="wallet-avatar-fallback" hidden></span>
+    <div class="min-w-0">
+      <div id="walletBannerTitle" class="font-cyber text-xs font-black tracking-wider text-amber-300">SOLDE D’ÉTOILES</div>
+      <div id="walletBannerUsername" class="mt-1 truncate text-xl font-black text-white"></div>
+      <div id="walletBannerBalance" class="mt-1 text-base font-extrabold text-amber-200"></div>
+      <div id="walletBannerNote" class="mt-1 text-xs text-sky-100/80"></div>
+    </div>
+  </aside>
+
+  <!-- HUD Supérieur -->
+  <header class="fixed top-0 left-0 right-0 z-10 p-3 sm:p-4 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+    <div class="cyber-glass rounded-2xl px-4 py-2.5 pointer-events-auto flex items-center gap-4">
+      <div>
+        <h1 class="font-cyber text-sm sm:text-lg font-black tracking-wider text-sky-300 drop-shadow">
+          AEGIS CITY · MÉTÉORITES LIVE
+        </h1>
+        <p class="text-[11px] sm:text-xs text-sky-100/75">
+          Chaque cadeau TikTok déclenche une pluie de météorites sur la ville
+        </p>
+      </div>
+      <div class="h-8 w-px bg-sky-400/25 hidden sm:block"></div>
+      <div class="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-sky-300/75">Intégrité Ville</div>
+          <div id="hudIntegrity" class="font-extrabold text-emerald-400 text-sm sm:text-base">100%</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-sky-300/75">Impacts</div>
+          <div id="hudImpacts" class="font-extrabold text-orange-400 text-sm sm:text-base">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 pointer-events-auto ml-auto">
+      <div class="cyber-glass rounded-2xl px-3.5 py-2 flex items-center gap-4 text-xs sm:text-sm">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-sky-300/75">Score Chaos</div>
+          <div id="hudScore" class="font-black text-amber-300 text-base sm:text-lg">0</div>
+        </div>
+        <div class="h-7 w-px bg-sky-400/25"></div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-sky-300/75">Record</div>
+          <div id="hudBest" class="font-bold text-sky-100 text-sm sm:text-base">0</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Notification cadeau TikTok Live -->
+  <div id="giftBannerContainer" class="fixed top-20 right-3 sm:right-5 z-20 pointer-events-none w-full max-w-xs sm:max-w-sm"></div>
+
+  <!-- Panneau Configuration TikTok Live, Caméra, Audio & Actions Ville -->
+  <aside id="tiktokWidget" class="fixed left-3 sm:left-4 top-20 z-20 w-[292px] sm:w-[320px] max-w-[calc(100vw-24px)] pointer-events-auto cyber-glass rounded-2xl overflow-hidden text-xs">
+    <div id="widgetDragHandle" class="widget-drag-handle px-3.5 py-2.5 flex items-center justify-between border-b border-sky-400/20 bg-black/35" title="Faire glisser pour déplacer le panneau">
+      <div class="flex items-center gap-2">
+        <span id="tkDot" class="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
+        <span class="font-cyber font-bold text-sky-300 tracking-wide text-xs">CONFIGURATION</span>
+        <span id="tkBadge" class="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-400/30 text-rose-200 font-extrabold text-[10px] uppercase">
+          HORS LIGNE
+        </span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span id="tkQueueBadge" class="px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-200 font-bold text-[10px]" title="Météorites en file d'attente">
+          File: 0
+        </span>
+        <button
+          id="btnTogglePanel"
+          type="button"
+          class="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-sky-200 font-bold text-[11px] cursor-pointer"
+          title="Réduire / Déplier le panneau"
+        >
+          —
+        </button>
+      </div>
+    </div>
+
+    <div id="tiktokBody" class="p-3 space-y-2.5 max-h-[72vh] overflow-y-auto">
+      <!-- Vue de la ville & Volume intégrés dans le panneau -->
+      <div class="bg-black/35 rounded-xl p-2.5 border border-sky-400/15 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] uppercase tracking-wider font-bold text-sky-300/85">Vue &amp; Audio</span>
+          <button
+            id="btnSound"
+            type="button"
+            class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-sky-500/25 border border-sky-300/25 text-xs font-bold text-sky-100 cursor-pointer"
+            title="Activer / Couper le son (Touche M)"
+          >
+            🔊 Son ON
+          </button>
+        </div>
+
+        <button
+          id="btnCamera"
+          type="button"
+          class="w-full py-1.5 px-2.5 rounded-xl bg-white/10 hover:bg-sky-500/25 border border-sky-300/25 text-xs font-bold text-sky-200 flex items-center justify-between cursor-pointer"
+          title="Changer de vue de la ville (Touche V)"
+        >
+          <span class="flex items-center gap-1.5"><span>🎥</span><span>Vue de la ville</span></span>
+          <span id="camLabel" class="text-amber-300 font-extrabold">Vue du ciel</span>
+        </button>
+
+        <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+          <button
+            id="btnRebuildCity"
+            type="button"
+            class="py-2 px-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+            title="Reconstruire entièrement la ville futuriste"
+          >
+            <span>🏙️</span>
+            <span>Reconstruire</span>
+          </button>
+
+          <button
+            id="btnLaunchMeteor"
+            type="button"
+            class="meteor-btn py-2 px-2 rounded-xl font-cyber font-black text-[10px] tracking-wide text-white flex items-center justify-center gap-1 cursor-pointer"
+            title="Lancer une météorite (Espace)"
+          >
+            <span>☄️</span>
+            <span>Météorite</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1">
+        <span class="text-[10px] text-sky-200/70 w-full">Test taille de météorite (pièces du cadeau) :</span>
+        <button type="button" data-test-coins="1" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">1</button>
+        <button type="button" data-test-coins="10" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">10</button>
+        <button type="button" data-test-coins="100" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">100</button>
+        <button type="button" data-test-coins="300" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">300</button>
+        <button type="button" data-test-coins="500" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">500</button>
+        <button type="button" data-test-coins="1000" class="test-coin-btn px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-[10px] cursor-pointer hover:bg-sky-500/20">1000</button>
+        <button type="button" data-test-coins="10000" class="test-coin-btn px-2 py-1 rounded-lg bg-orange-500/30 border border-orange-300/40 text-orange-100 font-bold text-[10px] cursor-pointer hover:bg-orange-500/50">10 000 MÉGA</button>
+      </div>
+
+      <!-- Connexion TikTok Live -->
+      <div class="flex gap-1.5">
+        <input
+          id="tkUsernameInput"
+          type="text"
+          placeholder="@ton_pseudo_tiktok"
+          class="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-black/50 border border-sky-300/25 text-sky-50 placeholder-sky-200/40 focus:outline-none focus:border-sky-400 text-xs"
+        />
+        <button
+          id="btnConnectTikTok"
+          type="button"
+          class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-500 hover:brightness-110 active:scale-95 text-slate-950 font-extrabold text-xs cursor-pointer shrink-0"
+        >
+          Connecter
+        </button>
+      </div>
+
+      <p id="tkStatusMsg" class="text-[11px] leading-snug text-sky-100/80 bg-black/35 rounded-xl px-2.5 py-1.5 border border-white/5">
+        Connecte ton pseudo TikTok Live ou déclenche des cadeaux test pour bombarder la ville.
+      </p>
+
+      <!-- Réglages météorites par cadeau -->
+      <div class="bg-black/35 rounded-xl p-2.5 border border-sky-400/15 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <label for="tkDropMode" class="text-[11px] font-semibold text-sky-200/90">Fréquence météorites</label>
+          <select
+            id="tkDropMode"
+            class="px-2 py-1 rounded-lg bg-[#0d182e] border border-sky-300/30 text-sky-200 text-[11px] font-semibold focus:outline-none"
+          >
+            <option value="per_gift">1 météorite / cadeau</option>
+            <option value="per_coins">1 météorite / X pièces</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex flex-col gap-1 text-[10px] text-sky-200/75">
+            <span>Multiplicateur (×)</span>
+            <input
+              id="tkMultiplier"
+              type="number"
+              min="1"
+              max="30"
+              value="1"
+              class="px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-xs"
+            />
+          </label>
+          <label id="tkCoinChunkWrap" class="flex flex-col gap-1 text-[10px] text-sky-200/75 opacity-55">
+            <span>Tranche pièces (X)</span>
+            <input
+              id="tkCoinChunk"
+              type="number"
+              min="1"
+              max="10000"
+              value="50"
+              disabled
+              class="px-2 py-1 rounded-lg bg-black/50 border border-sky-300/25 text-sky-100 font-bold text-xs disabled:cursor-not-allowed"
+            />
+          </label>
+        </div>
+      </div>
+
+      <!-- Boutons de test cadeaux TikTok -->
+      <div class="space-y-1.5">
+        <span class="text-[10px] uppercase tracking-wider font-bold text-sky-300/85 block">Tester des cadeaux TikTok</span>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button
+            id="btnTestRose"
+            type="button"
+            class="py-1.5 px-2 rounded-xl bg-white/10 hover:bg-orange-500/30 border border-sky-300/25 text-sky-100 font-bold text-[11px] cursor-pointer"
+          >
+            🌹 ×1
+          </button>
+          <button
+            id="btnTestLion"
+            type="button"
+            class="py-1.5 px-2 rounded-xl bg-white/10 hover:bg-orange-500/30 border border-sky-300/25 text-sky-100 font-bold text-[11px] cursor-pointer"
+          >
+            ☄️ 100p ×3
+          </button>
+          <button
+            id="btnTestUniverse"
+            type="button"
+            class="py-1.5 px-2 rounded-xl bg-gradient-to-r from-orange-500/35 to-rose-600/35 hover:from-orange-500/50 hover:to-rose-600/50 border border-amber-300/40 text-amber-200 font-extrabold text-[11px] cursor-pointer"
+          >
+            🌠 1000p
+          </button>
+        </div>
+      </div>
+
+      <!-- Classement des donateurs -->
+      <div class="bg-black/35 rounded-xl p-2.5 border border-sky-400/15">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[10px] uppercase tracking-wider font-bold text-sky-300">🏆 Top Bombardiers</span>
+          <button
+            id="btnClearQueue"
+            type="button"
+            class="text-[10px] text-sky-300/70 hover:text-sky-200 underline cursor-pointer"
+          >
+            Vider file
+          </button>
+        </div>
+        <div id="tkLeaderboard" class="space-y-1 text-[11px] text-sky-100/80">
+          <div class="text-sky-200/45 italic text-center py-1">Aucun cadeau TikTok reçu pour l'instant.</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script>
+    // =========================================================================
+    // 1. SYNTHÈSE AUDIO PROCÉDURALE (SIFFLEMENT MÉTÉORITE, EXPLOSION, ALERTE)
+    // =========================================================================
+    class CityAudio {
+      constructor() {
+        this.enabled = true;
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playMeteorWhoosh() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.55);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.58);
+      }
+
+      playExplosion(big = false) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Onde de choc grave
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(big ? 130 : 105, now);
+        sub.frequency.exponentialRampToValueAtTime(22, now + (big ? 1.1 : 0.75));
+        subGain.gain.setValueAtTime(big ? 0.5 : 0.34, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + (big ? 1.12 : 0.78));
+        sub.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        sub.start(now);
+        sub.stop(now + (big ? 1.15 : 0.8));
+
+        // Souffle et débris
+        const dur = big ? 0.95 : 0.65;
+        const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let i = 0; i < ch.length; i++) {
+          ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.28));
+        }
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(big ? 1400 : 950, now);
+        lp.frequency.exponentialRampToValueAtTime(140, now + dur);
+
+        const nGain = this.ctx.createGain();
+        nGain.gain.setValueAtTime(big ? 0.42 : 0.28, now);
+        nGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        src.connect(lp);
+        lp.connect(nGain);
+        nGain.connect(this.ctx.destination);
+        src.start(now);
+      }
+
+      playRebuildChime() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [330, 440, 659.25].forEach((freq, idx) => {
+          const o = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(freq, now + idx * 0.08);
+          g.gain.setValueAtTime(0.14, now + idx * 0.08);
+          g.gain.exponentialRampToValueAtTime(0.0008, now + idx * 0.08 + 0.4);
+          o.connect(g);
+          g.connect(this.ctx.destination);
+          o.start(now + idx * 0.08);
+          o.stop(now + idx * 0.08 + 0.42);
+        });
+      }
+    }
+
+    const sound = new CityAudio();
+
+    // =========================================================================
+    // 2. FAÇADES RÉALISTES : verre, béton, brique, acier, pierre (matières procédurales)
+    //    Chaque texture est une "tuile" de 8 travées x 8 étages, répétée à l'échelle réelle
+    //    (1 étage = 3,6 m, 1 travée = 3,6 m) pour que les fenêtres gardent toujours la même taille.
+    // =========================================================================
+    const FLOOR_H = 3.6;      // hauteur d'un étage
+    const BAY_W = 3.6;        // largeur d'une travée
+    const FAC_TILE = 8;       // 8 travées x 8 étages par texture
+    const FAC_CELL = 128;     // pixels par travée / par étage
+
+    function mulberry(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const FACADE_DEFS = {
+      glass:    { wall: '#1a212e', wins: [[3, 4, 122, 86]], frame: '#0c1118', sill: null, lintel: null, spandrel: '#232c3a', rough: 0.16, metal: 0.6, env: 1.25, lit: 0.42 },
+      concrete: { wall: '#8b8f97', wins: [[20, 18, 88, 78]], frame: '#dfe2e8', sill: '#b4b8c0', lintel: '#a7abb3', rough: 0.9, metal: 0.03, env: 0.25, lit: 0.36, joints: true, slab: true },
+      brick:    { wall: '#7b4535', wins: [[28, 16, 72, 84]], frame: '#ece6da', sill: '#d2c9b6', lintel: '#d2c9b6', rough: 0.93, metal: 0.02, env: 0.2, lit: 0.34, brick: true, muntin: true, slab: true },
+      steel:    { wall: '#222730', wins: [[12, 8, 46, 104], [70, 8, 46, 104]], frame: '#12161c', sill: null, lintel: null, rough: 0.35, metal: 0.55, env: 0.8, lit: 0.4, fins: true },
+      bands:    { wall: '#c4c7cd', wins: [[2, 26, 124, 62]], frame: '#252a33', sill: null, lintel: null, rough: 0.55, metal: 0.25, env: 0.55, lit: 0.4, joints: true, slab: true },
+      stone:    { wall: '#b6aa90', wins: [[26, 14, 76, 90]], frame: '#3b3228', sill: '#d8cfb8', lintel: '#cfc5ac', rough: 0.82, metal: 0.04, env: 0.28, lit: 0.38, joints: true, slab: true, keystone: true }
+    };
+
+    function createFacadeSet(styleName, seed) {
+      const D = FACADE_DEFS[styleName];
+      const R = mulberry(seed);
+      const SZ = FAC_TILE * FAC_CELL;
+      const mk = sz => { const c = document.createElement('canvas'); c.width = sz; c.height = sz; return c; };
+      const cD = mk(SZ), cE = mk(SZ / 2), cB = mk(SZ / 2);
+      const d = cD.getContext('2d');
+      const e = cE.getContext('2d');
+      const b = cB.getContext('2d');
+      e.scale(0.5, 0.5);
+      b.scale(0.5, 0.5);
+
+      // Mur de base (couleur / lumière émise / relief)
+      d.fillStyle = D.wall; d.fillRect(0, 0, SZ, SZ);
+      e.fillStyle = '#000'; e.fillRect(0, 0, SZ, SZ);
+      b.fillStyle = '#808080'; b.fillRect(0, 0, SZ, SZ);
+
+      if (D.brick) {
+        d.fillStyle = '#b4a898'; d.fillRect(0, 0, SZ, SZ);      // mortier
+        b.fillStyle = '#626262'; b.fillRect(0, 0, SZ, SZ);
+        for (let y = 0, row = 0; y < SZ; y += 8, row++) {
+          for (let x = -(row % 2) * 12; x < SZ; x += 24) {
+            const k = 0.8 + R() * 0.4;
+            d.fillStyle = `rgb(${Math.round(124 * k)},${Math.round(68 * k)},${Math.round(52 * k)})`;
+            d.fillRect(x + 1, y + 1, 22, 6);
+            b.fillStyle = '#a4a4a4';
+            b.fillRect(x + 1, y + 1, 22, 6);
+          }
+        }
+      }
+
+      if (D.joints) {   // joints de panneaux / pierres de taille
+        d.fillStyle = 'rgba(0,0,0,0.24)';
+        b.fillStyle = '#4c4c4c';
+        for (let p = 0; p < SZ; p += 64) {
+          d.fillRect(p, 0, 2, SZ); d.fillRect(0, p, SZ, 2);
+          b.fillRect(p, 0, 2, SZ); b.fillRect(0, p, SZ, 2);
+        }
+      }
+
+      const litPalette = ['#e8b878', '#f3cf9a', '#f7dfb4', '#e0a468', '#a9c6ea', '#f0c898'];
+
+      for (let r = 0; r < FAC_TILE; r++) {
+        for (let c = 0; c < FAC_TILE; c++) {
+          const x0 = c * FAC_CELL, y0 = r * FAC_CELL;
+
+          if (D.spandrel) {   // allège opaque sous chaque vitrage (façade rideau)
+            d.fillStyle = D.spandrel; d.fillRect(x0, y0 + 90, FAC_CELL, 38);
+            d.fillStyle = 'rgba(255,255,255,0.08)'; d.fillRect(x0, y0 + 90, FAC_CELL, 2);
+            b.fillStyle = '#9a9a9a'; b.fillRect(x0, y0 + 90, FAC_CELL, 38);
+          }
+          if (D.fins) {       // ailettes verticales en acier
+            d.fillStyle = '#3a414d'; d.fillRect(x0 + 60, y0, 8, FAC_CELL);
+            d.fillStyle = 'rgba(255,255,255,0.12)'; d.fillRect(x0 + 60, y0, 2, FAC_CELL);
+            b.fillStyle = '#b8b8b8'; b.fillRect(x0 + 60, y0, 8, FAC_CELL);
+          }
+
+          const lit = R() < D.lit;
+
+          for (const [wx, wy, ww, wh] of D.wins) {
+            const X = x0 + wx, Y = y0 + wy;
+
+            // Verre sombre qui reflète le ciel nocturne
+            const k = 0.85 + R() * 0.3;
+            const g = d.createLinearGradient(0, Y, 0, Y + wh);
+            g.addColorStop(0, `rgb(${Math.round(48 * k)},${Math.round(78 * k)},${Math.round(112 * k)})`);
+            g.addColorStop(0.55, `rgb(${Math.round(20 * k)},${Math.round(38 * k)},${Math.round(62 * k)})`);
+            g.addColorStop(1, `rgb(${Math.round(10 * k)},${Math.round(20 * k)},${Math.round(34 * k)})`);
+            d.fillStyle = g; d.fillRect(X, Y, ww, wh);
+            d.save();
+            d.beginPath(); d.rect(X, Y, ww, wh); d.clip();
+            const sg = d.createLinearGradient(X, Y, X + ww, Y + wh);
+            sg.addColorStop(0, 'rgba(190,215,255,0.24)');
+            sg.addColorStop(0.45, 'rgba(190,215,255,0)');
+            d.fillStyle = sg; d.fillRect(X, Y, ww, wh);
+            d.restore();
+
+            // Ombre portée de l'embrasure (fenêtre en retrait)
+            if (!D.spandrel) {
+              d.fillStyle = 'rgba(0,0,0,0.38)'; d.fillRect(X, Y, ww, 5);
+              d.fillStyle = 'rgba(0,0,0,0.22)'; d.fillRect(X, Y, 4, wh);
+            }
+
+            // Cadre + croisillons
+            d.strokeStyle = D.frame; d.lineWidth = D.spandrel ? 2 : 4;
+            d.strokeRect(X + 1.5, Y + 1.5, ww - 3, wh - 3);
+            if (D.muntin) {
+              d.lineWidth = 3;
+              d.beginPath();
+              d.moveTo(X + ww / 2, Y); d.lineTo(X + ww / 2, Y + wh);
+              d.moveTo(X, Y + wh * 0.45); d.lineTo(X + ww, Y + wh * 0.45);
+              d.stroke();
+            }
+
+            // Appui, linteau, clé de voûte
+            if (D.sill) {
+              d.fillStyle = D.sill; d.fillRect(X - 5, Y + wh, ww + 10, 7);
+              d.fillStyle = 'rgba(0,0,0,0.38)'; d.fillRect(X - 5, Y + wh + 7, ww + 10, 3);
+              b.fillStyle = '#c4c4c4'; b.fillRect(X - 5, Y + wh, ww + 10, 7);
+            }
+            if (D.lintel) {
+              d.fillStyle = D.lintel; d.fillRect(X - 5, Y - 8, ww + 10, 7);
+              b.fillStyle = '#b8b8b8'; b.fillRect(X - 5, Y - 8, ww + 10, 7);
+            }
+            if (D.keystone) {
+              d.fillStyle = D.lintel; d.fillRect(X + ww / 2 - 7, Y - 14, 14, 10);
+            }
+
+            // Salissures de ruissellement sous la fenêtre
+            const gs = d.createLinearGradient(0, Y + wh, 0, Y + wh + 34);
+            gs.addColorStop(0, 'rgba(0,0,0,0.20)');
+            gs.addColorStop(1, 'rgba(0,0,0,0)');
+            d.fillStyle = gs;
+            d.fillRect(X - 2, Y + wh + (D.sill ? 10 : 0), ww + 4, 34);
+
+            // Relief : fenêtre en retrait, cadre en saillie
+            b.fillStyle = '#383838'; b.fillRect(X, Y, ww, wh);
+            b.strokeStyle = '#d2d2d2'; b.lineWidth = 3;
+            b.strokeRect(X + 1.5, Y + 1.5, ww - 3, wh - 3);
+
+            // Lumière intérieure (bureaux / logements allumés)
+            if (lit) {
+              const col = litPalette[Math.floor(R() * litPalette.length)];
+              const eg = e.createLinearGradient(0, Y, 0, Y + wh);
+              eg.addColorStop(0, col);
+              eg.addColorStop(1, 'rgba(255,170,90,0.55)');
+              e.globalAlpha = 0.5 + R() * 0.4;
+              e.fillStyle = eg;
+              e.fillRect(X + 2, Y + 2, ww - 4, wh - 4);
+              e.globalAlpha = 1;
+              const v = R();
+              if (v < 0.34) {            // stores vénitiens
+                e.fillStyle = 'rgba(0,0,0,0.55)';
+                for (let sy = Y + 4; sy < Y + wh - 2; sy += 7) e.fillRect(X + 2, sy, ww - 4, 3);
+              } else if (v < 0.5) {      // rideau tiré sur un côté
+                e.fillStyle = 'rgba(0,0,0,0.5)';
+                e.fillRect(X + 2, Y + 2, (ww - 4) * (0.25 + R() * 0.25), wh - 4);
+              } else if (v < 0.62) {     // mobilier / silhouette
+                e.fillStyle = 'rgba(0,0,0,0.45)';
+                e.fillRect(X + ww * 0.3, Y + wh * 0.55, ww * 0.25, wh * 0.45);
+              }
+              if (D.muntin || D.steelFrame) {
+                e.fillStyle = '#000';
+                e.fillRect(X + ww / 2 - 1.5, Y, 3, wh);
+                e.fillRect(X, Y + wh * 0.45 - 1.5, ww, 3);
+              }
+            } else if (R() < 0.12) {     // reflet d'écran de télévision
+              e.globalAlpha = 0.5;
+              e.fillStyle = '#6a9bff';
+              e.fillRect(X + ww * 0.2, Y + wh * 0.3, ww * 0.6, wh * 0.5);
+              e.globalAlpha = 1;
+            }
+          }
+
+          // Détails réalistes : climatiseur sous la fenêtre, balcon avec garde-corps, escalier de secours
+          if (!D.spandrel && !D.fins) {
+            const [wx, wy, ww, wh] = D.wins[0];
+            const X0 = x0 + wx, Yb = y0 + wy + wh;
+            const rr = R();
+            if (rr < 0.10) {            // groupe de climatisation
+              d.fillStyle = '#8a8f98'; d.fillRect(X0 + ww * 0.5 - 14, Yb + 9, 28, 15);
+              d.fillStyle = 'rgba(0,0,0,0.45)';
+              for (let ly = Yb + 12; ly < Yb + 23; ly += 3) d.fillRect(X0 + ww * 0.5 - 11, ly, 22, 1.5);
+              b.fillStyle = '#d0d0d0'; b.fillRect(X0 + ww * 0.5 - 14, Yb + 9, 28, 15);
+            } else if (rr < 0.22) {     // balcon : dalle + garde-corps à barreaux
+              d.fillStyle = D.sill || '#7a7f88'; d.fillRect(X0 - 10, Yb + 24, ww + 20, 6);
+              d.fillStyle = '#20252c';
+              d.fillRect(X0 - 8, Yb + 2, ww + 16, 3);
+              for (let bx = X0 - 6; bx < X0 + ww + 8; bx += 8) d.fillRect(bx, Yb + 2, 2, 22);
+              d.fillRect(X0 - 8, Yb + 22, ww + 16, 3);
+              b.fillStyle = '#d8d8d8';
+              b.fillRect(X0 - 8, Yb + 2, ww + 16, 3);
+              b.fillRect(X0 - 8, Yb + 22, ww + 16, 3);
+              b.fillRect(X0 - 10, Yb + 24, ww + 20, 6);
+            }
+          }
+          if (D.brick && c === 5) {     // escalier de secours en fer noir
+            d.fillStyle = '#14171c';
+            d.fillRect(x0 + 6, y0 + 104, 116, 5);                 // palier
+            d.fillRect(x0 + 6, y0 + 88, 116, 2);                  // garde-corps
+            d.strokeStyle = '#14171c'; d.lineWidth = 3;
+            d.beginPath(); d.moveTo(x0 + 14, y0 + 106); d.lineTo(x0 + 112, y0 - 20); d.stroke();   // volée d'escalier
+            d.lineWidth = 1.5;
+            for (let sx = 12; sx < 118; sx += 9) { d.beginPath(); d.moveTo(x0 + sx, y0 + 90); d.lineTo(x0 + sx, y0 + 104); d.stroke(); }
+            b.fillStyle = '#e0e0e0'; b.fillRect(x0 + 6, y0 + 104, 116, 5); b.fillRect(x0 + 6, y0 + 88, 116, 2);
+          }
+
+          // Dalle de plancher visible en façade
+          if (D.slab) {
+            d.fillStyle = 'rgba(0,0,0,0.2)'; d.fillRect(x0, y0 + 123, FAC_CELL, 5);
+            b.fillStyle = '#9c9c9c'; b.fillRect(x0, y0 + 123, FAC_CELL, 5);
+          }
+        }
+      }
+
+      // Grain du matériau + traînées de pluie
+      for (let i = 0; i < 9000; i++) {
+        d.fillStyle = R() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.06)';
+        d.fillRect(R() * SZ, R() * SZ, 1 + R() * 3, 1 + R() * 3);
+      }
+      for (let i = 0; i < 110; i++) {
+        d.fillStyle = 'rgba(0,0,0,0.05)';
+        d.fillRect(R() * SZ, R() * SZ, 2 + R() * 3, 60 + R() * 160);
+      }
+
+      const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1);
+      const tex = cv => {
+        const t = new THREE.CanvasTexture(cv);
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = aniso;
+        return t;
+      };
+      return { map: tex(cD), emissive: tex(cE), bump: tex(cB), rough: D.rough, metal: D.metal, env: D.env };
+    }
+
+    // Rez-de-chaussée : devantures de magasins éclairées, enseigne lumineuse, soubassement en pierre
+    function createStorefrontSet(signHex, glowHex) {
+      const W = 384, H = 512;
+      const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+      const cD = mk(), cE = mk(), cB = mk();
+      const d = cD.getContext('2d'), e = cE.getContext('2d'), b = cB.getContext('2d');
+
+      d.fillStyle = '#262b34'; d.fillRect(0, 0, W, H);
+      e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
+      b.fillStyle = '#808080'; b.fillRect(0, 0, W, H);
+
+      // Bandeau d'enseigne
+      d.fillStyle = '#12161d'; d.fillRect(0, 0, W, 76);
+      d.fillStyle = '#1d222b'; d.fillRect(26, 18, 332, 38);
+      d.fillStyle = 'rgba(255,255,255,0.08)'; d.fillRect(0, 74, W, 2);
+      e.fillStyle = signHex; e.globalAlpha = 0.95; e.fillRect(30, 22, 324, 30); e.globalAlpha = 1;
+      e.fillStyle = 'rgba(0,0,0,0.55)';
+      for (let x = 44; x < 330; x += 34) e.fillRect(x, 28, 18 + (x % 3) * 4, 18);   // lettrage
+      b.fillStyle = '#b0b0b0'; b.fillRect(26, 18, 332, 38);
+
+      // Vitrine
+      const gx = 22, gy = 96, gw = 340, gh = 358;
+      const g = d.createLinearGradient(0, gy, 0, gy + gh);
+      g.addColorStop(0, '#22384f'); g.addColorStop(1, '#0a121c');
+      d.fillStyle = g; d.fillRect(gx, gy, gw, gh);
+      const eg = e.createLinearGradient(0, gy, 0, gy + gh);
+      eg.addColorStop(0, '#ffe0ac'); eg.addColorStop(0.5, glowHex); eg.addColorStop(1, '#7a4012');
+      e.fillStyle = eg; e.fillRect(gx + 4, gy + 4, gw - 8, gh - 8);
+      // Rayonnages / produits en vitrine
+      e.fillStyle = 'rgba(0,0,0,0.5)';
+      for (let i = 0; i < 18; i++) {
+        const sw = 18 + (i * 37) % 34, sh = 22 + (i * 53) % 60;
+        e.fillRect(gx + 14 + (i * 61) % (gw - 70), gy + gh - 14 - sh - Math.floor(i / 6) * 100, sw, sh);
+      }
+      e.fillStyle = '#fff0d0'; e.globalAlpha = 0.6; e.fillRect(gx + 4, gy + 4, gw - 8, 8); e.globalAlpha = 1;   // néon de plafond
+      // Montants & traverse d'imposte
+      d.fillStyle = '#0c1016';
+      d.fillRect(gx - 4, gy - 4, gw + 8, 8);
+      d.fillRect(gx - 4, gy + gh - 4, gw + 8, 8);
+      d.fillRect(gx - 4, gy, 8, gh);
+      d.fillRect(gx + gw - 4, gy, 8, gh);
+      d.fillRect(W / 2 - 3, gy, 6, gh);
+      d.fillRect(gx, gy + 70, gw, 5);
+      e.fillStyle = '#000';
+      e.fillRect(W / 2 - 3, gy, 6, gh);
+      e.fillRect(gx, gy + 70, gw, 5);
+      b.fillStyle = '#484848'; b.fillRect(gx, gy, gw, gh);
+      b.fillStyle = '#d0d0d0'; b.fillRect(W / 2 - 3, gy, 6, gh); b.fillRect(gx, gy + 70, gw, 5);
+
+      // Soubassement en pierre
+      d.fillStyle = '#1b1f26'; d.fillRect(0, 462, W, 50);
+      d.fillStyle = 'rgba(255,255,255,0.07)'; d.fillRect(0, 462, W, 2);
+      b.fillStyle = '#9a9a9a'; b.fillRect(0, 462, W, 50);
+
+      const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1);
+      const tex = cv => {
+        const t = new THREE.CanvasTexture(cv);
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = aniso;
+        return t;
+      };
+      return { map: tex(cD), emissive: tex(cE), bump: tex(cB) };
+    }
+
+    // Gravier de toiture
+    function createRoofTexture() {
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 256;
+      const x = c.getContext('2d');
+      x.fillStyle = '#34373d'; x.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 5000; i++) {
+        const s = 40 + Math.floor(Math.random() * 40);
+        x.fillStyle = `rgba(${s},${s + 2},${s + 6},0.55)`;
+        x.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 1 + Math.random() * 2);
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    // Carte d'incendie : flammes qui sortent des fenêtres (remplace la carte de lumière sur les immeubles touchés)
+    function createFireMap() {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 512;
+      const x = c.getContext('2d');
+      x.fillStyle = '#000'; x.fillRect(0, 0, 512, 512);
+      for (let r = 0; r < 8; r++) {
+        for (let k = 0; k < 8; k++) {
+          if (Math.random() > 0.5) continue;
+          const cx = k * 64 + 32, cy = r * 64 + 36;
+          const up = x.createLinearGradient(0, cy, 0, cy - 90);   // langue de flamme / suie vers le haut
+          up.addColorStop(0, 'rgba(255,170,60,0.75)');
+          up.addColorStop(1, 'rgba(255,60,0,0)');
+          x.fillStyle = up;
+          x.fillRect(cx - 14, cy - 90, 28, 90);
+          const rg = x.createRadialGradient(cx, cy, 2, cx, cy, 34);
+          rg.addColorStop(0, 'rgba(255,255,220,1)');
+          rg.addColorStop(0.45, 'rgba(255,170,60,0.9)');
+          rg.addColorStop(1, 'rgba(255,60,0,0)');
+          x.fillStyle = rg;
+          x.fillRect(cx - 36, cy - 36, 72, 72);
+        }
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = THREE.RepeatWrapping;
+      return t;
+    }
+
+    // Géométrie de boîte dont les UV suivent l'échelle réelle des travées et des étages
+    function makeFacadeGeometry(w, h, dd, floors, du, dv) {
+      const g = new THREE.BoxGeometry(w, h, dd);
+      const uv = g.attributes.uv;
+      const bw = Math.round(w / BAY_W), bd = Math.round(dd / BAY_W);
+      const faceBays = [bd, bd, 0, 0, bw, bw];   // +x, -x, +y, -y, +z, -z
+      for (let f = 0; f < 6; f++) {
+        for (let i = 0; i < 4; i++) {
+          const idx = f * 4 + i;
+          let u = uv.getX(idx), v = uv.getY(idx);
+          if (f === 2 || f === 3) {
+            u = u * bw / FAC_TILE; v = v * bd / FAC_TILE;
+          } else {
+            u = u * faceBays[f] / FAC_TILE + du;
+            v = v * floors / FAC_TILE + dv;
+          }
+          uv.setXY(idx, u, v);
+        }
+      }
+      uv.needsUpdate = true;
+      return g;
+    }
+
+    // Géométrie du rez-de-chaussée : une devanture par travée
+    function makeStorefrontGeometry(w, h, dd) {
+      const g = new THREE.BoxGeometry(w, h, dd);
+      const uv = g.attributes.uv;
+      const bw = Math.round((w - 1.2) / BAY_W), bd = Math.round((dd - 1.2) / BAY_W);
+      const faceBays = [bd, bd, 1, 1, bw, bw];
+      for (let f = 0; f < 6; f++) {
+        for (let i = 0; i < 4; i++) {
+          const idx = f * 4 + i;
+          uv.setX(idx, uv.getX(idx) * faceBays[f]);
+        }
+      }
+      uv.needsUpdate = true;
+      return g;
+    }
+
+    // =========================================================================
+    // 2b. SOL RÉALISTE : chaussée en asphalte, trottoirs en dalles, caniveaux, passages piétons,
+    //     plaques d'égout, flaques qui reflètent le ciel, halos de lampadaires.
+    //     La tuile fait 22 m : son centre est la parcelle d'un immeuble, ses bords sont les axes des rues.
+    // =========================================================================
+    function createCityGroundSet() {
+      const S = 1024, B = 512;
+      const R = mulberry(4242);
+      const mk = n => { const c = document.createElement('canvas'); c.width = n; c.height = n; return c; };
+      const cD = mk(S), cB = mk(B), cR = mk(B);
+      const d = cD.getContext('2d'), b = cB.getContext('2d'), r = cR.getContext('2d');
+      b.scale(0.5, 0.5);
+      r.scale(0.5, 0.5);
+      const K = S / 22;                 // pixels par mètre
+      const ROAD = 2.2 * K;             // demi-largeur de chaussée
+      const WALK = 4.4 * K;             // limite extérieure du trottoir
+
+      const outside = new Path2D();
+      outside.rect(0, 0, S, S);
+      outside.rect(ROAD, ROAD, S - 2 * ROAD, S - 2 * ROAD);
+      const ring = new Path2D();
+      ring.rect(ROAD, ROAD, S - 2 * ROAD, S - 2 * ROAD);
+      ring.rect(WALK, WALK, S - 2 * WALK, S - 2 * WALK);
+
+      // Point aléatoire sur la chaussée
+      const roadPoint = () => {
+        const vertical = R() < 0.5;
+        const side = R() < 0.5;
+        const along = ROAD + 30 + R() * (S - 2 * ROAD - 60);
+        const across = side ? 12 + R() * (ROAD - 24) : S - ROAD + 12 + R() * (ROAD - 24);
+        return vertical ? { x: across, y: along, vertical } : { x: along, y: across, vertical };
+      };
+
+      // 1. Parvis / parcelle des immeubles
+      d.fillStyle = '#3b3f47'; d.fillRect(0, 0, S, S);
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      r.fillStyle = '#cdcdcd'; r.fillRect(0, 0, S, S);
+      d.strokeStyle = 'rgba(0,0,0,0.25)'; d.lineWidth = 2;
+      b.strokeStyle = '#606060'; b.lineWidth = 2;
+      for (let p = WALK; p < S - WALK; p += 2 * K) {
+        d.beginPath(); d.moveTo(p, WALK); d.lineTo(p, S - WALK); d.moveTo(WALK, p); d.lineTo(S - WALK, p); d.stroke();
+        b.beginPath(); b.moveTo(p, WALK); b.lineTo(p, S - WALK); b.moveTo(WALK, p); b.lineTo(S - WALK, p); b.stroke();
+      }
+
+      // 2. Asphalte
+      d.fillStyle = '#2a2d33'; d.fill(outside, 'evenodd');
+      r.fillStyle = '#e6e6e6'; r.fill(outside, 'evenodd');
+
+      d.save(); d.clip(outside, 'evenodd');
+      b.save(); b.clip(outside, 'evenodd');
+      // Granulat de l'enrobé
+      for (let i = 0; i < 16000; i++) {
+        const x = R() * S, y = R() * S, lightDot = R() > 0.5;
+        d.fillStyle = lightDot ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.14)';
+        d.fillRect(x, y, 1 + R() * 2, 1 + R() * 2);
+        b.fillStyle = lightDot ? '#9c9c9c' : '#686868';
+        b.fillRect(x, y, 2, 2);
+      }
+      // Traces d'usure des roues
+      for (const tx of [1.1 * K, S - 1.1 * K]) {
+        const g = d.createLinearGradient(tx - 18, 0, tx + 18, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        d.fillStyle = g; d.fillRect(tx - 18, ROAD, 36, S - 2 * ROAD);
+        const g2 = d.createLinearGradient(0, tx - 18, 0, tx + 18);
+        g2.addColorStop(0, 'rgba(0,0,0,0)'); g2.addColorStop(0.5, 'rgba(0,0,0,0.22)'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+        d.fillStyle = g2; d.fillRect(ROAD, tx - 18, S - 2 * ROAD, 36);
+      }
+      // Rapiéçages
+      for (let i = 0; i < 9; i++) {
+        const p = roadPoint();
+        d.fillStyle = R() > 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.035)';
+        d.fillRect(p.x - 30, p.y - 20, 50 + R() * 70, 40 + R() * 50);
+      }
+      // Fissures
+      for (let i = 0; i < 16; i++) {
+        const p = roadPoint();
+        d.strokeStyle = 'rgba(8,9,12,0.65)'; d.lineWidth = 1.3;
+        b.strokeStyle = '#404040'; b.lineWidth = 1.3;
+        let x = p.x, y = p.y;
+        d.beginPath(); d.moveTo(x, y); b.beginPath(); b.moveTo(x, y);
+        for (let s = 0; s < 5; s++) { x += (R() - 0.5) * 50; y += (R() - 0.5) * 50; d.lineTo(x, y); b.lineTo(x, y); }
+        d.stroke(); b.stroke();
+      }
+      d.restore();
+      b.restore();
+
+      // 3. Trottoir en dalles de béton
+      d.save(); d.clip(ring, 'evenodd');
+      b.save(); b.clip(ring, 'evenodd');
+      r.save(); r.clip(ring, 'evenodd');
+      const SL = 68;
+      for (let sx = 0; sx < S; sx += SL) {
+        for (let sy = 0; sy < S; sy += SL) {
+          const k = 0.88 + R() * 0.24;
+          d.fillStyle = `rgb(${Math.round(112 * k)},${Math.round(116 * k)},${Math.round(122 * k)})`;
+          d.fillRect(sx, sy, SL, SL);
+          d.fillStyle = 'rgba(0,0,0,0.38)'; d.fillRect(sx, sy, SL, 2); d.fillRect(sx, sy, 2, SL);
+          d.fillStyle = 'rgba(255,255,255,0.07)'; d.fillRect(sx + 2, sy + 2, SL - 2, 1);
+          b.fillStyle = '#4e4e4e'; b.fillRect(sx, sy, SL, 2); b.fillRect(sx, sy, 2, SL);
+          r.fillStyle = R() < 0.1 ? '#b0b0b0' : '#d4d4d4'; r.fillRect(sx + 2, sy + 2, SL - 2, SL - 2);
+        }
+      }
+      for (let i = 0; i < 320; i++) {   // taches, chewing-gums, poussière
+        d.fillStyle = R() > 0.3 ? 'rgba(0,0,0,0.13)' : 'rgba(210,200,180,0.08)';
+        d.fillRect(R() * S, R() * S, 2 + R() * 5, 2 + R() * 4);
+      }
+      d.restore(); b.restore(); r.restore();
+
+      // 4. Bordure de trottoir + caniveau
+      d.strokeStyle = 'rgba(0,0,0,0.55)'; d.lineWidth = 6;
+      d.strokeRect(ROAD - 6, ROAD - 6, S - 2 * ROAD + 12, S - 2 * ROAD + 12);
+      d.strokeStyle = '#8e9299'; d.lineWidth = 7;
+      d.strokeRect(ROAD, ROAD, S - 2 * ROAD, S - 2 * ROAD);
+      b.strokeStyle = '#e0e0e0'; b.lineWidth = 7;
+      b.strokeRect(ROAD, ROAD, S - 2 * ROAD, S - 2 * ROAD);
+      r.strokeStyle = '#bcbcbc'; r.lineWidth = 7;
+      r.strokeRect(ROAD, ROAD, S - 2 * ROAD, S - 2 * ROAD);
+
+      // 5. Équipements de voirie : plaques d'égout et avaloirs
+      for (let i = 0; i < 4; i++) {
+        const p = roadPoint();
+        d.fillStyle = '#1b1d21'; d.beginPath(); d.arc(p.x, p.y, 21, 0, Math.PI * 2); d.fill();
+        d.strokeStyle = '#3d4048'; d.lineWidth = 3; d.beginPath(); d.arc(p.x, p.y, 19, 0, Math.PI * 2); d.stroke();
+        d.lineWidth = 1.5;
+        for (let a = -2; a <= 2; a++) { d.beginPath(); d.moveTo(p.x - 15, p.y + a * 7); d.lineTo(p.x + 15, p.y + a * 7); d.stroke(); }
+        b.fillStyle = '#585858'; b.beginPath(); b.arc(p.x, p.y, 21, 0, Math.PI * 2); b.fill();
+        r.fillStyle = '#9a9a9a'; r.beginPath(); r.arc(p.x, p.y, 21, 0, Math.PI * 2); r.fill();
+      }
+      [[ROAD - 28, 380, 20, 60], [S - ROAD + 8, 640, 20, 60], [380, ROAD - 28, 60, 20], [640, S - ROAD + 8, 60, 20]].forEach(([gx, gy, gw, gh]) => {
+        d.fillStyle = '#121417'; d.fillRect(gx, gy, gw, gh);
+        d.strokeStyle = '#3a3d44'; d.lineWidth = 2;
+        for (let i = 4; i < Math.max(gw, gh); i += 7) {
+          d.beginPath();
+          if (gh > gw) { d.moveTo(gx, gy + i); d.lineTo(gx + gw, gy + i); } else { d.moveTo(gx + i, gy); d.lineTo(gx + i, gy + gh); }
+          d.stroke();
+        }
+        b.fillStyle = '#4a4a4a'; b.fillRect(gx, gy, gw, gh);
+      });
+
+      // 6. Marquage routier : axes en pointillés, passages piétons, lignes d'arrêt
+      const paint = (x, y, w, h) => {
+        d.fillStyle = 'rgba(224,218,198,0.84)'; d.fillRect(x, y, w, h);
+        b.fillStyle = '#8c8c8c'; b.fillRect(x, y, w, h);
+        r.fillStyle = '#a8a8a8'; r.fillRect(x, y, w, h);
+      };
+      for (let y = ROAD + 30; y < S - ROAD - 60; y += 120) { paint(0, y, 4, 60); paint(S - 4, y, 4, 60); }
+      for (let x = ROAD + 30; x < S - ROAD - 60; x += 120) { paint(x, 0, 60, 4); paint(x, S - 4, 60, 4); }
+      for (const xs of [8, S - ROAD + 8]) {            // passages piétons sur les rues verticales
+        for (let xx = xs; xx < xs + ROAD - 16; xx += 26) {
+          paint(xx, ROAD + 10, 14, 46);
+          paint(xx, S - ROAD - 56, 14, 46);
+        }
+        paint(xs - 2, ROAD + 62, ROAD - 12, 7);
+        paint(xs - 2, S - ROAD - 69, ROAD - 12, 7);
+      }
+      for (const ys of [8, S - ROAD + 8]) {            // passages piétons sur les rues horizontales
+        for (let yy = ys; yy < ys + ROAD - 16; yy += 26) {
+          paint(ROAD + 10, yy, 46, 14);
+          paint(S - ROAD - 56, yy, 46, 14);
+        }
+        paint(ROAD + 62, ys - 2, 7, ROAD - 12);
+        paint(S - ROAD - 69, ys - 2, 7, ROAD - 12);
+      }
+
+      // 7. Flaques d'eau (rugosité faible = reflets du ciel) et assombrissement du bitume mouillé
+      for (let i = 0; i < 14; i++) {
+        const p = roadPoint();
+        const rad = 24 + R() * 44;
+        const sy = 0.5 + R() * 0.4;
+        r.save();
+        r.translate(p.x, p.y); r.scale(1, sy);
+        const g = r.createRadialGradient(0, 0, rad * 0.15, 0, 0, rad);
+        g.addColorStop(0, 'rgb(14,14,14)'); g.addColorStop(0.65, 'rgb(38,38,38)'); g.addColorStop(1, 'rgba(230,230,230,0)');
+        r.fillStyle = g; r.beginPath(); r.arc(0, 0, rad, 0, Math.PI * 2); r.fill();
+        r.restore();
+        d.save();
+        d.translate(p.x, p.y); d.scale(1, sy);
+        const g2 = d.createRadialGradient(0, 0, rad * 0.15, 0, 0, rad);
+        g2.addColorStop(0, 'rgba(0,0,0,0.2)'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+        d.fillStyle = g2; d.beginPath(); d.arc(0, 0, rad, 0, Math.PI * 2); d.fill();
+        d.restore();
+      }
+
+      // 8. Halos de lumière des lampadaires aux coins des carrefours
+      d.globalCompositeOperation = 'lighter';
+      const LP = 3.3 * K;
+      [[LP, LP], [S - LP, LP], [LP, S - LP], [S - LP, S - LP]].forEach(([lx, ly]) => {
+        const g = d.createRadialGradient(lx, ly, 4, lx, ly, 3.4 * K);
+        g.addColorStop(0, 'rgba(255,205,130,0.24)');
+        g.addColorStop(1, 'rgba(255,205,130,0)');
+        d.fillStyle = g;
+        d.fillRect(lx - 3.4 * K, ly - 3.4 * K, 6.8 * K, 6.8 * K);
+      });
+      d.globalCompositeOperation = 'source-over';
+
+      const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1);
+      const tex = cv => {
+        const t = new THREE.CanvasTexture(cv);
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(50, 50);        // 50 tuiles de 22 m = 1100 m
+        t.anisotropy = aniso;
+        return t;
+      };
+      return { map: tex(cD), bump: tex(cB), rough: tex(cR) };
+    }
+
+    // =========================================================================
+    // 2c. TOITURES RÉALISTES (vues de haut) : membrane gravillonnée, chemin de circulation, siphons,
+    //     panneaux solaires, héliport, terrasse végétalisée
+    // =========================================================================
+    function createRoofSet() {
+      const S = 512;
+      const R = mulberry(555);
+      const mk = () => { const c = document.createElement('canvas'); c.width = S; c.height = S; return c; };
+      const cD = mk(), cB = mk();
+      const d = cD.getContext('2d'), b = cB.getContext('2d');
+      d.fillStyle = '#383c42'; d.fillRect(0, 0, S, S);
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      for (let i = 0; i < 9000; i++) {   // gravillons
+        const k = 50 + Math.floor(R() * 60);
+        d.fillStyle = `rgba(${k},${k + 2},${k + 6},0.6)`;
+        d.fillRect(R() * S, R() * S, 1 + R() * 2.2, 1 + R() * 2.2);
+        b.fillStyle = R() > 0.5 ? '#9a9a9a' : '#6a6a6a';
+        b.fillRect(R() * S, R() * S, 2, 2);
+      }
+      for (let x = 0; x < S; x += 32) {  // lés de membrane (1 m)
+        d.fillStyle = 'rgba(0,0,0,0.28)'; d.fillRect(x, 0, 2, S);
+        d.fillStyle = 'rgba(255,255,255,0.05)'; d.fillRect(x + 2, 0, 1, S);
+        b.fillStyle = '#6c6c6c'; b.fillRect(x, 0, 2, S);
+      }
+      // Chemin de circulation en dalles claires (maintenance)
+      d.fillStyle = '#6f747d'; d.fillRect(S / 2 - 19, 0, 38, S);
+      b.fillStyle = '#9a9a9a'; b.fillRect(S / 2 - 19, 0, 38, S);
+      for (let y = 0; y < S; y += 38) {
+        d.fillStyle = 'rgba(0,0,0,0.35)'; d.fillRect(S / 2 - 19, y, 38, 2);
+        b.fillStyle = '#505050'; b.fillRect(S / 2 - 19, y, 38, 2);
+      }
+      // Rapiéçages bitumineux et taches d'eau
+      for (let i = 0; i < 10; i++) {
+        d.fillStyle = R() > 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.04)';
+        d.fillRect(R() * S, R() * S, 30 + R() * 70, 20 + R() * 50);
+      }
+      // Siphons d'évacuation
+      [[110, 140], [400, 380]].forEach(([x, y]) => {
+        d.fillStyle = '#16181c'; d.beginPath(); d.arc(x, y, 12, 0, Math.PI * 2); d.fill();
+        d.strokeStyle = '#4a4f58'; d.lineWidth = 2; d.beginPath(); d.arc(x, y, 12, 0, Math.PI * 2); d.stroke();
+        b.fillStyle = '#505050'; b.beginPath(); b.arc(x, y, 12, 0, Math.PI * 2); b.fill();
+      });
+      const tex = cv => {
+        const t = new THREE.CanvasTexture(cv);
+        t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
+        return t;
+      };
+      return { map: tex(cD), bump: tex(cB) };
+    }
+
+    function createSolarTexture() {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 256, 256);
+      g.addColorStop(0, '#16407a'); g.addColorStop(1, '#0a1f45');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = 'rgba(200,215,235,0.7)'; x.lineWidth = 2;
+      for (let i = 0; i <= 256; i += 32) {
+        x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); x.stroke();
+      }
+      x.strokeStyle = 'rgba(200,215,235,0.25)'; x.lineWidth = 1;
+      for (let i = 16; i < 256; i += 32) {
+        x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); x.stroke();
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    function createHelipadTextures() {
+      const mk = () => { const c = document.createElement('canvas'); c.width = 256; c.height = 256; return c; };
+      const cD = mk(), cE = mk();
+      const d = cD.getContext('2d'), e = cE.getContext('2d');
+      d.fillStyle = '#2b2f36'; d.beginPath(); d.arc(128, 128, 126, 0, Math.PI * 2); d.fill();
+      d.strokeStyle = '#e8e6df'; d.lineWidth = 9; d.beginPath(); d.arc(128, 128, 108, 0, Math.PI * 2); d.stroke();
+      d.fillStyle = '#e8e6df'; d.font = 'bold 130px Arial, sans-serif'; d.textAlign = 'center'; d.textBaseline = 'middle';
+      d.fillText('H', 128, 136);
+      e.fillStyle = '#000'; e.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 24; i++) {   // balisage lumineux ambré
+        const a = i / 24 * Math.PI * 2;
+        e.fillStyle = '#ffb347';
+        e.beginPath(); e.arc(128 + Math.cos(a) * 119, 128 + Math.sin(a) * 119, 4.5, 0, Math.PI * 2); e.fill();
+      }
+      return { map: new THREE.CanvasTexture(cD), emissive: new THREE.CanvasTexture(cE) };
+    }
+
+    function createGrassTexture() {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+      const x = c.getContext('2d');
+      x.fillStyle = '#2f5a2a'; x.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 2600; i++) {
+        const k = Math.random();
+        x.fillStyle = k > 0.5 ? 'rgba(90,150,70,0.5)' : 'rgba(20,50,20,0.5)';
+        x.fillRect(Math.random() * 128, Math.random() * 128, 1, 2 + Math.random() * 2);
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    // Dalle de toiture dont les UV suivent l'échelle réelle (16 m par tuile)
+    function makeRoofDeckGeometry(w, dd) {
+      const g = new THREE.BoxGeometry(w, 0.12, dd);
+      const uv = g.attributes.uv;
+      for (let i = 8; i < 12; i++) uv.setXY(i, uv.getX(i) * w / 16, uv.getY(i) * dd / 16);   // face du dessus
+      uv.needsUpdate = true;
+      return g;
+    }
+
+    // =========================================================================
+    // 2b. TEXTURES DU SOL (anciennes, inutilisées)
+    // =========================================================================
+    function createCityGridTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      // Asphalte urbain réaliste
+      ctx.fillStyle = '#141923';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Grain d'enrobé et micro-fissures
+      for (let i = 0; i < 9000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const shade = Math.floor(16 + Math.random() * 24);
+        ctx.fillStyle = `rgb(${shade}, ${shade + 3}, ${shade + 8})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+
+      // Trottoirs le long des axes urbains (tous les 128 px)
+      for (let pos = 0; pos < 512; pos += 128) {
+        // Trottoir horizontal
+        ctx.fillStyle = '#262f3f';
+        ctx.fillRect(0, pos, 512, 24);
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(0, pos, 512, 2);
+        ctx.fillRect(0, pos + 22, 512, 2);
+
+        // Trottoir vertical
+        ctx.fillStyle = '#262f3f';
+        ctx.fillRect(pos, 0, 24, 512);
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(pos, 0, 2, 512);
+        ctx.fillRect(pos + 22, 0, 2, 512);
+
+        // Marquage central de chaussée en pointillés
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 12]);
+        ctx.beginPath();
+        ctx.moveTo(0, pos + 76);
+        ctx.lineTo(512, pos + 76);
+        ctx.moveTo(pos + 76, 0);
+        ctx.lineTo(pos + 76, 512);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Passages piétons réalistes aux intersections
+        for (let inter = 0; inter < 512; inter += 128) {
+          ctx.fillStyle = 'rgba(226, 232, 240, 0.52)';
+          for (let stripe = 0; stripe < 4; stripe++) {
+            ctx.fillRect(inter + 28 + stripe * 5, pos + 32, 2.5, 14);
+            ctx.fillRect(inter + 28 + stripe * 5, pos + 104, 2.5, 14);
+            ctx.fillRect(pos + 32, inter + 28 + stripe * 5, 14, 2.5);
+            ctx.fillRect(pos + 104, inter + 28 + stripe * 5, 14, 2.5);
+          }
+        }
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(16, 16);
+      return tex;
+    }
+
+    function createCityGridTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      // Base de rue piétonne futuriste (dalles en pierre sombre & bandes lumineuses intégrées)
+      ctx.fillStyle = '#0c1324';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Pavage piéton géométrique
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+      ctx.lineWidth = 1;
+      for (let p = 0; p < 512; p += 32) {
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, 512);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(512, p);
+        ctx.stroke();
+      }
+
+      // Allées piétonnes principales et bordures néon cyan/violet
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.42)';
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i <= 512; i += 128) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, 512);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(512, i);
+        ctx.stroke();
+      }
+
+      // Passages et bandes de guidage piétonnier lumineuses
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.18)';
+      for (let gx = 0; gx < 512; gx += 128) {
+        for (let gy = 0; gy < 512; gy += 128) {
+          ctx.fillRect(gx + 16, gy + 16, 96, 96);
+        }
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(22, 22);
+      return tex;
+    }
+
+    // =========================================================================
+    // 3. INITIALISATION DE LA SCÈNE 3D, LUMIÈRES & CAMÉRAS
+    // =========================================================================
+    const canvas = document.getElementById('gameCanvas');
+
+    function showErrorBox(msg) {
+      const box = document.createElement('div');
+      box.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 text-sky-100';
+      box.innerHTML = `<div class="max-w-md rounded-2xl border border-sky-400/50 bg-[#0a1329] p-5 text-center space-y-2">
+        <div class="font-cyber font-bold text-base text-sky-300">Aperçu 3D indisponible</div>
+        <p class="text-xs text-sky-100/80">${msg}</p>
+      </div>`;
+      document.body.appendChild(box);
+    }
+
+    if (!window.THREE) {
+      showErrorBox('Three.js n\'a pas pu se charger.');
+      throw new Error('THREE missing');
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    } catch (e) {
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+      } catch (e2) {
+        showErrorBox('WebGL n\'est pas disponible dans cet environnement.');
+        throw e2;
+      }
+    }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050917);
+    scene.fog = new THREE.FogExp2(0x081024, 0.0024);
+
+    // Champ d'étoiles lointaines dans le ciel nocturne de la ville
+    const starPositions = [];
+    for (let s = 0; s < 900; s++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 360 + Math.random() * 240;
+      const sy = 55 + Math.random() * 260;
+      starPositions.push(Math.cos(ang) * dist, sy, Math.sin(ang) * dist);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+    const starPoints = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({ color: 0xe2e8f0, size: 1.8, transparent: true, opacity: 0.72 })
+    );
+    scene.add(starPoints);
+
+    const camera = new THREE.PerspectiveCamera(56, window.innerWidth / window.innerHeight, 0.5, 1400);
+    camera.position.set(0, 92, 165);
+
+    const controls = THREE.OrbitControls
+      ? new THREE.OrbitControls(camera, renderer.domElement)
+      : {
+          enableDamping: false,
+          dampingFactor: 0.06,
+          minDistance: 25,
+          maxDistance: 420,
+          maxPolarAngle: Math.PI * 0.47,
+          target: new THREE.Vector3(0, 18, 0),
+          update() {}
+        };
+    if (THREE.OrbitControls) {
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.minDistance = 25;
+      controls.maxDistance = 420;
+      controls.maxPolarAngle = Math.PI * 0.47;
+      controls.target.set(0, 18, 0);
+    }
+
+    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x1e1b4b, 0.85);
+    scene.add(hemiLight);
+
+    const moonLight = new THREE.DirectionalLight(0xbae6fd, 1.35);
+    moonLight.position.set(110, 180, 120);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.set(2048, 2048);
+    const sd = 140;
+    moonLight.shadow.camera.left = -sd;
+    moonLight.shadow.camera.right = sd;
+    moonLight.shadow.camera.top = sd;
+    moonLight.shadow.camera.bottom = -sd;
+    moonLight.shadow.camera.far = 520;
+    scene.add(moonLight);
+
+    const fireLight = new THREE.PointLight(0xff5500, 0, 260, 1.5);
+    fireLight.position.set(0, 35, 0);
+    scene.add(fireLight);
+
+
+    // =========================================================================
+    // 4. VILLE TOTALEMENT FUTURISTE (TOURS NÉON, ANNEAUX, DÔMES, VÉHICULES VOLANTS)
+    // =========================================================================
+    const cityGroup = new THREE.Group();
+    scene.add(cityGroup);
+
+    const ACCENTS = ['#38bdf8', '#a855f7', '#2dd4bf', '#f472b6', '#fbbf24'];
+    // Reflets de ciel nocturne pour le verre et les métaux (carte d'environnement locale aux immeubles)
+    let envTex = null;
+    try {
+      const envScene = new THREE.Scene();
+      const skyGeo = new THREE.SphereGeometry(60, 32, 16);
+      const skyCols = [];
+      const skyPos = skyGeo.attributes.position;
+      const cZen = new THREE.Color(0x050a1a), cMid = new THREE.Color(0x1b3a6b), cHor = new THREE.Color(0x8a5a86), cGnd = new THREE.Color(0x0b0e18);
+      for (let i = 0; i < skyPos.count; i++) {
+        const yy = skyPos.getY(i) / 60;
+        const col = new THREE.Color();
+        if (yy >= 0) {
+          if (yy < 0.35) col.copy(cHor).lerp(cMid, yy / 0.35);
+          else col.copy(cMid).lerp(cZen, Math.min(1, (yy - 0.35) / 0.65));
+        } else {
+          col.copy(cHor).lerp(cGnd, Math.min(1, -yy / 0.25));
+        }
+        skyCols.push(col.r, col.g, col.b);
+      }
+      skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyCols, 3));
+      envScene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      const envMoon = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      envMoon.position.set(28, 46, 31);
+      envScene.add(envMoon);
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      envTex = pmrem.fromScene(envScene, 0.03).texture;
+      pmrem.dispose();
+    } catch (err) {
+      envTex = null;
+    }
+
+    const FACADE_SETS = {
+      glass: createFacadeSet('glass', 11),
+      concrete: createFacadeSet('concrete', 23),
+      brick: createFacadeSet('brick', 37),
+      steel: createFacadeSet('steel', 51),
+      stone: createFacadeSet('stone', 67),
+      bands: createFacadeSet('bands', 83)
+    };
+
+    const STOREFRONT_MATS = [
+      ['#38bdf8', '#ffd9a0'], ['#f472b6', '#ffe0b0'], ['#fbbf24', '#ffd0a0'], ['#34d399', '#ffe6b8']
+    ].map(([sign, glow]) => {
+      const sf = createStorefrontSet(sign, glow);
+      return new THREE.MeshStandardMaterial({
+        map: sf.map, emissiveMap: sf.emissive, emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.8,
+        bumpMap: sf.bump, bumpScale: 1.2, roughness: 0.5, metalness: 0.25, envMap: envTex, envMapIntensity: 0.6
+      });
+    });
+
+    const roofSet = createRoofSet();
+    const solarMat = new THREE.MeshStandardMaterial({ map: createSolarTexture(), roughness: 0.25, metalness: 0.5, envMap: envTex, envMapIntensity: 1.1 });
+    const helipadTex = createHelipadTextures();
+    const helipadMat = new THREE.MeshStandardMaterial({ map: helipadTex.map, emissive: new THREE.Color(0xffffff), emissiveMap: helipadTex.emissive, emissiveIntensity: 1.2, roughness: 0.8 });
+    const grassMat = new THREE.MeshStandardMaterial({ map: createGrassTexture(), roughness: 1.0 });
+    const ROOF_MATS = {
+      concrete: new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.9, metalness: 0.05 }),
+      deck: new THREE.MeshStandardMaterial({ map: roofSet.map, bumpMap: roofSet.bump, bumpScale: 1.5, roughness: 0.95, metalness: 0.02 }),
+      metal: new THREE.MeshStandardMaterial({ color: 0x59616d, roughness: 0.5, metalness: 0.6 }),
+      dark: new THREE.MeshStandardMaterial({ color: 0x1f242b, roughness: 0.7, metalness: 0.4 }),
+      tank: new THREE.MeshStandardMaterial({ color: 0x6a4d38, roughness: 0.85, metalness: 0.05 }),
+      belt: new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.8, metalness: 0.15 })
+    };
+    const beaconMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: new THREE.Color(0xff2020), emissiveIntensity: 0.2 });
+    const FIRE_MAP = createFireMap();
+
+    // Sol réaliste : chaussée, trottoirs, passages piétons, flaques réfléchissantes
+    const groundSet = createCityGroundSet();
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1100, 1100),
+      new THREE.MeshStandardMaterial({
+        map: groundSet.map,
+        bumpMap: groundSet.bump,
+        bumpScale: 1.4,
+        roughnessMap: groundSet.rough,
+        roughness: 1.0,
+        metalness: 0.0,
+        envMap: envTex,
+        envMapIntensity: 0.9
+      })
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // Lampadaires aux quatre coins de chaque carrefour (rendu instancié : 2 appels de dessin au total)
+    const lampSpots = [];
+    for (let ix = -5; ix <= 4; ix++) {
+      for (let iz = -5; iz <= 4; iz++) {
+        const cx = 11 + ix * 22, cz = 11 + iz * 22;
+        if (Math.hypot(cx, cz) > 130) continue;
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) lampSpots.push([cx + sx * 3.3, cz + sz * 3.3, sx, sz]);
+      }
+    }
+    const lampPoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.1, 6.2, 8), ROOF_MATS.dark, lampSpots.length);
+    const lampHeads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.12, 0.38), new THREE.MeshBasicMaterial({ color: 0xffe6b8 }), lampSpots.length);
+    const lampDummy = new THREE.Object3D();
+    lampSpots.forEach(([lx, lz, sx, sz], i) => {
+      lampDummy.position.set(lx, 3.1, lz);
+      lampDummy.rotation.set(0, 0, 0);
+      lampDummy.updateMatrix();
+      lampPoles.setMatrixAt(i, lampDummy.matrix);
+      lampDummy.position.set(lx - sx * 0.4, 6.2, lz - sz * 0.4);   // la tête de lampe s'avance vers le carrefour
+      lampDummy.rotation.set(0, Math.PI / 4 * (sx * sz), 0);
+      lampDummy.updateMatrix();
+      lampHeads.setMatrixAt(i, lampDummy.matrix);
+    });
+    lampPoles.instanceMatrix.needsUpdate = true;
+    lampHeads.instanceMatrix.needsUpdate = true;
+    scene.add(lampPoles);
+    scene.add(lampHeads);
+
+    // Équipements de toiture : acrotère, gravier, groupes de climatisation, local ascenseur, citerne, antenne
+    function addRoofDetails(group, w, d, yTop, withAntenna) {
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.9, d + 0.3), ROOF_MATS.concrete);
+      parapet.position.y = yTop + 0.45;
+      group.add(parapet);
+      const deck = new THREE.Mesh(makeRoofDeckGeometry(w - 0.8, d - 0.8), ROOF_MATS.deck);
+      deck.position.y = yTop + 0.92;
+      deck.receiveShadow = true;
+      group.add(deck);
+      const topY = yTop + 0.98;
+      const spanX = Math.max(0.5, w - 3.4), spanZ = Math.max(0.5, d - 3.4);
+
+      // Héliport sur certaines grandes tours (balisage lumineux ambré)
+      if (withAntenna && w >= 10.8 && yTop > 62 && Math.random() < 0.35) {
+        const pad = new THREE.Mesh(new THREE.CircleGeometry(Math.min(w, d) * 0.36, 40), helipadMat);
+        pad.rotation.x = -Math.PI / 2;
+        pad.position.y = topY + 0.03;
+        group.add(pad);
+        const cb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), beaconMat);   // balise sur l'acrotère
+        cb.position.set(w / 2 - 0.3, yTop + 1.2, d / 2 - 0.3);
+        group.add(cb);
+        return topY;
+      }
+
+      // Groupes de climatisation avec ventilateur
+      const nHvac = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < nHvac; i++) {
+        const hx = (Math.random() - 0.5) * spanX, hz = (Math.random() - 0.5) * spanZ;
+        const hv = new THREE.Mesh(new THREE.BoxGeometry(1.5 + Math.random() * 1.1, 1.0, 1.2 + Math.random() * 0.7), ROOF_MATS.metal);
+        hv.position.set(hx, topY + 0.5, hz);
+        group.add(hv);
+        const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 14), ROOF_MATS.dark);
+        fan.position.set(hx, topY + 1.03, hz);
+        group.add(fan);
+      }
+      if (Math.random() < 0.6) {
+        const lift = new THREE.Mesh(new THREE.BoxGeometry(w * 0.28, 2.4, d * 0.26), ROOF_MATS.belt);
+        lift.position.set((Math.random() - 0.5) * spanX * 0.6, topY + 1.2, (Math.random() - 0.5) * spanZ * 0.6);
+        group.add(lift);
+      }
+      if (Math.random() < 0.3) {
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.0, 14), ROOF_MATS.tank);
+        tank.position.set((Math.random() - 0.5) * spanX, topY + 1.0, (Math.random() - 0.5) * spanZ);
+        group.add(tank);
+      }
+      // Champ de panneaux solaires incliné
+      if (Math.random() < 0.3) {
+        const sol = new THREE.Mesh(new THREE.BoxGeometry(Math.max(2, w * 0.5), 0.08, Math.max(2, d * 0.28)), solarMat);
+        sol.position.set((Math.random() - 0.5) * spanX * 0.4, topY + 0.55, (Math.random() - 0.5) * spanZ * 0.5);
+        sol.rotation.x = -0.28;
+        group.add(sol);
+      }
+      // Terrasse végétalisée
+      if (Math.random() < 0.15) {
+        const grass = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(2, w * 0.42), Math.max(2, d * 0.42)), grassMat);
+        grass.rotation.x = -Math.PI / 2;
+        grass.position.set((Math.random() - 0.5) * spanX * 0.5, topY + 0.04, (Math.random() - 0.5) * spanZ * 0.5);
+        group.add(grass);
+      }
+      if (withAntenna) {
+        const mh = 5 + Math.random() * 4;
+        const ax = (Math.random() - 0.5) * spanX * 0.5, az = (Math.random() - 0.5) * spanZ * 0.5;
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, mh, 6), ROOF_MATS.dark);
+        mast.position.set(ax, topY + mh / 2, az);
+        group.add(mast);
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), beaconMat);
+        beacon.position.set(ax, topY + mh + 0.2, az);
+        group.add(beacon);
+      }
+      return topY;
+    }
+
+    const buildings = [];
+    const flyingCars = [];
+    const pedestrians = [];
+    const skyways = [];
+
+    // --- Voitures volantes réalistes : carrosserie métallisée vernie, vitres teintées,
+    //     phares / feux arrière, 4 hélices carénées qui tournent, feux de navigation et flash anticollision ---
+    const CAR_PAINTS = [0xf1f5f9, 0x0f1115, 0x9aa1ab, 0x8b1c1c, 0x1d3a7a, 0x1f4d2e, 0x6b4a2b].map(c =>
+      new THREE.MeshPhysicalMaterial({
+        color: c, metalness: 0.65, roughness: 0.3,
+        clearcoat: 1, clearcoatRoughness: 0.1,
+        envMap: envTex, envMapIntensity: 1.0
+      })
+    );
+    const CAR_GLASS = new THREE.MeshPhysicalMaterial({ color: 0x070b12, metalness: 0.9, roughness: 0.06, envMap: envTex, envMapIntensity: 1.8 });
+    const CAR_PLASTIC = new THREE.MeshStandardMaterial({ color: 0x0b0d11, roughness: 0.7, metalness: 0.2 });
+    const CAR_METAL = new THREE.MeshStandardMaterial({ color: 0x4b5260, roughness: 0.35, metalness: 0.8 });
+    const CAR_HEAD = new THREE.MeshBasicMaterial({ color: 0xfff6dc });
+    const CAR_TAIL = new THREE.MeshBasicMaterial({ color: 0xff1d1d });
+    const NAV_RED = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+    const NAV_GREEN = new THREE.MeshBasicMaterial({ color: 0x22ff66 });
+    const strobeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    let CAR_GEO = null;
+
+    function getCarGeometry() {
+      if (CAR_GEO) return CAR_GEO;
+      const centerX = g => {
+        g.computeBoundingBox();
+        const c = new THREE.Vector3();
+        g.boundingBox.getCenter(c);
+        g.translate(-c.x, 0, 0);
+        return g;
+      };
+
+      // Profil de carrosserie vu de côté (berline profilée), extrudé sur la largeur puis couché le long de l'axe avant (+z)
+      const body = new THREE.Shape();
+      body.moveTo(-2.45, 0.12);
+      body.lineTo(-2.5, 0.5);
+      body.quadraticCurveTo(-2.5, 0.78, -2.1, 0.8);
+      body.lineTo(0.8, 0.86);
+      body.quadraticCurveTo(1.9, 0.82, 2.35, 0.52);
+      body.quadraticCurveTo(2.5, 0.4, 2.45, 0.15);
+      body.lineTo(2.2, 0.1);
+      body.lineTo(-2.2, 0.1);
+      body.closePath();
+      const bodyGeo = new THREE.ExtrudeGeometry(body, { depth: 1.7, bevelEnabled: true, bevelThickness: 0.12, bevelSize: 0.1, bevelSegments: 3, curveSegments: 10 });
+      bodyGeo.rotateY(-Math.PI / 2);
+      centerX(bodyGeo);
+
+      // Habitacle vitré
+      const cab = new THREE.Shape();
+      cab.moveTo(-1.45, 0.84);
+      cab.lineTo(-0.85, 1.34);
+      cab.quadraticCurveTo(-0.2, 1.5, 0.45, 1.36);
+      cab.lineTo(1.1, 0.86);
+      cab.closePath();
+      const cabGeo = new THREE.ExtrudeGeometry(cab, { depth: 1.5, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.05, bevelSegments: 2, curveSegments: 8 });
+      cabGeo.rotateY(-Math.PI / 2);
+      centerX(cabGeo);
+
+      CAR_GEO = {
+        body: bodyGeo,
+        cabin: cabGeo,
+        ring: new THREE.TorusGeometry(0.52, 0.07, 8, 20),
+        blade: new THREE.BoxGeometry(1.0, 0.025, 0.09),
+        beam: new THREE.BoxGeometry(3.3, 0.09, 0.22),
+        skirt: new THREE.BoxGeometry(1.9, 0.12, 4.7),
+        head: new THREE.BoxGeometry(1.5, 0.07, 0.05),
+        tail: new THREE.BoxGeometry(1.7, 0.07, 0.05),
+        nav: new THREE.SphereGeometry(0.09, 6, 4)
+      };
+      return CAR_GEO;
+    }
+
+    function createFlyingCarMesh(accentHex, paintIdx = 0) {
+      const G = getCarGeometry();
+      const car = new THREE.Group();
+
+      const body = new THREE.Mesh(G.body, CAR_PAINTS[paintIdx % CAR_PAINTS.length]);
+      body.castShadow = true;
+      car.add(body);
+      car.add(new THREE.Mesh(G.cabin, CAR_GLASS));
+
+      const skirt = new THREE.Mesh(G.skirt, CAR_PLASTIC);
+      skirt.position.set(0, 0.08, 0);
+      car.add(skirt);
+
+      const head = new THREE.Mesh(G.head, CAR_HEAD);
+      head.position.set(0, 0.52, 2.56);
+      car.add(head);
+      const tail = new THREE.Mesh(G.tail, CAR_TAIL);
+      tail.position.set(0, 0.58, -2.62);
+      car.add(tail);
+
+      // Quatre hélices carénées montées sur deux poutres
+      const rotors = [];
+      [1.45, -1.45].forEach(fz => {
+        const beam = new THREE.Mesh(G.beam, CAR_METAL);
+        beam.position.set(0, 0.45, fz);
+        car.add(beam);
+      });
+      [[-1.55, 1.45], [1.55, 1.45], [-1.55, -1.45], [1.55, -1.45]].forEach(([fx, fz]) => {
+        const ring = new THREE.Mesh(G.ring, CAR_METAL);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(fx, 0.5, fz);
+        car.add(ring);
+        const blade = new THREE.Mesh(G.blade, CAR_PLASTIC);
+        blade.position.set(fx, 0.5, fz);
+        blade.rotation.y = Math.random() * Math.PI;
+        car.add(blade);
+        rotors.push(blade);
+      });
+
+      // Feux de navigation (rouge à gauche, vert à droite) + flash anticollision sur le toit
+      const navL = new THREE.Mesh(G.nav, NAV_RED);
+      navL.position.set(-2.12, 0.5, 1.45);
+      car.add(navL);
+      const navR = new THREE.Mesh(G.nav, NAV_GREEN);
+      navR.position.set(2.12, 0.5, 1.45);
+      car.add(navR);
+      const strobe = new THREE.Mesh(G.nav, strobeMat);
+      strobe.position.set(0, 1.5, -0.3);
+      car.add(strobe);
+
+      car.userData.rotors = rotors;
+      car.scale.setScalar(1.1);
+      return car;
+    }
+
+    // --- Piétons réalistes : proportions humaines (1,75 m), visage texturé, vêtements variés,
+    //     accessoires, jambes articulées aux genoux ---
+    const SKIN_TONES = ['#f1c9a5', '#e6b48e', '#d19a73', '#b87a52', '#8d5a3a', '#5e3b26'];
+    const HAIR_TONES = ['#1a1410', '#2e2018', '#4a3020', '#7a5230', '#b58b4c', '#8a8a8a', '#c8c0b0'];
+    const TOP_COLORS = [0x1f2a44, 0x2b2f36, 0x6b7280, 0x556b4a, 0xc9b99a, 0x8a1f2d, 0xe8e4da, 0x3b5b7a, 0xb88a2a, 0x2f4f3f];
+    const PANTS_COLORS = [0x2a3550, 0x1c2230, 0x3b3f46, 0x6a5a45, 0x1a1a1a, 0x4a5a78];
+    const SHOE_COLORS = [0x111111, 0x2a1f18, 0xe5e5e5, 0x333a44];
+    const PACK_COLORS = [0x1a1d22, 0x2f3b52, 0x6b2d2d, 0x3d4a38];
+
+    const PED_SKIN_MATS = SKIN_TONES.map(c => new THREE.MeshStandardMaterial({ color: new THREE.Color(c), roughness: 0.6 }));
+    const PED_TOP_MATS = TOP_COLORS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+    const PED_PANTS_MATS = PANTS_COLORS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
+    const PED_SHOE_MATS = SHOE_COLORS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
+    const PED_PACK_MATS = PACK_COLORS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+    const pedFaceMats = {};
+
+    // Visage + coiffure peints sur une sphère (le visage est à u = 0,25 : face avant)
+    function pedFaceMaterial(skinIdx, hairIdx) {
+      const key = skinIdx + '-' + hairIdx;
+      if (pedFaceMats[key]) return pedFaceMats[key];
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 128;
+      const x = c.getContext('2d');
+      x.scale(2, 2);
+      x.fillStyle = SKIN_TONES[skinIdx]; x.fillRect(0, 0, 128, 64);
+      x.fillStyle = HAIR_TONES[hairIdx];
+      x.fillRect(0, 0, 128, 16);            // dessus du crâne
+      x.fillRect(54, 0, 74, 40);            // arrière et côtés de la tête
+      x.fillRect(0, 0, 8, 36);
+      x.beginPath();                        // frange / racine des cheveux
+      x.moveTo(8, 0); x.lineTo(8, 22); x.lineTo(20, 15); x.lineTo(32, 19); x.lineTo(44, 14); x.lineTo(54, 22); x.lineTo(54, 0); x.fill();
+      // Yeux, sourcils, nez, bouche
+      x.fillStyle = '#f2eee8';
+      x.beginPath(); x.ellipse(25, 30, 3.6, 2.2, 0, 0, Math.PI * 2); x.ellipse(39, 30, 3.6, 2.2, 0, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#2a1d16';
+      x.beginPath(); x.arc(25.5, 30, 1.6, 0, Math.PI * 2); x.arc(39.5, 30, 1.6, 0, Math.PI * 2); x.fill();
+      x.strokeStyle = HAIR_TONES[hairIdx]; x.lineWidth = 1.6;
+      x.beginPath(); x.moveTo(21, 25); x.lineTo(29, 24.5); x.moveTo(35, 24.5); x.lineTo(43, 25); x.stroke();
+      x.fillStyle = 'rgba(80,40,25,0.28)'; x.fillRect(31, 33, 2, 6);            // nez
+      x.fillStyle = '#a4504a'; x.fillRect(28, 45, 8, 2.2);                      // bouche
+      x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(29, 47.5, 6, 1);
+      const tex = new THREE.CanvasTexture(c);
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+      pedFaceMats[key] = mat;
+      return mat;
+    }
+
+    let PED_GEO = null;
+    function getPedGeometry() {
+      if (PED_GEO) return PED_GEO;
+      PED_GEO = {
+        torso: new THREE.CylinderGeometry(0.2, 0.17, 0.6, 14),
+        sleeve: new THREE.CylinderGeometry(0.052, 0.042, 0.62, 8),
+        sleeveShort: new THREE.CylinderGeometry(0.06, 0.054, 0.22, 8),
+        hand: new THREE.SphereGeometry(0.05, 8, 6),
+        neck: new THREE.CylinderGeometry(0.05, 0.055, 0.12, 8),
+        thigh: new THREE.CylinderGeometry(0.098, 0.074, 0.47, 10),
+        shin: new THREE.CylinderGeometry(0.07, 0.048, 0.45, 10),
+        shoe: new THREE.BoxGeometry(0.11, 0.075, 0.27),
+        head: new THREE.SphereGeometry(0.115, 16, 12),
+        cap: new THREE.SphereGeometry(0.124, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45),
+        pack: new THREE.BoxGeometry(0.3, 0.4, 0.15),
+        bag: new THREE.BoxGeometry(0.1, 0.22, 0.28)
+      };
+      return PED_GEO;
+    }
+
+    function createPedestrianMesh() {
+      const G = getPedGeometry();
+      const person = new THREE.Group();
+      const rnd = n => Math.floor(Math.random() * n);
+
+      const skinIdx = rnd(SKIN_TONES.length);
+      const hairIdx = rnd(HAIR_TONES.length);
+      const skinMat = PED_SKIN_MATS[skinIdx];
+      const topMat = PED_TOP_MATS[rnd(PED_TOP_MATS.length)];
+      const pantsMat = PED_PANTS_MATS[rnd(PED_PANTS_MATS.length)];
+      const shoeMat = PED_SHOE_MATS[rnd(PED_SHOE_MATS.length)];
+      const shorts = Math.random() < 0.12;
+      const shortSleeve = Math.random() < 0.25;
+      const HIP = 0.95;
+
+      const makeLeg = x => {
+        const leg = new THREE.Group();
+        leg.position.set(x, HIP, 0);
+        const thigh = new THREE.Mesh(G.thigh, pantsMat);
+        thigh.position.y = -0.235;
+        leg.add(thigh);
+        const knee = new THREE.Group();
+        knee.position.y = -0.47;
+        leg.add(knee);
+        const shin = new THREE.Mesh(G.shin, shorts ? skinMat : pantsMat);
+        shin.position.y = -0.225;
+        knee.add(shin);
+        const shoe = new THREE.Mesh(G.shoe, shoeMat);
+        shoe.position.set(0, -0.455, 0.06);
+        knee.add(shoe);
+        person.add(leg);
+        return { leg, knee };
+      };
+      const L = makeLeg(-0.1);
+      const Rr = makeLeg(0.1);
+
+      // Buste (section elliptique : plus large que profond)
+      const torso = new THREE.Mesh(G.torso, topMat);
+      torso.scale.set(1.12, 1, 0.62);
+      torso.position.y = HIP + 0.3;
+      torso.castShadow = true;
+      person.add(torso);
+
+      const makeArm = x => {
+        const arm = new THREE.Group();
+        arm.position.set(x, 1.5, 0);
+        const sleeve = new THREE.Mesh(G.sleeve, shortSleeve ? skinMat : topMat);
+        sleeve.position.y = -0.31;
+        arm.add(sleeve);
+        if (shortSleeve) {
+          const cuff = new THREE.Mesh(G.sleeveShort, topMat);
+          cuff.position.y = -0.11;
+          arm.add(cuff);
+        }
+        const hand = new THREE.Mesh(G.hand, skinMat);
+        hand.position.y = -0.65;
+        arm.add(hand);
+        person.add(arm);
+        return arm;
+      };
+      const leftArm = makeArm(-0.265);
+      const rightArm = makeArm(0.265);
+
+      const neck = new THREE.Mesh(G.neck, skinMat);
+      neck.position.y = 1.58;
+      person.add(neck);
+
+      const head = new THREE.Mesh(G.head, pedFaceMaterial(skinIdx, hairIdx));
+      head.position.y = 1.68;
+      person.add(head);
+
+      // Accessoires : casquette, sac à dos, sac à main
+      if (Math.random() < 0.18) {
+        const cap = new THREE.Mesh(G.cap, PED_TOP_MATS[rnd(PED_TOP_MATS.length)]);
+        cap.position.set(0, 1.695, 0.005);
+        cap.rotation.x = -0.12;
+        person.add(cap);
+      }
+      if (Math.random() < 0.35) {
+        const pack = new THREE.Mesh(G.pack, PED_PACK_MATS[rnd(PED_PACK_MATS.length)]);
+        pack.position.set(0, 1.28, -0.19);
+        person.add(pack);
+      }
+      if (Math.random() < 0.2) {
+        const bag = new THREE.Mesh(G.bag, PED_PACK_MATS[rnd(PED_PACK_MATS.length)]);
+        bag.position.set(0, -0.78, 0);
+        rightArm.add(bag);
+      }
+
+      person.scale.setScalar(0.93 + Math.random() * 0.14);
+      return { person, leftLeg: L.leg, rightLeg: Rr.leg, leftKnee: L.knee, rightKnee: Rr.knee, leftArm, rightArm };
+    }
+
+    function assignBuildingStarRewards() {
+      const zeroStarCount = Math.round(buildings.length * 0.2);
+      const oneStarCount = Math.round(buildings.length * 0.5);
+      const rewards = [
+        ...Array(zeroStarCount).fill(0),
+        ...Array(oneStarCount).fill(1)
+      ];
+
+      while (rewards.length < buildings.length) {
+        rewards.push(2 + Math.floor(Math.random() * 9));
+      }
+
+      for (let i = rewards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rewards[i], rewards[j]] = [rewards[j], rewards[i]];
+      }
+
+      buildings.forEach((building, index) => {
+        building.starReward = rewards[index];
+      });
+    }
+
+    function buildFuturisticCity() {
+      // Nettoyage si reconstruction
+      buildings.forEach(b => cityGroup.remove(b.group));
+      buildings.length = 0;
+
+      flyingCars.forEach(fc => cityGroup.remove(fc.mesh));
+      flyingCars.length = 0;
+
+      pedestrians.forEach(p => cityGroup.remove(p.mesh));
+      pedestrians.length = 0;
+
+      skyways.forEach(sw => cityGroup.remove(sw));
+      skyways.length = 0;
+
+      const coords = [];
+      for (let gx = -5; gx <= 5; gx++) {
+        for (let gz = -5; gz <= 5; gz++) {
+          if (Math.abs(gx) === 0 && Math.abs(gz) === 0) continue; // place centrale ouverte
+          const x = gx * 22 + (Math.random() - 0.5) * 1.0;
+          const z = gz * 22 + (Math.random() - 0.5) * 1.0;
+          if (Math.hypot(x, z) > 125) continue;
+          coords.push({ x, z, dist: Math.hypot(x, z) });
+        }
+      }
+
+      coords.forEach((pt, idx) => {
+        const bGroup = new THREE.Group();
+        bGroup.position.set(pt.x, 0, pt.z);
+
+        const styleBag = pt.dist < 48
+          ? ['glass', 'glass', 'steel', 'stone', 'concrete', 'bands']
+          : ['brick', 'concrete', 'stone', 'brick', 'glass', 'steel', 'bands', 'bands'];
+        const styleName = styleBag[Math.floor(Math.random() * styleBag.length)];
+        const set = FACADE_SETS[styleName];
+
+        // Dimensions calées sur la grille réelle : travées de 3,6 m et étages de 3,6 m
+        const bw = Math.random() < 0.65 ? 3 : 4;
+        const bd = Math.random() < 0.65 ? 3 : 4;
+        const width = bw * BAY_W;
+        const depth = bd * BAY_W;
+        const floors = Math.max(6, Math.round(Math.max(22, 76 - pt.dist * 0.36 + Math.random() * 28) / FLOOR_H));
+        const H1 = floors * FLOOR_H;
+        const BASE = 4.8;
+        const du = Math.floor(Math.random() * FAC_TILE) / FAC_TILE;
+        const dv = Math.floor(Math.random() * FAC_TILE) / FAC_TILE;
+        const shade = 0.86 + Math.random() * 0.14;
+
+        // Rez-de-chaussée : commerces éclairés avec enseignes
+        const podW = width + 1.2, podD = depth + 1.2;
+        const podium = new THREE.Mesh(
+          makeStorefrontGeometry(podW, BASE, podD),
+          STOREFRONT_MATS[Math.floor(Math.random() * STOREFRONT_MATS.length)]
+        );
+        podium.position.y = BASE / 2;
+        podium.castShadow = true;
+        podium.receiveShadow = true;
+        bGroup.add(podium);
+
+        // Auvent / dalle au-dessus des commerces
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(podW + 0.5, 0.5, podD + 0.5), ROOF_MATS.belt);
+        slab.position.y = BASE + 0.25;
+        bGroup.add(slab);
+
+        const mat = new THREE.MeshStandardMaterial({
+          map: set.map,
+          bumpMap: set.bump,
+          bumpScale: styleName === 'glass' ? 0.6 : 1.4,
+          emissive: new THREE.Color(0xffffff),
+          emissiveMap: set.emissive,
+          emissiveIntensity: 0.4 + Math.random() * 0.55,   // certains immeubles sont presque éteints, d'autres très éclairés
+          roughness: set.rough,
+          metalness: set.metal,
+          envMap: envTex,
+          envMapIntensity: set.env,
+          color: new THREE.Color(shade, shade, shade)
+        });
+
+        const tower = new THREE.Mesh(makeFacadeGeometry(width, H1, depth, floors, du, dv), mat);
+        tower.position.y = BASE + H1 / 2;
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        bGroup.add(tower);
+
+        // Corniche intermédiaire
+        if (floors >= 10) {
+          const belt = new THREE.Mesh(new THREE.BoxGeometry(width + 0.5, 0.3, depth + 0.5), ROOF_MATS.belt);
+          belt.position.y = BASE + FLOOR_H * Math.round(floors / 2);
+          bGroup.add(belt);
+        }
+
+        // Toiture + éventuel retrait (étage supérieur en gradins)
+        const hasTier = floors >= 14 && bw > 2 && bd > 2 && Math.random() < 0.6;
+        let roofY = addRoofDetails(bGroup, width, depth, BASE + H1, !hasTier);
+        let totalHeight = roofY;
+        if (hasTier) {
+          const tFloors = 3 + Math.floor(Math.random() * 3);
+          const tW = (bw - 1) * BAY_W, tD = (bd - 1) * BAY_W, tH = tFloors * FLOOR_H;
+          const tier = new THREE.Mesh(makeFacadeGeometry(tW, tH, tD, tFloors, du, dv), mat);
+          tier.position.y = roofY + tH / 2;
+          tier.castShadow = true;
+          tier.receiveShadow = true;
+          bGroup.add(tier);
+          totalHeight = addRoofDetails(bGroup, tW, tD, roofY + tH, true);
+        }
+
+        cityGroup.add(bGroup);
+        buildings.push({
+          group: bGroup,
+          tower,
+          crown: null,
+          baseHeight: totalHeight,
+          halfW: podW / 2,
+          halfD: podD / 2,
+          fireMap: FIRE_MAP,
+          hp: 100,
+          destroyed: false,
+          starReward: 0,
+          fallVelX: 0,
+          fallVelZ: 0,
+          fallRotX: 0,
+          fallRotZ: 0,
+          burning: false
+        });
+      });
+
+      assignBuildingStarRewards();
+
+      // Passerelles aériennes vitrées reliant certaines tours dans le ciel de la ville
+      const skywayMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0ea5e9,
+        emissiveIntensity: 0.35,
+        roughness: 0.2,
+        metalness: 0.8,
+        transparent: true,
+        opacity: 0.58
+      });
+      for (let i = 0; i < buildings.length - 1; i++) {
+        const a = buildings[i];
+        const b = buildings[i + 1];
+        const dist = a.group.position.distanceTo(b.group.position);
+        if (dist > 18 && dist < 27 && i % 3 === 0) {
+          const alt = Math.min(a.baseHeight, b.baseHeight) * 0.58;
+          const bridge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, dist), skywayMat);
+          bridge.position.copy(a.group.position).lerp(b.group.position, 0.5);
+          bridge.position.y = alt;
+          bridge.lookAt(b.group.position.x, alt, b.group.position.z);
+          cityGroup.add(bridge);
+          skyways.push(bridge);
+        }
+      }
+
+      // Piétons se promenant sur les rues piétonnes de la ville
+      // Les rues passent entre les immeubles (axes à 11 + 22k) ; on marche sur les trottoirs, à 3 m de l'axe
+      const centerLines = [-99, -77, -55, -33, -11, 11, 33, 55, 77, 99];
+
+      for (let p = 0; p < 64; p++) {
+        const alongX = p % 2 === 0;
+        const side = (Math.random() < 0.5 ? -1 : 1) * 3.0;
+        const lanePos = centerLines[Math.floor(p / 2) % centerLines.length] + side + (Math.random() - 0.5) * 0.7;
+        const startAlong = (Math.random() - 0.5) * 190;
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        const speed = 1.1 + Math.random() * 0.7;   // vitesse de marche réaliste (m/s)
+
+        const rig = createPedestrianMesh();
+
+        if (alongX) {
+          rig.person.position.set(startAlong, 0, lanePos);
+          rig.person.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        } else {
+          rig.person.position.set(lanePos, 0, startAlong);
+          rig.person.rotation.y = dir > 0 ? 0 : Math.PI;
+        }
+
+        cityGroup.add(rig.person);
+        pedestrians.push({
+          mesh: rig.person,
+          leftLeg: rig.leftLeg,
+          rightLeg: rig.rightLeg,
+          leftKnee: rig.leftKnee,
+          rightKnee: rig.rightKnee,
+          leftArm: rig.leftArm,
+          rightArm: rig.rightArm,
+          alongX,
+          lanePos,
+          dir,
+          speed,
+          walkPhase: Math.random() * Math.PI * 2,
+          alive: true
+        });
+      }
+
+      // Véhicules réellement volants circulant à plusieurs altitudes entre les gratte-ciel
+      const carAccents = [0x38bdf8, 0xf472b6, 0xfbbf24, 0x2dd4bf, 0xc084fc];
+      for (let v = 0; v < 34; v++) {
+        const accentHex = carAccents[v % carAccents.length];
+        const vm = createFlyingCarMesh(accentHex, v);
+        const angle = (v / 34) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+        const radius = 18 + (v % 6) * 21;
+        const alt = 14 + (v % 7) * 13;
+        const dirSign = v % 3 === 0 ? -1 : 1;
+
+        vm.position.set(Math.cos(angle) * radius, alt, Math.sin(angle) * radius);
+        cityGroup.add(vm);
+        flyingCars.push({
+          mesh: vm,
+          angle,
+          radius,
+          baseAlt: alt,
+          dirSign,
+          speed: (0.22 + (v % 4) * 0.09) * dirSign,
+          bobPhase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    buildFuturisticCity();
+
+    // =========================================================================
+    // 5. MÉTÉORITES ENFLAMMÉES, EXPLOSIONS & DÉBRIS
+    // =========================================================================
+    const activeMeteors = [];
+    const debrisList = [];
+    const sparkList = [];
+    const starRewardPopups = [];
+
+    // ----- Matières et effets des météorites réalistes -----
+    // Roche irrégulière à croûte de fusion noire, cupules de surface (regmaglyptes) et fissures incandescentes
+    function createMeteoriteMaps() {
+      const S = 512;
+      const R = mulberry(777);
+      const mk = () => { const c = document.createElement('canvas'); c.width = S; c.height = S; return c; };
+      const cD = mk(), cB = mk(), cE = mk();
+      const d = cD.getContext('2d'), b = cB.getContext('2d'), e = cE.getContext('2d');
+
+      d.fillStyle = '#1d1915'; d.fillRect(0, 0, S, S);
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      e.fillStyle = '#000'; e.fillRect(0, 0, S, S);
+
+      // Marbrures brun-gris de la croûte de fusion
+      for (let i = 0; i < 700; i++) {
+        const x = R() * S, y = R() * S, r = 10 + R() * 50;
+        const g = d.createRadialGradient(x, y, 0, x, y, r);
+        const warm = R() > 0.5;
+        g.addColorStop(0, warm ? 'rgba(92,62,40,0.16)' : 'rgba(70,70,74,0.16)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        d.fillStyle = g; d.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      // Regmaglyptes : cupules en "empreintes de pouce"
+      for (let i = 0; i < 80; i++) {
+        const x = R() * S, y = R() * S, r = 12 + R() * 28;
+        const g = d.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(0,0,0,0.6)'); g.addColorStop(0.75, 'rgba(0,0,0,0.18)'); g.addColorStop(1, 'rgba(255,240,220,0.09)');
+        d.fillStyle = g; d.beginPath(); d.arc(x, y, r, 0, Math.PI * 2); d.fill();
+        const gb = b.createRadialGradient(x, y, 0, x, y, r);
+        gb.addColorStop(0, '#4a4a4a'); gb.addColorStop(0.8, '#8a8a8a'); gb.addColorStop(1, '#b4b4b4');
+        b.fillStyle = gb; b.beginPath(); b.arc(x, y, r, 0, Math.PI * 2); b.fill();
+      }
+      // Éclats métalliques (fer-nickel)
+      for (let i = 0; i < 900; i++) {
+        d.fillStyle = `rgba(190,180,160,${0.15 + R() * 0.35})`;
+        d.fillRect(R() * S, R() * S, 1 + R() * 2, 1 + R() * 2);
+      }
+      for (let i = 0; i < 6000; i++) {
+        b.fillStyle = R() > 0.5 ? '#9a9a9a' : '#6c6c6c';
+        b.fillRect(R() * S, R() * S, 2, 2);
+      }
+      // Fissures de surface chauffées à blanc + plages incandescentes
+      e.lineCap = 'round';
+      for (let i = 0; i < 14; i++) {
+        let x = R() * S, y = R() * S;
+        e.strokeStyle = R() > 0.5 ? '#d9600f' : '#b8420a';
+        e.lineWidth = 1 + R() * 1.5;
+        e.shadowColor = '#ff5500'; e.shadowBlur = 8;
+        e.beginPath(); e.moveTo(x, y);
+        for (let s = 0; s < 6; s++) { x += (R() - 0.5) * 42; y += (R() - 0.5) * 42; e.lineTo(x, y); }
+        e.stroke();
+        d.strokeStyle = 'rgba(8,6,5,0.8)'; d.lineWidth = 1.2;   // la fissure est aussi un creux sombre
+        d.beginPath(); d.moveTo(x, y); d.lineTo(x + 10, y + 8); d.stroke();
+      }
+      e.shadowBlur = 0;
+      for (let i = 0; i < 16; i++) {
+        const x = R() * S, y = R() * S, r = 18 + R() * 36;
+        const g = e.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(255,140,40,0.32)'); g.addColorStop(1, 'rgba(255,60,0,0)');
+        e.fillStyle = g; e.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      const tex = cv => new THREE.CanvasTexture(cv);
+      return { map: tex(cD), bump: tex(cB), emissive: tex(cE) };
+    }
+
+    // Roche irrégulière : icosphère facettée, déformée par du bruit, légèrement aplatie
+    function makeRockGeometry(seed, radius, detail) {
+      const g = new THREE.IcosahedronGeometry(radius, detail);
+      const p = g.attributes.position;
+      const R = mulberry(seed);
+      const a = [R() * 6, R() * 6, R() * 6, R() * 6];
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        const l = Math.hypot(x, y, z) || 1;
+        const nx = x / l, ny = y / l, nz = z / l;
+        const n = 0.16 * Math.sin(nx * 2.3 + a[0]) * Math.cos(ny * 2.1 + a[1])
+                + 0.10 * Math.sin(nz * 3.1 + nx * 1.7 + a[2])
+                + 0.05 * Math.sin(nx * 7 + ny * 6 + nz * 5 + a[3]);
+        const f = 1 + n;
+        p.setXYZ(i, nx * radius * f * 1.12, ny * radius * f * 0.9, nz * radius * f);
+      }
+      g.computeVertexNormals();
+      return g;
+    }
+
+    const METEOR_MAPS = createMeteoriteMaps();
+    const METEOR_GEOS = [makeRockGeometry(5, 3.4, 3), makeRockGeometry(19, 3.4, 3), makeRockGeometry(41, 3.4, 3)];
+    const meteorMat = new THREE.MeshStandardMaterial({
+      map: METEOR_MAPS.map,
+      bumpMap: METEOR_MAPS.bump,
+      bumpScale: 2.2,
+      emissive: new THREE.Color(0xff6a00),
+      emissiveMap: METEOR_MAPS.emissive,
+      emissiveIntensity: 1.3,
+      roughness: 0.88,
+      metalness: 0.4,
+      envMap: envTex,
+      envMapIntensity: 0.5
+    });
+
+    // Textures douces pour les flammes / la fumée / la poussière
+    const glowTex = (() => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+      const x = c.getContext('2d');
+      const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
+    const smokeTex = (() => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+      const x = c.getContext('2d');
+      const R = mulberry(91);
+      for (let i = 0; i < 9; i++) {
+        const cx = 64 + (R() - 0.5) * 44, cy = 64 + (R() - 0.5) * 44, r = 26 + R() * 22;
+        const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+      }
+      return new THREE.CanvasTexture(c);
+    })();
+
+    function makeSprite(color, opacity, additive, tex) {
+      return new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex || glowTex, color, transparent: true, opacity, depthWrite: false,
+        blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending
+      }));
+    }
+
+    // Débris d'impact : éclats de béton, de brique, de verre et de roche carbonisée
+    const DEBRIS_GEOS = [makeRockGeometry(11, 0.9, 1), makeRockGeometry(23, 0.9, 1), makeRockGeometry(37, 0.9, 1)];
+    const DEBRIS_MATS = [
+      new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.92 }),
+      new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: 0x7b4535, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: 0x2a4a6b, roughness: 0.2, metalness: 0.6 }),
+      new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 })
+    ];
+
+    const fxSprites = [];      // fumée de traînée, boule de feu, poussière
+    const ringList = [];       // onde de choc
+    const craterList = [];     // cratères carbonisés au sol
+
+    function spawnSmokePuff(pos, scale) {
+      const sp = makeSprite(0xff9a50, 0.34, false, smokeTex);
+      sp.position.set(pos.x + (Math.random() - 0.5) * 1.5, pos.y + (Math.random() - 0.5) * 1.5, pos.z + (Math.random() - 0.5) * 1.5);
+      const s0 = (3.5 + Math.random() * 1.5) * scale;
+      sp.scale.setScalar(s0);
+      scene.add(sp);
+      fxSprites.push({ sp, life: 3.4, max: 3.4, s0, s1: s0 * (3.2 + Math.random() * 1.6), vx: (Math.random() - 0.5) * 1.6, vy: 0.8 + Math.random() * 1.2, vz: (Math.random() - 0.5) * 1.6, op0: 0.34, fade: 1.2, heat: true });
+    }
+
+    const craterTex = (() => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const x = c.getContext('2d');
+      const R = mulberry(313);
+      const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+      g.addColorStop(0, 'rgba(6,5,4,0.96)'); g.addColorStop(0.5, 'rgba(14,11,9,0.85)'); g.addColorStop(1, 'rgba(14,11,9,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = 'rgba(8,6,5,0.7)'; x.lineWidth = 2;
+      for (let i = 0; i < 26; i++) {       // rayons d'éjectas
+        const a = R() * Math.PI * 2, r0 = 34 + R() * 20, r1 = 70 + R() * 56;
+        x.beginPath(); x.moveTo(128 + Math.cos(a) * r0, 128 + Math.sin(a) * r0); x.lineTo(128 + Math.cos(a) * r1, 128 + Math.sin(a) * r1); x.stroke();
+      }
+      const rim = x.createRadialGradient(128, 128, 30, 128, 128, 56);   // liseré incandescent
+      rim.addColorStop(0, 'rgba(255,110,20,0)'); rim.addColorStop(0.5, 'rgba(255,110,20,0.55)'); rim.addColorStop(1, 'rgba(255,110,20,0)');
+      x.fillStyle = rim; x.fillRect(0, 0, 256, 256);
+      return new THREE.CanvasTexture(c);
+    })();
+
+    // Impact : boule de feu, nuage de poussière, onde de choc, cratère
+    function spawnImpactFX(pos, scale) {
+      const onGround = pos.y < 5;
+      const fireCols = [0xfff1c0, 0xffc24a, 0xff8a1a, 0xff5a0a];
+      for (let i = 0; i < 8; i++) {
+        const sp = makeSprite(fireCols[i % fireCols.length], 0.95, true);
+        sp.position.set(pos.x + (Math.random() - 0.5) * 4 * scale, pos.y + 1 + Math.random() * 3 * scale, pos.z + (Math.random() - 0.5) * 4 * scale);
+        const s0 = 6 * scale;
+        sp.scale.setScalar(s0);
+        scene.add(sp);
+        const life = 0.55 + Math.random() * 0.45;
+        fxSprites.push({ sp, life, max: life, s0, s1: (26 + Math.random() * 16) * scale, vx: (Math.random() - 0.5) * 6, vy: 10 + Math.random() * 12, vz: (Math.random() - 0.5) * 6, op0: 0.95, fade: 1.0, heat: false });
+      }
+      const nDust = Math.min(60, Math.floor(16 * scale));
+      for (let i = 0; i < nDust; i++) {
+        const sp = makeSprite(0x6a5f55, 0.55, false, smokeTex);
+        const ang = Math.random() * Math.PI * 2, rr = Math.random() * 6 * scale;
+        sp.position.set(pos.x + Math.cos(ang) * rr, pos.y + 1 + Math.random() * 3, pos.z + Math.sin(ang) * rr);
+        const s0 = 5 * scale;
+        sp.scale.setScalar(s0);
+        scene.add(sp);
+        const sp2 = 6 + Math.random() * 8, life = 3.2 + Math.random() * 1.8;
+        fxSprites.push({ sp, life, max: life, s0, s1: (22 + Math.random() * 14) * scale, vx: Math.cos(ang) * sp2, vy: 3 + Math.random() * 6, vz: Math.sin(ang) * sp2, op0: 0.55, fade: 1.3, heat: true });
+      }
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.85, 1.0, 64),
+        new THREE.MeshBasicMaterial({ color: 0xffc58a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(pos.x, onGround ? 0.2 : pos.y, pos.z);
+      scene.add(ring);
+      ringList.push({ mesh: ring, life: 0.8, max: 0.8, r1: 26 * scale });
+
+      if (onGround) {
+        const crater = new THREE.Mesh(
+          new THREE.CircleGeometry(1, 40),
+          new THREE.MeshBasicMaterial({ map: craterTex, transparent: true, opacity: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+        );
+        crater.rotation.x = -Math.PI / 2;
+        crater.rotation.z = Math.random() * Math.PI * 2;
+        crater.position.set(pos.x, 0.09, pos.z);
+        crater.scale.setScalar(6.5 * scale);
+        scene.add(crater);
+        craterList.push({ mesh: crater, life: 40 });
+        while (craterList.length > 24) {
+          const old = craterList.shift();
+          scene.remove(old.mesh);
+          old.mesh.material.dispose();
+        }
+      }
+    }
+
+    const sparkGeo = new THREE.OctahedronGeometry(0.65, 0);
+
+    // Taille et puissance de la météorite selon la valeur du cadeau (en pièces)
+    //  1 pièce : petite | 10 : un peu plus grosse | 100 | 300 | 500 | 1000 : de plus en plus grosses | 10 000 : MÉGA météorite
+    function meteorTier(coins) {
+      if (coins >= 10000) return { tier: 6, scale: 6.5, blast: 120, dmgMin: 120, dmgMax: 120, single: false, push: 2.2, label: 'MÉGA MÉTÉORITE' };
+      if (coins >= 1000)  return { tier: 5, scale: 3.4, blast: 56,  dmgMin: 120, dmgMax: 120, single: false, push: 1.8, label: 'Météorite colossale' };
+      if (coins >= 500)   return { tier: 4, scale: 2.6, blast: 40,  dmgMin: 120, dmgMax: 120, single: false, push: 1.45, label: 'Très grosse météorite' };
+      if (coins >= 300)   return { tier: 3, scale: 2.0, blast: 31,  dmgMin: 88,  dmgMax: 100, single: false, push: 1.2, label: 'Grosse météorite' };
+      if (coins >= 100)   return { tier: 2, scale: 1.5, blast: 23,  dmgMin: 62,  dmgMax: 84,  single: false, push: 1.0, label: 'Météorite moyenne' };
+      if (coins >= 10)    return { tier: 1, scale: 1.05, blast: 15, dmgMin: 32,  dmgMax: 45,  single: true,  push: 0.95, label: 'Petite météorite+' };
+      return { tier: 0, scale: 0.7, blast: 12, dmgMin: 18, dmgMax: 28, single: true, push: 0.9, label: 'Petite météorite' };
+    }
+
+    function spawnMeteor(meta = null) {
+      const coins = meta && meta.coins ? meta.coins : 1;
+      const T = meteorTier(coins);
+      const isSmallGift = T.tier <= 1;
+      const isBigGift = T.tier >= 3;
+      const scale = T.scale;
+
+      const mGroup = new THREE.Group();
+      const rock = new THREE.Mesh(METEOR_GEOS[Math.floor(Math.random() * METEOR_GEOS.length)], meteorMat);
+      rock.scale.setScalar(scale);
+      rock.castShadow = true;
+      mGroup.add(rock);
+
+      // Traînée de plasma : dégradé blanc → jaune → orange → rouge sombre le long de la trajectoire
+      const tail = [];
+      const tailCols = [0xfff1c0, 0xffd27a, 0xffa23a, 0xff7a1a, 0xff5010, 0xd93a08, 0x8a2406, 0x5a1c08];
+      for (let i = 0; i < 14; i++) {
+        const t = i / 13;
+        const sp = makeSprite(tailCols[Math.min(tailCols.length - 1, Math.floor(t * tailCols.length))], 0.9 * (1 - t * 0.8), true);
+        const base = (11 - 7 * t) * scale;
+        sp.scale.setScalar(base);
+        sp.position.set((Math.random() - 0.5) * 0.8 * scale * t, (2.5 + t * 24) * scale, (Math.random() - 0.5) * 0.8 * scale * t);
+        mGroup.add(sp);
+        tail.push({ sp, base });
+      }
+      const headGlow = makeSprite(0xffb050, 0.85, true);   // halo de chaleur autour du noyau
+      headGlow.scale.setScalar(15 * scale);
+      mGroup.add(headGlow);
+      const core = makeSprite(0xffffff, 0.9, true);
+      core.scale.setScalar(7 * scale);
+      core.position.y = 1.2 * scale;
+      mGroup.add(core);
+
+      // Cible en priorité un immeuble encore debout afin de pouvoir détruire toute la ville
+      const intactBuildings = buildings.filter(b => !b.destroyed);
+      let aimX = (Math.random() - 0.5) * 175;
+      let aimZ = (Math.random() - 0.5) * 175;
+      if (intactBuildings.length > 0 && (isBigGift || Math.random() < 0.72)) {
+        const chosen = intactBuildings[Math.floor(Math.random() * intactBuildings.length)];
+        const jitter = isSmallGift ? 10 : 5;
+        aimX = chosen.group.position.x + (Math.random() - 0.5) * jitter;
+        aimZ = chosen.group.position.z + (Math.random() - 0.5) * jitter;
+      }
+
+      const startOffsetX = (Math.random() - 0.5) * 85 + 38;
+      const startOffsetZ = (Math.random() - 0.5) * 85 + 38;
+
+      mGroup.position.set(aimX + startOffsetX, 175 + Math.random() * 45, aimZ + startOffsetZ);
+      scene.add(mGroup);
+
+      const fallSpeed = 88 + Math.random() * 28;
+      const dir = new THREE.Vector3(aimX - mGroup.position.x, -mGroup.position.y, aimZ - mGroup.position.z).normalize();
+
+      mGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+
+      sound.playMeteorWhoosh();
+
+      activeMeteors.push({
+        mesh: mGroup,
+        rock,
+        tail,
+        smokeTimer: 0,
+        vel: dir.multiplyScalar(fallSpeed),
+        scale,
+        donor: meta && meta.donor ? meta.donor : null,
+        giftName: meta && meta.giftName ? meta.giftName : null,
+        isReal: Boolean(meta && meta.isReal),
+        coins
+      });
+    }
+
+    function awardBuildingStars(meteor, amount) {
+      if (!amount || !meteor || !meteor.isReal || !meteor.donor) return;
+      if (!window.ArcadeStars || typeof window.ArcadeStars.award !== 'function') {
+        console.error('Récompense non créditée : ArcadeStars.award est indisponible.');
+        return;
+      }
+
+      Promise.resolve()
+        .then(() => window.ArcadeStars.award({ username: meteor.donor, amount }))
+        .catch(error => console.error('Étoiles de bâtiment non enregistrées :', error));
+    }
+
+    function showBuildingStarReward(building, amount) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 160;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        console.error('Affichage de la récompense impossible : contexte Canvas indisponible.');
+        return;
+      }
+
+      const label = amount > 0 ? `+${amount} ⭐` : '0 ⭐';
+      context.fillStyle = 'rgba(5, 9, 22, 0.94)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = amount > 0 ? '#fbbf24' : '#94a3b8';
+      context.lineWidth = 8;
+      context.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+      context.font = '900 76px system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineJoin = 'round';
+      context.lineWidth = 12;
+      context.strokeStyle = 'rgba(2, 6, 23, 0.95)';
+      context.strokeText(label, canvas.width / 2, canvas.height / 2);
+      context.fillStyle = amount > 0 ? '#fde68a' : '#e2e8f0';
+      context.fillText(label, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.encoding = THREE.sRGBEncoding;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.position.set(
+        building.group.position.x,
+        building.group.position.y + building.baseHeight + 4,
+        building.group.position.z
+      );
+      sprite.scale.set(18, 4.5, 1);
+      sprite.renderOrder = 20;
+      scene.add(sprite);
+      starRewardPopups.push({ sprite, life: 4 });
+    }
+
+    function updateStarRewardPopups(dt) {
+      for (let i = starRewardPopups.length - 1; i >= 0; i--) {
+        const popup = starRewardPopups[i];
+        popup.life -= dt;
+        popup.sprite.material.opacity = Math.min(1, popup.life / 0.8);
+        if (popup.life > 0) continue;
+
+        scene.remove(popup.sprite);
+        popup.sprite.material.map.dispose();
+        popup.sprite.material.dispose();
+        starRewardPopups.splice(i, 1);
+      }
+    }
+
+    function clearStarRewardPopups() {
+      for (const popup of starRewardPopups) {
+        scene.remove(popup.sprite);
+        popup.sprite.material.map.dispose();
+        popup.sprite.material.dispose();
+      }
+      starRewardPopups.length = 0;
+    }
+
+    function spawnImpactExplosion(pos, scale = 1, coins = 1, meteor = null) {
+      const T = meteorTier(coins);
+      const isSmallGift = T.tier <= 1;
+      const isBigGift = T.tier >= 3;
+      sound.playExplosion(scale > 1.3 || isBigGift);
+      fireLight.position.set(pos.x, Math.max(12, pos.y + 12), pos.z);
+      fireLight.intensity = 10 * scale;
+      spawnImpactFX(pos, scale);
+
+      const flash = document.getElementById('impactFlash');
+      flash.style.opacity = String(Math.min(0.85, 0.45 + scale * 0.25));
+      setTimeout(() => { flash.style.opacity = '0'; }, 70);
+
+      const fs = Math.min(scale, 3.5);   // les très gros paliers ne multiplient pas à l'infini les débris
+      // Débris de bâtiments et étincelles incandescentes
+      for (let i = 0; i < Math.floor(24 * fs); i++) {
+        const dm = new THREE.Mesh(DEBRIS_GEOS[i % DEBRIS_GEOS.length], DEBRIS_MATS[i % DEBRIS_MATS.length]);
+        dm.position.set(pos.x, Math.max(1, pos.y), pos.z);
+        dm.scale.setScalar(0.5 + Math.random() * 1.1 * fs);
+        scene.add(dm);
+
+        const ang = Math.random() * Math.PI * 2;
+        const spd = (8 + Math.random() * 26) * fs;
+        debrisList.push({
+          mesh: dm,
+          vx: Math.cos(ang) * spd,
+          vy: (12 + Math.random() * 24) * fs,
+          vz: Math.sin(ang) * spd,
+          rotSpeed: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+          life: 1.4 + Math.random() * 0.7
+        });
+      }
+
+      for (let s = 0; s < Math.floor(32 * fs); s++) {
+        const sm = new THREE.Mesh(
+          sparkGeo,
+          new THREE.MeshBasicMaterial({ color: s % 2 === 0 ? 0xff9e00 : 0xff3d00 })
+        );
+        sm.position.set(pos.x, Math.max(1.5, pos.y), pos.z);
+        sm.scale.setScalar(0.8 + Math.random() * 1.2 * fs);
+        scene.add(sm);
+
+        const ang = Math.random() * Math.PI * 2;
+        const spd = (6 + Math.random() * 32) * fs;
+        sparkList.push({
+          mesh: sm,
+          vx: Math.cos(ang) * spd,
+          vy: (8 + Math.random() * 28) * fs,
+          vz: Math.sin(ang) * spd,
+          life: 1.0,
+          decay: 1.1 + Math.random() * 0.6
+        });
+      }
+
+      // Endommagement progressif (petits cadeaux) ou destruction massive (gros cadeaux)
+      let hitPoints = 0;
+      const blastRadius = T.blast;
+      let candidates = buildings.filter(b => !b.destroyed);
+      candidates.sort((a, b) =>
+        Math.hypot(a.group.position.x - pos.x, a.group.position.z - pos.z) -
+        Math.hypot(b.group.position.x - pos.x, b.group.position.z - pos.z)
+      );
+
+      // Si aucun immeuble n'est dans le rayon d'impact, frapper le plus proche encore debout pour assurer la destruction complète de la ville
+      if (candidates.length > 0 && Math.hypot(candidates[0].group.position.x - pos.x, candidates[0].group.position.z - pos.z) > blastRadius) {
+        candidates = [candidates[0]];
+      }
+
+      for (const b of candidates) {
+        if (b.destroyed) continue;
+        const dist = Math.hypot(b.group.position.x - pos.x, b.group.position.z - pos.z);
+        const insideBlast = dist <= blastRadius || b === candidates[0];
+        if (!insideBlast) continue;
+
+        const dmg = Math.round(T.dmgMin + Math.random() * (T.dmgMax - T.dmgMin));
+
+        b.hp = Math.max(0, b.hp - dmg);
+        b.burning = true;
+        b.tower.material.emissive = new THREE.Color(b.hp > 0 ? 0xff7b00 : 0xff2a00);
+        b.tower.material.emissiveIntensity = b.hp > 0 ? 0.95 : 1.5;
+        if (b.fireMap) b.tower.material.emissiveMap = b.fireMap;          // flammes qui sortent des fenêtres
+        b.tower.material.color.setHex(b.hp > 0 ? 0x8f8f8f : 0x4a4a4a);   // façade noircie par la suie
+
+        // Inclinaison et brûlure visibles même lorsqu'un petit cadeau abîme seulement l'immeuble
+        const hpRatio = b.hp / 100;
+        b.group.rotation.z += (1 - hpRatio) * 0.08 * (Math.random() > 0.5 ? 1 : -1);
+
+        if (b.hp <= 0) {
+          b.destroyed = true;
+          showBuildingStarReward(b, b.starReward);
+          awardBuildingStars(meteor, b.starReward);
+          const dirX = b.group.position.x - pos.x || (Math.random() - 0.5);
+          const dirZ = b.group.position.z - pos.z || (Math.random() - 0.5);
+          const norm = Math.hypot(dirX, dirZ) || 1;
+          b.fallVelX = (dirX / norm) * T.push;
+          b.fallVelZ = (dirZ / norm) * T.push;
+          hitPoints += 250;
+        } else {
+          hitPoints += 80;
+        }
+
+        if (T.single) break;
+      }
+
+      // Effrayer ou faire tomber les piétons pris dans le souffle de l'impact
+      for (let p = pedestrians.length - 1; p >= 0; p--) {
+        const ped = pedestrians[p];
+        if (!ped.alive) continue;
+        const distPed = Math.hypot(ped.mesh.position.x - pos.x, ped.mesh.position.z - pos.z);
+        if (distPed <= blastRadius * 0.85) {
+          ped.alive = false;
+          ped.mesh.rotation.x = Math.PI * 0.45;
+          ped.mesh.position.y = 0.25;
+          hitPoints += 35;
+        }
+      }
+
+      updateCityStats(1, hitPoints + Math.round(120 * scale));
+    }
+
+    // =========================================================================
+    // 6. ÉTAT DU JEU, CONNEXION TIKTOK LIVE & CONTRÔLES
+    // =========================================================================
+    const state = {
+      meteorQueue: [],
+      spawnTimer: 0,
+      impacts: 0,
+      score: 0,
+      bestScore: Number(localStorage.getItem('aegis_city_best') || 0),
+      cameraMode: 2, // Démarrage en vue verticale du ciel
+
+      tiktok: {
+        username: '',
+        connected: false,
+        socket: null,
+        reconnectTimer: null,
+        donors: new Map()
+      }
+    };
+
+    document.getElementById('hudBest').textContent = state.bestScore.toLocaleString('fr-FR');
+
+    function updateCityStats(addImpacts, addPts) {
+      state.impacts += addImpacts;
+      state.score += addPts;
+      document.getElementById('hudImpacts').textContent = String(state.impacts);
+      document.getElementById('hudScore').textContent = state.score.toLocaleString('fr-FR');
+
+      if (state.score > state.bestScore) {
+        state.bestScore = state.score;
+        localStorage.setItem('aegis_city_best', String(state.bestScore));
+        document.getElementById('hudBest').textContent = state.bestScore.toLocaleString('fr-FR');
+      }
+
+      const totalHp = buildings.reduce((acc, b) => acc + b.hp, 0);
+      const maxHp = Math.max(1, buildings.length * 100);
+      const pct = Math.max(0, Math.round((totalHp / maxHp) * 100));
+      const intEl = document.getElementById('hudIntegrity');
+      intEl.textContent = `${pct}%`;
+      intEl.className = pct > 55
+        ? 'font-extrabold text-emerald-400 text-sm sm:text-base'
+        : (pct > 20 ? 'font-extrabold text-amber-300 text-sm sm:text-base' : 'font-extrabold text-rose-400 text-sm sm:text-base');
+    }
+
+    function updateQueueBadge() {
+      const el = document.getElementById('tkQueueBadge');
+      if (el) el.textContent = `File: ${state.meteorQueue.length}`;
+    }
+
+    function renderLeaderboard() {
+      const el = document.getElementById('tkLeaderboard');
+      if (!el) return;
+      const rows = Array.from(state.tiktok.donors.values())
+        .sort((a, b) => b.meteors - a.meteors || b.coins - a.coins)
+        .slice(0, 6);
+
+      if (!rows.length) {
+        el.innerHTML = '<div class="text-sky-200/45 italic text-center py-1">Aucun cadeau TikTok reçu pour l\'instant.</div>';
+        return;
+      }
+
+      const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const medals = ['🥇', '🥈', '🥉'];
+      el.innerHTML = rows.map((r, i) => `
+        <div class="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white/[0.04]">
+          <div class="truncate font-semibold text-sky-100">
+            <span class="mr-1">${medals[i] || (i + 1) + '.'}</span>@${esc(r.name)}
+          </div>
+          <div class="shrink-0 font-bold text-orange-300">
+            ${r.meteors} ☄️
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function showGiftBanner(donor, giftName, coins, count) {
+      const container = document.getElementById('giftBannerContainer');
+      const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const div = document.createElement('div');
+      div.className = 'gift-banner cyber-glass rounded-2xl px-4 py-3 border-2 border-orange-400/80';
+      div.innerHTML = `
+        <div class="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-orange-300">
+          <span>🎁 Cadeau TikTok Live</span>
+          <span>${coins} pièce${coins > 1 ? 's' : ''}</span>
+        </div>
+        <div class="font-extrabold text-sm text-white truncate mt-0.5">@${esc(donor)}</div>
+        <div class="text-xs text-sky-200 flex items-center justify-between mt-0.5">
+          <span class="truncate">${esc(giftName)}</span>
+          <span class="font-bold text-amber-300 ml-2">+${count} ☄️</span>
+        </div>
+      `;
+      container.innerHTML = '';
+      container.appendChild(div);
+      setTimeout(() => {
+        if (div.parentNode === container) container.removeChild(div);
+      }, 3250);
+    }
+
+    let walletBannerTimer = 0;
+    function showWalletBalanceBanner(player, title = 'SOLDE D’ÉTOILES', note = '') {
+      if (!player || typeof player !== 'object') return;
+      const username = String(player.username || player.uniqueId || player.nickname || '').trim().replace(/^@+/, '');
+      const stars = Number(player.stars);
+      if (!username || !Number.isSafeInteger(stars) || stars < 0) {
+        console.warn('Bannière de portefeuille ignorée : profil ou solde invalide.', player);
+        return;
+      }
+
+      const banner = document.getElementById('walletBanner');
+      const avatar = document.getElementById('walletBannerAvatar');
+      const fallback = document.getElementById('walletBannerFallback');
+      const avatarUrl = String(player.avatarUrl || player.profilePictureUrl || player.avatarDataUri || '');
+      document.getElementById('walletBannerTitle').textContent = title;
+      document.getElementById('walletBannerUsername').textContent = `@${username}`;
+      document.getElementById('walletBannerBalance').textContent = `${stars.toLocaleString('fr-FR')} ⭐ dans le portefeuille`;
+      document.getElementById('walletBannerNote').textContent = note;
+
+      if (avatarUrl) {
+        avatar.src = avatarUrl;
+        avatar.hidden = false;
+        fallback.hidden = true;
+        avatar.onerror = () => {
+          avatar.hidden = true;
+          fallback.textContent = username.slice(0, 1).toUpperCase();
+          fallback.hidden = false;
+        };
+      } else {
+        avatar.removeAttribute('src');
+        avatar.hidden = true;
+        fallback.textContent = username.slice(0, 1).toUpperCase();
+        fallback.hidden = false;
+      }
+
+      banner.hidden = false;
+      window.clearTimeout(walletBannerTimer);
+      walletBannerTimer = window.setTimeout(() => {
+        banner.hidden = true;
+      }, 8000);
+    }
+
+    function enqueueTikTokGift(rawGift, isReal = false) {
+      const donor = String(rawGift.username || rawGift.nickname || rawGift.donor || 'Spectateur')
+        .trim()
+        .replace(/^@/, '')
+        .slice(0, 24) || 'Spectateur';
+      const giftName = String(rawGift.giftName || rawGift.name || 'Cadeau TikTok').trim().slice(0, 30) || 'Cadeau TikTok';
+      const rep = Math.max(1, Math.floor(Number(rawGift.repeatCount) || 1));
+      let coins = Math.floor(Number(rawGift.coinCount));
+      if (!Number.isSafeInteger(coins) || coins < 1) {
+        const unit = Math.max(1, Math.floor(Number(rawGift.coinValue || rawGift.diamondCount || 1)));
+        coins = unit * rep;
+      }
+
+      const mult = Math.max(1, Math.min(30, Math.floor(Number(document.getElementById('tkMultiplier').value) || 1)));
+      const chunk = Math.max(1, Math.min(10000, Math.floor(Number(document.getElementById('tkCoinChunk').value) || 50)));
+      const mode = document.getElementById('tkDropMode').value;
+
+      let count = mult;
+      if (mode === 'per_coins') {
+        count = Math.max(1, Math.floor(coins / chunk) * mult);
+      }
+      count = Math.min(count, 45);
+
+      const key = donor.toLowerCase();
+      const entry = state.tiktok.donors.get(key) || { name: donor, coins: 0, meteors: 0 };
+      entry.name = donor;
+      entry.coins += coins;
+      entry.meteors += count;
+      state.tiktok.donors.set(key, entry);
+      renderLeaderboard();
+
+      for (let i = 0; i < count; i++) {
+        state.meteorQueue.push({ donor, giftName, coins, isReal });
+      }
+      updateQueueBadge();
+      showGiftBanner(donor, giftName, coins, count);
+    }
+
+    // Connexion TikTok Live via WebSocket
+    function setTikTokStatus(badgeText, msgText, online) {
+      const badge = document.getElementById('tkBadge');
+      const dot = document.getElementById('tkDot');
+      const msg = document.getElementById('tkStatusMsg');
+      if (badge) {
+        badge.textContent = badgeText;
+        badge.className = online
+          ? 'px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 font-extrabold text-[10px] uppercase'
+          : 'px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-400/30 text-rose-200 font-extrabold text-[10px] uppercase';
+      }
+      if (dot) {
+        dot.className = online
+          ? 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]'
+          : 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]';
+      }
+      if (msg && msgText) msg.textContent = msgText;
+    }
+
+    const widgetPositionKey = 'aegis_city_tiktok_widget_position';
+    const tiktokWidget = document.getElementById('tiktokWidget');
+    const widgetDragHandle = document.getElementById('widgetDragHandle');
+    function setWidgetPosition(left, top) {
+      const maxLeft = Math.max(0, window.innerWidth - tiktokWidget.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - tiktokWidget.offsetHeight);
+      tiktokWidget.style.left = `${Math.max(0, Math.min(maxLeft, left))}px`;
+      tiktokWidget.style.top = `${Math.max(0, Math.min(maxTop, top))}px`;
+      tiktokWidget.style.right = 'auto';
+    }
+
+    function saveWidgetPosition() {
+      const rect = tiktokWidget.getBoundingClientRect();
+      try {
+        localStorage.setItem(widgetPositionKey, JSON.stringify({ left: rect.left, top: rect.top }));
+      } catch (error) {
+        console.warn('Position du panneau non mémorisée :', error);
+      }
+    }
+
+    function restoreWidgetPosition() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(widgetPositionKey) || 'null');
+        if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+          setWidgetPosition(saved.left, saved.top);
+        }
+      } catch (error) {
+        console.warn('Position mémorisée du panneau illisible :', error);
+      }
+    }
+
+    function makeWidgetDraggable() {
+      let pointerId = null;
+      let startX = 0;
+      let startY = 0;
+      let startLeft = 0;
+      let startTop = 0;
+
+      widgetDragHandle.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || event.target.closest('button')) return;
+        const rect = tiktokWidget.getBoundingClientRect();
+        pointerId = event.pointerId;
+        startX = event.clientX;
+        startY = event.clientY;
+        startLeft = rect.left;
+        startTop = rect.top;
+        widgetDragHandle.setPointerCapture(pointerId);
+      });
+
+      widgetDragHandle.addEventListener('pointermove', event => {
+        if (event.pointerId !== pointerId) return;
+        setWidgetPosition(startLeft + event.clientX - startX, startTop + event.clientY - startY);
+      });
+
+      const finishDrag = event => {
+        if (event.pointerId !== pointerId) return;
+        if (widgetDragHandle.hasPointerCapture(pointerId)) widgetDragHandle.releasePointerCapture(pointerId);
+        pointerId = null;
+        saveWidgetPosition();
+      };
+
+      widgetDragHandle.addEventListener('pointerup', finishDrag);
+      widgetDragHandle.addEventListener('pointercancel', finishDrag);
+      window.addEventListener('resize', () => {
+        if (tiktokWidget.style.left) {
+          const rect = tiktokWidget.getBoundingClientRect();
+          setWidgetPosition(rect.left, rect.top);
+          saveWidgetPosition();
+        }
+      });
+    }
+
+    function sendTikTokUsername() {
+      if (state.tiktok.socket && state.tiktok.socket.readyState === WebSocket.OPEN && state.tiktok.username) {
+        state.tiktok.socket.send(JSON.stringify({
+          action: 'CONNECT_TIKTOK',
+          username: state.tiktok.username
+        }));
+        setTikTokStatus('HORS LIGNE', `Connexion demandée pour @${state.tiktok.username}…`, false);
+      }
+    }
+
+    function connectTikTok() {
+      sound.init();
+      const user = document.getElementById('tkUsernameInput').value.trim().replace(/^@/, '');
+      if (!user) {
+        setTikTokStatus('HORS LIGNE', 'Entre ton pseudo TikTok avant de connecter.', false);
+        return;
+      }
+      state.tiktok.username = user;
+
+      if (!['http:', 'https:'].includes(window.location.protocol)) {
+        setTikTokStatus('HORS LIGNE', 'Ouvert en local : utilise les boutons cadeaux ou héberge sur un serveur WebSocket.', false);
+        return;
+      }
+
+      if (state.tiktok.socket && state.tiktok.socket.readyState <= WebSocket.OPEN) {
+        sendTikTokUsername();
+        return;
+      }
+
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${window.location.host}`);
+      state.tiktok.socket = ws;
+
+      ws.addEventListener('open', () => sendTikTokUsername());
+      ws.addEventListener('message', ev => {
+        let data;
+        try { data = JSON.parse(ev.data); } catch { return; }
+        if (data.type === 'STATUS') {
+          const txt = String(data.message || '');
+          const isLive = /connecté|connected|live/i.test(txt) && !/hors ligne|erreur|error/i.test(txt);
+          state.tiktok.connected = isLive;
+          setTikTokStatus(isLive ? 'CONNECTÉ' : 'HORS LIGNE', txt, isLive);
+        } else if (data.type === 'gift' && data.gift) {
+          enqueueTikTokGift(data.gift, true);
+        }
+      });
+      ws.addEventListener('close', () => {
+        state.tiktok.connected = false;
+        clearTimeout(state.tiktok.reconnectTimer);
+        state.tiktok.reconnectTimer = setTimeout(() => {
+          if (state.tiktok.username) connectTikTok();
+        }, 3000);
+      });
+    }
+
+    // Événements UI
+    document.getElementById('btnConnectTikTok').addEventListener('click', connectTikTok);
+    makeWidgetDraggable();
+    restoreWidgetPosition();
+
+    window.addEventListener('arcade:wallet', event => {
+      const detail = event.detail || {};
+      if (/^Solde global/i.test(String(detail.message || ''))) {
+        showWalletBalanceBanner(detail.player, 'SOLDE D’ÉTOILES', 'Consultation du portefeuille');
+      }
+    });
+
+    window.addEventListener('arcade:wallet-run', event => {
+      const detail = event.detail || {};
+      const player = detail.player || {};
+      const spent = Number(detail.spent);
+      const donor = String(player.username || player.uniqueId || player.nickname || '').trim().replace(/^@+/, '');
+      if (!Number.isSafeInteger(spent) || spent < 1 || !donor) {
+        console.warn('Commande RUN ignorée : montant ou pseudo invalide.', detail);
+        return;
+      }
+
+      showWalletBalanceBanner(
+        player,
+        'RUN LANCÉ',
+        `${spent.toLocaleString('fr-FR')} étoiles engagées · solde après débit`
+      );
+      spawnMeteor({ donor, giftName: 'RUN', coins: spent, isReal: true });
+    });
+
+    window.addEventListener('arcade:wallet-run-rejected', event => {
+      const detail = event.detail || {};
+      if (detail.player) {
+        showWalletBalanceBanner(detail.player, 'RUN REFUSÉ', String(detail.message || 'Aucune étoile dépensée.'));
+      } else {
+        document.getElementById('tkStatusMsg').textContent = String(detail.message || 'La commande RUN a été refusée.');
+      }
+    });
+
+    document.getElementById('tkUsernameInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); connectTikTok(); }
+    });
+
+    document.getElementById('tkDropMode').addEventListener('change', e => {
+      const enabled = e.target.value === 'per_coins';
+      const inp = document.getElementById('tkCoinChunk');
+      const wrap = document.getElementById('tkCoinChunkWrap');
+      inp.disabled = !enabled;
+      wrap.classList.toggle('opacity-55', !enabled);
+    });
+
+    document.getElementById('btnTogglePanel').addEventListener('click', () => {
+      const body = document.getElementById('tiktokBody');
+      const btn = document.getElementById('btnTogglePanel');
+      const hidden = body.classList.toggle('hidden');
+      btn.textContent = hidden ? '+' : '—';
+    });
+
+    document.getElementById('btnTestRose').addEventListener('click', () => {
+      sound.init();
+      enqueueTikTokGift({ username: 'NeoCitizen', giftName: 'Rose', coinCount: 1, repeatCount: 1 });
+    });
+
+    document.getElementById('btnTestLion').addEventListener('click', () => {
+      sound.init();
+      enqueueTikTokGift({ username: 'AstroVanguard', giftName: 'Comète', coinCount: 100, repeatCount: 3 });
+    });
+
+    document.getElementById('btnTestUniverse').addEventListener('click', () => {
+      sound.init();
+      enqueueTikTokGift({ username: 'SolarOverlord', giftName: 'Supernova', coinCount: 1000, repeatCount: 1 });
+    });
+
+    document.getElementById('btnClearQueue').addEventListener('click', () => {
+      state.meteorQueue = [];
+      updateQueueBadge();
+    });
+
+    document.getElementById('btnLaunchMeteor').addEventListener('click', () => {
+      sound.init();
+      spawnMeteor({ donor: 'AegisCommand', giftName: 'Frappe Météorite', coins: 50 });
+    });
+
+    document.querySelectorAll('.test-coin-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sound.init();
+        spawnMeteor({ donor: 'Test', giftName: 'Cadeau test', coins: Number(btn.dataset.testCoins) });
+      });
+    });
+
+    document.getElementById('btnRebuildCity').addEventListener('click', () => {
+      sound.init();
+      clearStarRewardPopups();
+      buildFuturisticCity();
+      state.impacts = 0;
+      state.score = 0;
+      document.getElementById('hudImpacts').textContent = '0';
+      document.getElementById('hudScore').textContent = '0';
+      document.getElementById('hudIntegrity').textContent = '100%';
+      document.getElementById('hudIntegrity').className = 'font-extrabold text-emerald-400 text-sm sm:text-base';
+      sound.playRebuildChime();
+    });
+
+    const CAM_MODES = ['Vue Ville', 'Vue de haut', 'Vue du ciel', 'Suivi Météorite', 'Vue Libre'];
+    function cycleCamera() {
+      state.cameraMode = (state.cameraMode + 1) % CAM_MODES.length;
+      camera.up.set(0, 1, 0);   // la vue du dessus fait pivoter l'axe « haut » de la caméra : on le remet droit
+      document.getElementById('camLabel').textContent = CAM_MODES[state.cameraMode];
+    }
+
+    document.getElementById('btnCamera').addEventListener('click', () => {
+      sound.init();
+      cycleCamera();
+    });
+
+    document.getElementById('btnSound').addEventListener('click', () => {
+      sound.enabled = !sound.enabled;
+      if (sound.enabled) sound.init();
+      document.getElementById('btnSound').textContent = sound.enabled ? '🔊 Son ON' : '🔇 Muet';
+    });
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        sound.init();
+        spawnMeteor({ donor: 'AegisCommand', giftName: 'Frappe Météorite', coins: 50 });
+      } else if (e.code === 'KeyV') {
+        cycleCamera();
+      } else if (e.code === 'KeyM') {
+        sound.enabled = !sound.enabled;
+        if (sound.enabled) sound.init();
+        document.getElementById('btnSound').textContent = sound.enabled ? '🔊 Son ON' : '🔇 Muet';
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // =========================================================================
+    // 7. BOUCLE D'ANIMATION PRINCIPALE
+    // =========================================================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.getElapsedTime();
+
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0 && state.meteorQueue.length > 0) {
+        const job = state.meteorQueue.shift();
+        updateQueueBadge();
+        spawnMeteor(job);
+        state.spawnTimer = 0.24;
+      }
+
+      fireLight.intensity = Math.max(0, fireLight.intensity - 16 * dt);
+
+      // Balises rouges d'aviation sur les toits
+      beaconMat.emissiveIntensity = (elapsed % 1.8) < 0.28 ? 3.2 : 0.2;
+
+      // Véhicules réellement volants circulant à plusieurs altitudes dans la ville
+      strobeMat.color.setHex((elapsed * 1.1) % 1 < 0.07 ? 0xffffff : 0x151515);   // flash anticollision
+      for (const fc of flyingCars) {
+        const rotors = fc.mesh.userData.rotors;
+        if (rotors) for (let ri = 0; ri < rotors.length; ri++) rotors[ri].rotation.y += dt * (46 + ri * 3);   // hélices en rotation
+        fc.angle += fc.speed * dt;
+        fc.bobPhase += 3.2 * dt;
+        const x = Math.cos(fc.angle) * fc.radius;
+        const z = Math.sin(fc.angle) * fc.radius;
+        const y = fc.baseAlt + Math.sin(fc.bobPhase) * 1.35;
+
+        fc.mesh.position.set(x, y, z);
+
+        // Orientation tangente à la trajectoire circulaire
+        const nextAngle = fc.angle + fc.speed * 0.05;
+        const nx = Math.cos(nextAngle) * fc.radius;
+        const nz = Math.sin(nextAngle) * fc.radius;
+        fc.mesh.lookAt(nx, y, nz);
+        fc.mesh.rotateZ(-fc.dirSign * 0.14);
+      }
+
+      // Piétons marchant sur les rues piétonnes de la ville
+      for (const ped of pedestrians) {
+        if (!ped.alive) continue;
+        ped.walkPhase += ped.speed * 4.6 * dt;
+        const swing = Math.sin(ped.walkPhase) * 0.42;
+        const stride = Math.cos(ped.walkPhase);
+        ped.leftKnee.rotation.x = Math.max(0, -stride) * 0.8;    // le genou se plie quand la jambe passe vers l'avant
+        ped.rightKnee.rotation.x = Math.max(0, stride) * 0.8;
+
+        ped.leftLeg.rotation.x = swing;
+        ped.rightLeg.rotation.x = -swing;
+        ped.leftArm.rotation.x = -swing * 0.75;
+        ped.rightArm.rotation.x = swing * 0.75;
+        ped.mesh.position.y = Math.abs(Math.cos(ped.walkPhase)) * 0.035;
+
+        if (ped.alongX) {
+          ped.mesh.position.x += ped.dir * ped.speed * dt;
+          if (ped.mesh.position.x > 105) ped.mesh.position.x = -105;
+          if (ped.mesh.position.x < -105) ped.mesh.position.x = 105;
+        } else {
+          ped.mesh.position.z += ped.dir * ped.speed * dt;
+          if (ped.mesh.position.z > 105) ped.mesh.position.z = -105;
+          if (ped.mesh.position.z < -105) ped.mesh.position.z = 105;
+        }
+      }
+
+      for (const b of buildings) {
+        if (b.destroyed) {
+          b.fallRotX += b.fallVelZ * 0.45 * dt;
+          b.fallRotZ += -b.fallVelX * 0.45 * dt;
+          b.group.rotation.x = Math.max(-1.35, Math.min(1.35, b.fallRotX));
+          b.group.rotation.z = Math.max(-1.35, Math.min(1.35, b.fallRotZ));
+          b.group.position.y = Math.max(-b.baseHeight * 0.45, b.group.position.y - 12 * dt);
+        }
+      }
+
+      // Chute et impact des météorites
+      meteorMat.emissiveIntensity = 1.15 + 0.35 * Math.sin(elapsed * 18);   // la roche pulse de chaleur
+      for (let i = activeMeteors.length - 1; i >= 0; i--) {
+        const m = activeMeteors[i];
+        m.mesh.position.addScaledVector(m.vel, dt);
+        m.rock.rotation.x += 1.6 * dt;
+        m.rock.rotation.z += 1.1 * dt;
+
+        // Scintillement de la traînée de plasma + fumée persistante derrière la météorite
+        for (let k = 0; k < m.tail.length; k++) {
+          m.tail[k].sp.scale.setScalar(m.tail[k].base * (0.88 + 0.24 * Math.sin(elapsed * 22 + k * 1.7)));
+        }
+        m.smokeTimer -= dt;
+        if (m.smokeTimer <= 0) {
+          m.smokeTimer = 0.03;
+          spawnSmokePuff(m.mesh.position, m.scale);
+        }
+
+        // Impact : sur le toit d'un immeuble rencontré, sinon au sol
+        const mp = m.mesh.position;
+        let hitY = null;
+        if (mp.y <= 1.2) {
+          hitY = 0.5;
+        } else if (mp.y < 140) {
+          for (const b of buildings) {
+            if (b.destroyed) continue;
+            if (Math.abs(mp.x - b.group.position.x) < b.halfW && Math.abs(mp.z - b.group.position.z) < b.halfD && mp.y <= b.baseHeight + 2.5) {
+              hitY = Math.max(1, mp.y - 1.5);
+              break;
+            }
+          }
+        }
+        if (hitY !== null) {
+          const hitPos = mp.clone();
+          hitPos.y = hitY;
+          scene.remove(m.mesh);
+          m.mesh.traverse(o => { if (o.isSprite) o.material.dispose(); });
+          activeMeteors.splice(i, 1);
+          spawnImpactExplosion(hitPos, m.scale, m.coins, m);
+        }
+      }
+
+      // Fumée, boule de feu et poussière (sprites)
+      for (let i = fxSprites.length - 1; i >= 0; i--) {
+        const f = fxSprites[i];
+        f.life -= dt;
+        if (f.life <= 0) {
+          scene.remove(f.sp);
+          f.sp.material.dispose();
+          fxSprites.splice(i, 1);
+          continue;
+        }
+        const t = 1 - f.life / f.max;
+        f.sp.scale.setScalar(f.s0 + (f.s1 - f.s0) * t);
+        f.sp.position.x += f.vx * dt;
+        f.sp.position.y += f.vy * dt;
+        f.sp.position.z += f.vz * dt;
+        f.vx *= 1 - 0.8 * dt;
+        f.vz *= 1 - 0.8 * dt;
+        f.sp.material.opacity = f.op0 * Math.pow(1 - t, f.fade);
+        if (f.heat) {   // la fumée est orangée (chaude) au début puis devient grise
+          const h = Math.max(0, 1 - t / 0.25);
+          f.sp.material.color.setRGB(0.22 + 0.78 * h, 0.2 + 0.45 * h, 0.19 + 0.2 * h);
+        }
+      }
+
+      // Ondes de choc
+      for (let i = ringList.length - 1; i >= 0; i--) {
+        const r = ringList[i];
+        r.life -= dt;
+        if (r.life <= 0) {
+          scene.remove(r.mesh);
+          r.mesh.geometry.dispose();
+          r.mesh.material.dispose();
+          ringList.splice(i, 1);
+          continue;
+        }
+        const t = 1 - r.life / r.max;
+        r.mesh.scale.setScalar(1 + (r.r1 - 1) * (1 - Math.pow(1 - t, 2)));
+        r.mesh.material.opacity = 0.8 * (1 - t);
+      }
+
+      // Cratères carbonisés qui s'estompent lentement
+      for (let i = craterList.length - 1; i >= 0; i--) {
+        const c = craterList[i];
+        c.life -= dt;
+        if (c.life < 6) c.mesh.material.opacity = Math.max(0, c.life / 6);
+        if (c.life <= 0) {
+          scene.remove(c.mesh);
+          c.mesh.material.dispose();
+          craterList.splice(i, 1);
+        }
+      }
+
+      // Débris et étincelles
+      for (let i = debrisList.length - 1; i >= 0; i--) {
+        const d = debrisList[i];
+        d.vy -= 28 * dt;
+        d.mesh.position.x += d.vx * dt;
+        d.mesh.position.y += d.vy * dt;
+        d.mesh.position.z += d.vz * dt;
+        if (d.mesh.position.y < 0.8) {
+          d.mesh.position.y = 0.8;
+          d.vy = Math.abs(d.vy) * 0.35;
+          d.vx *= 0.7;
+          d.vz *= 0.7;
+        }
+        d.mesh.rotation.x += d.rotSpeed.x * dt;
+        d.mesh.rotation.y += d.rotSpeed.y * dt;
+        d.life -= dt;
+        if (d.life <= 0) {
+          scene.remove(d.mesh);
+          debrisList.splice(i, 1);
+        }
+      }
+
+      for (let i = sparkList.length - 1; i >= 0; i--) {
+        const s = sparkList[i];
+        s.vy -= 20 * dt;
+        s.mesh.position.x += s.vx * dt;
+        s.mesh.position.y += s.vy * dt;
+        s.mesh.position.z += s.vz * dt;
+        s.life -= s.decay * dt;
+        s.mesh.scale.multiplyScalar(0.95);
+        if (s.life <= 0) {
+          scene.remove(s.mesh);
+          sparkList.splice(i, 1);
+        }
+      }
+
+      // Caméras
+      // Brouillard plus léger en vue du dessus pour garder des toits nets
+      const fogTarget = (state.cameraMode === 1 || state.cameraMode === 2) ? 0.0008 : 0.0024;
+      scene.fog.density += (fogTarget - scene.fog.density) * Math.min(1, 2 * dt);
+      camera.up.set(0, 1, 0);
+      updateStarRewardPopups(dt);
+
+      if (state.cameraMode === 1) {
+        // Vue de haut : caméra en altitude (≈ 65° d'inclinaison) qui tourne en continu autour de la ville,
+        // pour voir les toits et les météorites tomber depuis le ciel
+        const orbAngle = elapsed * 0.14;
+        const desiredPos = new THREE.Vector3(Math.sin(orbAngle) * 105, 235, Math.cos(orbAngle) * 105);
+        camera.position.lerp(desiredPos, 2.5 * dt);
+        controls.target.lerp(new THREE.Vector3(0, 10, 0), 4 * dt);
+        camera.lookAt(controls.target);
+      } else if (state.cameraMode === 2) {
+        // Vue verticale fixe pour suivre clairement les impacts et les destructions.
+        const orbAngle = 0;
+        const tHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        const skyHeight = 145 / (tHalf * Math.min(1, camera.aspect));   // s'adapte aux écrans larges comme aux écrans verticaux
+        camera.position.lerp(new THREE.Vector3(0, skyHeight, 0.01), 2.5 * dt);
+        controls.target.lerp(new THREE.Vector3(0, 0, 0), 4 * dt);
+        // L'axe « haut » de l'écran bascule vers l'horizontale puis tourne autour de la ville
+        const k = Math.min(1, Math.max(0, (camera.position.y - 100) / Math.max(1, skyHeight - 100)));
+        camera.up.set(-Math.sin(orbAngle) * k, 1 - k, -Math.cos(orbAngle) * k).normalize();
+        camera.lookAt(controls.target);
+      } else if (state.cameraMode === 0) {
+        const orbAngle = elapsed * 0.14;
+        const desiredPos = new THREE.Vector3(Math.sin(orbAngle) * 155, 88, Math.cos(orbAngle) * 155);
+        camera.position.lerp(desiredPos, 2.5 * dt);
+        controls.target.lerp(new THREE.Vector3(0, 18, 0), 4 * dt);
+        camera.lookAt(controls.target);
+      } else if (state.cameraMode === 3 && activeMeteors.length > 0) {
+        const targetMeteor = activeMeteors[activeMeteors.length - 1];
+        const camOff = targetMeteor.mesh.position.clone().add(new THREE.Vector3(24, 22, 28));
+        camera.position.lerp(camOff, 5.5 * dt);
+        controls.target.lerp(targetMeteor.mesh.position, 8 * dt);
+        camera.lookAt(controls.target);
+      } else {
+        controls.update();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    try {
+      animate();
+    } catch (err) {
+      showErrorBox(err && err.message ? err.message : 'Erreur d\'exécution de la scène 3D.');
+    }
+  </script>
+</body>
+</html>
