@@ -258,6 +258,13 @@
                 </div>
             </div>
 
+            <div class="bg-black/50 border border-white/10 rounded-xl p-3">
+                <button id="btn-mute" type="button" aria-pressed="false" title="Couper les effets sonores" class="w-full px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-zinc-200 font-bold flex items-center justify-center gap-2 transition">
+                    <i id="icon-mute" class="fa-solid fa-volume-high"></i>
+                    <span id="text-mute">Effets sonores : Activés</span>
+                </button>
+            </div>
+
             <!-- 2. SECTION DÉPLIABLE : MODE TEST, SIMULATION & RÉGLAGES DU BOSS -->
             <div class="bg-black/50 border border-white/10 rounded-xl overflow-hidden">
                 <button id="btn-toggle-sim-drawer" class="w-full flex items-center justify-between px-3 py-2.5 bg-white/5 hover:bg-white/10 transition text-left">
@@ -271,14 +278,10 @@
                 <div id="sim-drawer-content" class="hidden p-3 space-y-3 border-t border-white/10">
 
                     <!-- Contrôles rapides : Son, Auto-Chat, Reset Boss -->
-                    <div class="grid grid-cols-2 gap-2">
+                    <div class="grid grid-cols-1 gap-2">
                         <button id="btn-sim-live" class="px-2.5 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-bold flex items-center justify-center gap-1.5 transition">
                             <i class="fa-solid fa-robot"></i>
                             <span id="sim-live-text">Chat Auto : OFF</span>
-                        </button>
-                        <button id="btn-mute" class="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition">
-                            <i id="icon-mute" class="fa-solid fa-volume-high"></i>
-                            <span id="text-mute">Son : Activé</span>
                         </button>
                     </div>
 
@@ -401,6 +404,7 @@
         class SoundEngine {
             constructor() {
                 this.ctx = null;
+                this.masterGain = null;
                 this.muted = false;
                 this.ambienceStarted = false;
             }
@@ -409,6 +413,9 @@
                 if (!this.ctx) {
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
                     this.ctx = new AudioContext();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = this.muted ? 0 : 1;
+                    this.masterGain.connect(this.ctx.destination);
                 }
                 if (this.ctx.state === 'suspended') {
                     this.ctx.resume();
@@ -421,6 +428,9 @@
 
             toggleMute() {
                 this.muted = !this.muted;
+                if (this.masterGain && this.ctx) {
+                    this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 1, this.ctx.currentTime, 0.015);
+                }
                 return this.muted;
             }
 
@@ -434,7 +444,7 @@
                 osc.frequency.value = 48;
                 gain.gain.value = 0.04;
                 osc.connect(gain);
-                gain.connect(this.ctx.destination);
+                gain.connect(this.masterGain);
                 osc.start();
 
                 // Gouttes d'eau aléatoires
@@ -453,7 +463,7 @@
                     dropGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
 
                     dropOsc.connect(dropGain);
-                    dropGain.connect(this.ctx.destination);
+                    dropGain.connect(this.masterGain);
                     dropOsc.start(now);
                     dropOsc.stop(now + 0.13);
                 }, 1400);
@@ -474,7 +484,7 @@
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
 
                 osc.connect(gain);
-                gain.connect(this.ctx.destination);
+                gain.connect(this.masterGain);
                 osc.start(now);
                 osc.stop(now + 0.14);
             }
@@ -501,7 +511,7 @@
 
                 osc.connect(filter);
                 filter.connect(gain);
-                gain.connect(this.ctx.destination);
+                gain.connect(this.masterGain);
 
                 osc.start(now);
                 osc.stop(now + 0.4 * intensity);
@@ -534,7 +544,7 @@
 
                 noise.connect(filter);
                 filter.connect(gain);
-                gain.connect(this.ctx.destination);
+                gain.connect(this.masterGain);
 
                 noise.start(now);
                 noise.stop(now + 0.9);
@@ -555,7 +565,7 @@
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 1.45);
 
                 osc.connect(gain);
-                gain.connect(this.ctx.destination);
+                gain.connect(this.masterGain);
                 osc.start(now);
                 osc.stop(now + 1.5);
             }
@@ -3115,12 +3125,17 @@
 
             // Mute / Unmute
             document.getElementById('btn-mute').addEventListener('click', () => {
-                sound.init();
                 const isMuted = sound.toggleMute();
                 document.getElementById('icon-mute').className = isMuted
                     ? 'fa-solid fa-volume-xmark text-rose-500'
                     : 'fa-solid fa-volume-high';
-                document.getElementById('text-mute').textContent = isMuted ? 'Son : Coupé' : 'Son : Activé';
+                document.getElementById('text-mute').textContent = isMuted
+                    ? 'Effets sonores : Coupés'
+                    : 'Effets sonores : Activés';
+                document.getElementById('btn-mute').setAttribute('aria-pressed', String(isMuted));
+                document.getElementById('btn-mute').title = isMuted
+                    ? 'Réactiver les effets sonores'
+                    : 'Couper les effets sonores';
             });
 
             // Boutons Relancer & Reset PV
