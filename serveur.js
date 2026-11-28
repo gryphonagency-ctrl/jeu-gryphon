@@ -267,6 +267,7 @@ const protectedRoutes = new Set([
     '/live-photo-printer-studio-realiste.html',
     '/gryphon-zombie.html',
     '/aegis-city-meteorites.html',
+    '/le-rat-mutant.html',
     '/griffon-gauche.jpg',
     '/donut.jpg',
     '/epee-fanfan-detouree.png',
@@ -314,7 +315,8 @@ const fixedGameImageIds = new Set([
     '/petits-chevaux.html',
     '/gryphon-zombie.html',
     '/lunar-interstellar.html',
-    '/aegis-city-meteorites.html'
+    '/aegis-city-meteorites.html',
+    '/le-rat-mutant.html'
 ]);
 store.lockCreatorGamesOnce('gryphon.games', ['/pendu.html', '/plinko.html'], '/lock-gryphon.games-2026-10-27');
 store.grantGameAccessToExistingCreators('/monde-du-ballon.html');
@@ -385,6 +387,7 @@ store.grantGameAccessToExistingCreators('/live-photo-printer-studio.html');
 store.grantGameAccessToExistingCreators('/live-photo-printer-studio-realiste.html');
 store.grantGameAccessToExistingCreators('/gryphon-zombie.html');
 store.grantGameAccessToExistingCreators('/aegis-city-meteorites.html');
+store.grantGameAccessToExistingCreators('/le-rat-mutant.html');
 store.grantGameAccessToExistingCreators('/petits-chevaux.html');
 store.grantGameAccessToExistingCreators('/lunar-interstellar.html');
 store.grantGameAccessToExistingCreators('/monopoly-royal-tiktok-live.html');
@@ -406,6 +409,7 @@ const staticGameTitles = {
     '/live-photo-printer-studio-realiste.html': 'Live Photo Printer Studio réaliste',
     '/gryphon-zombie.html': 'GRYPHON ZOMBIE',
     '/aegis-city-meteorites.html': 'Aegis City — Pluie de Météorites',
+    '/le-rat-mutant.html': 'Le Rat Mutant',
     '/aquarium-tiktok-live.html': 'Aquarium Live',
     '/quartier-des-veilleurs.html': 'Le Quartier des Veilleurs',
     '/coin-pusher-tiktok.html': 'Pousse les monstres',
@@ -492,6 +496,7 @@ const gameRouteIds = new Map([
     ['/live-photo-printer-studio-realiste.html', '/live-photo-printer-studio-realiste.html'],
     ['/gryphon-zombie.html', '/gryphon-zombie.html'],
     ['/aegis-city-meteorites.html', '/aegis-city-meteorites.html'],
+    ['/le-rat-mutant.html', '/le-rat-mutant.html'],
     ['/aquarium-tiktok-live.html', '/aquarium-tiktok-live.html'],
     ['/quartier-des-veilleurs.html', '/quartier-des-veilleurs.html'],
     ['/coin-pusher-tiktok.html', '/coin-pusher-tiktok.html'],
@@ -3964,6 +3969,8 @@ const server = http.createServer((req, res) => {
         ['/live-photo-printer-studio-realiste.html', [path.join(__dirname, 'live-photo-printer-studio-realiste.html'), 'text/html; charset=utf-8']],
         ['/gryphon-zombie.html', [path.join(__dirname, 'gryphon-zombie.html'), 'text/html; charset=utf-8']],
         ['/aegis-city-meteorites.html', [path.join(__dirname, 'aegis-city-meteorites.html'), 'text/html; charset=utf-8']],
+        ['/le-rat-mutant.html', [path.join(__dirname, 'le-rat-mutant.html'), 'text/html; charset=utf-8']],
+        ['/images-vitrine/le-rat-mutant.png', [path.join(__dirname, 'images-vitrine', 'le-rat-mutant.png'), 'image/png']],
         ['/gryphon-zombie-assets/laser-pistol-80/scene.gltf', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.gltf'), 'model/gltf+json; charset=utf-8']],
         ['/gryphon-zombie-assets/laser-pistol-80/scene.bin', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'scene.bin'), 'application/octet-stream']],
         ['/gryphon-zombie-assets/laser-pistol-80/textures/Scene_-_Root_baseColor.png', [path.join(__dirname, 'gryphon-zombie-assets', 'laser-pistol-80', 'textures', 'Scene_-_Root_baseColor.png'), 'image/png']],

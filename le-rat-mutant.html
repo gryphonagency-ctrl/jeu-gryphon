@@ -1,0 +1,3342 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Le Rat Mutant</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome pour les icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050605;
+            font-family: 'Inter', sans-serif;
+            color: #f3f4f6;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Vignette cinématographique et grain sombre */
+        .cinematic-vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            background: radial-gradient(circle at center, transparent 45%, rgba(0, 0, 0, 0.85) 100%);
+            box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.95);
+        }
+
+        /* Police épique pour le boss */
+        .font-boss {
+            font-family: 'Cinzel', serif;
+        }
+
+        /* Barre de vie avec effet métallique et sang */
+        .hp-bar-container {
+            background: linear-gradient(180deg, #18181b 0%, #09090b 100%);
+            border: 2px solid #3f3f46;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.1);
+        }
+        .hp-bar-fill {
+            background: linear-gradient(90deg, #7f1d1d 0%, #dc2626 50%, #ef4444 100%);
+            box-shadow: 0 0 15px rgba(220, 38, 38, 0.7);
+            transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .hp-bar-damage-lag {
+            background: #fca5a5;
+            transition: width 0.6s ease-out;
+        }
+
+        /* Animation des chiffres de dégâts flottants */
+        @keyframes floatDamage {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, 0) scale(0.6);
+            }
+            20% {
+                transform: translate(-50%, -25px) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -110px) scale(0.95);
+            }
+        }
+        .damage-popup {
+            position: absolute;
+            pointer-events: none;
+            font-weight: 900;
+            text-shadow: 0 3px 8px rgba(0,0,0,0.95), 0 0 4px rgba(0,0,0,1);
+            animation: floatDamage 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        /* Animation du flux TikTok */
+        @keyframes slideInFeed {
+            0% {
+                opacity: 0;
+                transform: translateX(-30px) scale(0.9);
+            }
+            100% {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
+        .feed-item {
+            animation: slideInFeed 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Flash d'impact écran */
+        @keyframes flashScreen {
+            0% { opacity: 0.45; }
+            100% { opacity: 0; }
+        }
+        .screen-flash {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+        }
+        .flash-active {
+            animation: flashScreen 0.35s ease-out forwards;
+        }
+
+        /* Scrollbar discrète */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        /* Curseur de déplacement pour le panneau flottant */
+        .drag-handle {
+            cursor: grab;
+            touch-action: none;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+    <!-- Conteneur principal de la scène 3D Three.js -->
+    <div id="canvas-container"></div>
+
+    <!-- Calque de flash d'impact et de dégâts flottants -->
+    <div id="screen-flash" class="screen-flash"></div>
+    <div id="damage-layer" class="fixed inset-0 z-20 pointer-events-none overflow-hidden"></div>
+
+    <!-- Vignette cinématographique -->
+    <div class="cinematic-vignette"></div>
+
+    <!-- INTERFACE UTILISATEUR (Overlay Stream / TikTok Live épuré) -->
+    <div id="ui-layer" class="fixed inset-0 z-30 flex flex-col justify-between p-3 sm:p-5 pointer-events-none">
+
+        <!-- HAUT : Barre de vie du Boss uniquement (Écran 100% propre pour le Live) -->
+        <div class="w-full max-w-2xl mx-auto flex flex-col items-center gap-2 pointer-events-none">
+
+            <div class="hidden"><span id="live-dot"></span></div>
+
+            <!-- Barre de PV Géante -->
+            <div class="w-full hp-bar-container rounded-2xl p-1.5 relative overflow-hidden">
+                <div id="hp-progress" class="w-full h-6 sm:h-8 bg-zinc-950 rounded-xl relative overflow-hidden" role="progressbar" aria-label="Points de vie du rat" aria-valuemin="0" aria-valuemax="10000" aria-valuenow="10000">
+                    <!-- Barre de retard blanche/rose -->
+                    <div id="hp-lag" class="hp-bar-damage-lag absolute top-0 left-0 h-full w-full rounded-xl"></div>
+                    <!-- Barre de vie rouge -->
+                    <div id="hp-fill" class="hp-bar-fill absolute top-0 left-0 h-full w-full rounded-xl"></div>
+                    <!-- Reflet brillant -->
+                    <div class="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent pointer-events-none"></div>
+                </div>
+            </div>
+
+            <!-- Compteur Combo Likes & Dégâts Totaux -->
+            <div class="flex items-center justify-between w-full px-2 text-xs text-zinc-300 font-semibold">
+                <div class="flex items-center gap-1.5 bg-black/60 px-2.5 py-1 rounded-lg border border-white/10">
+                    <i class="fa-solid fa-heart text-pink-500"></i>
+                    <span>Likes : <strong id="stat-likes" class="text-white">0</strong></span>
+                </div>
+                <div id="combo-badge" class="opacity-0 transition-opacity duration-200 bg-gradient-to-r from-amber-500 to-red-600 text-white font-black px-3 py-0.5 rounded-full text-xs shadow-lg">
+                    COMBO x<span id="combo-count">1</span> !
+                </div>
+                <div class="flex items-center gap-1.5 bg-black/60 px-2.5 py-1 rounded-lg border border-white/10">
+                    <i class="fa-solid fa-bolt text-amber-400"></i>
+                    <span>Dégâts : <strong id="stat-dmg" class="text-white">0</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOUTON PETIT ŒIL DISCRET (Masquer / Afficher le panneau de configuration) -->
+    <button id="btn-eye-toggle" title="Masquer / Afficher le panneau de configuration" class="fixed bottom-4 right-4 z-50 w-10 h-10 rounded-full bg-zinc-950/85 hover:bg-zinc-800 text-zinc-200 border border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.85)] backdrop-blur-md flex items-center justify-center transition active:scale-90">
+        <i id="icon-eye-toggle" class="fa-solid fa-eye text-sm"></i>
+    </button>
+
+    <!-- PANNEAU DE CONFIGURATION FLOTTANT & DÉPLAÇABLE (Drag & Drop) -->
+    <div id="config-panel" style="bottom: 64px; right: 16px;" class="fixed z-40 w-[340px] sm:w-[380px] max-w-[94vw] max-h-[82vh] flex flex-col bg-zinc-950/92 backdrop-blur-xl border border-white/15 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.95)] overflow-hidden">
+
+        <!-- Barre de titre déplaçable (Drag Handle) -->
+        <div id="config-drag-handle" class="drag-handle flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-zinc-900 via-zinc-800/90 to-zinc-900 border-b border-white/10 select-none">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-grip-vertical text-zinc-500 text-xs"></i>
+                <i class="fa-brands fa-tiktok text-rose-500 text-sm"></i>
+                <span class="text-xs font-black uppercase tracking-wider text-zinc-100">Configuration TikTok Live</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button id="btn-panel-minimize" title="Masquer le panneau" class="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-zinc-400 hover:text-white transition">
+                    <i class="fa-solid fa-eye-slash text-[11px]"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Contenu défilant du panneau -->
+        <div class="p-3.5 overflow-y-auto space-y-3.5 text-xs">
+
+            <!-- 1. CONNEXION COMPTE TIKTOK -->
+            <div class="bg-black/50 border border-white/10 rounded-xl p-3 space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="font-extrabold text-zinc-100 flex items-center gap-1.5">
+                        <i class="fa-solid fa-signal text-rose-500"></i>
+                        Connexion TikTok Live
+                    </span>
+                    <span id="conn-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        Hors ligne
+                    </span>
+                </div>
+
+                <!-- Le pseudo TikTok suffit, sans arobase. -->
+                <div>
+                    <label for="tiktok-username-input" class="block text-[11px] font-semibold text-zinc-400 mb-1">Pseudo TikTok :</label>
+                    <input id="tiktok-username-input" type="text" maxlength="33" placeholder="pseudo_tiktok" autocomplete="off" autocapitalize="none" spellcheck="false" required class="w-full bg-zinc-900/90 border border-zinc-700 focus:border-rose-500 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none">
+                </div>
+
+                <!-- Message de statut détaillé -->
+                <div id="ws-feedback" class="text-[11px] text-zinc-400 bg-zinc-900/70 px-2.5 py-1.5 rounded-lg border border-white/5">
+                    Saisis ton pseudo TikTok puis connecte ton LIVE.
+                </div>
+                <div class="text-[11px] text-zinc-300 bg-zinc-900/70 px-2.5 py-1.5 rounded-lg border border-white/5">
+                    Les tapotages et les likes infligent 1 PV. Écris « étoiles » pour consulter ton portefeuille ; RUN dépense tes étoiles (1 étoile = 15 PV). Le dernier coup reçoit 30 % des pièces des cadeaux du combat en étoiles.
+                </div>
+
+                <!-- Boutons Connecter / Déconnecter -->
+                <div class="flex gap-2 pt-0.5">
+                    <button id="btn-connect-ws" class="flex-1 py-2 rounded-lg bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg transition active:scale-95 flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-plug"></i>
+                        <span>Connecter le Live TikTok</span>
+                    </button>
+                    <button id="btn-disconnect-ws" class="hidden px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs border border-white/10 transition active:scale-95">
+                        Déconnecter
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. SECTION DÉPLIABLE : MODE TEST, SIMULATION & RÉGLAGES DU BOSS -->
+            <div class="bg-black/50 border border-white/10 rounded-xl overflow-hidden">
+                <button id="btn-toggle-sim-drawer" class="w-full flex items-center justify-between px-3 py-2.5 bg-white/5 hover:bg-white/10 transition text-left">
+                    <span class="font-extrabold text-zinc-200 flex items-center gap-1.5">
+                        <i class="fa-solid fa-flask text-amber-400"></i>
+                        Mode Test, Simulation & Boss
+                    </span>
+                    <i id="icon-sim-drawer" class="fa-solid fa-chevron-down text-zinc-400 transition-transform duration-200"></i>
+                </button>
+
+                <div id="sim-drawer-content" class="hidden p-3 space-y-3 border-t border-white/10">
+
+                    <!-- Contrôles rapides : Son, Auto-Chat, Reset Boss -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btn-sim-live" class="px-2.5 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-bold flex items-center justify-center gap-1.5 transition">
+                            <i class="fa-solid fa-robot"></i>
+                            <span id="sim-live-text">Chat Auto : OFF</span>
+                        </button>
+                        <button id="btn-mute" class="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition">
+                            <i id="icon-mute" class="fa-solid fa-volume-high"></i>
+                            <span id="text-mute">Son : Activé</span>
+                        </button>
+                    </div>
+
+                    <!-- Réglage PV du Boss + Réinitialisation -->
+                    <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-white/5 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[11px] font-semibold text-zinc-300">PV de base du Boss :</label>
+                            <input id="boss-hp-input" type="number" min="100" step="1000" value="10000" class="w-24 bg-black border border-zinc-700 rounded px-2 py-1 text-right text-xs font-bold text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <button id="btn-reset-boss" class="w-full py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-600/40 text-red-200 font-bold text-[11px] transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-rotate-right"></i>
+                            <span>Appliquer & Réinitialiser le boss</span>
+                        </button>
+                    </div>
+
+                    <!-- Boutons de simulation de cadeaux TikTok -->
+                    <div>
+                        <div class="text-[11px] font-semibold text-zinc-400 mb-1.5">Simuler un don / action TikTok :</div>
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button onclick="triggerAction('like')" class="flex flex-col items-center p-1.5 rounded-lg bg-pink-600/20 hover:bg-pink-600/35 border border-pink-500/40 active:scale-95 transition">
+                                <span class="text-base">❤️</span>
+                                <span class="text-[10px] font-bold text-pink-200">Like</span>
+                                <span class="text-[9px] text-pink-400">-1 PV</span>
+                            </button>
+                            <button onclick="triggerAction('tap')" class="flex flex-col items-center p-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/35 border border-sky-500/40 active:scale-95 transition">
+                                <span class="text-base">👆</span>
+                                <span class="text-[10px] font-bold text-sky-200">Tap</span>
+                                <span class="text-[9px] text-sky-400">-1 PV</span>
+                            </button>
+
+                            <button onclick="triggerAction('rose')" class="flex flex-col items-center p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 active:scale-95 transition">
+                                <span class="text-base">🌹</span>
+                                <span class="text-[10px] font-bold text-zinc-100">Rose</span>
+                                <span class="text-[9px] text-amber-400">-15</span>
+                            </button>
+
+                            <button onclick="triggerAction('ice')" class="flex flex-col items-center p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 active:scale-95 transition">
+                                <span class="text-base">🍦</span>
+                                <span class="text-[10px] font-bold text-zinc-100">Glace</span>
+                                <span class="text-[9px] text-amber-400">-25</span>
+                            </button>
+
+                            <button onclick="triggerAction('heart')" class="flex flex-col items-center p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 active:scale-95 transition">
+                                <span class="text-base">🫰</span>
+                                <span class="text-[10px] font-bold text-zinc-100">Cœur</span>
+                                <span class="text-[9px] text-amber-400">-75</span>
+                            </button>
+
+                            <button onclick="triggerAction('perfume')" class="flex flex-col items-center p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/30 active:scale-95 transition">
+                                <span class="text-base">🧪</span>
+                                <span class="text-[10px] font-bold text-emerald-300">Acide</span>
+                                <span class="text-[9px] text-amber-400">-300</span>
+                            </button>
+
+                            <button onclick="triggerAction('galaxy')" class="flex flex-col items-center p-1.5 rounded-lg bg-purple-950/60 hover:bg-purple-900/70 border border-purple-500/50 active:scale-95 transition">
+                                <span class="text-base">🌌</span>
+                                <span class="text-[10px] font-bold text-purple-200">Galaxie</span>
+                                <span class="text-[9px] text-amber-300">-2500</span>
+                            </button>
+
+                            <button onclick="triggerAction('universe')" class="col-span-2 flex flex-col items-center p-1.5 rounded-lg bg-gradient-to-r from-amber-700/40 to-red-900/50 hover:from-amber-600/50 border border-amber-400/50 active:scale-95 transition">
+                                <span class="text-base">🪐</span>
+                                <span class="text-[10px] font-bold text-amber-200">Univers TikTok</span>
+                                <span class="text-[9px] text-amber-300">-10 000 PV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODALE DE VICTOIRE / MORT DU BOSS -->
+    <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-zinc-900 border-2 border-red-600/60 rounded-3xl max-w-md w-full p-6 text-center shadow-[0_0_60px_rgba(220,38,38,0.4)]">
+            <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-red-950 border border-red-500 flex items-center justify-center text-3xl">
+                💀
+            </div>
+            <h2 class="font-boss text-2xl sm:text-3xl font-black text-white tracking-wide mb-1">
+                VICTOIRE !
+            </h2>
+            <p class="text-sm text-zinc-400 mb-4">
+                La communauté TikTok Live a terrassé le monstre des égouts !
+            </p>
+            <div class="bg-black/60 rounded-2xl p-3 mb-5 border border-white/10 text-left space-y-1.5 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-zinc-400">Coup de grâce par :</span>
+                    <span id="mvp-killer" class="font-bold text-amber-400">@Utilisateur</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-zinc-400">Likes reçus :</span>
+                    <span id="victory-likes" class="font-bold text-pink-400">0</span>
+                </div>
+            </div>
+            <p id="winner-reward-status" class="text-xs text-zinc-300 mb-4" aria-live="polite">
+                30 % des pièces des cadeaux du combat seront attribuées au dernier coup, en étoiles.
+            </p>
+            <button id="btn-next-boss" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-black tracking-wider uppercase text-sm shadow-lg transition active:scale-95">
+                Relancer le combat
+            </button>
+        </div>
+    </div>
+
+    <aside id="walletBanner" aria-live="polite" hidden class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] flex items-center gap-5 max-w-[calc(100vw-24px)] px-6 py-5 rounded-3xl border-4 border-amber-300 bg-zinc-950/95 shadow-[0_10px_50px_rgba(0,0,0,0.85)] pointer-events-none">
+        <img id="wallet-avatar" alt="" hidden class="w-20 h-20 shrink-0 rounded-full border-4 border-amber-300 object-cover">
+        <div class="min-w-0 flex flex-col">
+            <strong id="wallet-name" class="text-xl sm:text-2xl font-black text-amber-200"></strong>
+            <span id="wallet-detail" class="text-base sm:text-lg text-white"></span>
+        </div>
+    </aside>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. MOTEUR AUDIO PROCÉDURAL (Web Audio API - Aucun fichier externe requis)
+         * ============================================================================
+         */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.ambienceStarted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                if (!this.ambienceStarted) {
+                    this.startSewerAmbience();
+                    this.ambienceStarted = true;
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            // Gouttes d'eau et bourdonnement sourd d'égout
+            startSewerAmbience() {
+                if (!this.ctx) return;
+                // Bourdonnement grave continu
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 48;
+                gain.gain.value = 0.04;
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+
+                // Gouttes d'eau aléatoires
+                setInterval(() => {
+                    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+                    if (Math.random() > 0.45) return;
+                    const now = this.ctx.currentTime;
+                    const dropOsc = this.ctx.createOscillator();
+                    const dropGain = this.ctx.createGain();
+                    dropOsc.type = 'sine';
+                    const baseFreq = 600 + Math.random() * 700;
+                    dropOsc.frequency.setValueAtTime(baseFreq, now);
+                    dropOsc.frequency.exponentialRampToValueAtTime(baseFreq * 1.8, now + 0.08);
+
+                    dropGain.gain.setValueAtTime(0.03, now);
+                    dropGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+                    dropOsc.connect(dropGain);
+                    dropGain.connect(this.ctx.destination);
+                    dropOsc.start(now);
+                    dropOsc.stop(now + 0.13);
+                }, 1400);
+            }
+
+            // Son d'impact léger (Like / Rose)
+            playHit(pitch = 1.0) {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(160 * pitch, now);
+                osc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            }
+
+            // Grognement rauque du rat mutant lorsqu'il prend de gros dégâts
+            playRatGrowl(intensity = 1) {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const filter = this.ctx.createBiquadFilter();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(110 + Math.random() * 30, now);
+                osc.frequency.linearRampToValueAtTime(65, now + 0.35 * intensity);
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(450, now);
+                filter.Q.value = 6;
+
+                gain.gain.setValueAtTime(0.22 * Math.min(intensity, 1.5), now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38 * intensity);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.4 * intensity);
+            }
+
+            // Explosion massive (Galaxie / Univers)
+            playExplosion() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                // Bruit blanc filtré
+                const bufferSize = this.ctx.sampleRate * 0.9;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.exponentialRampToValueAtTime(60, now + 0.85);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.45, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.88);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                noise.start(now);
+                noise.stop(now + 0.9);
+            }
+
+            // Cri d'agonie à la mort du boss
+            playDeathScream() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(280, now);
+                osc.frequency.exponentialRampToValueAtTime(42, now + 1.4);
+
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.45);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 1.5);
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        /**
+         * ============================================================================
+         * 2. GÉNÉRATEUR DE TEXTURES PROCÉDURALES PBR (Réalisme sale & organique)
+         * ============================================================================
+         */
+        function createProceduralTextures() {
+            // 1. Texture Briques d'égout moisies + Bump Map
+            const brickCanvas = document.createElement('canvas');
+            brickCanvas.width = 512;
+            brickCanvas.height = 512;
+            const bCtx = brickCanvas.getContext('2d');
+
+            const bumpCanvas = document.createElement('canvas');
+            bumpCanvas.width = 512;
+            bumpCanvas.height = 512;
+            const bumpCtx = bumpCanvas.getContext('2d');
+
+            // Mortier sombre et humide
+            bCtx.fillStyle = '#141713';
+            bCtx.fillRect(0, 0, 512, 512);
+            bumpCtx.fillStyle = '#111111';
+            bumpCtx.fillRect(0, 0, 512, 512);
+
+            const rows = 8;
+            const cols = 4;
+            const brickH = 512 / rows;
+            const brickW = 512 / cols;
+
+            for (let r = 0; r < rows; r++) {
+                const offset = (r % 2) * (brickW / 2);
+                for (let c = -1; c <= cols; c++) {
+                    const x = c * brickW + offset + 3;
+                    const y = r * brickH + 3;
+                    const w = brickW - 6;
+                    const h = brickH - 6;
+
+                    // Couleur brique sale variée
+                    const shade = 28 + Math.floor(Math.random() * 25);
+                    const greenTint = Math.floor(Math.random() * 18);
+                    bCtx.fillStyle = `rgb(${shade + 8}, ${shade + greenTint}, ${shade - 4})`;
+                    bCtx.fillRect(x, y, w, h);
+
+                    // Relief bump
+                    bumpCtx.fillStyle = `rgb(${180 + Math.random()*60}, ${180 + Math.random()*60}, ${180 + Math.random()*60})`;
+                    bumpCtx.fillRect(x, y, w, h);
+
+                    // Taches de moisissure verte / humidité noire
+                    if (Math.random() > 0.35) {
+                        bCtx.fillStyle = Math.random() > 0.5 ? 'rgba(20, 48, 22, 0.45)' : 'rgba(5, 7, 5, 0.55)';
+                        bCtx.beginPath();
+                        bCtx.arc(x + Math.random() * w, y + Math.random() * h, 10 + Math.random() * 22, 0, Math.PI * 2);
+                        bCtx.fill();
+                    }
+                }
+            }
+
+            // Grain sale par-dessus
+            for (let i = 0; i < 6000; i++) {
+                const gx = Math.random() * 512;
+                const gy = Math.random() * 512;
+                bCtx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.25)' : 'rgba(60,75,50,0.12)';
+                bCtx.fillRect(gx, gy, 2, 2);
+                bumpCtx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.2)';
+                bumpCtx.fillRect(gx, gy, 2, 2);
+            }
+
+            const brickTex = new THREE.CanvasTexture(brickCanvas);
+            brickTex.wrapS = brickTex.wrapT = THREE.RepeatWrapping;
+            brickTex.repeat.set(6, 4);
+
+            const brickBump = new THREE.CanvasTexture(bumpCanvas);
+            brickBump.wrapS = brickBump.wrapT = THREE.RepeatWrapping;
+            brickBump.repeat.set(6, 4);
+
+            // 2. Texture Fourrure / Peau de Rat Mutant
+            const furCanvas = document.createElement('canvas');
+            furCanvas.width = 512;
+            furCanvas.height = 512;
+            const fCtx = furCanvas.getContext('2d');
+
+            const furBumpCanvas = document.createElement('canvas');
+            furBumpCanvas.width = 512;
+            furBumpCanvas.height = 512;
+            const fbCtx = furBumpCanvas.getContext('2d');
+
+            fCtx.fillStyle = '#1b1817';
+            fCtx.fillRect(0, 0, 512, 512);
+            fbCtx.fillStyle = '#333333';
+            fbCtx.fillRect(0, 0, 512, 512);
+
+            // Poils hérissés directionnels
+            for (let i = 0; i < 18000; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const len = 6 + Math.random() * 14;
+                const angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.45;
+
+                const tone = 15 + Math.floor(Math.random() * 35);
+                fCtx.strokeStyle = `rgb(${tone + 6}, ${tone + 2}, ${tone})`;
+                fCtx.lineWidth = 1.2;
+                fCtx.beginPath();
+                fCtx.moveTo(x, y);
+                fCtx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+                fCtx.stroke();
+
+                const bTone = 100 + Math.floor(Math.random() * 155);
+                fbCtx.strokeStyle = `rgb(${bTone}, ${bTone}, ${bTone})`;
+                fbCtx.beginPath();
+                fbCtx.moveTo(x, y);
+                fbCtx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+                fbCtx.stroke();
+            }
+
+            // Cicatrices purulentes et taches de sang séché sur le rat
+            for (let s = 0; s < 14; s++) {
+                const sx = Math.random() * 512;
+                const sy = Math.random() * 512;
+                fCtx.strokeStyle = 'rgba(110, 22, 22, 0.75)';
+                fCtx.lineWidth = 3;
+                fCtx.beginPath();
+                fCtx.moveTo(sx, sy);
+                fCtx.lineTo(sx + (Math.random() - 0.5) * 50, sy + (Math.random() - 0.5) * 50);
+                fCtx.stroke();
+            }
+
+            const furTex = new THREE.CanvasTexture(furCanvas);
+            furTex.wrapS = furTex.wrapT = THREE.RepeatWrapping;
+            furTex.repeat.set(3, 3);
+
+            const furBump = new THREE.CanvasTexture(furBumpCanvas);
+            furBump.wrapS = furBump.wrapT = THREE.RepeatWrapping;
+            furBump.repeat.set(3, 3);
+
+            // 2b. Micro-carte de rugosité & humidité organique pour peau/fourrure/égout
+            const roughCanvas = document.createElement('canvas');
+            roughCanvas.width = 256;
+            roughCanvas.height = 256;
+            const rgCtx = roughCanvas.getContext('2d');
+            rgCtx.fillStyle = '#9a9a9a';
+            rgCtx.fillRect(0, 0, 256, 256);
+            for (let i = 0; i < 2400; i++) {
+                const rx = Math.random() * 256;
+                const ry = Math.random() * 256;
+                const rr = 2 + Math.random() * 14;
+                // Zones plus sombres = plus brillantes/humides (eau, sueur, crasse d'égout)
+                const v = 45 + Math.floor(Math.random() * 175);
+                rgCtx.fillStyle = `rgba(${v}, ${v}, ${v}, 0.22)`;
+                rgCtx.beginPath();
+                rgCtx.arc(rx, ry, rr, 0, Math.PI * 2);
+                rgCtx.fill();
+            }
+            const roughTex = new THREE.CanvasTexture(roughCanvas);
+            roughTex.wrapS = roughTex.wrapT = THREE.RepeatWrapping;
+            roughTex.repeat.set(4, 4);
+
+            // 3. Texture Écailles / Peau de queue & coussinets de rat
+            const tailCanvas = document.createElement('canvas');
+            tailCanvas.width = 256;
+            tailCanvas.height = 256;
+            const tCtx = tailCanvas.getContext('2d');
+            tCtx.fillStyle = '#4a3532';
+            tCtx.fillRect(0, 0, 256, 256);
+            for (let y = 0; y < 256; y += 6) {
+                tCtx.fillStyle = y % 12 === 0 ? 'rgba(25, 16, 15, 0.55)' : 'rgba(110, 78, 72, 0.35)';
+                tCtx.fillRect(0, y, 256, 3);
+                for (let x = (y % 12 === 0 ? 0 : 4); x < 256; x += 8) {
+                    tCtx.fillRect(x, y, 3, 5);
+                }
+            }
+            const tailTex = new THREE.CanvasTexture(tailCanvas);
+            tailTex.wrapS = tailTex.wrapT = THREE.RepeatWrapping;
+            tailTex.repeat.set(2, 6);
+
+            // 3b. Texture Tissu de cape rouge usé, crasseux et effiloché + Bump Map
+            const capeCanvas = document.createElement('canvas');
+            capeCanvas.width = 512;
+            capeCanvas.height = 512;
+            const cCtx = capeCanvas.getContext('2d');
+
+            const capeBumpCanvas = document.createElement('canvas');
+            capeBumpCanvas.width = 512;
+            capeBumpCanvas.height = 512;
+            const cbCtx = capeBumpCanvas.getContext('2d');
+
+            // Fond cramoisi sombre usé par l'humidité et la crasse d'égout
+            cCtx.fillStyle = '#5c1111';
+            cCtx.fillRect(0, 0, 512, 512);
+            cbCtx.fillStyle = '#404040';
+            cbCtx.fillRect(0, 0, 512, 512);
+
+            // Trame de tissu grossier (lin/velours usé)
+            for (let y = 0; y < 512; y += 3) {
+                cCtx.fillStyle = y % 6 === 0 ? 'rgba(130, 24, 24, 0.22)' : 'rgba(20, 4, 4, 0.25)';
+                cCtx.fillRect(0, y, 512, 1.5);
+                cbCtx.fillStyle = y % 6 === 0 ? 'rgba(200, 200, 200, 0.22)' : 'rgba(50, 50, 50, 0.22)';
+                cbCtx.fillRect(0, y, 512, 1.5);
+            }
+            for (let x = 0; x < 512; x += 3) {
+                cCtx.fillStyle = x % 6 === 0 ? 'rgba(110, 20, 20, 0.16)' : 'rgba(15, 3, 3, 0.18)';
+                cCtx.fillRect(x, 0, 1.5, 512);
+            }
+
+            // Taches de boue, d'humidité et d'usure sur le tissu
+            for (let i = 0; i < 420; i++) {
+                const px = Math.random() * 512;
+                const py = Math.random() * 512;
+                const pr = 4 + Math.random() * 24;
+                const isMud = Math.random() > 0.35;
+                cCtx.fillStyle = isMud
+                    ? `rgba(${28 + Math.floor(Math.random() * 20)}, ${22 + Math.floor(Math.random() * 16)}, ${16 + Math.floor(Math.random() * 12)}, 0.28)`
+                    : `rgba(${135 + Math.floor(Math.random() * 45)}, ${28 + Math.floor(Math.random() * 20)}, ${28 + Math.floor(Math.random() * 20)}, 0.18)`;
+                cCtx.beginPath();
+                cCtx.arc(px, py, pr, 0, Math.PI * 2);
+                cCtx.fill();
+
+                cbCtx.fillStyle = `rgba(${80 + Math.floor(Math.random() * 140)}, ${80 + Math.floor(Math.random() * 140)}, ${80 + Math.floor(Math.random() * 140)}, 0.2)`;
+                cbCtx.beginPath();
+                cbCtx.arc(px, py, pr * 0.7, 0, Math.PI * 2);
+                cbCtx.fill();
+            }
+
+            // Usure foncée sur le bas de la cape (frottement contre le sol mouillé)
+            const hemGrad = cCtx.createLinearGradient(0, 340, 0, 512);
+            hemGrad.addColorStop(0, 'rgba(10, 12, 9, 0)');
+            hemGrad.addColorStop(1, 'rgba(12, 15, 11, 0.78)');
+            cCtx.fillStyle = hemGrad;
+            cCtx.fillRect(0, 340, 512, 172);
+
+            const capeTex = new THREE.CanvasTexture(capeCanvas);
+            capeTex.wrapS = capeTex.wrapT = THREE.RepeatWrapping;
+
+            const capeBump = new THREE.CanvasTexture(capeBumpCanvas);
+            capeBump.wrapS = capeBump.wrapT = THREE.RepeatWrapping;
+
+            // 4. Texture Rouille & Métal corrodé pour les tuyaux
+            const rustCanvas = document.createElement('canvas');
+            rustCanvas.width = 256;
+            rustCanvas.height = 256;
+            const rCtx = rustCanvas.getContext('2d');
+
+            rCtx.fillStyle = '#3b2418';
+            rCtx.fillRect(0, 0, 256, 256);
+
+            for (let i = 0; i < 4500; i++) {
+                const rx = Math.random() * 256;
+                const ry = Math.random() * 256;
+                const rw = 2 + Math.random() * 8;
+                const rh = 2 + Math.random() * 8;
+                const roll = Math.random();
+                if (roll < 0.45) {
+                    rCtx.fillStyle = `rgba(${110 + Math.floor(Math.random() * 60)}, ${48 + Math.floor(Math.random() * 35)}, ${20 + Math.floor(Math.random() * 18)}, 0.55)`;
+                } else if (roll < 0.8) {
+                    rCtx.fillStyle = `rgba(${42 + Math.floor(Math.random() * 28)}, ${46 + Math.floor(Math.random() * 25)}, ${44 + Math.floor(Math.random() * 25)}, 0.5)`;
+                } else {
+                    rCtx.fillStyle = 'rgba(20, 34, 18, 0.4)';
+                }
+                rCtx.fillRect(rx, ry, rw, rh);
+            }
+
+            // Coulures d'oxydation verticales
+            for (let d = 0; d < 35; d++) {
+                const dx = Math.random() * 256;
+                const dy = Math.random() * 160;
+                const dLen = 25 + Math.random() * 85;
+                rCtx.fillStyle = 'rgba(95, 36, 14, 0.35)';
+                rCtx.fillRect(dx, dy, 1.5 + Math.random() * 2.5, dLen);
+            }
+
+            const rustTex = new THREE.CanvasTexture(rustCanvas);
+            rustTex.wrapS = rustTex.wrapT = THREE.RepeatWrapping;
+            rustTex.repeat.set(2, 6);
+
+            return { brickTex, brickBump, furTex, furBump, roughTex, tailTex, capeTex, capeBump, rustTex };
+        }
+
+        /**
+         * ============================================================================
+         * 3. SCÈNE 3D THREE.JS (Égouts Lugubres + Rat Mutant Sculpté en 3D)
+         * ============================================================================
+         */
+        let scene, camera, renderer, textures;
+        let ratGroup, ratParts = {};
+        let waterMesh, sewerGrateLight, toxicLight, neonFlickerLight;
+        let particlesSystem, projectiles = [], explosions = [];
+        let clock = new THREE.Clock();
+
+        // Variables d'animation & caméra
+        let cameraBasePos = new THREE.Vector3(0, 2.35, 5.4);
+        let cameraLookTarget = new THREE.Vector3(0, 1.85, 0);
+        let screenShakeIntensity = 0;
+        let hitRecoil = 0;
+        let rageAuraIntensity = 0;
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            if (!container) {
+                console.error('Élément #canvas-container introuvable dans le DOM.');
+                return;
+            }
+            scene = new THREE.Scene();
+            // Brouillard épais d'égout toxique
+            scene.fog = new THREE.FogExp2(0x070b08, 0.082);
+
+            camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 60);
+            camera.position.copy(cameraBasePos);
+            camera.lookAt(cameraLookTarget);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.15;
+            container.appendChild(renderer.domElement);
+
+            textures = createProceduralTextures();
+
+            buildSewerEnvironment();
+            buildMutantRat();
+            buildAtmosphereParticles();
+            setupLighting();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ---------- DÉCOR : égout lugubre, humide et délabré ----------
+        const envAnims = [];
+        const WATER_Y = 0.17; // assez haut pour recouvrir les pieds du rat
+
+        function buildSewerEnvironment() {
+            const sewerGroup = new THREE.Group();
+            const r = mulberry32(777);
+            const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+            const add = (geo, mat, x = 0, y = 0, z = 0, parent = sewerGroup) => {
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set(x, y, z);
+                parent.add(m);
+                return m;
+            };
+            const std = o => new THREE.MeshStandardMaterial(o);
+            const tube = (pts, radius, mat, seg = 24) => add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, radius, 6, false), mat);
+
+            const brickMat = std({ map: textures.brickTex, bumpMap: textures.brickBump, bumpScale: 0.16, roughnessMap: textures.roughTex, roughness: 0.7, metalness: 0.15 });
+            // Maçonnerie détaillée : couleur, relief et brillance (zones mouillées) cohérents
+            const masonry = (() => {
+                const rm = mulberry32(412);
+                const size = 1024, cw = size / 22, bl = size / 9;
+                const layer = fill => {
+                    const c = document.createElement('canvas');
+                    c.width = c.height = size;
+                    const g = c.getContext('2d');
+                    g.fillStyle = fill; g.fillRect(0, 0, size, size);
+                    return { c, g };
+                };
+                const col = layer('#22231d'), bump = layer('#303030'), rough = layer('#d8d8d8');
+                const tones = [[92, 62, 46], [76, 58, 46], [66, 62, 50], [104, 70, 48], [54, 50, 42], [72, 74, 58]];
+                for (let i = 0; i < 22; i++) {
+                    const shift = (i % 2) * bl / 2 + rm() * 14;
+                    for (let j = -1; j < 10; j++) {
+                        const x = i * cw + 2.5, y = j * bl + shift + 2.5, w = cw - 5, h = bl - 5;
+                        const missing = rm() < 0.025;
+                        const t = tones[Math.floor(rm() * tones.length)], k = 0.75 + rm() * 0.5;
+                        col.g.fillStyle = missing ? '#0b0b08' : `rgb(${t[0] * k},${t[1] * k},${t[2] * k})`;
+                        col.g.fillRect(x, y, w - rm() * 2, h - rm() * 5);
+                        const lift = missing ? 12 : 165 + rm() * 55;
+                        // bords adoucis puis face bombée
+                        [[0, 0.55], [2, 0.8], [5, 1]].forEach(([inset, m]) => {
+                            const v = Math.round(lift * m);
+                            bump.g.fillStyle = `rgb(${v},${v},${v})`;
+                            bump.g.fillRect(x + inset, y + inset, w - inset * 2, h - inset * 2);
+                        });
+                    }
+                }
+                const spot = (g, x, y, rx, ry, color) => {
+                    g.fillStyle = color;
+                    g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, 6.283); g.fill();
+                };
+                for (let i = 0; i < 26000; i++) { // grain et éclats
+                    const x = rm() * size, y = rm() * size, v = rm() < 0.6 ? 0 : 190;
+                    col.g.fillStyle = `rgba(${v},${v},${v * 0.85},0.22)`;
+                    col.g.fillRect(x, y, 2, 2);
+                    bump.g.fillStyle = `rgba(${v},${v},${v},0.4)`;
+                    bump.g.fillRect(x, y, 2 + rm() * 2, 2 + rm() * 2);
+                }
+                for (let i = 0; i < 260; i++) // moisissures
+                    spot(col.g, rm() * size, rm() * size, 5 + rm() * rm() * 55, 5 + rm() * rm() * 45, rm() < 0.6 ? 'rgba(34,56,18,0.26)' : 'rgba(6,7,4,0.3)');
+                for (let i = 0; i < 90; i++) // salpêtre blanchâtre
+                    spot(col.g, rm() * size, rm() * size, 2 + rm() * 14, 2 + rm() * 9, 'rgba(178,176,150,0.16)');
+                for (let i = 0; i < 70; i++) { // coulures humides, vers le bas de la voûte
+                    const x = rm() * size, y = rm() * size, len = 60 + rm() * 300, th = 3 + rm() * 14;
+                    spot(col.g, x, y, len / 2, th / 2, rm() < 0.25 ? 'rgba(110,52,18,0.3)' : 'rgba(4,10,3,0.42)');
+                    spot(rough.g, x, y, len / 2, th / 2, 'rgba(25,25,25,0.75)');
+                }
+                col.g.strokeStyle = bump.g.strokeStyle = 'rgba(0,0,0,0.8)';
+                for (let i = 0; i < 18; i++) { // fissures
+                    let x = rm() * size, y = rm() * size, a = rm() * 6.283;
+                    const pts = [[x, y]];
+                    for (let k = 0; k < 12; k++) {
+                        a += (rm() - 0.5) * 1.2;
+                        x += Math.cos(a) * 15; y += Math.sin(a) * 15;
+                        pts.push([x, y]);
+                    }
+                    [col.g, bump.g].forEach(g => {
+                        g.lineWidth = 2.2;
+                        g.beginPath(); pts.forEach(q => g.lineTo(q[0], q[1])); g.stroke();
+                    });
+                }
+                const tex = cv => {
+                    const t = new THREE.CanvasTexture(cv.c);
+                    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+                    t.repeat.set(6, 5);
+                    t.anisotropy = 8;
+                    return t;
+                };
+                return { map: tex(col), bumpMap: tex(bump), roughnessMap: tex(rough) };
+            })();
+
+            const wallMat = std(Object.assign({ bumpScale: 0.09, roughness: 0.85, metalness: 0.12 }, masonry));
+            wallMat.side = THREE.BackSide;
+            wallMat.vertexColors = true;
+            const stoneMat = std({ map: textures.brickTex, bumpMap: textures.roughTex, bumpScale: 0.09, color: 0x6a7064, roughness: 0.85 });
+            const rustMat = std({ map: textures.rustTex, bumpMap: textures.rustTex, bumpScale: 0.05, roughness: 0.6, metalness: 0.7 });
+            const ironMat = std({ color: 0x1b1714, bumpMap: textures.rustTex, bumpScale: 0.03, roughness: 0.55, metalness: 0.8 });
+            const slimeMat = std({ color: 0x24330f, emissive: 0x0b1402, roughness: 0.08, metalness: 0.3, transparent: true, opacity: 0.88 });
+            const toxicMat = std({ color: 0x5c8a12, emissive: 0x3f6b06, emissiveIntensity: 0.9, roughness: 0.15 });
+            const boneMat = std({ color: 0x8d8466, roughness: 0.75 });
+            const blackMat = new THREE.MeshBasicMaterial({ color: 0x010201 });
+
+            // Voûte irrégulière, noircie et moisie au niveau de l'eau
+            const tunnelGeo = new THREE.CylinderGeometry(4.8, 4.8, 26, 96, 80, true);
+            const tp = tunnelGeo.attributes.position, tc = [];
+            for (let i = 0; i < tp.count; i++) {
+                const x = tp.getX(i), y = tp.getY(i), z = tp.getZ(i);
+                const k = 1 + (smoothNoise3(x * 1.1, y * 0.9, z * 1.1) - 0.5) * 0.09;
+                tp.setXYZ(i, x * k, y, z * k);
+                // après rotation, la hauteur dans le monde vaut 2.6 + z
+                const h = 2.6 + z, n = smoothNoise3(x * 0.8 + 5, y * 0.8, z * 0.8), s = smoothNoise3(x * 3.5, y * 3.5, z * 0.5);
+                const c = new THREE.Color(0xe6e0d0).lerp(new THREE.Color(0x34521f), clamp01((n - 0.45) * 3.5));
+                c.lerp(new THREE.Color(0x151a0d), clamp01((1.5 - h + n) * 0.9));
+                c.multiplyScalar(1 - clamp01((s - 0.55) * 3) * 0.7);
+                tc.push(c.r, c.g, c.b);
+            }
+            tunnelGeo.setAttribute('color', new THREE.Float32BufferAttribute(tc, 3));
+            tunnelGeo.computeVertexNormals();
+            const tunnel = add(tunnelGeo, wallMat, 0, 2.6, -1);
+            tunnel.rotation.x = Math.PI / 2;
+
+            // Arches en pierre qui rythment la profondeur, avec pierres déchaussées
+            const blockGeo = lumpy(new THREE.BoxGeometry(0.62, 0.5, 0.55, 3, 3, 3), 0.16, 5, 3);
+            [-7.8, -4.9, -2.0, 1.2].forEach((z, a) => {
+                for (let i = 0; i <= 22; i++) {
+                    const ang = -0.65 + (Math.PI + 1.3) * i / 22;
+                    if (a > 0 && r() < 0.07) continue;
+                    const rad = 4.38 + (r() - 0.5) * 0.12;
+                    const b = add(blockGeo, stoneMat, Math.cos(ang) * rad, 2.6 + Math.sin(ang) * rad, z + (r() - 0.5) * 0.12);
+                    b.rotation.z = ang - Math.PI / 2 + (r() - 0.5) * 0.1;
+                    b.scale.x = 1.4;
+                    b.receiveShadow = true;
+                }
+            });
+
+            // Fond : bouche d'égout béante fermée par une grille tordue
+            add(new THREE.CircleGeometry(5.3, 40), brickMat, 0, 2.6, -10);
+            add(new THREE.CircleGeometry(2.15, 40), blackMat, 0, 2.15, -9.9);
+            for (let i = 0; i < 24; i++) {
+                const ang = i / 24 * Math.PI * 2;
+                const b = add(blockGeo, stoneMat, Math.cos(ang) * 2.35, 2.15 + Math.sin(ang) * 2.35, -9.8);
+                b.rotation.z = ang - Math.PI / 2;
+                b.scale.set(1, 0.9, 0.9);
+            }
+            for (let i = -4; i <= 4; i++) {
+                const x = i * 0.45, h = Math.sqrt(Math.max(0.1, 4.6 - x * x));
+                if (i === 2) { // barreau arraché
+                    tube([V3(x, 2.15 + h, -9.6), V3(x + 0.05, 2.7, -9.55), V3(x + 0.4, 2.2, -9.1)], 0.055, rustMat);
+                    continue;
+                }
+                const bend = i === 1 ? -0.3 : 0;
+                tube([V3(x, 2.15 + h, -9.6), V3(x + bend, 2.15, -9.6), V3(x, 2.15 - h, -9.6)], 0.055, rustMat);
+            }
+            [1.2, 3.0].forEach(y => tube([V3(-2.05, y, -9.55), V3(0, y - 0.05, -9.55), V3(2.05, y, -9.55)], 0.06, rustMat));
+
+            // Yeux rouges qui guettent dans le noir et clignent
+            [[-1.45, 1.55, 0], [1.4, 2.75, 2.1], [-1.2, 3.25, 4.3], [1.5, 1.2, 5.6]].forEach(([x, y, phase]) => {
+                const pair = new THREE.Group();
+                pair.position.set(x, y, -9.72);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2a12, fog: false });
+                [-0.09, 0.09].forEach(dx => add(new THREE.SphereGeometry(0.035, 8, 8), eyeMat, dx, 0, 0, pair));
+                sewerGroup.add(pair);
+                envAnims.push(t => { pair.visible = Math.sin(t * 0.55 + phase) > -0.25 && Math.sin(t * 3.1 + phase * 7) < 0.96; });
+            });
+
+            // Bordures en béton : dalles coulées, grain, pores, fissures et traces d'humidité
+            const concreteTex = canvasTex(512, 512, (g, w, h) => {
+                const rc = mulberry32(58);
+                g.fillStyle = '#85857f'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 90; i++) { // nuances de coulage
+                    const x = rc() * w, y = rc() * h, rad = 25 + rc() * 90;
+                    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+                    gr.addColorStop(0, rc() < 0.55 ? 'rgba(55,56,50,0.22)' : 'rgba(165,164,154,0.2)');
+                    gr.addColorStop(1, 'rgba(0,0,0,0)');
+                    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+                }
+                for (let i = 0; i < 22000; i++) { // granulats fins
+                    const v = 45 + Math.floor(rc() * 160);
+                    g.fillStyle = `rgba(${v},${v},${v - 6},0.5)`;
+                    g.fillRect(rc() * w, rc() * h, 1.5, 1.5);
+                }
+                for (let i = 0; i < 260; i++) { // bulles d'air du béton
+                    g.fillStyle = 'rgba(30,30,27,0.7)';
+                    g.beginPath(); g.arc(rc() * w, rc() * h, 0.6 + rc() * rc() * 4, 0, 6.283); g.fill();
+                }
+                g.strokeStyle = 'rgba(25,25,22,0.75)';
+                for (let c = 0; c < 7; c++) { // fissures
+                    let x = rc() * w, y = rc() * h, a = rc() * 6.283;
+                    g.lineWidth = 0.8 + rc() * 1.4;
+                    g.beginPath(); g.moveTo(x, y);
+                    for (let k = 0; k < 14; k++) {
+                        a += (rc() - 0.5) * 1.1;
+                        x += Math.cos(a) * 14; y += Math.sin(a) * 14;
+                        g.lineTo(x, y);
+                    }
+                    g.stroke();
+                }
+                for (let i = 0; i < 16; i++) { // auréoles humides et mousse
+                    g.fillStyle = rc() < 0.6 ? 'rgba(28,32,22,0.22)' : 'rgba(52,70,30,0.2)';
+                    g.beginPath(); g.ellipse(rc() * w, rc() * h, 15 + rc() * 45, 8 + rc() * 25, rc() * 3, 0, 6.283); g.fill();
+                }
+            });
+            const concreteMat = std({ map: concreteTex, bumpMap: concreteTex, bumpScale: 0.035, color: 0x8f918a, roughness: 0.93, metalness: 0.02 });
+
+            [-1, 1].forEach(s => {
+                for (let z = -9.4; z < 8; z += 1.75) {
+                    // arêtes légèrement ébréchées, joint de dilatation entre les dalles
+                    const geo = lumpy(new THREE.BoxGeometry(2.3, 0.7, 1.71, 10, 4, 8), 0.018, 3.2, z * 3 + s);
+                    const slab = add(geo, concreteMat, s * 2.98, 0.17, z);
+                    slab.receiveShadow = true;
+                    // nez de bordure qui surplombe le caniveau
+                    const lip = add(lumpy(new THREE.BoxGeometry(0.2, 0.15, 1.69, 3, 3, 12), 0.03, 6, z + s), concreteMat, s * 1.86, 0.46, z);
+                    lip.castShadow = true;
+                    lip.receiveShadow = true;
+                }
+            });
+
+            // Liquide d'égout : même matière dans les buses et dans le caniveau
+            const liquidTex = (rep) => {
+                const rr = mulberry32(31);
+                return canvasTex(256, 256, (g, w, h) => {
+                    g.fillStyle = '#5d7438'; g.fillRect(0, 0, w, h);
+                    // tout est répété sur les bords pour un raccord invisible
+                    const wrap = draw => [-w, 0, w].forEach(ox => [-h, 0, h].forEach(oy => draw(ox, oy)));
+                    for (let i = 0; i < 170; i++) {
+                        const x = rr() * w, y = rr() * h, rad = 6 + rr() * 26;
+                        g.fillStyle = rr() < 0.55 ? 'rgba(18,30,8,0.42)' : 'rgba(135,165,55,0.28)';
+                        wrap((ox, oy) => { g.beginPath(); g.ellipse(x + ox, y + oy, rad * 0.55, rad, 0, 0, 6.283); g.fill(); });
+                    }
+                    for (let i = 0; i < 260; i++) {
+                        const x = rr() * w, y = rr() * h, len = 10 + rr() * 38, bend = (rr() - 0.5) * 12;
+                        g.strokeStyle = rr() < 0.6 ? 'rgba(205,222,150,0.45)' : 'rgba(10,18,5,0.55)';
+                        g.lineWidth = 0.8 + rr() * 2.2;
+                        wrap((ox, oy) => { g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + bend, y + oy + len / 2, x + ox, y + oy + len); g.stroke(); });
+                    }
+                    for (let i = 0; i < 150; i++) {
+                        const x = rr() * w, y = rr() * h, rad = 0.8 + rr() * rr() * 5;
+                        g.strokeStyle = 'rgba(220,232,185,0.6)'; g.lineWidth = 0.9;
+                        wrap((ox, oy) => { g.beginPath(); g.arc(x + ox, y + oy, rad, 0, 6.283); g.stroke(); });
+                    }
+                }, rep);
+            };
+
+            // Caniveau : liquide verdâtre qui s'écoule vers la caméra
+            const waterTex = liquidTex([2, 9]);
+            const waterGeo = new THREE.PlaneGeometry(4.5, 26, 40, 120);
+            waterMesh = add(waterGeo, std({ map: waterTex, bumpMap: waterTex, bumpScale: 0.035, color: 0x8c9c74, emissive: 0x0a1204, roughness: 0.12, metalness: 0.45, transparent: true, opacity: 0.9 }), 0, WATER_Y, -1);
+            waterMesh.rotation.x = -Math.PI / 2;
+            waterMesh.receiveShadow = true;
+            const wp = waterGeo.attributes.position;
+            envAnims.push(t => {
+                waterTex.offset.set(Math.sin(t * 0.4) * 0.04, t * 0.16);
+                for (let i = 0; i < wp.count; i++) {
+                    const x = wp.getX(i), y = wp.getY(i);
+                    wp.setZ(i, Math.sin(x * 4 + t * 1.6) * 0.008 + Math.sin(y * 3.1 + t * 2.2) * 0.012);
+                }
+                wp.needsUpdate = true;
+                waterGeo.computeVertexNormals();
+            });
+
+            // Liquide qui lèche les pieds du rat : bourrelet autour des chevilles et ondes
+            const lapMat = std({ color: 0x66803c, emissive: 0x121d06, roughness: 0.08, metalness: 0.35, transparent: true, opacity: 0.85 });
+            [-1, 1].forEach(side => {
+                const wake = new THREE.Group();
+                sewerGroup.add(wake);
+                // bourrelet irrégulier plaqué contre la patte
+                const collar = add(lumpy(new THREE.TorusGeometry(0.13, 0.03, 8, 36), 0.22, 14, side + 3), lapMat, 0, 0, 0, wake);
+                collar.rotation.x = Math.PI / 2;
+                const foamMat = new THREE.MeshBasicMaterial({ color: 0xb5c48c, transparent: true, opacity: 0.55, depthWrite: false });
+                const bubbles = Array.from({ length: 14 }, () => ({ mesh: add(new THREE.SphereGeometry(0.012 + r() * 0.016, 6, 6), foamMat, 0, 0, 0, wake), a: r() * 6.283, d: 0.1 + r() * 0.13, p: r() * 6 }));
+                const rings = [0, 1, 2].map(() => {
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xa9bf78, transparent: true, opacity: 0.4, depthWrite: false });
+                    const ring = add(new THREE.TorusGeometry(0.17, 0.008, 6, 40), mat, 0, 0.006, 0, wake);
+                    ring.rotation.x = Math.PI / 2;
+                    return ring;
+                });
+                envAnims.push(t => {
+                    if (!ratGroup) return;
+                    const k = ratGroup.scale.x;
+                    wake.visible = !gameState.isDead;
+                    wake.position.set(side * 0.36 * k, waterMesh.position.y + 0.012, ratGroup.position.z + 0.16 * k);
+                    collar.scale.set(1 + Math.sin(t * 4 + side) * 0.07, 1.3 + Math.cos(t * 3.3) * 0.08, 1 + Math.sin(t * 5) * 0.2);
+                    rings.forEach((ring, i) => {
+                        // les ondes s'étirent vers l'avant, dans le sens du courant
+                        const q = (t * 0.55 + i / 3 + side * 0.13 + 1) % 1;
+                        ring.scale.set(1 + q * 1.5, 1 + q * 2.1, 1);
+                        ring.position.z = q * 0.18;
+                        ring.material.opacity = 0.45 * (1 - q);
+                    });
+                    bubbles.forEach(b => b.mesh.position.set(Math.cos(b.a + t * 0.5) * b.d, Math.sin(t * 3 + b.p) * 0.008, Math.sin(b.a + t * 0.5) * b.d * 1.3));
+                });
+            });
+
+            // Tuyauteries rouillées, raccords et colliers
+            [[-3.55, 2.35, 0.24], [-3.9, 3.35, 0.13], [3.6, 2.75, 0.24], [3.25, 4.35, 0.1]].forEach(([x, y, rad]) => {
+                add(new THREE.CylinderGeometry(rad, rad, 20, 14), rustMat, x, y, -1).rotation.x = Math.PI / 2;
+                for (let z = -8; z <= 4; z += 2.4) add(new THREE.TorusGeometry(rad + 0.03, 0.05, 8, 18), ironMat, x, y, z + r());
+            });
+
+            // Buses latérales : fonte corrodée, bride boulonnée, croûtes de vase et jet épais
+            const mouthMat = std({ map: textures.rustTex, bumpMap: textures.rustTex, bumpScale: 0.12, color: 0x9a8a7a, roughness: 0.55, metalness: 0.65, side: THREE.DoubleSide });
+            const innerMat = std({ map: textures.rustTex, color: 0x241c12, roughness: 0.35, metalness: 0.4, side: THREE.DoubleSide });
+            const crustMat = std({ color: 0x34461a, bumpMap: textures.roughTex, bumpScale: 0.08, roughness: 0.25, metalness: 0.15 });
+            const splashGeo = new THREE.SphereGeometry(0.022, 6, 6);
+            [[-1, 1.75, -3.4], [1, 1.95, -5.9]].forEach(([s, y, z], n) => {
+                const lipX = s * 3.0;
+                const across = (geo, mat, x, dy = 0, dz = 0) => add(geo, mat, x, y + dy, z + dz);
+                // corps, intérieur sombre et lèvre épaisse
+                across(new THREE.CylinderGeometry(0.5, 0.5, 1.9, 32, 6, true), mouthMat, s * 3.95).rotation.z = Math.PI / 2;
+                across(new THREE.CylinderGeometry(0.41, 0.41, 1.5, 32, 1, true), innerMat, s * 3.76).rotation.z = Math.PI / 2;
+                across(new THREE.CircleGeometry(0.41, 28), blackMat, s * 4.4).rotation.y = -s * Math.PI / 2;
+                across(new THREE.TorusGeometry(0.455, 0.05, 12, 36), mouthMat, lipX).rotation.y = Math.PI / 2;
+                // brides et boulons
+                [3.22, 4.2].forEach(fx => {
+                    across(new THREE.TorusGeometry(0.56, 0.07, 8, 36), mouthMat, s * fx).rotation.y = Math.PI / 2;
+                    for (let k = 0; k < 10; k++) {
+                        const a = k / 10 * Math.PI * 2;
+                        across(new THREE.CylinderGeometry(0.035, 0.035, 0.16, 6), ironMat, s * fx, Math.sin(a) * 0.57, Math.cos(a) * 0.57).rotation.z = Math.PI / 2;
+                    }
+                });
+                // collerette de pierres scellant la buse dans la paroi
+                for (let k = 0; k < 12; k++) {
+                    const a = k / 12 * Math.PI * 2;
+                    const stone = across(blockGeo, stoneMat, s * 4.52, Math.sin(a) * 0.76, Math.cos(a) * 0.76);
+                    stone.scale.set(0.8, 0.62, 0.7);
+                    stone.rotation.x = -a;
+                }
+                // dépôts de vase et filets qui pendent sous la lèvre
+                for (let k = 0; k < 15; k++) {
+                    const a = Math.PI * (1.1 + r() * 0.8);
+                    const lump = across(lumpy(new THREE.SphereGeometry(0.05 + r() * 0.05, 10, 8), 0.6, 18, k), crustMat, lipX + s * r() * 0.08, Math.sin(a) * 0.43, Math.cos(a) * 0.43);
+                    lump.scale.y = 0.7 + r() * 0.7;
+                    if (k % 2 === 0) {
+                        const len = 0.1 + r() * 0.4;
+                        across(new THREE.ConeGeometry(0.018, len, 7), slimeMat, lipX, Math.sin(a) * 0.47 - len / 2, Math.cos(a) * 0.47).rotation.x = Math.PI;
+                    }
+                }
+
+                // jet parabolique, large et irrégulier, qui ondule
+                const flowTex = liquidTex([2, 1]);
+                const flowMat = std({ map: flowTex, bumpMap: flowTex, bumpScale: 0.05, color: 0xaab88c, emissive: 0x111c06, roughness: 0.08, metalness: 0.25, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+                const y0 = y - 0.34, SEG = 28, RAD = 14;
+                const jetGeo = new THREE.PlaneGeometry(1, 1, SEG, RAD);
+                const jp = jetGeo.attributes.position;
+                const shapeJet = t => {
+                    for (let j = 0; j <= RAD; j++) for (let i = 0; i <= SEG; i++) {
+                        const u = i / SEG, a = j / RAD * Math.PI * 2;
+                        const ripple = 1 + Math.sin(u * 23 - t * 13 + a * 2) * 0.13 + Math.sin(u * 51 - t * 21 + a * 5) * 0.07;
+                        const wide = (0.24 - u * 0.11 + Math.pow(u, 6) * 0.07) * ripple;
+                        const thick = (0.1 - u * 0.045) * ripple;
+                        jp.setXYZ(j * (SEG + 1) + i,
+                            lipX - s * u * 1.55,
+                            y0 - (y0 - WATER_Y) * u * u + Math.sin(a) * thick,
+                            z + Math.cos(a) * wide + Math.sin(u * 8 - t * 6) * 0.025 * u);
+                    }
+                    jp.needsUpdate = true;
+                    jetGeo.computeVertexNormals();
+                };
+                shapeJet(0);
+                add(jetGeo, flowMat).frustumCulled = false;
+
+                // écume, ondes et éclaboussures au point de chute
+                const hitX = lipX - s * 1.55;
+                for (let k = 0; k < 14; k++) {
+                    const foam = add(lumpy(new THREE.SphereGeometry(0.06 + r() * 0.06, 10, 8), 0.5, 15, k), slimeMat, hitX + (r() - 0.5) * 0.4, WATER_Y + 0.02, z + (r() - 0.5) * 0.45);
+                    foam.scale.y = 0.55;
+                    envAnims.push(t => { foam.scale.setScalar(0.75 + Math.abs(Math.sin(t * 5 + k * 1.7)) * 0.45); foam.scale.y *= 0.55; });
+                }
+                const rings = [0, 1, 2].map(k => {
+                    const mat = new THREE.MeshBasicMaterial({ color: 0x9cb46a, transparent: true, opacity: 0.4, depthWrite: false });
+                    const ring = add(new THREE.TorusGeometry(0.22, 0.012, 6, 32), mat, hitX, WATER_Y + 0.025, z);
+                    ring.rotation.x = Math.PI / 2;
+                    return ring;
+                });
+                const drops = Array.from({ length: 24 }, () => ({ mesh: add(splashGeo, slimeMat, hitX, WATER_Y, z), a: r() * 6.283, v: 0.2 + r() * 0.5, h: 0.15 + r() * 0.4, p: r() }));
+                envAnims.push(t => {
+                    shapeJet(t + n);
+                    flowTex.offset.x = -t * 1.5;
+                    rings.forEach((ring, k) => {
+                        const q = (t * 0.8 + k / 3) % 1;
+                        ring.scale.set(1 + q * 2.2, 1 + q * 2.2, 1);
+                        ring.material.opacity = 0.45 * (1 - q);
+                    });
+                    drops.forEach(d => {
+                        const q = (t * 1.8 + d.p) % 1;
+                        d.mesh.position.set(hitX + Math.cos(d.a) * d.v * q, WATER_Y + 4 * d.h * q * (1 - q), z + Math.sin(d.a) * d.v * q);
+                    });
+                });
+            });
+
+            // Coulures visqueuses sur les parois et stalactites au plafond
+            for (let i = 0; i < 46; i++) {
+                const s = r() < 0.5 ? -1 : 1, z = -9 + r() * 11, a0 = 0.15 + r() * 0.75, len = 0.2 + r() * 0.5;
+                const pts = [0, 0.33, 0.66, 1].map(k => {
+                    const a = a0 - len * k;
+                    return V3(s * Math.cos(a) * 4.52, 2.6 + Math.sin(a) * 4.52, z + (r() - 0.5) * 0.12);
+                });
+                tube(pts, 0.008 + r() * 0.018, slimeMat, 12);
+            }
+            for (let i = 0; i < 60; i++) {
+                const a = 0.6 + r() * (Math.PI - 1.2), z = -9 + r() * 10, len = 0.15 + r() * r() * 0.9;
+                add(new THREE.ConeGeometry(0.025 + r() * 0.045, len, 7), r() < 0.6 ? stoneMat : slimeMat, Math.cos(a) * 4.55, 2.6 + Math.sin(a) * 4.55 - len / 2, z).rotation.x = Math.PI;
+            }
+
+            // Chaînes rouillées qui se balancent
+            const linkGeo = new THREE.TorusGeometry(0.085, 0.022, 6, 14);
+            [[-2.3, -1.8, 13], [2.45, -3.6, 18], [-1.5, -6.2, 15], [1.9, -0.9, 8]].forEach(([x, z, n], c) => {
+                const chain = new THREE.Group();
+                chain.position.set(x, 2.6 + Math.sqrt(20 - x * x), z);
+                for (let i = 0; i < n; i++) {
+                    const link = add(linkGeo, rustMat, 0, -i * 0.13, 0, chain);
+                    link.scale.y = 1.3;
+                    link.rotation.y = (i % 2) * Math.PI / 2;
+                }
+                if (c < 3) add(new THREE.TorusGeometry(0.15, 0.03, 6, 14, Math.PI * 1.4), ironMat, 0, -n * 0.13 - 0.08, 0, chain);
+                sewerGroup.add(chain);
+                envAnims.push(t => { chain.rotation.z = Math.sin(t * 0.9 + c * 2) * 0.045; });
+            });
+
+            // Toiles d'araignée déchirées dans les angles des arches
+            const webMat = new THREE.LineBasicMaterial({ color: 0xaab0a0, transparent: true, opacity: 0.22 });
+            [[-3.1, 4.9, -2.0, 1], [3.0, 5.0, -4.9, -1], [-2.9, 4.8, -7.8, 1], [3.2, 4.6, 1.2, -1]].forEach(([x, y, z, s]) => {
+                const pts = [], dirs = [];
+                for (let k = 0; k <= 6; k++) {
+                    const a = -0.1 - k / 6 * 1.5, len = 1.0 + r() * 0.6;
+                    dirs.push(V3(s * Math.cos(a) * len, Math.sin(a) * len, (r() - 0.5) * 0.2));
+                }
+                const o = V3(x, y, z);
+                dirs.forEach(d => pts.push(o.clone(), o.clone().add(d)));
+                for (let ring = 1; ring <= 6; ring++) for (let k = 0; k < 6; k++) {
+                    if (r() < 0.2) continue;
+                    const a = o.clone().addScaledVector(dirs[k], ring / 6.5), b = o.clone().addScaledVector(dirs[k + 1], ring / 6.5);
+                    const mid = a.clone().add(b).multiplyScalar(0.5).add(V3(0, -0.05, 0));
+                    pts.push(a, mid, mid.clone(), b);
+                }
+                sewerGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), webMat));
+            });
+
+            // Fûts toxiques cabossés, dont un renversé qui fuit
+            const barrel = (x, y, z, rx, rz) => {
+                const g = new THREE.Group();
+                g.position.set(x, y, z);
+                g.rotation.set(rx, 0, rz);
+                const body = std({ map: textures.rustTex, color: 0x54663a, roughness: 0.65, metalness: 0.55 });
+                add(lumpy(new THREE.CylinderGeometry(0.4, 0.4, 1.05, 22, 6), 0.07, 3.5, x * 5), body, 0, 0, 0, g).castShadow = true;
+                [-0.5, -0.17, 0.17, 0.5].forEach(h => add(new THREE.TorusGeometry(0.41, 0.025, 6, 24), ironMat, 0, h, 0, g).rotation.x = Math.PI / 2);
+                add(new THREE.CircleGeometry(0.33, 20), toxicMat, 0, 0.53, 0, g).rotation.x = -Math.PI / 2;
+                sewerGroup.add(g);
+            };
+            barrel(-2.6, 1.05, -3.9, 0, 0.08);
+            barrel(-3.0, 1.05, -4.8, 0, -0.04);
+            barrel(2.55, 0.9, -2.6, Math.PI / 2, 0.5);
+            const puddle = add(new THREE.CircleGeometry(0.55, 24), toxicMat, 2.35, 0.57, -1.9);
+            puddle.rotation.x = -Math.PI / 2;
+            puddle.scale.set(0.8, 1.3, 1);
+
+            // Ossements et gravats
+            const boneGeo = new THREE.CylinderGeometry(0.028, 0.028, 0.5, 7), knobGeo = new THREE.SphereGeometry(0.05, 8, 8);
+            for (let i = 0; i < 26; i++) {
+                const s = i % 2 ? 1 : -1, g = new THREE.Group();
+                g.position.set(s * (2.0 + r() * 1.1), 0.59, -4 + r() * 5.5);
+                g.rotation.set(0, r() * 6.28, Math.PI / 2 + (r() - 0.5) * 0.2);
+                add(boneGeo, boneMat, 0, 0, 0, g);
+                [-0.25, 0.25].forEach(h => add(knobGeo, boneMat, 0, h, 0, g));
+                sewerGroup.add(g);
+            }
+            const rubbleGeo = lumpy(new THREE.DodecahedronGeometry(0.17, 1), 0.5, 7, 2);
+            for (let i = 0; i < 80; i++) {
+                const s = i % 2 ? 1 : -1;
+                const m = add(rubbleGeo, stoneMat, s * (1.85 + r() * 1.9), 0.52 + r() * 0.06, -9 + r() * 12);
+                m.scale.setScalar(0.3 + r() * r() * 1.4);
+                m.rotation.set(r() * 6, r() * 6, r() * 6);
+            }
+
+            // Lanternes grillagées mourantes
+            [[-3.15, 3.0, -2.2, 0xff8a24], [3.15, 2.0, -7.4, 0x6dff4a]].forEach(([x, y, z, color], n) => {
+                const bulbMat = new THREE.MeshBasicMaterial({ color });
+                add(new THREE.SphereGeometry(0.1, 12, 12), bulbMat, x, y, z);
+                for (let k = 0; k < 4; k++) add(new THREE.TorusGeometry(0.17, 0.012, 5, 20), ironMat, x, y, z).rotation.y = k * Math.PI / 4;
+                add(new THREE.CylinderGeometry(0.13, 0.17, 0.08, 10), ironMat, x, y + 0.2, z);
+                const light = new THREE.PointLight(color, 1.5, 6.5, 1.6);
+                light.position.set(x * 0.92, y, z + 0.15);
+                sewerGroup.add(light);
+                envAnims.push(t => {
+                    const on = Math.sin(t * 17 + n * 4) + Math.sin(t * 5.3 + n) > -1.35 ? 1 : 0.12;
+                    light.intensity = (1.4 + Math.sin(t * 9 + n) * 0.25) * on;
+                    bulbMat.color.set(color).multiplyScalar(0.25 + 0.75 * on);
+                });
+            });
+
+            // Grille au plafond et rais de lumière blafarde
+            for (let i = -4; i <= 4; i++) add(new THREE.BoxGeometry(0.07, 0.1, 1.8), rustMat, i * 0.22, 6.9, 0.2);
+            [-0.9, 0.9].forEach(dz => add(new THREE.BoxGeometry(2.1, 0.12, 0.12), rustMat, 0, 6.9, 0.2 + dz));
+            const shaftTex = canvasTex(8, 256, (g, w, h) => {
+                const gr = g.createLinearGradient(0, 0, 0, h);
+                gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#000000');
+                g.fillStyle = gr; g.fillRect(0, 0, w, h);
+            });
+            [[0, -1.0, 1.5, 0.09], [-1.7, -5.0, 0.9, 0.07]].forEach(([x, z, rad, opacity], n) => {
+                const mat = new THREE.MeshBasicMaterial({ color: 0x9fc4b0, alphaMap: shaftTex, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+                add(new THREE.CylinderGeometry(rad * 0.35, rad, 6.8, 24, 1, true), mat, x, 3.45, z);
+                envAnims.push(t => { mat.opacity = opacity * (0.85 + Math.sin(t * 1.3 + n * 2) * 0.15); });
+            });
+
+            // Brume rampante au ras de l'eau
+            const mistTex = canvasTex(256, 256, (g, w, h) => {
+                for (let i = 0; i < 45; i++) {
+                    const x = 50 + r() * 156, y = 50 + r() * 156, rad = 18 + r() * 30;
+                    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+                    gr.addColorStop(0, 'rgba(255,255,255,0.16)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+                    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+                }
+            });
+            for (let i = 0; i < 14; i++) {
+                const mat = new THREE.SpriteMaterial({ map: mistTex, color: 0x7d9470, transparent: true, opacity: 0.2, depthWrite: false });
+                const mist = new THREE.Sprite(mat);
+                const x = (r() - 0.5) * 4.6, z = -8.5 + r() * 8, speed = 0.15 + r() * 0.2;
+                mist.position.set(x, 0.35 + r() * 0.25, z);
+                mist.scale.set(2.6 + r() * 1.8, 0.8 + r() * 0.5, 1);
+                sewerGroup.add(mist);
+                envAnims.push(t => { mist.position.x = x + Math.sin(t * speed + i) * 0.7; });
+            }
+
+            // Gouttes qui tombent de la voûte
+            const dropGeo = new THREE.SphereGeometry(0.018, 6, 6);
+            const dropMat = new THREE.MeshBasicMaterial({ color: 0x9fc7b4, transparent: true, opacity: 0.7 });
+            for (let i = 0; i < 22; i++) {
+                const x = (r() - 0.5) * 6, z = -7 + r() * 8, phase = r() * 3, period = 1.6 + r() * 2;
+                const drop = add(dropGeo, dropMat, x, 6, z);
+                drop.scale.y = 3;
+                envAnims.push(t => {
+                    const k = ((t + phase) % period) / 1.1;
+                    drop.visible = k < 1;
+                    drop.position.y = 6.4 - 6.35 * k * k;
+                });
+            }
+
+            // Échelle de service rouillée
+            [-0.28, 0.28].forEach(dz => tube([V3(-4.45, 0.4, -4.55 + dz), V3(-4.62, 2.4, -4.55 + dz), V3(-4.25, 4.6, -4.55 + dz), V3(-3.5, 5.7, -4.55 + dz)], 0.04, rustMat));
+            [[-4.48, 0.9], [-4.56, 1.4], [-4.61, 1.9], [-4.62, 2.4], [-4.58, 2.9], [-4.51, 3.4], [-4.42, 3.9], [-4.28, 4.45]].forEach(([x, y]) =>
+                add(new THREE.CylinderGeometry(0.028, 0.028, 0.56, 8), rustMat, x, y, -4.55).rotation.x = Math.PI / 2);
+
+            // Câbles électriques affaissés le long de la voûte
+            const cableMat = std({ color: 0x0c0c0b, roughness: 0.45, metalness: 0.2 });
+            [[-2.6, 6.3], [-3.1, 5.8], [2.9, 6.0]].forEach(([x, y]) => {
+                const pts = [];
+                for (let z = -9.5; z <= 5; z += 1.45) pts.push(V3(x + (r() - 0.5) * 0.1, y - (pts.length % 2 ? 0.28 + r() * 0.2 : 0), z));
+                tube(pts, 0.025, cableMat, 90);
+            });
+
+            // Racines qui percent la voûte
+            const rootMat = std({ color: 0x2c2014, roughness: 0.9 });
+            [[-1.8, -6.8], [2.1, -2.4], [1.1, -8.4], [-2.7, -3.1]].forEach(([x, z]) => {
+                const top = 2.6 + Math.sqrt(20.5 - x * x);
+                for (let k = 0; k < 7; k++) {
+                    let px = x + (r() - 0.5) * 0.5, pz = z + (r() - 0.5) * 0.4;
+                    const len = 0.4 + r() * 1.1;
+                    const pts = [0, 0.33, 0.66, 1].map(q => V3(px += (r() - 0.5) * 0.18, top - len * q, pz += (r() - 0.5) * 0.18));
+                    tube(pts, 0.006 + r() * 0.016, rootMat, 14);
+                }
+            });
+
+            // Volant de vanne sur la conduite
+            const wheel = new THREE.Group();
+            wheel.position.set(3.28, 2.75, -2.5);
+            wheel.rotation.y = -Math.PI / 2;
+            add(new THREE.TorusGeometry(0.27, 0.035, 10, 28), std({ map: textures.rustTex, color: 0x9a3a2a, roughness: 0.55, metalness: 0.6 }), 0, 0, 0.12, wheel);
+            [0, 1, 2].forEach(k => add(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8), rustMat, 0, 0, 0.12, wheel).rotation.z = k * Math.PI / 3);
+            add(new THREE.CylinderGeometry(0.05, 0.07, 0.24, 12), ironMat, 0, 0, 0, wheel).rotation.x = Math.PI / 2;
+            sewerGroup.add(wheel);
+
+            // Touffes de mousse au pied des murs et au bord du caniveau
+            const mossMat = std({ color: 0x263a12, bumpMap: textures.roughTex, bumpScale: 0.1, roughness: 0.95 });
+            const mossGeo = lumpy(new THREE.IcosahedronGeometry(0.12, 2), 0.7, 19, 11);
+            for (let i = 0; i < 110; i++) {
+                const side = i % 2 ? 1 : -1, edge = r() < 0.4;
+                const m = add(mossGeo, mossMat, side * (edge ? 1.78 + r() * 0.12 : 3.7 + r() * 0.4), edge ? 0.3 + r() * 0.2 : 0.52, -9.3 + r() * 13);
+                m.scale.set(0.5 + r(), 0.18 + r() * 0.3, 0.6 + r() * 1.3);
+            }
+
+            // Ombres de contact entre les bordures et les murs
+            const shadeTex = canvasTex(128, 8, (g, w, h) => {
+                const gr = g.createLinearGradient(0, 0, w, 0);
+                gr.addColorStop(0, '#000000'); gr.addColorStop(1, '#ffffff');
+                g.fillStyle = gr; g.fillRect(0, 0, w, h);
+            });
+            [-1, 1].forEach(side => {
+                const mat = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadeTex, transparent: true, opacity: 0.8, depthWrite: false });
+                const shade = add(new THREE.PlaneGeometry(1.3, 20), mat, side * 3.5, 0.535, -1);
+                shade.rotation.set(-Math.PI / 2, 0, side > 0 ? 0 : Math.PI);
+            });
+
+            // Détritus qui dérivent dans le courant
+            const litter = [0xb8b2a0, 0x7a5c38, 0x8d9494, 0x6e1f18].map(c => std({ color: c, roughness: 0.6, metalness: 0.2 }));
+            const litterGeos = [new THREE.BoxGeometry(0.22, 0.02, 0.15), new THREE.CylinderGeometry(0.05, 0.05, 0.16, 10), lumpy(new THREE.IcosahedronGeometry(0.07, 1), 0.7, 21, 5)];
+            for (let i = 0; i < 14; i++) {
+                const x = (i % 2 ? 1 : -1) * (0.75 + r() * 0.9), z0 = r() * 14, speed = 0.18 + r() * 0.12;
+                const m = add(litterGeos[i % 3], litter[i % 4], x, WATER_Y, 0);
+                envAnims.push(t => {
+                    m.position.set(x + Math.sin(t * 0.7 + i) * 0.08, waterMesh.position.y + 0.008 + Math.sin(t * 2 + i) * 0.008, -9 + (z0 + t * speed) % 14);
+                    m.rotation.set(i % 3 === 1 ? Math.PI / 2 : Math.sin(t + i) * 0.08, 0, t * 0.15 + i);
+                });
+            }
+
+            // Reflets d'ambiance sur les surfaces mouillées et métalliques
+            if (typeof renderer !== 'undefined' && renderer && THREE.PMREMGenerator) {
+                const glow = canvasTex(512, 256, (g, w, h) => {
+                    g.fillStyle = '#0a0f0a'; g.fillRect(0, 0, w, h);
+                    const light = (x, y, rad, color) => {
+                        const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+                        gr.addColorStop(0, color); gr.addColorStop(1, 'rgba(0,0,0,0)');
+                        g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+                    };
+                    light(256, 10, 110, '#b9d8cc');   // grille au plafond
+                    light(70, 118, 55, '#c8791f');    // lanterne ambrée
+                    light(400, 128, 60, '#5aa832');   // lueur toxique
+                    light(200, 135, 90, '#26331f');
+                });
+                const pmrem = new THREE.PMREMGenerator(renderer);
+                const envMap = pmrem.fromEquirectangular(glow).texture;
+                pmrem.dispose();
+                sewerGroup.traverse(o => {
+                    const m = o.material;
+                    if (m && m.isMeshStandardMaterial) {
+                        m.envMap = envMap;
+                        m.envMapIntensity = m.roughness < 0.3 ? 1.4 : m.metalness > 0.4 ? 0.8 : 0.15;
+                        m.needsUpdate = true;
+                    }
+                });
+            }
+
+            scene.add(sewerGroup);
+        }
+
+        /* ===== OUTILS DE MUTATION RÉALISTE (bruit, textures, fourrure en coques) ===== */
+        let mutTex = null;
+
+        function mulberry32(a) {
+            return function () {
+                a |= 0; a = a + 0x6D2B79F5 | 0;
+                let t = Math.imul(a ^ a >>> 15, 1 | a);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+        function hash3(x, y, z) {
+            const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+            return s - Math.floor(s);
+        }
+        function smoothNoise3(x, y, z) {
+            const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+            const xf = x - xi, yf = y - yi, zf = z - zi;
+            const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+            const l = (a, b, t) => a + (b - a) * t;
+            return l(
+                l(l(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u), l(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
+                l(l(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u), l(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v),
+                w
+            );
+        }
+        // Déforme une géométrie pour obtenir une surface organique, bosselée, asymétrique
+        function lumpy(geo, amp, freq, seed = 0) {
+            const p = geo.attributes.position, v = new THREE.Vector3();
+            for (let i = 0; i < p.count; i++) {
+                v.fromBufferAttribute(p, i);
+                const n = smoothNoise3(v.x * freq + seed, v.y * freq + seed * 1.7, v.z * freq + seed * 0.6) * 0.65
+                        + smoothNoise3(v.x * freq * 2.3 + seed, v.y * freq * 2.3, v.z * freq * 2.3) * 0.35 - 0.5;
+                v.multiplyScalar(1 + n * amp);
+                p.setXYZ(i, v.x, v.y, v.z);
+            }
+            geo.computeVertexNormals();
+            return geo;
+        }
+        function canvasTex(w, h, draw, rep) {
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            draw(c.getContext('2d'), w, h);
+            const t = new THREE.CanvasTexture(c);
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            if (rep) t.repeat.set(rep[0], rep[1]);
+            t.anisotropy = 4;
+            return t;
+        }
+        function orientY(obj, n) { obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().normalize()); }
+        function orientZ(obj, n) { obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n.clone().normalize()); }
+
+        function createMutationTextures() {
+            const r = mulberry32(99);
+
+            // Brins de poils individuels (alpha) pour la fourrure en coques
+            const furAlpha = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 34000; i++) {
+                    const l = Math.floor(70 + r() * 185);
+                    g.fillStyle = `rgb(${l},${l},${l})`;
+                    g.beginPath(); g.arc(r() * w, r() * h, 0.7 + r() * 0.6, 0, 6.283); g.fill();
+                }
+            }, [16, 16]);
+
+            // Muscle écorché : fibres rouges, tendons blancs, reflets humides
+            const muscle = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#74171b'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 340; i++) {
+                    const k = r();
+                    g.fillStyle = k < 0.45 ? 'rgba(165,38,42,0.55)' : k < 0.8 ? 'rgba(38,4,8,0.5)' : 'rgba(228,176,156,0.38)';
+                    g.fillRect(r() * w, 0, 1.5 + r() * 4, h);
+                }
+                for (let i = 0; i < 70; i++) {
+                    g.fillStyle = 'rgba(255,130,120,0.13)';
+                    g.beginPath(); g.arc(r() * w, r() * h, 4 + r() * 16, 0, 6.283); g.fill();
+                }
+            }, [2, 2]);
+
+            // Chair à vif : plaies suintantes, rose / pourpre / jaune de pus
+            const flesh = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#8c2a30'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 260; i++) {
+                    const k = r();
+                    g.fillStyle = k < 0.4 ? 'rgba(210,90,95,0.30)' : k < 0.7 ? 'rgba(70,14,30,0.35)' : k < 0.9 ? 'rgba(150,40,90,0.25)' : 'rgba(215,200,110,0.28)';
+                    g.beginPath(); g.arc(r() * w, r() * h, 4 + r() * 26, 0, 6.283); g.fill();
+                }
+                g.strokeStyle = 'rgba(60,8,20,0.5)'; g.lineWidth = 1.2;
+                for (let i = 0; i < 16; i++) {
+                    g.beginPath(); g.moveTo(r() * w, r() * h);
+                    g.bezierCurveTo(r() * w, r() * h, r() * w, r() * h, r() * w, r() * h); g.stroke();
+                }
+            }, [2, 2]);
+
+            // Tumeur translucide verdâtre veinée
+            const tumor = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#86b83c'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 220; i++) {
+                    g.fillStyle = r() < 0.5 ? 'rgba(205,235,95,0.28)' : 'rgba(40,90,20,0.30)';
+                    g.beginPath(); g.arc(r() * w, r() * h, 6 + r() * 28, 0, 6.283); g.fill();
+                }
+                g.strokeStyle = 'rgba(80,18,56,0.6)'; g.lineWidth = 1.6;
+                for (let i = 0; i < 20; i++) {
+                    g.beginPath(); g.moveTo(r() * w, r() * h);
+                    g.bezierCurveTo(r() * w, r() * h, r() * w, r() * h, r() * w, r() * h); g.stroke();
+                }
+            }, [1, 1]);
+
+            // Œil gonflé laiteux, veiné de rouge (pupille face à +Z : u=0.25, v=0.5)
+            const eyeMilky = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#cfe08a'; g.fillRect(0, 0, w, h);
+                g.strokeStyle = 'rgba(160,22,32,0.75)'; g.lineWidth = 1.6;
+                for (let i = 0; i < 36; i++) {
+                    const a = r() * 6.283, len = 30 + r() * 80;
+                    g.beginPath(); g.moveTo(64, 128);
+                    g.quadraticCurveTo(64 + Math.cos(a + 0.4) * len * 0.5, 128 + Math.sin(a + 0.4) * len * 0.5, 64 + Math.cos(a) * len, 128 + Math.sin(a) * len);
+                    g.stroke();
+                }
+                g.fillStyle = '#0a0a06'; g.beginPath(); g.arc(64, 128, 20, 0, 6.283); g.fill();
+                g.fillStyle = 'rgba(255,255,255,0.85)'; g.beginPath(); g.arc(57, 120, 4.5, 0, 6.283); g.fill();
+            });
+
+            // Troisième œil mutant : iris ambre, pupille fendue verticale
+            const eyeThird = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#e0a020'; g.fillRect(0, 0, w, h);
+                const gr = g.createRadialGradient(64, 128, 4, 64, 128, 60);
+                gr.addColorStop(0, 'rgba(255,230,120,0.9)'); gr.addColorStop(1, 'rgba(120,50,0,0.5)');
+                g.fillStyle = gr; g.fillRect(0, 0, w, h);
+                g.fillStyle = '#050403'; g.beginPath(); g.ellipse(64, 128, 6, 26, 0, 0, 6.283); g.fill();
+                g.fillStyle = 'rgba(255,255,255,0.8)'; g.beginPath(); g.arc(61, 116, 3, 0, 6.283); g.fill();
+            });
+
+
+            const skin = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#a8837b'; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 520; i++) {
+                    g.fillStyle = r() < 0.5 ? 'rgba(120,80,84,0.12)' : 'rgba(215,175,165,0.14)';
+                    g.beginPath(); g.arc(r() * w, r() * h, 3 + r() * 16, 0, 6.283); g.fill();
+                }
+                g.strokeStyle = 'rgba(70,40,44,0.25)'; g.lineWidth = 1;
+                for (let i = 0; i < 90; i++) {
+                    const x = r() * w, y = r() * h;
+                    g.beginPath(); g.moveTo(x, y); g.lineTo(x + (r() - 0.5) * 22, y + (r() - 0.5) * 22); g.stroke();
+                }
+            }, [2, 2]);
+            const eyeCloud = canvasTex(256, 256, (g, w, h) => {
+                g.fillStyle = '#a9b1a0'; g.fillRect(0, 0, w, h);
+                const gr = g.createRadialGradient(64, 128, 2, 64, 128, 26);
+                gr.addColorStop(0, 'rgba(25,22,20,0.55)'); gr.addColorStop(1, 'rgba(25,22,20,0)');
+                g.fillStyle = gr; g.fillRect(0, 0, w, h);
+                g.strokeStyle = 'rgba(150,60,60,0.25)'; g.lineWidth = 1;
+                for (let i = 0; i < 14; i++) {
+                    const a = r() * 6.283, len = 40 + r() * 60;
+                    g.beginPath(); g.moveTo(64, 128); g.lineTo(64 + Math.cos(a) * len, 128 + Math.sin(a) * len); g.stroke();
+                }
+            });
+            return { furAlpha, muscle, flesh, tumor, eyeMilky, eyeThird, skin, eyeCloud };
+        }
+
+        // ---------- MODELAGE ORGANIQUE : volumes fusionnés en une seule peau continue ----------
+        const clamp01 = v => Math.max(0, Math.min(1, v));
+        function smin(a, b, k) {
+            const h = clamp01(0.5 + 0.5 * (b - a) / k);
+            return b + (a - b) * h - k * h * (1 - h);
+        }
+        // Capsule à rayon variable (muscle, os, doigt)
+        function cap(a, b, ra, rb, k = 0.07) {
+            const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l2 = dx * dx + dy * dy + dz * dz;
+            return { k, d: (x, y, z) => {
+                const t = clamp01(((x - a[0]) * dx + (y - a[1]) * dy + (z - a[2]) * dz) / l2);
+                return Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t, z - a[2] - dz * t) - (ra + (rb - ra) * t);
+            }, min: [0, 1, 2].map(i => Math.min(a[i] - ra, b[i] - rb)), max: [0, 1, 2].map(i => Math.max(a[i] + ra, b[i] + rb)) };
+        }
+        function ovo(c, r, k = 0.07) {
+            return { k, d: (x, y, z) => {
+                const px = (x - c[0]) / r[0], py = (y - c[1]) / r[1], pz = (z - c[2]) / r[2];
+                const k0 = Math.hypot(px, py, pz), k1 = Math.hypot(px / r[0], py / r[1], pz / r[2]);
+                return k1 > 0 ? k0 * (k0 - 1) / k1 : -Math.min(r[0], r[1], r[2]);
+            }, min: c.map((v, i) => v - r[i]), max: c.map((v, i) => v + r[i]) };
+        }
+        function makeField(prims, holes = [], grain = 0.012) {
+            return (x, y, z) => {
+                let d = 1e3;
+                for (const p of prims) d = smin(d, p.d(x, y, z), p.k);
+                for (const h of holes) d = -smin(-d, h.d(x, y, z), h.k);
+                return d + (smoothNoise3(x * 13, y * 13, z * 13) - 0.5) * grain;
+            };
+        }
+        function fieldNormal(f, x, y, z) {
+            const e = 0.012;
+            return new THREE.Vector3(f(x + e, y, z) - f(x - e, y, z), f(x, y + e, z) - f(x, y - e, z), f(x, y, z + e) - f(x, y, z - e)).normalize();
+        }
+        // Projette un point sur la peau (veines, cicatrices, excroissances)
+        function snapToSkin(f, pt, off = 0) {
+            const p = new THREE.Vector3(pt[0], pt[1], pt[2]);
+            for (let i = 0; i < 14; i++) p.addScaledVector(fieldNormal(f, p.x, p.y, p.z), -f(p.x, p.y, p.z) * 0.8);
+            const n = fieldNormal(f, p.x, p.y, p.z);
+            p.addScaledVector(n, off);
+            return { p, n };
+        }
+        // Polygonisation « surface nets » ; paint(x,y,z) renvoie { c: couleur, fur: densité 0..1 }
+        function skinGeometry(f, prims, cell, paint) {
+            const lo = [0, 1, 2].map(i => Math.min(...prims.map(p => p.min[i])) - cell * 3);
+            const hi = [0, 1, 2].map(i => Math.max(...prims.map(p => p.max[i])) + cell * 3);
+            const [nx, ny, nz] = [0, 1, 2].map(i => Math.ceil((hi[i] - lo[i]) / cell) + 1);
+            const at = (i, j, k) => i + nx * (j + ny * k);
+            const val = new Float32Array(nx * ny * nz);
+            for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++)
+                val[at(i, j, k)] = f(lo[0] + i * cell, lo[1] + j * cell, lo[2] + k * cell);
+
+            const vid = new Int32Array(nx * ny * nz).fill(-1);
+            const pos = [], nor = [], col = [], fur = [], idx = [];
+            for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+                let sx = 0, sy = 0, sz = 0, n = 0;
+                for (let c = 0; c < 8; c++) {
+                    const a = [c & 1, (c >> 1) & 1, (c >> 2) & 1];
+                    for (let ax = 0; ax < 3; ax++) {
+                        if (a[ax]) continue;
+                        const b = a.slice(); b[ax] = 1;
+                        const va = val[at(i + a[0], j + a[1], k + a[2])], vb = val[at(i + b[0], j + b[1], k + b[2])];
+                        if ((va < 0) === (vb < 0)) continue;
+                        const t = va / (va - vb);
+                        sx += a[0] + (b[0] - a[0]) * t; sy += a[1] + (b[1] - a[1]) * t; sz += a[2] + (b[2] - a[2]) * t; n++;
+                    }
+                }
+                if (!n) continue;
+                const x = lo[0] + (i + sx / n) * cell, y = lo[1] + (j + sy / n) * cell, z = lo[2] + (k + sz / n) * cell;
+                vid[at(i, j, k)] = pos.length / 3;
+                const nn = fieldNormal(f, x, y, z), s = paint(x, y, z);
+                pos.push(x, y, z); nor.push(nn.x, nn.y, nn.z);
+                col.push(s.c.r, s.c.g, s.c.b); fur.push(s.fur);
+            }
+            const tri = (a, b, c) => {
+                const u = [0, 1, 2].map(m => pos[b * 3 + m] - pos[a * 3 + m]);
+                const v = [0, 1, 2].map(m => pos[c * 3 + m] - pos[a * 3 + m]);
+                const dot = (u[1] * v[2] - u[2] * v[1]) * (nor[a * 3] + nor[b * 3] + nor[c * 3])
+                          + (u[2] * v[0] - u[0] * v[2]) * (nor[a * 3 + 1] + nor[b * 3 + 1] + nor[c * 3 + 1])
+                          + (u[0] * v[1] - u[1] * v[0]) * (nor[a * 3 + 2] + nor[b * 3 + 2] + nor[c * 3 + 2]);
+                if (dot >= 0) idx.push(a, b, c); else idx.push(a, c, b);
+            };
+            const stride = [1, nx, nx * ny];
+            for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+                const o = at(i, j, k);
+                for (let ax = 0; ax < 3; ax++) {
+                    if ((val[o] < 0) === (val[o + stride[ax]] < 0)) continue;
+                    const u = stride[(ax + 1) % 3], v = stride[(ax + 2) % 3];
+                    const q = [vid[o], vid[o - u], vid[o - u - v], vid[o - v]];
+                    if (q.some(m => m < 0)) continue;
+                    tri(q[0], q[1], q[2]); tri(q[0], q[2], q[3]);
+                }
+            }
+            const g = new THREE.BufferGeometry();
+            g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+            g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+            g.setAttribute('aFur', new THREE.Float32BufferAttribute(fur, 1));
+            g.setIndex(idx);
+            return g;
+        }
+
+        // Fourrure : sous-poil en coques (mèches, nuances) + longs poils de garde
+        const hairLineMat = () => new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.45 });
+
+        function addFurShells(mesh, length, layers = 11) {
+            for (let i = 1; i <= layers; i++) {
+                const t = i / layers;
+                const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.74, metalness: 0.04 });
+                mat.color.setScalar(1.15);
+                mat.onBeforeCompile = (sh) => {
+                    sh.uniforms.furOff = { value: length * 0.9 * t };
+                    sh.uniforms.furT = { value: t };
+                    sh.vertexShader = 'uniform float furOff;\nattribute float aFur;\nvarying float vFur;\nvarying vec3 vFurPos;\n' + sh.vertexShader.replace(
+                        '#include <begin_vertex>',
+                        '#include <begin_vertex>\n vFur = aFur; vFurPos = position;\n transformed += normalize(normal) * furOff * aFur; transformed.y -= furOff * aFur * (0.35 + 0.55 * furOff * 10.0);'
+                    );
+                    sh.fragmentShader = 'uniform float furT;\nvarying float vFur;\nvarying vec3 vFurPos;\nfloat furHash(vec3 c) { return fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }\n' + sh.fragmentShader.replace(
+                        '#include <clipping_planes_fragment>',
+                        `#include <clipping_planes_fragment>
+                        vec3 fq = vFurPos * vec3(115.0, 36.0, 115.0);
+                        fq.y += furHash(vec3(floor(fq.x), 0.0, floor(fq.z))) * 9.0;
+                        vec3 fc = floor(fq);
+                        float h = furHash(fc);
+                        float h2 = furHash(fc + 17.0);
+                        float clump = 0.5 + 0.5 * sin(vFurPos.x * 47.0 + sin(vFurPos.y * 23.0) * 2.0) * sin(vFurPos.z * 43.0 + vFurPos.y * 19.0);
+                        float strand = (0.3 + 0.7 * h) * (0.65 + 0.55 * clump) * vFur;
+                        if (vFur < 0.08 || strand < furT * 0.9 + 0.04) discard;
+                        if (length(fract(fq.xz) - 0.5) > 0.78 - furT * 0.36) discard;`
+                    ).replace(
+                        '#include <color_fragment>',
+                        `#include <color_fragment>
+                        diffuseColor.rgb *= mix(0.45, 1.55, furT) * (0.7 + 0.6 * h2) * (0.75 + 0.4 * clump);
+                        if (h2 > 0.9) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.55, 0.47, 0.36), furT * 0.7);`
+                    );
+                };
+                mesh.add(new THREE.Mesh(mesh.geometry, mat));
+            }
+            addGuardHairs(mesh, length);
+        }
+
+        // Poils longs et irréguliers qui cassent le contour lisse
+        function addGuardHairs(mesh, length) {
+            const g = mesh.geometry;
+            const P = g.attributes.position, N = g.attributes.normal, C = g.attributes.color, F = g.attributes.aFur;
+            const rnd = mulberry32(P.count);
+            const pos = [], col = [];
+            for (let i = 0; i < P.count; i++) {
+                if (F.getX(i) < 0.55 || rnd() > 0.14) continue;
+                const len = length * (0.7 + rnd() * 0.6);
+                const root = [P.getX(i), P.getY(i), P.getZ(i)];
+                const n = [N.getX(i), N.getY(i), N.getZ(i)];
+                const jit = [(rnd() - 0.5) * 0.7, (rnd() - 0.5) * 0.5, (rnd() - 0.5) * 0.7];
+                // le poil part vers l'extérieur puis retombe
+                const mid = root.map((v, k) => v + (n[k] + jit[k] * 0.5) * len * 0.8 - (k === 1 ? len * 0.35 : 0));
+                const tip = root.map((v, k) => v + (n[k] + jit[k]) * len * 1.15 - (k === 1 ? len * 1.1 : 0));
+                const tone = rnd() < 0.08 ? 2.0 : 0.8 + rnd() * 0.7;
+                const base = [C.getX(i), C.getY(i), C.getZ(i)];
+                const shade = k => base.map(v => Math.min(1, v * k));
+                pos.push(...root, ...mid, ...mid, ...tip);
+                col.push(...shade(0.6), ...shade(tone), ...shade(tone), ...shade(tone * 1.25));
+            }
+            const hg = new THREE.BufferGeometry();
+            hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            hg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+            mesh.add(new THREE.LineSegments(hg, hairLineMat()));
+        }
+
+        // Rat mutant humanoïde : torse musclé et voûté, bras longs aux mains griffues,
+        // jambes digitigrades, tête de rat, longue queue nue et mutations.
+        function buildMutantRat() {
+            ratGroup = new THREE.Group();
+            ratGroup.position.set(0, 0.05, 0);
+            mutTex = createMutationTextures();
+            const rnd = mulberry32(2024);
+            const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+            // ---------- MATÉRIAUX ----------
+            const hideMat = new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: textures.roughTex, bumpScale: 0.02, roughness: 0.62, metalness: 0.04 });
+            const skinMat = new THREE.MeshStandardMaterial({ map: mutTex.skin, bumpMap: mutTex.skin, bumpScale: 0.02, color: 0xb98b84, roughness: 0.45 });
+            const tailMat = new THREE.MeshStandardMaterial({ map: textures.tailTex, bumpMap: textures.tailTex, bumpScale: 0.05, color: 0xc49a92, roughness: 0.45 });
+            const scarMat = new THREE.MeshStandardMaterial({ color: 0xc98f88, roughness: 0.35 });
+            const soreMat = new THREE.MeshStandardMaterial({ map: mutTex.flesh, bumpMap: mutTex.flesh, bumpScale: 0.03, color: 0xb07870, roughness: 0.3 });
+            const clawMat = new THREE.MeshStandardMaterial({ color: 0x2b2119, roughness: 0.25, metalness: 0.2 });
+            const boneMat = new THREE.MeshStandardMaterial({ color: 0xa8987a, roughness: 0.55 });
+            const toothMat = new THREE.MeshStandardMaterial({ color: 0xd9a845, roughness: 0.25 });
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xb5706f, roughness: 0.16 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c0808, roughness: 0.3 });
+            const eyeRedMat = new THREE.MeshStandardMaterial({ color: 0xd8481c, emissive: 0x7a1c06, emissiveIntensity: 0.9, roughness: 0.04, metalness: 0.3 });
+            const eyeCloudMat = new THREE.MeshStandardMaterial({ map: mutTex.eyeCloud, roughness: 0.08 });
+            const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const veinMat = new THREE.MeshStandardMaterial({ color: 0x3d2838, emissive: 0x1d0b22, emissiveIntensity: 0.3, roughness: 0.4 });
+            const whiskerMat = new THREE.MeshStandardMaterial({ color: 0xcfc8bc, roughness: 0.4, transparent: true, opacity: 0.85 });
+            const capeMat = new THREE.MeshStandardMaterial({ map: textures.capeTex, bumpMap: textures.capeBump, bumpScale: 0.09, roughnessMap: textures.roughTex, color: 0x8c1616, roughness: 0.82, metalness: 0.05, side: THREE.DoubleSide });
+            const capeTrimMat = new THREE.MeshStandardMaterial({ map: textures.capeTex, bumpMap: textures.capeBump, bumpScale: 0.08, color: 0x580c0c, roughness: 0.88, metalness: 0.06, side: THREE.DoubleSide });
+            ratParts.veinMat = veinMat;
+            ratParts.mutantNodes = [];
+
+            // ---------- PELAGE & PEAU (couleur par sommet) ----------
+            const C = hex => new THREE.Color(hex);
+            const FUR = C(0x35271d), FUR_DARK = C(0x17100c), FUR_LIGHT = C(0x6e5c4a), FUR_RUST = C(0x4e2e18), SKIN = C(0x9c6f68), SORE = C(0x7a3a3c);
+            // skin(x,y,z) : 0 = poils, 1 = peau nue ; light : zone ventrale plus claire
+            const painter = (skinAt, lightAt, sores = []) => (x, y, z) => {
+                const n = smoothNoise3(x * 7, y * 7, z * 7), fine = smoothNoise3(x * 31, y * 19, z * 31);
+                const c = FUR.clone().lerp(FUR_DARK, clamp01((n - 0.42) * 3)).lerp(FUR_LIGHT, clamp01(lightAt(x, y, z)));
+                c.lerp(FUR_DARK, clamp01((0.2 - Math.abs(x)) * 5) * clamp01((-z - 0.08) * 6)); // échine sombre
+                c.lerp(FUR_RUST, clamp01((smoothNoise3(x * 3.3 + 9, y * 3.3, z * 3.3) - 0.55) * 3)); // reflets roux
+                let bare = clamp01(skinAt(x, y, z) + (n - 0.5) * 0.5);
+                let sore = 0;
+                for (const s of sores) sore = Math.max(sore, clamp01((s[3] - Math.hypot(x - s[0], y - s[1], z - s[2]) + (n - 0.5) * 0.12) * 14));
+                c.lerp(SKIN, bare).lerp(SORE, sore).multiplyScalar(0.8 + fine * 0.4);
+                return { c, fur: clamp01(1 - Math.max(bare, sore) * 1.3) };
+            };
+            const organ = (prims, holes, paint, furLen, cell = 0.028) => {
+                const f = makeField(prims, holes);
+                const m = new THREE.Mesh(skinGeometry(f, prims, cell, paint), hideMat);
+                m.castShadow = true;
+                m.receiveShadow = true;
+                if (furLen) addFurShells(m, furLen);
+                m.userData.field = f;
+                return m;
+            };
+            // Cône orienté d'un point vers un autre (griffes, dents, épines osseuses)
+            const spike = (from, to, radius, mat, parent) => {
+                const d = to.clone().sub(from);
+                const m = new THREE.Mesh(new THREE.ConeGeometry(radius, d.length(), 9), mat);
+                m.position.copy(from).addScaledVector(d, 0.5);
+                orientY(m, d);
+                m.castShadow = true;
+                parent.add(m);
+                return m;
+            };
+            const vein = (f, pts, radius, mat, parent) => {
+                const on = pts.map(p => snapToSkin(f, p, radius * 0.5).p);
+                const smooth = new THREE.CatmullRomCurve3(on).getPoints(24).map(p => snapToSkin(f, [p.x, p.y, p.z], radius * 0.4).p);
+                parent.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(smooth), 40, radius, 6, false), mat));
+            };
+
+            // ---------- TORSE HUMANOÏDE ----------
+            const torsoGroup = new THREE.Group();
+            torsoGroup.position.set(0, 1.35, 0);
+            ratGroup.add(torsoGroup);
+            ratParts.torso = torsoGroup;
+
+            const torsoPrims = [
+                ovo([0, -0.2, -0.02], [0.31, 0.23, 0.24]),
+                cap([0, -0.14, 0], [0, 0.34, 0.02], 0.23, 0.26, 0.12),
+                ovo([0, 0.6, -0.02], [0.43, 0.4, 0.29], 0.14),
+                ovo([0.04, 0.84, -0.2], [0.35, 0.29, 0.24], 0.14),          // bosse dorsale
+                cap([0, 0.88, -0.04], [0, 1.27, 0.2], 0.21, 0.155, 0.1)     // cou épais
+            ];
+            [-1, 1].forEach(s => {
+                torsoPrims.push(
+                    ovo([s * 0.19, 0.69, 0.22], [0.21, 0.145, 0.12], 0.045),   // pectoraux
+                    cap([s * 0.08, 1.07, -0.08], [s * 0.48, 0.88, -0.04], 0.15, 0.12, 0.1), // trapèzes
+                    cap([s * 0.32, 0.62, -0.08], [s * 0.2, 0.1, -0.06], 0.13, 0.06, 0.07), // dorsaux
+                    cap([s * 0.06, 0.93, 0.2], [s * 0.4, 0.87, 0.07], 0.035, 0.035, 0.05)  // clavicules
+                );
+                [0.4, 0.26, 0.12].forEach((y, i) => torsoPrims.push(ovo([s * 0.078, y, 0.235 - i * 0.012], [0.075, 0.06, 0.05], 0.028))); // abdominaux
+            });
+            for (let i = 0; i < 6; i++) torsoPrims.push(ovo([0.02, 0.92 - i * 0.17, -0.38 + i * i * 0.007], [0.055, 0.05, 0.07], 0.05)); // vertèbres
+
+            const torsoPaint = painter(
+                (x, y, z) => z > 0.08 ? clamp01((0.22 - Math.abs(x)) * 5) * 0.35 : 0,
+                (x, y, z) => z > 0.02 ? (0.36 - Math.abs(x)) * 3 : 0,
+                [[-0.28, 0.66, 0.24, 0.13], [0.24, 0.2, 0.2, 0.09], [0.3, 0.92, -0.25, 0.12]]
+            );
+            const torso = organ(torsoPrims, [], torsoPaint, 0.075);
+            torsoGroup.add(torso);
+            const tf = torso.userData.field;
+
+            // Cicatrices en travers de la poitrine
+            [0, 1, 2].forEach(i => vein(tf, [[-0.36, 0.76 - i * 0.07, 0.3], [-0.26, 0.66 - i * 0.07, 0.38], [-0.16, 0.54 - i * 0.07, 0.34]], 0.007, scarMat, torsoGroup));
+            // Veines gonflées sur le cou et le flanc
+            vein(tf, [[0.1, 0.95, 0.2], [0.14, 1.07, 0.3], [0.09, 1.2, 0.36]], 0.012, veinMat, torsoGroup);
+            vein(tf, [[0.26, 0.55, 0.3], [0.2, 0.4, 0.28], [0.27, 0.24, 0.24], [0.2, 0.08, 0.22]], 0.009, veinMat, torsoGroup);
+            // Épines osseuses qui percent les épaules et le dos
+            [[-0.34, 1.05, -0.14, 0.2], [-0.2, 1.1, -0.24, 0.14], [0.36, 1.03, -0.14, 0.13], [0.04, 1.0, -0.45, 0.18], [0.03, 0.78, -0.48, 0.15], [0.02, 0.56, -0.42, 0.11]].forEach(([x, y, z, len]) => {
+                const { p, n } = snapToSkin(tf, [x, y, z], -0.02);
+                spike(p, p.clone().addScaledVector(n.add(V3(0, 0.55, 0)).normalize(), len), len * 0.2, boneMat, torsoGroup);
+            });
+            // Excroissances mutantes qui palpitent
+            [[-0.4, 0.9, 0.1, 0.075], [-0.34, 0.99, 0.12, 0.048], [0.34, 0.45, 0.18, 0.05]].forEach(([x, y, z, size], i) => {
+                const { p } = snapToSkin(tf, [x, y, z], size * 0.2);
+                const g = new THREE.Group();
+                g.position.copy(p);
+                g.add(new THREE.Mesh(lumpy(new THREE.SphereGeometry(size, 24, 24), 0.35, 28, i * 3), soreMat));
+                torsoGroup.add(g);
+                ratParts.mutantNodes.push(g);
+            });
+
+            // ---------- CAPE ROUGE USÉE ----------
+            const capeGroup = new THREE.Group();
+            capeGroup.position.set(0, 0.96, -0.52);
+            capeGroup.rotation.x = 0.18;
+            torsoGroup.add(capeGroup);
+            ratParts.cape = capeGroup;
+
+            const collar = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.06, 10, 28, Math.PI * 1.25), capeTrimMat);
+            collar.rotation.set(Math.PI / 2 - 0.3, 0, Math.PI * 0.875);
+            collar.position.set(0, 0.1, 0.4);
+            capeGroup.add(collar);
+
+            // Pan de tissu au bas déchiqueté
+            const cloth = (w, h, sx, sy, flare, depth, phase) => {
+                const geo = new THREE.PlaneGeometry(w, h, sx, sy);
+                const p = geo.attributes.position;
+                for (let i = 0; i < p.count; i++) {
+                    const x = p.getX(i), y = p.getY(i), v = (h / 2 - y) / h;
+                    const tear = v > 0.97 ? hash3(i, phase, 3) * 0.22 : 0;
+                    p.setXYZ(i, x * (0.75 + v * flare), y + tear, -Math.pow(v, 1.35) * depth + Math.sin(x * 9 + v * 1.6 + phase) * (0.025 + v * 0.07));
+                }
+                geo.computeVertexNormals();
+                return geo;
+            };
+            const capeMain = new THREE.Mesh(cloth(1.15, 1.62, 22, 22, 0.55, 0.36, 0), capeMat);
+            capeMain.position.set(0, -0.8, -0.02);
+            capeMain.castShadow = true;
+            capeGroup.add(capeMain);
+            ratParts.capeMesh = capeMain;
+            ratParts.capeFlaps = [-1, 1].map(side => {
+                const flap = new THREE.Mesh(cloth(0.34, 1.4, 6, 12, 0.5, 0.3, side + 4), capeTrimMat);
+                flap.position.set(side * 0.52, -0.72, -0.06);
+                flap.rotation.set(0, side * 0.45, side * -0.1);
+                flap.castShadow = true;
+                capeGroup.add(flap);
+                return flap;
+            });
+
+            // ---------- TÊTE ----------
+            const headGroup = new THREE.Group();
+            headGroup.position.set(0, 1.4, 0.27);
+            headGroup.scale.setScalar(1.28);
+            torsoGroup.add(headGroup);
+            ratParts.head = headGroup;
+
+            const headPrims = [
+                ovo([0, 0.04, -0.01], [0.23, 0.22, 0.26]),
+                cap([0, 0.0, 0.14], [0, -0.075, 0.54], 0.15, 0.056, 0.09),   // long museau
+                cap([0, 0.1, 0.18], [0, -0.01, 0.46], 0.07, 0.035, 0.05)     // arête du nez
+            ];
+            [-1, 1].forEach(s => headPrims.push(
+                ovo([s * 0.12, -0.07, 0.12], [0.12, 0.11, 0.15], 0.06),       // joues
+                cap([s * 0.04, 0.155, 0.27], [s * 0.19, 0.145, 0.17], 0.042, 0.032, 0.04), // arcades froncées
+                ovo([s * 0.045, -0.09, 0.46], [0.056, 0.05, 0.085], 0.03)     // coussinets à moustaches
+            ));
+            const sockets = [-1, 1].map(s => ovo([s * 0.128, 0.07, 0.262], [0.066, 0.052, 0.07], 0.025));
+            const headPaint = painter(
+                (x, y, z) => clamp01((z - 0.38) * 8) + clamp01((0.095 - Math.hypot(Math.abs(x) - 0.128, y - 0.07, z - 0.235)) * 22),
+                (x, y, z) => y < -0.04 ? 0.7 : 0,
+                [[-0.17, 0.0, 0.2, 0.07]]
+            );
+            const head = organ(headPrims, sockets, headPaint, 0.04, 0.017);
+            headGroup.add(head);
+            const hf = head.userData.field;
+
+            [-1, 1].forEach(s => {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(0.047, 22, 22), s === 1 ? eyeRedMat : eyeCloudMat);
+                eye.position.set(s * 0.126, 0.07, 0.222);
+                eye.rotation.y = s * 0.4;
+                headGroup.add(eye);
+                // pupille noire, tournée vers le spectateur
+                const look = V3(s * 0.12, 0, 1).normalize();
+                const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 16), pupilMat);
+                pupil.scale.z = 0.4;
+                orientZ(pupil, look);
+                pupil.position.set(s * 0.126, 0.07, 0.222).addScaledVector(look, 0.045);
+                headGroup.add(pupil);
+                const glint = new THREE.Mesh(new THREE.SphereGeometry(0.0065, 8, 8), glintMat);
+                glint.position.set(s * 0.136, 0.082, 0.279);
+                headGroup.add(glint);
+            });
+            vein(hf, [[-0.1, 0.21, 0.2], [-0.15, 0.13, 0.3], [-0.14, 0.01, 0.3], [-0.18, -0.07, 0.25]], 0.006, scarMat, headGroup);
+
+            const nose = new THREE.Mesh(lumpy(new THREE.SphereGeometry(0.047, 20, 20), 0.08, 20, 2), noseMat);
+            nose.scale.set(1.15, 0.9, 0.9);
+            nose.position.set(0, -0.07, 0.59);
+            headGroup.add(nose);
+            [-1, 1].forEach(s => {
+                const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 8), darkMat);
+                nostril.position.set(s * 0.027, -0.068, 0.628);
+                headGroup.add(nostril);
+                // incisives jaunes et crocs
+                spike(V3(s * 0.017, -0.115, 0.525), V3(s * 0.017, s > 0 ? -0.23 : -0.205, 0.505), 0.017, toothMat, headGroup);
+                spike(V3(s * 0.07, -0.12, 0.4), V3(s * 0.078, -0.19, 0.41), 0.014, toothMat, headGroup);
+            });
+            const palate = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), darkMat);
+            palate.scale.set(0.8, 0.35, 1.7);
+            palate.position.set(0, -0.11, 0.27);
+            headGroup.add(palate);
+
+            // Mâchoire inférieure articulée
+            const jawGroup = new THREE.Group();
+            jawGroup.position.set(0, -0.12, 0.08);
+            headGroup.add(jawGroup);
+            ratParts.jaw = jawGroup;
+            jawGroup.add(organ([cap([0, -0.01, 0], [0, -0.05, 0.34], 0.085, 0.034, 0.05)], [], painter((x, y, z) => (z - 0.2) * 6, () => 0.7), 0.025, 0.015));
+            [-1, 1].forEach(s => {
+                spike(V3(s * 0.014, -0.03, 0.34), V3(s * 0.014, 0.055, 0.36), 0.012, toothMat, jawGroup);
+                [0.14, 0.2, 0.26].forEach(z => spike(V3(s * 0.045, 0.01, z), V3(s * 0.047, 0.052, z), 0.009, boneMat, jawGroup));
+            });
+
+            // Grandes oreilles fines en coupe ; la gauche est déchirée
+            [-1, 1].forEach(s => {
+                const ear = new THREE.Group();
+                ear.position.set(s * 0.215, 0.24, -0.06);
+                ear.rotation.set(-0.15, s * 0.35, -s * 0.5);
+                const disc = (r, z, mat) => {
+                    const geo = new THREE.CircleGeometry(r, 30, s === -1 ? 1.25 : 0, s === -1 ? Math.PI * 2 - 0.42 : Math.PI * 2);
+                    const p = geo.attributes.position;
+                    for (let i = 0; i < p.count; i++) {
+                        const x = p.getX(i), y = p.getY(i);
+                        p.setXYZ(i, x * 0.85, y * 1.15, (x * x + y * y) * 2.6);
+                    }
+                    geo.computeVertexNormals();
+                    const m = new THREE.Mesh(geo, mat);
+                    m.position.z = z;
+                    ear.add(m);
+                };
+                const earOut = new THREE.MeshStandardMaterial({ color: 0x4a332b, roughness: 0.75, side: THREE.DoubleSide });
+                const earIn = skinMat.clone();
+                earIn.side = THREE.DoubleSide;
+                disc(0.15, 0, earOut);
+                disc(0.118, 0.012, earIn);
+                headGroup.add(ear);
+            });
+
+            // Moustaches
+            [-1, 1].forEach(s => {
+                for (let w = 0; w < 10; w++) {
+                    const spread = (w - 4.5) * 0.03, len = 0.26 + rnd() * 0.16;
+                    const pts = [
+                        V3(s * 0.07, -0.085 + spread * 0.2, 0.49),
+                        V3(s * (0.07 + len * 0.55), -0.07 + spread * 0.7, 0.5),
+                        V3(s * (0.07 + len), -0.12 + spread, 0.42)
+                    ];
+                    headGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, 0.0018, 3, false), whiskerMat));
+                }
+            });
+
+            // ---------- BRAS ----------
+            function createArm(side) {
+                const big = side === -1; // bras gauche hypertrophié
+                const arm = new THREE.Group();
+                arm.position.set(side * 0.52, 0.86, -0.02);
+                const X = v => side * v;
+                const prims = [
+                    ovo([X(0.03), -0.01, 0], [0.19, 0.2, 0.18]),
+                    cap([X(0.05), -0.05, 0], [X(0.19), -0.49, -0.07], 0.12, 0.085),
+                    ovo([X(0.11), -0.25, 0.03], [0.11, 0.17, 0.11], 0.05),        // biceps
+                    cap([X(0.19), -0.49, -0.07], [X(0.25), -0.9, 0.17], 0.095, 0.052, 0.05),
+                    ovo([X(0.215), -0.63, 0.02], [0.11, 0.17, 0.11], 0.06),       // avant-bras
+                    ovo([X(0.255), -0.99, 0.21], [0.085, 0.11, 0.065], 0.045)     // paume
+                ];
+                const tips = [];
+                for (let f = 0; f < 4; f++) {
+                    const x = 0.2 + f * 0.04;
+                    const a = [X(x), -1.05, 0.22], b = [X(x + (f - 1.5) * 0.018), -1.17, 0.27], c = [X(x + (f - 1.5) * 0.026), -1.23, 0.34];
+                    prims.push(cap(a, b, 0.028, 0.022, 0.018), cap(b, c, 0.022, 0.015, 0.012));
+                    tips.push([b, c]);
+                }
+                const t0 = [X(0.21), -0.97, 0.23], t1 = [X(0.12), -1.05, 0.31], t2 = [X(0.11), -1.1, 0.38];
+                prims.push(cap(t0, t1, 0.038, 0.024, 0.025), cap(t1, t2, 0.024, 0.016, 0.012));
+                tips.push([t1, t2]);
+
+                const m = organ(prims, [], painter(
+                    (x, y) => clamp01((-y - 0.8) * 7),
+                    () => 0,
+                    big ? [[X(0.2), -0.32, 0.08, 0.11]] : []
+                ), 0.055, 0.019);
+                arm.add(m);
+                const f = m.userData.field;
+                tips.forEach(([b, c]) => {
+                    const from = V3(...c), dir = from.clone().sub(V3(...b)).normalize();
+                    const to = from.clone().addScaledVector(dir, big ? 0.14 : 0.1);
+                    to.y -= 0.035;
+                    spike(from.addScaledVector(dir, -0.012), to, 0.018, clawMat, arm);
+                });
+                vein(f, [[X(0.17), -0.18, 0.12], [X(0.16), -0.42, 0.06], [X(0.24), -0.62, 0.12], [X(0.26), -0.82, 0.2]], big ? 0.013 : 0.007, veinMat, arm);
+                if (big) arm.scale.setScalar(1.14);
+                return arm;
+            }
+            ratParts.leftArm = createArm(-1);
+            ratParts.rightArm = createArm(1);
+            torsoGroup.add(ratParts.leftArm, ratParts.rightArm);
+
+            // ---------- JAMBES DIGITIGRADES ----------
+            const legsGroup = new THREE.Group();
+            ratGroup.add(legsGroup);
+            ratParts.legs = legsGroup;
+            [-1, 1].forEach(s => {
+                const X = v => s * v;
+                const prims = [
+                    cap([X(0.19), 1.12, -0.03], [X(0.32), 0.69, 0.2], 0.19, 0.095),  // cuisse
+                    ovo([X(0.24), 0.95, 0.04], [0.16, 0.23, 0.17], 0.08),
+                    cap([X(0.32), 0.69, 0.2], [X(0.34), 0.31, -0.16], 0.1, 0.055, 0.05), // tibia
+                    ovo([X(0.33), 0.55, 0.02], [0.095, 0.14, 0.1], 0.06),            // mollet
+                    cap([X(0.34), 0.31, -0.16], [X(0.36), 0.07, 0.09], 0.058, 0.055, 0.04),
+                    ovo([X(0.37), 0.06, 0.15], [0.11, 0.06, 0.12], 0.04)
+                ];
+                const tips = [];
+                for (let t = 0; t < 4; t++) {
+                    const x = 0.285 + t * 0.057;
+                    const end = [X(x + (t - 1.5) * 0.035), 0.035, 0.39];
+                    prims.push(cap([X(x), 0.065, 0.17], end, 0.037, 0.024, 0.02));
+                    tips.push(end);
+                }
+                const leg = organ(prims, [], painter((x, y) => clamp01((0.34 - y) * 6), () => 0), 0.055, 0.022);
+                legsGroup.add(leg);
+                tips.forEach(c => spike(V3(c[0], c[1], c[2] - 0.01), V3(c[0] + s * 0.005, 0.005, c[2] + 0.1), 0.019, clawMat, legsGroup));
+            });
+
+            // ---------- LONGUE QUEUE NUE ----------
+            const tailGroup = new THREE.Group();
+            tailGroup.position.set(0, 1.08, -0.2);
+            tailGroup.rotation.y = -0.35;
+            ratGroup.add(tailGroup);
+            ratParts.tail = tailGroup;
+            ratParts.tailSegments = [];
+            let joint = tailGroup;
+            const L = 0.14;
+            for (let i = 0; i < 24; i++) {
+                const r0 = 0.1 * (1 - i / 26), r1 = 0.1 * (1 - (i + 1) / 26);
+                const seg = new THREE.Group();
+                seg.position.z = i === 0 ? 0 : -L;
+                seg.userData.rx = i < 5 ? -0.24 : i < 10 ? 0.24 : i > 18 ? 0.09 : 0;
+                seg.userData.ry = i < 7 ? 0 : -0.12;
+                seg.rotation.set(seg.userData.rx, seg.userData.ry, 0);
+                const part = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, L, 14, 1, true), tailMat);
+                part.rotation.x = Math.PI / 2;
+                part.position.z = -L / 2;
+                part.castShadow = true;
+                seg.add(part, new THREE.Mesh(new THREE.SphereGeometry(r0, 14, 10), tailMat));
+                joint.add(seg);
+                ratParts.tailSegments.push(seg);
+                joint = seg;
+            }
+
+            // Lumière d'appoint pour détacher la silhouette et les muscles
+            const rim = new THREE.DirectionalLight(0xffdcc0, 0.55);
+            rim.position.set(-3, 3.5, 3);
+            scene.add(rim);
+
+            scene.add(ratGroup);
+        }
+
+
+        // Particules flottantes (spores, vapeur d'égout, poussière)
+        function buildAtmosphereParticles() {
+            const count = 350;
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 9;
+                positions[i * 3 + 1] = Math.random() * 6;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 14;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({
+                color: 0x84cc16,
+                size: 0.045,
+                transparent: true,
+                opacity: 0.45
+            });
+
+            particlesSystem = new THREE.Points(geo, mat);
+            scene.add(particlesSystem);
+        }
+
+        // Éclairage cinématographique sombre et contrasté
+        function setupLighting() {
+            // Lumière ambiante très faible
+            const ambient = new THREE.AmbientLight(0x182218, 0.75);
+            scene.add(ambient);
+
+            // Faisceau principal froid venant de la grille d'égout au-dessus du rat
+            sewerGrateLight = new THREE.SpotLight(0xa3c4bc, 3.8, 18, Math.PI / 4.2, 0.55, 1.2);
+            sewerGrateLight.position.set(0.3, 6.8, 1.4);
+            sewerGrateLight.target.position.set(0, 1.6, 0);
+            sewerGrateLight.castShadow = true;
+            sewerGrateLight.shadow.mapSize.width = 1024;
+            sewerGrateLight.shadow.mapSize.height = 1024;
+            sewerGrateLight.shadow.bias = -0.0005;
+            scene.add(sewerGrateLight);
+            scene.add(sewerGrateLight.target);
+
+            // Contre-jour vert toxique derrière le rat (détoure sa silhouette et ses poils)
+            toxicLight = new THREE.PointLight(0x4d7c0f, 3.2, 10);
+            toxicLight.position.set(0, 2.2, -2.2);
+            scene.add(toxicLight);
+
+            // Lumière latérale chaude/rouillée vacillante (néon défectueux)
+            neonFlickerLight = new THREE.PointLight(0xd97706, 1.4, 9);
+            neonFlickerLight.position.set(-3.1, 2.8, 1.5);
+            scene.add(neonFlickerLight);
+
+            const fillLight = new THREE.PointLight(0xffd2b0, 0.3, 12);
+            fillLight.position.set(1.2, 2.6, 4.2);
+            scene.add(fillLight);
+        }
+
+        // ---------- PROJECTILES : déchets de poubelle ----------
+        const TRASH_COUNT = { like: 1, tap: 1, rose: 2, ice: 3, heart: 4, perfume: 6, galaxy: 12, universe: 20 };
+        const MAX_TRASH = 70;
+        let trashModels = null;
+
+        function buildTrashModels() {
+            const std = o => new THREE.MeshStandardMaterial(o);
+            const part = (g, geo, mat, x = 0, y = 0, z = 0) => {
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set(x, y, z);
+                g.add(m);
+                return m;
+            };
+            const model = build => { const g = new THREE.Group(); build(g); return g; };
+            const tin = std({ color: 0x9aa0a0, map: textures.rustTex, metalness: 0.75, roughness: 0.4 });
+            tin.color.set(0xd0d6d6);
+            const label = std({ color: 0xa32a20, roughness: 0.6 });
+            const glass = std({ color: 0x2f6b32, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.78 });
+            const paper = std({ color: 0xcfc9b8, roughness: 0.95, flatShading: true });
+            const card = std({ color: 0x8a6a42, roughness: 0.95 });
+            const peel = std({ color: 0xc9a22a, roughness: 0.6, side: THREE.DoubleSide });
+            const rot = std({ color: 0x4a2f12, roughness: 0.7 });
+            const apple = std({ color: 0xc4b27a, roughness: 0.6 });
+            const red = std({ color: 0x8c2a1c, roughness: 0.45 });
+            const bone = std({ color: 0xd2c9ac, roughness: 0.7 });
+            const bag = std({ color: 0x141416, roughness: 0.28, metalness: 0.2, flatShading: true });
+
+            return [
+                // canette cabossée
+                model(g => {
+                    part(g, lumpy(new THREE.CylinderGeometry(0.085, 0.085, 0.24, 16, 5), 0.2, 14, 4), tin);
+                    part(g, new THREE.CylinderGeometry(0.09, 0.09, 0.1, 16, 1, true), label);
+                    part(g, new THREE.TorusGeometry(0.075, 0.009, 6, 16), tin, 0, 0.122, 0).rotation.x = Math.PI / 2;
+                }),
+                // bouteille en verre
+                model(g => {
+                    part(g, new THREE.CylinderGeometry(0.075, 0.075, 0.24, 16), glass);
+                    part(g, new THREE.CylinderGeometry(0.028, 0.075, 0.09, 16), glass, 0, 0.165, 0);
+                    part(g, new THREE.CylinderGeometry(0.028, 0.028, 0.09, 12), glass, 0, 0.255, 0);
+                    part(g, new THREE.CylinderGeometry(0.032, 0.032, 0.02, 12), tin, 0, 0.305, 0);
+                    part(g, new THREE.CylinderGeometry(0.077, 0.077, 0.09, 16, 1, true), paper, 0, -0.01, 0);
+                }),
+                // papier froissé
+                model(g => part(g, lumpy(new THREE.IcosahedronGeometry(0.13, 1), 0.65, 17, 8), paper)),
+                // morceau de carton déchiré
+                model(g => {
+                    part(g, lumpy(new THREE.BoxGeometry(0.34, 0.025, 0.25, 6, 1, 5), 0.18, 11, 2), card);
+                    part(g, new THREE.BoxGeometry(0.2, 0.02, 0.13), card, 0.07, 0.025, 0.02).rotation.z = 0.3;
+                }),
+                // peau de banane
+                model(g => {
+                    for (let i = 0; i < 4; i++) {
+                        const a = i * Math.PI / 2;
+                        const pts = [0, 1, 2, 3].map(k => new THREE.Vector3(Math.cos(a) * k * 0.065, -k * k * 0.017, Math.sin(a) * k * 0.065));
+                        part(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, 0.024, 6, false), peel);
+                        part(g, new THREE.SphereGeometry(0.025, 8, 6), rot, pts[3].x, pts[3].y, pts[3].z);
+                    }
+                    part(g, new THREE.CylinderGeometry(0.016, 0.034, 0.09, 8), rot, 0, 0.05, 0);
+                }),
+                // trognon de pomme
+                model(g => {
+                    part(g, new THREE.CylinderGeometry(0.035, 0.035, 0.14, 10), apple);
+                    [-1, 1].forEach(h => part(g, lumpy(new THREE.SphereGeometry(0.075, 14, 10), 0.3, 13, h + 3), red, 0, h * 0.08, 0).scale.y = 0.55);
+                    part(g, new THREE.CylinderGeometry(0.007, 0.007, 0.08, 6), rot, 0.01, 0.15, 0).rotation.z = -0.3;
+                }),
+                // arête de poisson
+                model(g => {
+                    part(g, new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6), bone).rotation.z = Math.PI / 2;
+                    for (let i = 0; i < 6; i++) part(g, new THREE.CylinderGeometry(0.006, 0.006, 0.17 - i * 0.017, 5), bone, -0.09 + i * 0.043, 0, 0).rotation.z = 0.25;
+                    part(g, new THREE.ConeGeometry(0.065, 0.1, 4), bone, -0.19, 0, 0).rotation.z = Math.PI / 2;
+                    part(g, new THREE.ConeGeometry(0.055, 0.08, 3), bone, 0.19, 0, 0).rotation.z = Math.PI / 2;
+                }),
+                // sac poubelle noué
+                model(g => {
+                    part(g, lumpy(new THREE.IcosahedronGeometry(0.17, 2), 0.45, 10, 6), bag);
+                    part(g, new THREE.ConeGeometry(0.055, 0.11, 7), bag, 0, 0.2, 0).rotation.x = Math.PI;
+                })
+            ];
+        }
+
+        // Chaque cadeau répété déclenche sa propre attaque visuelle.
+        function throwTrash(type, attackCount = 1) {
+            if (!trashModels) trashModels = buildTrashModels();
+            const perAttackCount = TRASH_COUNT[type] || 1;
+            const projectileCount = Math.min(MAX_TRASH, perAttackCount * attackCount);
+            const scale = ratGroup.scale.x;
+            const gravity = 7;
+
+            while (projectiles.length + projectileCount > MAX_TRASH) scene.remove(projectiles.shift().mesh);
+
+            for (let i = 0; i < projectileCount; i++) {
+                const projectileInAttack = i % perAttackCount;
+                const mesh = trashModels[Math.floor(Math.random() * trashModels.length)].clone();
+                const side = Math.random() < 0.5 ? -1 : 1;
+                mesh.position.set(side * (1.6 + Math.random() * 1.2), 1.0 + Math.random() * 1.8, 2.2 + Math.random() * 1.2);
+                const size = 0.9 + Math.random() * 0.5;
+                mesh.scale.setScalar(size);
+                const target = new THREE.Vector3((Math.random() - 0.5) * 0.7 * scale, (1.3 + Math.random() * 1.1) * scale, 0.4 * scale);
+                const time = 0.38 + Math.random() * 0.1 + (projectileInAttack === 0 ? 0 : Math.random() * 0.35);
+                const vel = target.sub(mesh.position).divideScalar(time);
+                vel.y += 0.5 * gravity * time;
+                scene.add(mesh);
+                projectiles.push({
+                    mesh, vel, time, size, gravity, type, bounced: false, first: projectileInAttack === 0, life: 1.1,
+                    spin: new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14)
+                });
+            }
+        }
+
+        function updateTrash(delta) {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                const step = p.bounced ? delta : Math.min(delta, p.time);
+                p.vel.y -= p.gravity * step;
+                p.mesh.position.addScaledVector(p.vel, step);
+                p.mesh.rotation.x += p.spin.x * delta;
+                p.mesh.rotation.y += p.spin.y * delta;
+                p.mesh.rotation.z += p.spin.z * delta;
+
+                if (!p.bounced) {
+                    p.time -= step;
+                    if (p.time <= 0.0001) {
+                        // rebond sur le corps puis chute
+                        p.bounced = true;
+                        p.vel.set((Math.random() - 0.5) * 3, 0.6 + Math.random() * 1.6, 0.5 + Math.random() * 1.2);
+                        if (p.first && !gameState.isDead) hitRat(p.type);
+                    }
+                    continue;
+                }
+                p.life -= delta;
+                if (p.mesh.position.y < WATER_Y && Math.abs(p.mesh.position.x) < 1.8) {
+                    p.mesh.position.y = WATER_Y; // les détritus flottent
+                    p.vel.set(p.vel.x * 0.4, Math.abs(p.vel.y) * 0.2, p.vel.z * 0.4);
+                    p.spin.multiplyScalar(0.5);
+                }
+                p.mesh.scale.setScalar(p.size * Math.min(1, p.life / 0.25));
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 4. EFFETS VISUELS 3D PAR CADEAU TIKTOK
+         * ============================================================================
+         */
+        function spawnGiftEffect3D(type, attackCount = 1) {
+            throwTrash(type, attackCount);
+
+            if (type === 'heart' || type === 'perfume') {
+                triggerScreenFlash(type === 'heart' ? 'bg-pink-500' : 'bg-lime-500');
+            } else if (type === 'galaxy' || type === 'universe') {
+                const color = type === 'galaxy' ? 0xa855f7 : 0xfbbf24;
+                triggerScreenFlash(type === 'galaxy' ? 'bg-purple-600' : 'bg-amber-400');
+
+                // Rayon orbital tombant du plafond
+                const beam = new THREE.Mesh(
+                    new THREE.CylinderGeometry(type === 'universe' ? 0.55 : 0.32, type === 'universe' ? 0.85 : 0.45, 8, 20, 1, true),
+                    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+                );
+                beam.position.set(0, 4, 0);
+                scene.add(beam);
+                explosions.push({ mesh: beam, life: 0.65, maxLife: 0.65, isBeam: true });
+            }
+        }
+
+        // ---------- COUPS D'IMPACT & RÉACTION DE DOULEUR ----------
+        const PAIN_STRENGTH = { like: 0.45, tap: 0.45, rose: 0.65, ice: 0.7, heart: 0.82, perfume: 0.95, galaxy: 1.1, universe: 1.25 };
+        const pain = { target: 0, value: 0, flash: 0, side: 1, marks: [], tex: null, mats: null };
+
+        function impactTexture() {
+            const c = document.createElement('canvas');
+            c.width = c.height = 128;
+            const g = c.getContext('2d');
+            g.translate(64, 64);
+            g.fillStyle = '#ffd35a';
+            g.beginPath();
+            for (let i = 0; i < 24; i++) {
+                const a = i / 24 * Math.PI * 2, rad = i % 2 ? 18 : 40 + Math.random() * 22;
+                g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+            }
+            g.fill();
+            const gr = g.createRadialGradient(0, 0, 0, 0, 0, 28);
+            gr.addColorStop(0, '#ffffff');
+            gr.addColorStop(1, 'rgba(255,240,180,0)');
+            g.fillStyle = gr;
+            g.beginPath(); g.arc(0, 0, 28, 0, Math.PI * 2); g.fill();
+            return new THREE.CanvasTexture(c);
+        }
+
+        // Un coup porte : éclat sur le corps, flash rouge et corps qui se plie
+        function hitRat(type) {
+            if (!ratGroup) return;
+            const strength = PAIN_STRENGTH[type] || 0.32;
+            pain.target = Math.max(pain.target, strength);
+            pain.flash = Math.max(pain.flash, strength);
+            pain.side = Math.random() < 0.5 ? -1 : 1;
+
+            if (!pain.tex) pain.tex = impactTexture();
+            if (pain.marks.length >= 8) {
+                const old = pain.marks.shift();
+                scene.remove(old.sprite);
+                old.sprite.material.dispose();
+            }
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: pain.tex, transparent: true, depthTest: false, depthWrite: false }));
+            const scale = ratGroup.scale.x;
+            sprite.position.set((Math.random() - 0.5) * 0.7 * scale, (1.45 + Math.random() * 0.95) * scale, 0.65 * scale);
+            sprite.material.rotation = Math.random() * Math.PI * 2;
+            sprite.scale.setScalar(0.1);
+            scene.add(sprite);
+            pain.marks.push({ sprite, age: 0, size: 0.35 + strength * 0.75 });
+        }
+
+        function updatePain(delta) {
+            pain.value += (pain.target - pain.value) * Math.min(1, delta * 16); // pliage brusque
+            pain.target = Math.max(0, pain.target - delta * 1.25);              // redressement lent
+            pain.flash = Math.max(0, pain.flash - delta * 4.5);
+
+            for (let i = pain.marks.length - 1; i >= 0; i--) {
+                const m = pain.marks[i];
+                m.age += delta;
+                const k = m.age / 0.26;
+                if (k >= 1) {
+                    scene.remove(m.sprite);
+                    m.sprite.material.dispose();
+                    pain.marks.splice(i, 1);
+                    continue;
+                }
+                m.sprite.scale.setScalar(m.size * (0.45 + Math.sqrt(k) * 0.75));
+                m.sprite.material.opacity = 1 - k * k;
+            }
+
+            if (!pain.mats) {
+                pain.mats = new Set();
+                ratGroup.traverse(o => { if (o.material && o.material.vertexColors && o.material.emissive) pain.mats.add(o.material); });
+            }
+            pain.mats.forEach(m => m.emissive.setRGB(pain.flash * 0.22, 0, 0));
+        }
+
+        function triggerScreenFlash(bgClass) {
+            const flashEl = document.getElementById('screen-flash');
+            flashEl.className = `screen-flash ${bgClass} flash-active`;
+            setTimeout(() => {
+                flashEl.classList.remove('flash-active');
+            }, 380);
+        }
+
+        /**
+         * ============================================================================
+         * 5. LOGIQUE DE JEU TIKTOK LIVE (PV, Dégâts, Combos, Feed, WebSocket)
+         * ============================================================================
+         */
+        const GIFTS_CONFIG = {
+            like:     { name: 'Like ❤️',          damage: 1,     coins: 0,     color: 'text-pink-400',   shake: 0.04 },
+            tap:      { name: 'Tap 👆',            damage: 1,     coins: 0,     color: 'text-sky-400',    shake: 0.04 },
+            rose:     { name: 'Rose 🌹',          damage: 15,    coins: 1,     color: 'text-rose-400',   shake: 0.09 },
+            ice:      { name: 'Glace 🍦',         damage: 25,    coins: 1,     color: 'text-sky-400',    shake: 0.11 },
+            heart:    { name: 'Doigt Cœur 🫰',    damage: 75,    coins: 5,     color: 'text-pink-300',   shake: 0.16 },
+            perfume:  { name: 'Bombe Acide 🧪',   damage: 300,   coins: 20,    color: 'text-emerald-400',shake: 0.28 },
+            galaxy:   { name: 'GALAXIE 🌌',       damage: 2500,  coins: 1000,  color: 'text-purple-400', shake: 0.65 },
+            universe: { name: 'UNIVERS TIKTOK 🪐',damage: 10000, coins: 34999, color: 'text-amber-300',  shake: 1.25 }
+        };
+
+        const FAKE_USERS = [
+            '@DarkSlayer93', '@Ines_Paris', '@KyllianOff', '@Mina_Luxe', '@Zed_Gaming',
+            '@Chloé_Tk', '@Nabil_92', '@Sora_Live', '@Tarik_Dz', '@Léna_Vibes', '@Maxime_Pro'
+        ];
+
+        function createFightId() {
+            return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        }
+
+        let gameState = {
+            baseHp: 10000,
+            maxHp: 10000,
+            currentHp: 10000,
+            isDead: false,
+            totalLikes: 0,
+            totalDamage: 0,
+            combo: 0,
+            lastLikeTime: 0,
+            lastAttacker: null,
+            fightGiftCoins: 0,
+            fightId: createFightId()
+        };
+        let walletBannerTimer = 0;
+
+        // Déclencher une attaque (depuis bouton, clavier, simulateur ou vrai WebSocket)
+        function triggerAction(type, customUser = null, repeatCount = 1, metadata = {}) {
+            if (gameState.isDead) return;
+            sound.init();
+
+            const config = GIFTS_CONFIG[type] || GIFTS_CONFIG.like;
+            const user = customUser || '@Toi (Live)';
+            const count = Number(repeatCount);
+            const actionCount = Number.isSafeInteger(count) && count > 0 ? count : 1;
+            const username = String(customUser || '').trim().replace(/^@+/, '');
+            const isRealPlayer = Boolean(metadata.isReal && username && username.toLowerCase() !== 'viewer');
+            const giftCoins = Number(metadata.giftCoins);
+            const now = Date.now();
+
+            if (isRealPlayer && Number.isSafeInteger(giftCoins) && giftCoins > 0) {
+                gameState.fightGiftCoins = Math.min(Number.MAX_SAFE_INTEGER, gameState.fightGiftCoins + giftCoins);
+            }
+
+            // Gestion du combo sur les likes
+            let multiplier = 1;
+            if (type === 'like') {
+                gameState.totalLikes += actionCount;
+                if (now - gameState.lastLikeTime < 1200) {
+                    gameState.combo += actionCount;
+                } else {
+                    gameState.combo = actionCount;
+                }
+                gameState.lastLikeTime = now;
+                multiplier = 1 + Math.floor(gameState.combo / 15) * 0.5;
+                updateComboUI();
+            }
+
+            const finalDamage = Math.round(config.damage * actionCount * multiplier);
+            gameState.currentHp = Math.max(0, gameState.currentHp - finalDamage);
+            gameState.totalDamage += finalDamage;
+            gameState.lastAttacker = { displayName: user, username: isRealPlayer ? username : '', isReal: isRealPlayer };
+
+            // Animations physiques du rat & caméra
+            hitRecoil = Math.min(1.2, hitRecoil + config.shake * 1.4);
+            screenShakeIntensity = Math.min(1.5, screenShakeIntensity + config.shake);
+            rageAuraIntensity = 1.0;
+
+            // Sons adaptés
+            if (type === 'galaxy' || type === 'universe') {
+                sound.playExplosion();
+                sound.playRatGrowl(1.4);
+            } else if (type === 'perfume' || type === 'heart') {
+                sound.playHit(0.75);
+                sound.playRatGrowl(0.9);
+            } else {
+                sound.playHit(0.95 + Math.random() * 0.25);
+            }
+
+            // Effets 3D & UI
+            spawnGiftEffect3D(type, actionCount);
+            spawnFloatingDamage(finalDamage, config.color, type === 'galaxy' || type === 'universe', actionCount);
+
+            updateHealthUI();
+
+            // Vérifier la mort du Boss
+            if (gameState.currentHp <= 0 && !gameState.isDead) {
+                killBoss();
+            }
+        }
+
+        function updateHealthUI() {
+            const pct = (gameState.currentHp / gameState.maxHp) * 100;
+            document.getElementById('hp-fill').style.width = `${pct}%`;
+            document.getElementById('hp-progress').setAttribute('aria-valuenow', String(gameState.currentHp));
+            document.getElementById('hp-progress').setAttribute('aria-valuemax', String(gameState.maxHp));
+            setTimeout(() => {
+                document.getElementById('hp-lag').style.width = `${pct}%`;
+            }, 180);
+
+            document.getElementById('stat-likes').textContent = gameState.totalLikes.toLocaleString('fr-FR');
+            document.getElementById('stat-dmg').textContent = gameState.totalDamage.toLocaleString('fr-FR');
+        }
+
+        function updateComboUI() {
+            const badge = document.getElementById('combo-badge');
+            const count = document.getElementById('combo-count');
+            if (gameState.combo > 1) {
+                badge.style.opacity = '1';
+                count.textContent = gameState.combo;
+            } else {
+                badge.style.opacity = '0';
+            }
+        }
+
+        function spawnFloatingDamage(amount, colorClass, isCrit, attackCount = 1) {
+            const layer = document.getElementById('damage-layer');
+            const el = document.createElement('div');
+            const xOffset = (Math.random() - 0.5) * 180;
+            const yOffset = (Math.random() - 0.5) * 100;
+
+            el.className = `damage-popup ${colorClass} ${isCrit ? 'text-3xl sm:text-5xl' : 'text-xl sm:text-2xl'}`;
+            el.style.left = `calc(50% + ${xOffset}px)`;
+            el.style.top = `calc(42% + ${yOffset}px)`;
+            const attackLabel = attackCount > 1 ? ` · ${attackCount.toLocaleString('fr-FR')} attaques` : '';
+            el.textContent = `-${amount.toLocaleString('fr-FR')}${attackLabel}`;
+
+            layer.appendChild(el);
+            setTimeout(() => el.remove(), 1200);
+        }
+
+        function addFeedNotification(user, actionText, damage, colorClass, isBigGift) {
+            // Flux de messages désactivé à la demande pour garder l'écran totalement épuré
+        }
+
+        function killBoss() {
+            gameState.isDead = true;
+            sound.playDeathScream();
+            sound.playExplosion();
+            screenShakeIntensity = 1.6;
+            triggerScreenFlash('bg-red-600');
+            const winner = gameState.lastAttacker;
+            const fightGiftCoins = gameState.fightGiftCoins;
+            const fightId = gameState.fightId;
+            void awardFinalBlowReward(winner, fightGiftCoins, fightId);
+
+            // Afficher la modale de victoire après l'animation d'effondrement
+            setTimeout(() => {
+                document.getElementById('mvp-killer').textContent = winner?.displayName || '@Utilisateur';
+                document.getElementById('victory-likes').textContent = gameState.totalLikes.toLocaleString('fr-FR');
+                document.getElementById('victory-modal').classList.remove('hidden');
+            }, 1700);
+        }
+
+        async function awardFinalBlowReward(winner, fightGiftCoins, fightId) {
+            const status = document.getElementById('winner-reward-status');
+            const prize = Math.floor(fightGiftCoins * 0.3);
+            if (!winner?.isReal || !winner.username) {
+                status.textContent = 'Simulation ou coup local : aucune étoile réelle n’a été attribuée.';
+                return;
+            }
+            if (prize < 1) {
+                status.textContent = 'Récompense : 30 % des pièces des cadeaux, arrondie à l’étoile inférieure (aucune étoile à créditer).';
+                return;
+            }
+            if (!window.ArcadeStars?.award) {
+                const error = new Error('Le portefeuille d’étoiles est indisponible.');
+                console.error('Récompense du dernier coup non enregistrée :', error);
+                status.textContent = `Erreur : ${error.message} Récompense non enregistrée.`;
+                return;
+            }
+
+            let remaining = prize;
+            let credited = 0;
+            let part = 0;
+            try {
+                while (remaining > 0) {
+                    const amount = Math.min(remaining, 250000);
+                    await window.ArcadeStars.award({
+                        username: winner.username,
+                        amount,
+                        transactionId: `rat-mutant:${fightId}:${winner.username}:${part}`
+                    });
+                    remaining -= amount;
+                    credited += amount;
+                    part++;
+                }
+                status.textContent = `${credited.toLocaleString('fr-FR')} étoiles ajoutées au portefeuille RUN · 30 % des cadeaux du combat.`;
+            } catch (error) {
+                console.error('Récompense du dernier coup non confirmée :', error);
+                status.textContent = credited
+                    ? `Crédit partiel confirmé : ${credited.toLocaleString('fr-FR')} / ${prize.toLocaleString('fr-FR')} étoiles.`
+                    : `Erreur : récompense non enregistrée (${error.message}).`;
+            }
+        }
+
+        function showWalletBanner(player, title, detail) {
+            if (!player) return;
+            const banner = document.getElementById('walletBanner');
+            const image = document.getElementById('wallet-avatar');
+            const rawName = player.username || player.uniqueId || player.nickname || 'Spectateur';
+            const username = String(rawName).trim().replace(/^@+/, '') || 'Spectateur';
+            const avatar = player.avatarUrl || player.avatarDataUri || player.profilePictureUrl;
+
+            if (avatar) {
+                image.src = avatar;
+                image.alt = `Photo de profil de ${username}`;
+                image.hidden = false;
+            } else {
+                image.removeAttribute('src');
+                image.alt = '';
+                image.hidden = true;
+            }
+            document.getElementById('wallet-name').textContent = title || `@${username} · Portefeuille`;
+            document.getElementById('wallet-detail').textContent = detail;
+            banner.hidden = false;
+            window.clearTimeout(walletBannerTimer);
+            walletBannerTimer = window.setTimeout(() => { banner.hidden = true; }, 9000);
+        }
+
+        function handleWalletRun(event) {
+            const data = event.detail || {};
+            const player = data.player;
+            const rawName = player && (player.username || player.uniqueId || player.nickname);
+            const username = String(rawName || '').trim().replace(/^@+/, '');
+            const spent = Number(data.spent);
+            if (!username || !Number.isSafeInteger(spent) || spent < 1) {
+                console.warn('RUN ignoré : joueur ou nombre d’étoiles invalide.', data);
+                if (player) showWalletBanner(player, 'RUN non exécuté', 'Données du joueur ou montant dépensé invalides.');
+                return;
+            }
+            showWalletBanner(player, `@${username} · RUN`, `${spent.toLocaleString('fr-FR')} étoiles dépensées · ${(spent * 15).toLocaleString('fr-FR')} PV de dégâts.`);
+            if (gameState.isDead) restartFight();
+            triggerAction('rose', `@${username}`, spent, { isReal: true });
+        }
+
+        function handleWalletRunRejected(event) {
+            const data = event.detail || {};
+            if (!data.player) return;
+            const username = String(data.player.username || data.player.uniqueId || 'Spectateur').trim().replace(/^@+/, '');
+            const stars = Number(data.player.stars);
+            const balanceText = Number.isFinite(stars) ? `${stars.toLocaleString('fr-FR')} étoiles disponibles` : 'solde indisponible';
+            showWalletBanner(data.player, `@${username} · RUN refusé`, `${String(data.message || 'Étoiles non dépensées.')} · ${balanceText}`);
+        }
+
+        // Même rat, mêmes PV : on relance simplement un combat
+        function restartFight() {
+            gameState.currentHp = gameState.maxHp;
+            gameState.isDead = false;
+            gameState.combo = 0;
+            gameState.lastAttacker = null;
+            gameState.fightGiftCoins = 0;
+            gameState.fightId = createFightId();
+            pain.target = pain.value = 0;
+
+            ratGroup.rotation.set(0, 0, 0);
+            ratGroup.position.y = 0.05;
+
+            updateHealthUI();
+            updateComboUI();
+            document.getElementById('winner-reward-status').textContent = '30 % des pièces des cadeaux du combat seront attribuées au dernier coup, en étoiles.';
+            document.getElementById('victory-modal').classList.add('hidden');
+        }
+
+        function resetBossWithCustomHp() {
+            const inputVal = parseInt(document.getElementById('boss-hp-input').value, 10);
+            gameState.baseHp = (!isNaN(inputVal) && inputVal >= 100) ? inputVal : 10000;
+            gameState.maxHp = gameState.baseHp;
+            gameState.currentHp = gameState.maxHp;
+            gameState.isDead = false;
+            gameState.combo = 0;
+            gameState.totalLikes = 0;
+            gameState.totalDamage = 0;
+            gameState.lastAttacker = null;
+            gameState.fightGiftCoins = 0;
+            gameState.fightId = createFightId();
+            pain.target = pain.value = 0;
+
+            ratGroup.rotation.set(0, 0, 0);
+            ratGroup.position.y = 0.05;
+            document.getElementById('victory-modal').classList.add('hidden');
+
+            updateHealthUI();
+            updateComboUI();
+            document.getElementById('winner-reward-status').textContent = '30 % des pièces des cadeaux du combat seront attribuées au dernier coup, en étoiles.';
+        }
+
+
+        /**
+         * ============================================================================
+         * 6. BOUCLE D'ANIMATION 3D TEMPS RÉEL
+         * ============================================================================
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            envAnims.forEach(fn => fn(elapsed));
+
+            // 1. Animation de l'eau stagnante & lumières d'égout
+            if (waterMesh) {
+                waterMesh.position.y = WATER_Y + Math.sin(elapsed * 1.8) * 0.01;
+            }
+            if (neonFlickerLight) {
+                // Vacillement réaliste de néon défectueux
+                neonFlickerLight.intensity = Math.random() > 0.92 ? 0.2 : 1.3 + Math.sin(elapsed * 12) * 0.2;
+            }
+            if (toxicLight) {
+                toxicLight.intensity = 3.0 + Math.sin(elapsed * 2.5) * 0.6 + rageAuraIntensity * 3;
+            }
+
+            // 2. Particules d'égout flottantes
+            if (particlesSystem) {
+                particlesSystem.rotation.y = elapsed * 0.04;
+                particlesSystem.position.y = Math.sin(elapsed * 0.7) * 0.15;
+            }
+
+            if (ratGroup) updatePain(delta);
+
+            // 3. Animation procédurale du Rat Mutant
+            if (ratGroup && ratParts.torso) {
+                if (!gameState.isDead) {
+                    // Respiration lourde et posture menaçante
+                    const breath = Math.sin(elapsed * 2.8);
+                    const microTremor = hitRecoil > 0.02 ? Math.sin(elapsed * 42) * hitRecoil * 0.035 : 0;
+                    const hurt = pain.value;
+                    const shiver = Math.sin(elapsed * 34) * hurt * 0.025;
+                    // genoux qui fléchissent, bassin qui descend
+                    ratParts.legs.scale.y = 1 - hurt * 0.13;
+                    ratParts.tail.position.y = 1.08 - hurt * 0.14;
+                    ratParts.torso.position.y = 1.35 + breath * 0.035 - hurt * 0.16;
+                    ratParts.torso.position.z = hurt * 0.06;
+                    ratParts.torso.rotation.y = pain.side * hurt * 0.22;
+                    ratParts.torso.rotation.x = 0.08 + breath * 0.03 + hurt * 0.62 + microTremor;
+                    ratParts.torso.rotation.z = Math.sin(elapsed * 1.4) * 0.04 + pain.side * hurt * 0.13 + shiver;
+
+                    // Pulsation organique des pustules mutantes selon la respiration et la rage
+                    if (ratParts.mutantNodes) {
+                        ratParts.mutantNodes.forEach((node, nIdx) => {
+                            const pulse = 1 + Math.sin(elapsed * 3.6 + nIdx * 1.1) * 0.08 + rageAuraIntensity * 0.14;
+                            node.scale.setScalar(1 + (pulse - 1) * 0.35);
+                        });
+                    }
+                    if (ratParts.veinMat) ratParts.veinMat.emissiveIntensity = 0.3 + (0.2 + rageAuraIntensity * 0.6) * (0.5 + 0.5 * Math.sin(elapsed * 3.1));
+
+                    // Mouvement de la tête et claquement de mâchoire
+                    ratParts.head.rotation.y = Math.sin(elapsed * 1.9) * 0.16 + microTremor * 1.4;
+                    ratParts.head.rotation.x = Math.cos(elapsed * 2.8) * 0.06 - hurt * 0.3 + shiver * 2;
+                    ratParts.head.rotation.z = -pain.side * hurt * 0.25;
+                    ratParts.jaw.rotation.x = 0.18 + Math.max(0, Math.sin(elapsed * 4.5)) * 0.22 * (1 - Math.min(1, hurt)) + hurt * 0.6;
+
+                    // Balancement des bras griffus
+                    // les bras se replient sur le ventre
+                    ratParts.leftArm.rotation.x = Math.sin(elapsed * 2.8) * 0.12 - hurt * 0.95;
+                    ratParts.leftArm.rotation.z = hurt * 0.3;
+                    ratParts.rightArm.rotation.z = -hurt * 0.3;
+                    ratParts.rightArm.rotation.x = -Math.sin(elapsed * 2.8) * 0.12 - hurt * 0.95;
+
+                    // Ondulation sinueuse de la queue
+                    if (ratParts.tailSegments) {
+                        ratParts.tailSegments.forEach((seg, idx) => {
+                            seg.rotation.y = seg.userData.ry + Math.sin(elapsed * 2.6 - idx * 0.35) * 0.045;
+                            seg.rotation.x = seg.userData.rx + Math.cos(elapsed * 2.4 - idx * 0.28) * 0.008;
+                        });
+                    }
+
+                    // Mouvement naturel et réactif de la cape rouge (brise d'égout, respiration et recul aux impacts)
+                    if (ratParts.cape) {
+                        ratParts.cape.rotation.x = 0.18 + Math.sin(elapsed * 2.4) * 0.06 + hitRecoil * 0.55;
+                        ratParts.cape.rotation.z = Math.sin(elapsed * 1.6) * 0.045;
+                    }
+                    if (ratParts.capeFlaps) {
+                        ratParts.capeFlaps.forEach((flap, fIdx) => {
+                            const dir = fIdx === 0 ? -1 : 1;
+                            flap.rotation.x = Math.sin(elapsed * 3.4 + fIdx * 1.2) * 0.12 + hitRecoil * 0.45;
+                            flap.rotation.y = dir * (0.45 + Math.cos(elapsed * 2.5) * 0.08);
+                        });
+                    }
+
+                    // Recul lors des impacts
+                    ratGroup.position.z = -hitRecoil * 0.35;
+                    hitRecoil = Math.max(0, hitRecoil - delta * 3.2);
+                    rageAuraIntensity = Math.max(0, rageAuraIntensity - delta * 1.8);
+                } else {
+                    // Animation d'effondrement mortel au sol
+                    ratGroup.rotation.x = THREE.MathUtils.lerp(ratGroup.rotation.x, -Math.PI / 2.1, delta * 3.5);
+                    ratGroup.position.y = THREE.MathUtils.lerp(ratGroup.position.y, -0.35, delta * 3.5);
+                }
+            }
+
+            // 4. Détritus en vol
+            updateTrash(delta);
+
+            // 5. Mise à jour des explosions & rayons orbitaux
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const ex = explosions[i];
+                ex.life -= delta;
+                if (ex.life <= 0) {
+                    scene.remove(ex.mesh);
+                    explosions.splice(i, 1);
+                } else {
+                    const progress = 1 - ex.life / ex.maxLife;
+                    if (ex.isBeam) {
+                        ex.mesh.material.opacity = (1 - progress) * 0.9;
+                        ex.mesh.scale.set(1 - progress * 0.6, 1, 1 - progress * 0.6);
+                    } else if (ex.isParticle) {
+                        ex.mesh.position.addScaledVector(ex.vel, delta);
+                        ex.vel.y -= 9.8 * delta; // Gravité
+                        ex.mesh.scale.setScalar(1 - progress);
+                    } else if (ex.expandScale) {
+                        const s = 1 + progress * ex.expandScale;
+                        ex.mesh.scale.set(s, s, s);
+                        ex.mesh.material.opacity = (1 - progress) * 0.7;
+                    }
+                }
+            }
+
+            // 6. Tremblement cinématographique de la caméra
+            if (screenShakeIntensity > 0.001) {
+                camera.position.set(
+                    cameraBasePos.x + (Math.random() - 0.5) * screenShakeIntensity * 0.45,
+                    cameraBasePos.y + (Math.random() - 0.5) * screenShakeIntensity * 0.45,
+                    cameraBasePos.z + (Math.random() - 0.5) * screenShakeIntensity * 0.3
+                );
+                screenShakeIntensity = Math.max(0, screenShakeIntensity - delta * 2.8);
+            } else {
+                // Légère respiration caméra à l'épaule
+                camera.position.x = cameraBasePos.x + Math.sin(elapsed * 0.6) * 0.08;
+                camera.position.y = cameraBasePos.y + Math.cos(elapsed * 0.8) * 0.05;
+            }
+            camera.lookAt(cameraLookTarget);
+
+            renderer.render(scene, camera);
+        }
+
+        /**
+         * ============================================================================
+         * 7. INTERACTIONS, PANNEAU DÉPLAÇABLE (DRAG & DROP) & PONTS WEBSOCKET TIKTOK
+         * ============================================================================
+         */
+        let simInterval = null;
+        let wsConnection = null;
+        let wsReconnectTimer = null;
+        let manualDisconnect = false;
+        const LIVE_BRIDGE_URL = 'ws://localhost:21213/';
+
+        function initDraggableConfigPanel() {
+            const panel = document.getElementById('config-panel');
+            const handle = document.getElementById('config-drag-handle');
+
+            // Restaurer la position sauvegardée si elle existe
+            try {
+                const savedPos = JSON.parse(localStorage.getItem('rat_boss_panel_pos'));
+                if (savedPos && typeof savedPos.left === 'number' && typeof savedPos.top === 'number') {
+                    panel.style.bottom = 'auto';
+                    panel.style.right = 'auto';
+                    const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+                    const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+                    panel.style.left = `${Math.min(Math.max(8, savedPos.left), maxLeft)}px`;
+                    panel.style.top = `${Math.min(Math.max(8, savedPos.top), maxTop)}px`;
+                }
+            } catch (e) {}
+
+            let isDragging = false;
+            let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+            handle.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('button')) return;
+                isDragging = true;
+                const rect = panel.getBoundingClientRect();
+                panel.style.bottom = 'auto';
+                panel.style.right = 'auto';
+                panel.style.left = `${rect.left}px`;
+                panel.style.top = `${rect.top}px`;
+
+                startX = e.clientX;
+                startY = e.clientY;
+                initialLeft = rect.left;
+                initialTop = rect.top;
+                handle.setPointerCapture(e.pointerId);
+            });
+
+            handle.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+
+                const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+                const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+
+                const newLeft = Math.min(Math.max(8, initialLeft + dx), maxLeft);
+                const newTop = Math.min(Math.max(8, initialTop + dy), maxTop);
+
+                panel.style.left = `${newLeft}px`;
+                panel.style.top = `${newTop}px`;
+            });
+
+            const stopDrag = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                try {
+                    const rect = panel.getBoundingClientRect();
+                    localStorage.setItem('rat_boss_panel_pos', JSON.stringify({ left: rect.left, top: rect.top }));
+                } catch (e) {}
+            };
+
+            handle.addEventListener('pointerup', stopDrag);
+            handle.addEventListener('pointercancel', stopDrag);
+        }
+
+        function setupUIEvents() {
+            initDraggableConfigPanel();
+
+            // Clic ou touche sur le canvas = tapotage rapide
+            document.getElementById('canvas-container').addEventListener('pointerdown', () => {
+                triggerAction('tap');
+            });
+
+            // Barre d'espace = tapotage rapide
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+                    e.preventDefault();
+                    triggerAction('tap');
+                }
+            });
+
+            // Petit œil : Afficher / Masquer le panneau de configuration
+            const configPanel = document.getElementById('config-panel');
+            const eyeToggleBtn = document.getElementById('btn-eye-toggle');
+            const eyeIcon = document.getElementById('icon-eye-toggle');
+            const panelMinimizeBtn = document.getElementById('btn-panel-minimize');
+
+            function toggleConfigPanel() {
+                const isHidden = configPanel.classList.toggle('hidden');
+                if (isHidden) {
+                    eyeIcon.className = 'fa-solid fa-eye-slash text-sm text-zinc-400';
+                    eyeToggleBtn.title = 'Afficher le panneau de configuration';
+                } else {
+                    eyeIcon.className = 'fa-solid fa-eye text-sm text-rose-400';
+                    eyeToggleBtn.title = 'Masquer le panneau de configuration';
+                }
+            }
+
+            eyeToggleBtn.addEventListener('click', toggleConfigPanel);
+            panelMinimizeBtn.addEventListener('click', toggleConfigPanel);
+
+            // Section dépliable : Mode Test, Simulation & Boss
+            const simDrawerBtn = document.getElementById('btn-toggle-sim-drawer');
+            const simDrawerContent = document.getElementById('sim-drawer-content');
+            const simDrawerIcon = document.getElementById('icon-sim-drawer');
+
+            simDrawerBtn.addEventListener('click', () => {
+                const isHidden = simDrawerContent.classList.toggle('hidden');
+                simDrawerIcon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+
+            // Mute / Unmute
+            document.getElementById('btn-mute').addEventListener('click', () => {
+                sound.init();
+                const isMuted = sound.toggleMute();
+                document.getElementById('icon-mute').className = isMuted
+                    ? 'fa-solid fa-volume-xmark text-rose-500'
+                    : 'fa-solid fa-volume-high';
+                document.getElementById('text-mute').textContent = isMuted ? 'Son : Coupé' : 'Son : Activé';
+            });
+
+            // Boutons Relancer & Reset PV
+            document.getElementById('btn-next-boss').addEventListener('click', restartFight);
+            document.getElementById('btn-reset-boss').addEventListener('click', resetBossWithCustomHp);
+
+            // Simulateur automatique d'audience TikTok Live
+            document.getElementById('btn-sim-live').addEventListener('click', () => {
+                const label = document.getElementById('sim-live-text');
+                if (simInterval) {
+                    clearInterval(simInterval);
+                    simInterval = null;
+                    label.textContent = 'Chat Auto : OFF';
+                } else {
+                    label.textContent = 'Chat Auto : ON';
+                    simInterval = setInterval(() => {
+                        if (gameState.isDead) return;
+                        const randUser = FAKE_USERS[Math.floor(Math.random() * FAKE_USERS.length)];
+                        const roll = Math.random();
+                        if (roll < 0.62) {
+                            triggerAction('like', randUser, Math.floor(1 + Math.random() * 4));
+                        } else if (roll < 0.80) {
+                            triggerAction('rose', randUser, 1);
+                        } else if (roll < 0.90) {
+                            triggerAction('heart', randUser, 1);
+                        } else if (roll < 0.97) {
+                            triggerAction('perfume', randUser, 1);
+                        } else {
+                            triggerAction('galaxy', randUser, 1);
+                        }
+                    }, 650);
+                }
+            });
+
+            const usernameInput = document.getElementById('tiktok-username-input');
+
+            // Charger le pseudo sauvegardé.
+            try {
+                const savedUser = localStorage.getItem('rat_boss_tiktok_user');
+                if (savedUser) usernameInput.value = savedUser.replace(/^@+/, '');
+            } catch (e) {}
+
+            document.getElementById('btn-connect-ws').addEventListener('click', () => {
+                manualDisconnect = false;
+                const rawUser = usernameInput.value.trim().replace(/^@+/, '');
+                if (!rawUser) {
+                    updateConnectionUI('offline', '', '<span class="text-rose-400">Saisis ton pseudo TikTok, sans arobase.</span>');
+                    usernameInput.focus();
+                    return;
+                }
+                try {
+                    localStorage.setItem('rat_boss_tiktok_user', rawUser);
+                } catch (e) {}
+                connectTikTokWebSocket(rawUser);
+            });
+
+            document.getElementById('btn-disconnect-ws').addEventListener('click', () => {
+                manualDisconnect = true;
+                if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+                if (wsConnection) {
+                    wsConnection.close();
+                    wsConnection = null;
+                }
+                updateConnectionUI('offline');
+            });
+
+            window.addEventListener('arcade:wallet', event => {
+                const data = event.detail || {};
+                const player = data.player;
+                if (!player) return;
+                const username = String(player.username || player.uniqueId || player.nickname || 'Spectateur').trim().replace(/^@+/, '');
+                const stars = Number(player.stars);
+                const balance = Number.isFinite(stars) ? `⭐ ${stars.toLocaleString('fr-FR')} étoiles disponibles` : 'Solde indisponible';
+                const message = String(data.message || '');
+                showWalletBanner(player, `@${username} · Portefeuille`, `${balance}${message ? ` · ${message}` : ''}`);
+            });
+            window.addEventListener('arcade:wallet-run', handleWalletRun);
+            window.addEventListener('arcade:wallet-run-rejected', handleWalletRunRejected);
+        }
+
+        function updateConnectionUI(state, username = '', extraMsg = '') {
+            const badge = document.getElementById('conn-status-badge');
+            const feedback = document.getElementById('ws-feedback');
+            const liveDot = document.getElementById('live-dot');
+            const btnConnect = document.getElementById('btn-connect-ws');
+            const btnDisconnect = document.getElementById('btn-disconnect-ws');
+
+            const displayUser = username ? `@${username}` : 'votre compte';
+            const safeDisplayUser = displayUser.replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+
+            if (state === 'connecting') {
+                badge.textContent = 'Connexion...';
+                badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-500/40';
+                feedback.innerHTML = `<span class="text-amber-300">Connexion au live de <strong>${safeDisplayUser}</strong>...</span>`;
+                liveDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+            } else if (state === 'connected') {
+                badge.textContent = username ? `En direct : @${username}` : 'En direct';
+                badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40';
+                feedback.innerHTML = `<span class="text-emerald-400 font-semibold">Connecté ! Les tapotages, likes et cadeaux de <strong>${safeDisplayUser}</strong> attaquent le rat.</span>`;
+                liveDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-ping';
+                btnConnect.classList.add('hidden');
+                btnDisconnect.classList.remove('hidden');
+            } else {
+                badge.textContent = 'Hors ligne';
+                badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700';
+                feedback.innerHTML = extraMsg || 'Déconnecté. Prêt à connecter votre Live TikTok.';
+                liveDot.className = 'w-2 h-2 rounded-full bg-zinc-500';
+                btnConnect.classList.remove('hidden');
+                btnDisconnect.classList.add('hidden');
+            }
+        }
+
+        // Réception des événements LIVE via le pont configuré par défaut.
+        function positiveInteger(value, fallback = 1) {
+            if (value === undefined || value === null || value === '') return fallback;
+            const number = Number(value);
+            return Number.isSafeInteger(number) && number > 0 ? number : null;
+        }
+
+        function connectTikTokWebSocket(username = '') {
+            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            if (wsConnection) {
+                wsConnection.close();
+            }
+
+            try {
+                updateConnectionUI('connecting', username);
+                wsConnection = new WebSocket(LIVE_BRIDGE_URL);
+
+                wsConnection.onopen = () => {
+                    updateConnectionUI('connected', username);
+                    // Envoyer le nom d'utilisateur cible si le pont le supporte
+                    if (username) {
+                        try {
+                            wsConnection.send(JSON.stringify({ event: 'setUniqueId', uniqueId: username }));
+                        } catch (err) {}
+                    }
+                };
+
+                wsConnection.onmessage = (event) => {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        const data = payload.data || payload;
+                        const eventType = String(payload.event || payload.type || data.event || data.type || '').toLowerCase();
+                        const viewerName = data.uniqueId ? `@${data.uniqueId}` : (data.nickname || '@Viewer');
+
+                        if (eventType === 'like' || eventType === 'tiktok-like') {
+                            const count = positiveInteger(data.likeCount ?? data.repeatCount);
+                            if (!count) {
+                                console.warn('Évènement like ignoré : nombre de likes invalide.', data);
+                                return;
+                            }
+                            triggerAction('like', viewerName, count, { isReal: true });
+                        } else if (['tap', 'taps', 'tapcount', 'tap_count', 'tiktok-tap', 'tiktok-taps', 'tiktok-tap-count', 'tiktok_tap', 'tiktok_taps', 'tiktok_tap_count'].includes(eventType)) {
+                            const count = positiveInteger(data.tapCount ?? data.tap_count ?? data.count ?? data.repeatCount);
+                            if (!count) {
+                                console.warn('Évènement tap ignoré : nombre de tapotages invalide.', data);
+                                return;
+                            }
+                            triggerAction('tap', viewerName, count, { isReal: true });
+                        } else if (eventType === 'gift') {
+                            // Éviter le double comptage des séries (streak) en cours sur TikTok
+                            if (Number(data.giftType) === 1 && !data.repeatEnd) return;
+                            const repeat = positiveInteger(data.repeatCount, 1);
+                            const unitCoins = positiveInteger(data.diamondCount ?? data.coinCount ?? data.coins);
+                            if (!repeat || !unitCoins) {
+                                console.warn('Cadeau ignoré : répétition ou valeur en pièces invalide.', data);
+                                return;
+                            }
+                            const coins = positiveInteger(unitCoins * repeat);
+                            if (!coins) {
+                                console.warn('Cadeau ignoré : valeur totale en pièces invalide.', data);
+                                return;
+                            }
+
+                            let attackType = 'rose';
+                            if (unitCoins >= 10000) attackType = 'universe';
+                            else if (unitCoins >= 500) attackType = 'galaxy';
+                            else if (unitCoins >= 15) attackType = 'perfume';
+                            else if (unitCoins >= 5) attackType = 'heart';
+                            triggerAction(attackType, viewerName, repeat, { isReal: true, giftCoins: coins });
+                        }
+                    } catch (err) {
+                        // Ignorer les paquets non JSON
+                    }
+                };
+
+                wsConnection.onerror = () => {
+                    updateConnectionUI('offline', username, '<span class="text-rose-400">Connexion au LIVE impossible. Vérifie que le pont du direct est lancé.</span>');
+                };
+
+                wsConnection.onclose = () => {
+                    if (!manualDisconnect) {
+                        updateConnectionUI('offline', username, `<span class="text-amber-400">Connexion perdue. Nouvelle tentative dans 4s...</span>`);
+                        wsReconnectTimer = setTimeout(() => {
+                            if (!manualDisconnect) connectTikTokWebSocket(username);
+                        }, 4000);
+                    } else {
+                        updateConnectionUI('offline', username);
+                    }
+                };
+            } catch (e) {
+                console.error('Connexion au LIVE impossible :', e);
+                updateConnectionUI('offline', username, '<span class="text-rose-400">Connexion au LIVE impossible. Vérifie la configuration du pont.</span>');
+            }
+        }
+
+        // Lancement au chargement complet de la page
+        window.onload = function () {
+            initThreeJS();
+            setupUIEvents();
+            animate();
+        };
+    </script>
+</body>
+</html>
